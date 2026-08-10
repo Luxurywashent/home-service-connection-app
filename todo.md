@@ -3092,5 +3092,5 @@
 - [x] Validate navigation, type safety, and the primary non-contract workflows after the refactor.
 - [x] Optimize the generated Hearthline CRM icon for checkpoint-safe launcher, splash, and favicon use.
 - [x] Update the product name and core user-facing branding to Home Service Connection.
-- [ ] Resolve the mobile launch link HTTP 500 error and verify server accessibility.
-- [ ] Remove remaining copied Luxury Wash On Wheels labels from the core application identity and entry screens.
+- [x] Resolve the mobile launch link HTTP 500 error and verify server accessibility.
+- [x] Remove remaining copied Luxury Wash On Wheels labels from the core application identity and entry screens.
