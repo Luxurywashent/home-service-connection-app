@@ -137,7 +137,7 @@ export default function CustomerMessagesScreen() {
             <LuxuryWashIcon size={24} />
           </View>
           <View style={{ marginLeft: 10 }}>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>Hearthline CRM</Text>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>Home Service Connection</Text>
             <Text style={[styles.headerSub, { color: colors.muted }]}>We typically reply within a few hours</Text>
           </View>
         </View>
@@ -219,7 +219,7 @@ export default function CustomerMessagesScreen() {
           <Text style={{ fontSize: 20 }}>🚗</Text>
         </View>
         <View style={{ marginLeft: 10 }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Hearthline CRM</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Home Service Connection</Text>
           <Text style={[styles.headerSub, { color: colors.muted }]}>We typically reply within a few hours</Text>
         </View>
       </View>

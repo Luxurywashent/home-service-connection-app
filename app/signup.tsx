@@ -120,7 +120,7 @@ export default function SignUpScreen() {
           <View style={styles.container}>
             <View style={styles.form}>
               <Text style={[styles.welcomeText, { color: colors.foreground }]}>
-                Welcome to{"\n"}Hearthline CRM
+                Welcome to{"\n"}Home Service Connection
               </Text>
               <Text style={[styles.subText, { color: colors.muted }]}>
                 Create an account to book home services and track your appointments.

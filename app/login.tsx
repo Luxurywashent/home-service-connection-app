@@ -79,7 +79,7 @@ export default function LoginScreen() {
       if (employeeResult.success && employeeResult.employee) {
         await employeeLogin(employeeResult.employee as any, true);
         const greeting = getGreeting();
-        alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Hearthline CRM.`);
+        alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Home Service Connection.`);
         const role = employeeResult.employee.role;
         if (role === "door_hanger_rep" || role === "sales") {
           router.replace("/(sales)/dashboard");
@@ -104,7 +104,7 @@ export default function LoginScreen() {
         if (employeeResult.success && employeeResult.employee) {
           await employeeLogin(employeeResult.employee as any, true);
           const greeting = getGreeting();
-          alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Hearthline CRM.`);
+          alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Home Service Connection.`);
           const role = employeeResult.employee.role;
           if (role === "door_hanger_rep" || role === "sales") {
             router.replace("/(sales)/dashboard");
@@ -185,9 +185,9 @@ export default function LoginScreen() {
             {/* Logo */}
             <View style={styles.logoSection}>
               <View style={styles.logoBox}>
-                <Text style={styles.logoText}>HL</Text>
+                <Text style={styles.logoText}>HSC</Text>
               </View>
-              <Text style={styles.appName}>Hearthline CRM</Text>
+              <Text style={styles.appName}>Home Service Connection</Text>
               <Text style={styles.appSubtitle}>Home service operations</Text>
             </View>
 

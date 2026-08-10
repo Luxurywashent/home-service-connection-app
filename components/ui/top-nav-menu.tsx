@@ -194,9 +194,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
         <View style={{ flexDirection: "row", alignItems: "center", paddingBottom: 10 }}>
           {/* Logo */}
           <View style={{ minWidth: 52 }}>
-            <Text style={{ fontSize: 22, fontWeight: "800", color: "#52D3B8" }}>HL</Text>
+            <Text style={{ fontSize: 17, fontWeight: "900", color: "#52D3B8" }}>HSC</Text>
             <Text style={{ fontSize: 9, fontWeight: "700", color: "#94A3B8", marginTop: 1 }}>
-              Hearthline CRM
+              Home Service Connection
             </Text>
           </View>
 

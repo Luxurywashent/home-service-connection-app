@@ -28,7 +28,7 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "Hearthline CRM",
+  appName: "Home Service Connection",
   appSlug: "team-luxury-wash",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
@@ -128,15 +128,15 @@ const config: ExpoConfig = {
     [
       "expo-location",
       {
-        locationAlwaysAndWhenInUsePermission: "Allow Hearthline CRM to access your location in the background for service-area alerts.",
-        locationWhenInUsePermission: "Allow Hearthline CRM to access your location so customers can track service arrival.",
+        locationAlwaysAndWhenInUsePermission: "Allow Home Service Connection to access your location in the background for service-area alerts.",
+        locationWhenInUsePermission: "Allow Home Service Connection to access your location so customers can track service arrival.",
         isAndroidBackgroundLocationEnabled: true,
       },
     ],
     [
       "expo-camera",
       {
-        "cameraPermission": "Allow Hearthline CRM to access your camera to take job photos."
+        "cameraPermission": "Allow Home Service Connection to access your camera to take job photos."
       }
     ],
 
