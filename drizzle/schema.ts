@@ -2304,8 +2304,8 @@ export const abandonedCarts = mysqlTable("abandoned_carts", {
 export type AbandonedCart = typeof abandonedCarts.$inferSelect;
 export type InsertAbandonedCart = typeof abandonedCarts.$inferInsert;
 
-
-// ─── Loan Contracts ───────────────────────────────────────────────────────────
+// ─── Inactive Loan Contract Tables ──────────────────────────────────────────────
+// Retained for safe archival only. No active routes, screens, or jobs reference these tables.
 export const loanContracts = mysqlTable("loan_contracts", {
   id: int("id").autoincrement().primaryKey(),
   loanId: varchar("loan_id", { length: 64 }).notNull().unique(),
@@ -2316,8 +2316,8 @@ export const loanContracts = mysqlTable("loan_contracts", {
   totalRepaymentAmount: decimal("total_repayment_amount", { precision: 12, scale: 2 }).notNull(),
   numberOfPayments: int("number_of_payments").notNull(),
   paymentFrequency: mysqlEnum("payment_frequency", ["weekly", "biweekly", "monthly"]).notNull(),
-  paymentDayOfWeek: int("payment_day_of_week"), // 0=Sunday, 1=Monday, etc.
-  paymentDayOfMonth: varchar("payment_day_of_month", { length: 50 }), // "1", "15", "first_thursday", "last_thursday"
+  paymentDayOfWeek: int("payment_day_of_week"),
+  paymentDayOfMonth: varchar("payment_day_of_month", { length: 50 }),
   startDate: date("start_date").notNull(),
   status: mysqlEnum("status_lc", ["draft", "pending_signature", "active", "completed", "cancelled"]).default("draft").notNull(),
   contractUrl: text("contract_url"),
@@ -2334,7 +2334,6 @@ export const loanContracts = mysqlTable("loan_contracts", {
 export type LoanContract = typeof loanContracts.$inferSelect;
 export type InsertLoanContract = typeof loanContracts.$inferInsert;
 
-// ─── Loan Payment Schedules ───────────────────────────────────────────────────
 export const loanPaymentSchedules = mysqlTable("loan_payment_schedules", {
   id: int("id").autoincrement().primaryKey(),
   scheduleId: varchar("schedule_id", { length: 64 }).notNull().unique(),
@@ -2354,7 +2353,6 @@ export const loanPaymentSchedules = mysqlTable("loan_payment_schedules", {
 export type LoanPaymentSchedule = typeof loanPaymentSchedules.$inferSelect;
 export type InsertLoanPaymentSchedule = typeof loanPaymentSchedules.$inferInsert;
 
-// ─── Loan Payments ────────────────────────────────────────────────────────────
 export const loanPayments = mysqlTable("loan_payments", {
   id: int("id").autoincrement().primaryKey(),
   paymentId: varchar("payment_id", { length: 64 }).notNull().unique(),
@@ -2363,7 +2361,7 @@ export const loanPayments = mysqlTable("loan_payments", {
   paymentNumber: int("payment_number_lp").notNull(),
   amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull(),
   paidDate: date("paid_date").notNull(),
-  paymentMethod: varchar("payment_method", { length: 50 }), // 'bank_transfer', 'check', 'cash', 'credit_card'
+  paymentMethod: varchar("payment_method", { length: 50 }),
   notes: text("notes_lp"),
   recordedBy: varchar("recorded_by", { length: 255 }),
   createdAt: timestamp("created_at_lp").defaultNow().notNull(),
@@ -2374,7 +2372,6 @@ export const loanPayments = mysqlTable("loan_payments", {
 export type LoanPayment = typeof loanPayments.$inferSelect;
 export type InsertLoanPayment = typeof loanPayments.$inferInsert;
 
-// ─── Loan Payment Reminders ───────────────────────────────────────────────────
 export const loanPaymentReminders = mysqlTable("loan_payment_reminders", {
   id: int("id").autoincrement().primaryKey(),
   reminderId: varchar("reminder_id", { length: 64 }).notNull().unique(),

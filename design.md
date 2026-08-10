@@ -1,4 +1,33 @@
-# Luxury Wash On Wheels — Full App Interface Design
+# Hearthline CRM — Home Service Operations Design
+
+## Rebrand Direction — Takes Precedence
+
+**Hearthline CRM** is the working product identity for this independent copy. It is a calm, mobile-first operating workspace for home-service businesses, with the existing scheduling, customer, team, field-work, finance, and communication capabilities organized as one CRM. It takes high-level visual direction from the supplied Fieldframe reference—an operational dark canvas, clear live-work states, and focused dashboard hierarchy—without copying its brand, imagery, or interface verbatim.
+
+| Screen group | Primary content and function |
+|---|---|
+| **Operations dashboard** | Today’s open jobs, technicians on site, booked revenue, urgent exceptions, and a compact dispatch snapshot. |
+| **Dispatch schedule** | Day and week job views, assignment, technician availability, field status, and property context. |
+| **Customers and jobs** | Customer records, properties, service history, photos, notes, payments, and follow-up actions. |
+| **Team operations** | Timecards, clock status, availability, training, quality controls, and team communication. |
+| **Business controls** | Locations, price book, inventory, reports, finance, customer communications, and service-quality tools. |
+
+The principal user flow is: **Dashboard → Dispatch → Job → Customer or Team Action → Completion**. The principal customer-management flow is: **Customers → Profile → Job History → New Job or Follow-up**. All primary task actions should remain reachable in portrait orientation and comfortably usable with one hand.
+
+| Token | Color | Use |
+|---|---:|---|
+| **Night canvas** | `#07111F` | Application background and header surface. |
+| **Elevated slate** | `#102038` | Cards, grouped content, and modal surfaces. |
+| **Cobalt signal** | `#4D8DFF` | Primary actions, selected states, and navigation. |
+| **Live mint** | `#52D3B8` | On-site, confirmed, healthy, and completed states. |
+| **Warm amber** | `#F2B84B` | Attention, pending, and time-sensitive states. |
+| **Coral alert** | `#F06A6A` | Errors and destructive actions. |
+| **Cloud text** | `#F6F8FC` | Primary copy and critical metrics. |
+| **Steel text** | `#94A3B8` | Supporting labels and secondary details. |
+
+The app mark should be a simple, text-free square symbol: a house outline integrated with a precise route or signal node, rendered in cobalt and mint over the night canvas. In the mobile header, use the compact **HL** mark beside **Hearthline CRM** and the descriptor **Home Service Operations**.
+
+## Archived Implementation Reference
 
 > **Note**: This app serves two audiences — (1) **Staff Portal** (existing detailer/admin screens) and (2) **Client Portal** (new public-facing sales screen, customer booking, and GPS tracking). The Home tab is now the public sales/landing screen visible to all users before login.
 

@@ -79,7 +79,7 @@ export default function LoginScreen() {
       if (employeeResult.success && employeeResult.employee) {
         await employeeLogin(employeeResult.employee as any, true);
         const greeting = getGreeting();
-        alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Luxury Wash On Wheels.`);
+        alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Hearthline CRM.`);
         const role = employeeResult.employee.role;
         if (role === "door_hanger_rep" || role === "sales") {
           router.replace("/(sales)/dashboard");
@@ -104,7 +104,7 @@ export default function LoginScreen() {
         if (employeeResult.success && employeeResult.employee) {
           await employeeLogin(employeeResult.employee as any, true);
           const greeting = getGreeting();
-          alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Luxury Wash On Wheels.`);
+          alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Hearthline CRM.`);
           const role = employeeResult.employee.role;
           if (role === "door_hanger_rep" || role === "sales") {
             router.replace("/(sales)/dashboard");
@@ -127,7 +127,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScreenContainer edges={["bottom", "left", "right"]} containerClassName="bg-white">
+    <ScreenContainer edges={["bottom", "left", "right"]} containerClassName="bg-background">
       {/* Forgot Password Modal */}
       <Modal visible={showForgotModal} transparent animationType="fade" onRequestClose={() => setShowForgotModal(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}>
@@ -185,10 +185,10 @@ export default function LoginScreen() {
             {/* Logo */}
             <View style={styles.logoSection}>
               <View style={styles.logoBox}>
-                <Text style={styles.logoText}>LW</Text>
+                <Text style={styles.logoText}>HL</Text>
               </View>
-              <Text style={styles.appName}>Luxury Wash On Wheels</Text>
-              <Text style={styles.appSubtitle}>Sign in to your account</Text>
+              <Text style={styles.appName}>Hearthline CRM</Text>
+              <Text style={styles.appSubtitle}>Home service operations</Text>
             </View>
 
             {/* Form */}
@@ -261,7 +261,7 @@ export default function LoginScreen() {
                 style={{ alignSelf: "flex-end", marginBottom: 4, marginTop: -4 }}
                 activeOpacity={0.7}
               >
-                <Text style={{ fontSize: 13, color: "#0a7ea4", fontWeight: "500" }}>Forgot Password?</Text>
+                <Text style={{ fontSize: 13, color: "#4D8DFF", fontWeight: "600" }}>Forgot Password?</Text>
               </TouchableOpacity>
 
               {/* New customer link */}
@@ -309,21 +309,21 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 28 },
   backBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14, alignSelf: "flex-start" },
-  backText: { fontSize: 14, color: "#6B7280" },
+  backText: { fontSize: 14, color: "#94A3B8" },
   logoSection: { alignItems: "center", paddingVertical: 32 },
-  logoBox: { width: 80, height: 80, borderRadius: 20, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  logoText: { fontSize: 30, fontWeight: "900", color: "#FFFFFF" },
-  appName: { fontSize: 24, fontWeight: "800", color: "#1A1A1A", textAlign: "center" },
-  appSubtitle: { fontSize: 14, color: "#9CA3AF", marginTop: 4 },
+  logoBox: { width: 80, height: 80, borderRadius: 22, backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  logoText: { fontSize: 30, fontWeight: "900", color: "#52D3B8" },
+  appName: { fontSize: 24, fontWeight: "800", color: "#F6F8FC", textAlign: "center" },
+  appSubtitle: { fontSize: 14, color: "#94A3B8", marginTop: 4 },
   form: { gap: 16 },
-  fieldLabel: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: "#1A1A1A" },
+  fieldLabel: { fontSize: 13, fontWeight: "700", color: "#C9D5E8", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
+  input: { backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: "#F6F8FC" },
   eyeBtn: { position: "absolute", right: 14, top: 0, bottom: 0, justifyContent: "center" },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 },
   errorText: { fontSize: 14, color: "#EF4444", flex: 1 },
-  signInBtn: { backgroundColor: "#1A1A1A", borderRadius: 100, paddingVertical: 16, alignItems: "center", marginTop: 4 },
+  signInBtn: { backgroundColor: "#4D8DFF", borderRadius: 100, paddingVertical: 16, alignItems: "center", marginTop: 4 },
   signInBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   signUpRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 4, paddingTop: 4 },
-  signUpRowText: { fontSize: 14, color: "#6B7280" },
-  signUpLink: { fontSize: 14, fontWeight: "700", color: "#1A1A1A" },
+  signUpRowText: { fontSize: 14, color: "#94A3B8" },
+  signUpLink: { fontSize: 14, fontWeight: "700", color: "#52D3B8" },
 });

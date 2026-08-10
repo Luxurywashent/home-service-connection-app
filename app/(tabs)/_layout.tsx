@@ -555,20 +555,6 @@ export default function TabLayout() {
             href: isAdmin ? ("/(tabs)/admin-pricebook" as any) : null,
           }}
         />
-        <Tabs.Screen
-          name="admin-vip"
-          options={{
-            title: "VIP Program",
-            href: isAdmin ? ("/(tabs)/admin-vip" as any) : null,
-          }}
-        />
-        <Tabs.Screen
-          name="admin-loans"
-          options={{
-            title: "Loans",
-            href: isAdmin ? ("/(tabs)/admin-loans" as any) : null,
-          }}
-        />
         {/* Investor Portal Screens */}
         <Tabs.Screen
           name="admin-investor-inquiries"

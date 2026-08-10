@@ -28,11 +28,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "Luxury Wash On Wheels",
+  appName: "Hearthline CRM",
   appSlug: "team-luxury-wash",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/tuyrQJTNIWIeuQbS.png",
+  logoUrl: "/manus-storage/hearthline-crm-icon_9e1dc1f0.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -74,7 +74,7 @@ const config: ExpoConfig = {
       },
     },
     adaptiveIcon: {
-      backgroundColor: "#1B2A4A",
+      backgroundColor: "#07111F",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -114,7 +114,7 @@ const config: ExpoConfig = {
       "expo-notifications",
       {
         icon: "./assets/images/icon.png",
-        color: "#1B2A4A",
+        color: "#4D8DFF",
         sounds: [],
       },
     ],
@@ -128,15 +128,15 @@ const config: ExpoConfig = {
     [
       "expo-location",
       {
-        locationAlwaysAndWhenInUsePermission: "Allow Luxury Wash On Wheels to access your location in the background for geofence zone alerts.",
-        locationWhenInUsePermission: "Allow Luxury Wash On Wheels to access your location so customers can track your arrival.",
+        locationAlwaysAndWhenInUsePermission: "Allow Hearthline CRM to access your location in the background for service-area alerts.",
+        locationWhenInUsePermission: "Allow Hearthline CRM to access your location so customers can track service arrival.",
         isAndroidBackgroundLocationEnabled: true,
       },
     ],
     [
       "expo-camera",
       {
-        "cameraPermission": "Allow Luxury Wash On Wheels to access your camera to take job photos."
+        "cameraPermission": "Allow Hearthline CRM to access your camera to take job photos."
       }
     ],
 
@@ -153,9 +153,9 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 380,
         resizeMode: "contain",
-        backgroundColor: "#000000",
+        backgroundColor: "#07111F",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#07111F",
         },
       },
     ],

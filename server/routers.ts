@@ -19,7 +19,6 @@ import { sendEmail, buildNotificationEmail, buildBookingConfirmationEmail, build
 import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { sql, eq, or, like, and } from "drizzle-orm";
-import { loanRouter } from "./loanRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -11363,10 +11362,6 @@ export const appRouter = router({
         } finally { await conn.end(); }
       }),
   }),
-
-  // --- Loan Management ---
-  loans: loanRouter,
-
 });
 export type AppRouter = typeof appRouter;
 

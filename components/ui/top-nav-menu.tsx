@@ -53,8 +53,6 @@ const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Rewards",       icon: "🏆",  route: "/admin-rewards" },
   { label: "Reporting",     icon: "📈",  route: "/admin-reporting" },
   { label: "Price Book",    icon: "💰",  route: "/admin-pricebook" },
-  { label: "VIP Program",   icon: "⭐",  route: "/admin-vip" },
-  { label: "Loans",         icon: "🤝",  route: "/admin-loans" },
   { label: "Accountability", icon: "📌",  route: "/admin-points" },
   { label: "Efficiency",     icon: "⚡",  route: "/admin-efficiency" },
   { label: "QC",             icon: "✅",  route: "/ops-qc" },
@@ -180,13 +178,13 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     (route !== "/" && pathname.includes(route.replace("/", "")));
 
   return (
-    <View style={{ backgroundColor: "#0A0A0A" }}>
+    <View style={{ backgroundColor: "#07111F" }}>
       {/* ── Top Navigation Bar ── */}
       <View
         style={{
-          backgroundColor: "#0A0A0A",
+          backgroundColor: "#07111F",
           borderBottomWidth: 1,
-          borderBottomColor: "#1E1E1E",
+          borderBottomColor: "#243754",
           paddingTop: Math.max(insets.top, 12),
           paddingBottom: 0,
           paddingHorizontal: 12,
@@ -196,9 +194,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
         <View style={{ flexDirection: "row", alignItems: "center", paddingBottom: 10 }}>
           {/* Logo */}
           <View style={{ minWidth: 52 }}>
-            <Text style={{ fontSize: 22, fontWeight: "800", color: "#fff" }}>TL</Text>
-            <Text style={{ fontSize: 9, fontWeight: "600", color: "#6B7280", marginTop: 1 }}>
-              Luxury Wash On Wheels
+            <Text style={{ fontSize: 22, fontWeight: "800", color: "#52D3B8" }}>HL</Text>
+            <Text style={{ fontSize: 9, fontWeight: "700", color: "#94A3B8", marginTop: 1 }}>
+              Hearthline CRM
             </Text>
           </View>
 
@@ -231,9 +229,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
                   width: 40,
                   height: 40,
                   borderRadius: 10,
-                  backgroundColor: isOpen ? "#0057FF" : "#1A1A1A",
+                  backgroundColor: isOpen ? "#4D8DFF" : "#102038",
                   borderWidth: 1,
-                  borderColor: isOpen ? "#0057FF" : "#2A2A2A",
+                  borderColor: isOpen ? "#4D8DFF" : "#243754",
                   justifyContent: "center",
                   alignItems: "center",
                 }}
@@ -323,9 +321,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
                         style={{
                           flex: 1,
                           borderRadius: 14,
-                          backgroundColor: active ? "#0057FF" : "#1C1C1E",
+                        backgroundColor: active ? "#4D8DFF" : "#102038",
                           borderWidth: 1,
-                          borderColor: active ? "#0057FF" : "#2C2C2E",
+                        borderColor: active ? "#4D8DFF" : "#243754",
                           justifyContent: "center",
                           alignItems: "center",
                           padding: 8,

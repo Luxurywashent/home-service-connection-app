@@ -3080,3 +3080,14 @@
 - [ ] End-to-end testing (create → sign → pay)
 - [ ] UI polish and refinements
 - [ ] Performance optimization
+
+## Home Service CRM Refactor
+
+- [x] Audit all VIP-contract and loan-contract screens, navigation entries, server routes, schemas, and shared components.
+- [x] Remove VIP-contract and loan-contract functionality without leaving inaccessible routes or broken references.
+- [x] Reposition the product identity, copy, and core visual language for a distinct home-service CRM.
+- [x] Create a dedicated CRM app icon and update application branding metadata.
+- [x] Apply the supplied Fieldframe web-app reference to the CRM’s information hierarchy, calm dark visual system, and operations-focused terminology.
+- [x] Preserve the unused VIP and loan-contract tables without future destructive migrations.
+- [x] Validate navigation, type safety, and the primary non-contract workflows after the refactor.
+- [x] Optimize the generated Hearthline CRM icon for checkpoint-safe launcher, splash, and favicon use.

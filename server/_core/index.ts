@@ -11,7 +11,6 @@ import { startApptConfirmationMonitor } from "../apptConfirmationMonitor";
 import { startAutoDeductMonitor } from "../autoDeductMonitor";
 import { startAbandonedCartMonitor } from "../abandoned-cart-monitor";
 import { startStripeReconciliationJob } from "../stripe-reconciliation-job";
-import { startPaymentReminderScheduler } from "../loanReminderScheduler";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -22,7 +21,6 @@ import * as db from "../db";
 import { createReceptionistRouter } from "../receptionistRouter";
 import { createPhoneRouter } from "../phoneRouter";
 import { createInvoiceRouter } from "../invoiceRouter";
-import { vipRouter } from "../vipRouter";
 import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -929,98 +927,6 @@ async function startServer() {
   // ─── Hosted booking form pages (served directly from app server) ─────────────
   // GET /crestview — serves the Crestview booking form with resume pre-fill support
 
-  // ─── Loan Contract Routes ─────────────────────────────────────────────────────
-  app.get("/sign-loan-contract/:loanId", async (req, res) => {
-    try {
-      const { loanId } = req.params;
-      const { getDb } = await import('../db.js');
-      const { loanContracts, loanPaymentSchedules } = await import('../../drizzle/schema.js');
-      const { eq } = await import('drizzle-orm');
-      const db = await getDb();
-      if (!db) { res.status(500).send("Database unavailable"); return; }
-      const loans = await db.select().from(loanContracts).where(eq(loanContracts.loanId, loanId)).limit(1);
-      if (!loans.length) { res.status(404).send("<h2>Contract not found</h2>"); return; }
-      const loan = loans[0];
-      const schedule = await db.select().from(loanPaymentSchedules).where(eq(loanPaymentSchedules.loanId, loanId)).orderBy((loanPaymentSchedules as any).paymentNumber);
-      const fmtDate = (d: any) => new Date(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-      const fmtCur = (n: any) => `$${Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      const paymentAmt = Number(loan.totalRepaymentAmount) / loan.numberOfPayments;
-      const interest = Number(loan.totalRepaymentAmount) - Number(loan.principalAmount);
-      const isSigned = loan.status === "active" && loan.contractSignedAt;
-      const scheduleRows = schedule.map((s: any) => `<tr><td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${s.paymentNumber}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${fmtDate(s.dueDate)}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${fmtCur(s.amountDue)}</td></tr>`).join("");
-      const sigSection = isSigned
-        ? `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:12px;padding:16px;text-align:center;color:#065f46;font-weight:700;margin-bottom:20px">✅ Electronically signed by ${loan.borrowerName} on ${fmtDate(loan.contractSignedAt!)}</div>${loan.signedContractUrl ? `<img src="${loan.signedContractUrl}" style="width:100%;border-radius:8px;margin-top:12px;border:1px solid #eee" alt="Signature"/>` : ""}`
-        : `<canvas id="sigCanvas" height="200" style="border:2px dashed #ccc;border-radius:8px;width:100%;touch-action:none;cursor:crosshair"></canvas>
-<button onclick="clearSig()" style="display:block;width:100%;padding:12px;margin-top:8px;border:1px solid #ddd;border-radius:12px;background:#f5f5f5;font-size:15px;cursor:pointer">Clear</button>
-<button id="submitBtn" onclick="submitSig()" style="display:block;width:100%;padding:16px;margin-top:8px;border:none;border-radius:12px;background:#1a1a1a;color:#fff;font-size:16px;font-weight:700;cursor:pointer">Sign & Submit Agreement</button>
-<div id="statusMsg"></div>
-<script>
-const canvas=document.getElementById('sigCanvas');const ctx=canvas.getContext('2d');let drawing=false;
-function resize(){canvas.width=canvas.offsetWidth;canvas.height=200;ctx.strokeStyle='#1a1a1a';ctx.lineWidth=2.5;ctx.lineCap='round';}
-resize();window.addEventListener('resize',resize);
-function pos(e){const r=canvas.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*(canvas.width/r.width),y:(t.clientY-r.top)*(canvas.height/r.height)};}
-canvas.addEventListener('mousedown',e=>{drawing=true;const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);});
-canvas.addEventListener('mousemove',e=>{if(!drawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();});
-canvas.addEventListener('mouseup',()=>drawing=false);canvas.addEventListener('mouseleave',()=>drawing=false);
-canvas.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);},{passive:false});
-canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!drawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();},{passive:false});
-canvas.addEventListener('touchend',()=>drawing=false);
-function clearSig(){ctx.clearRect(0,0,canvas.width,canvas.height);}
-function isEmpty(){const d=ctx.getImageData(0,0,canvas.width,canvas.height).data;return !d.some(v=>v!==0);}
-async function submitSig(){
-  if(isEmpty()){document.getElementById('statusMsg').innerHTML='<p style="color:#dc2626;text-align:center;margin-top:8px">Please draw your signature before submitting.</p>';return;}
-  document.getElementById('submitBtn').disabled=true;document.getElementById('submitBtn').textContent='Submitting...';
-  const sigData=canvas.toDataURL('image/png');
-  try{const r=await fetch('/api/trpc/loans.markContractSigned',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({json:{loanId:'${loanId}',signedContractUrl:sigData}})});
-  const data=await r.json();
-  if(data.result){document.getElementById('sig-section').innerHTML='<div style="background:#d1fae5;border-radius:12px;padding:20px;text-align:center;color:#065f46;font-weight:700">✅ Thank you! Your signature has been recorded. You will receive a confirmation email shortly.</div>';}
-  else{throw new Error(data.error?.message||'Submission failed');}}
-  catch(e){document.getElementById('statusMsg').innerHTML='<p style="color:#dc2626;text-align:center;margin-top:8px">Error: '+e.message+'</p>';document.getElementById('submitBtn').disabled=false;document.getElementById('submitBtn').textContent='Sign & Submit Agreement';}}
-<\/script>`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loan Agreement</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;padding:20px}
-.card{background:#fff;border-radius:16px;padding:24px;max-width:600px;margin:0 auto 20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-h2{font-size:16px;font-weight:700;margin-bottom:12px;color:#333}.label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
-.value{font-size:15px;font-weight:600;margin-bottom:12px}.row{display:flex;gap:16px;flex-wrap:wrap}.col{flex:1;min-width:120px}
-table{width:100%;border-collapse:collapse}th{padding:8px;background:#f9f9f9;font-size:12px;text-transform:uppercase;color:#888;border-bottom:2px solid #eee}</style></head><body>
-<div class="card"><div style="background:#1a1a1a;color:#fff;padding:16px 20px;border-radius:12px;margin-bottom:20px;text-align:center">
-<div style="font-size:12px;opacity:.7;margin-bottom:4px">LUXURY WASH ON WHEELS</div><div style="font-size:18px;font-weight:800">Loan Agreement</div></div>
-${isSigned ? `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:12px;padding:16px;text-align:center;color:#065f46;font-weight:700;margin-bottom:20px">✅ Signed on ${fmtDate(loan.contractSignedAt!)}</div>` : ""}
-<h2>Parties</h2><div class="row"><div class="col"><div class="label">Lender</div><div class="value">${loan.borrowerName}</div></div>
-<div class="col"><div class="label">Borrower</div><div class="value">Luxury Wash On Wheels LLC</div></div></div>
-<div class="label">Lender Email</div><div class="value">${loan.borrowerEmail}</div>
-<div class="label">Contract #</div><div class="value">${loan.loanId}</div></div>
-<div class="card"><h2>Loan Summary</h2>
-<div class="row"><div class="col"><div class="label">Principal</div><div class="value">${fmtCur(loan.principalAmount)}</div></div>
-<div class="col"><div class="label">Interest</div><div class="value">${fmtCur(interest)}</div></div></div>
-<div class="row"><div class="col"><div class="label">Total Repayment</div><div class="value">${fmtCur(loan.totalRepaymentAmount)}</div></div>
-<div class="col"><div class="label">Payment Amount</div><div class="value">${fmtCur(paymentAmt)}</div></div></div>
-<div class="row"><div class="col"><div class="label">Payments</div><div class="value">${loan.numberOfPayments} × ${loan.paymentFrequency}</div></div>
-<div class="col"><div class="label">First Payment</div><div class="value">${schedule.length ? fmtDate((schedule[0] as any).dueDate) : "TBD"}</div></div></div></div>
-<div class="card"><h2>Payment Schedule</h2><table><thead><tr><th>#</th><th>Due Date</th><th>Amount</th></tr></thead><tbody>${scheduleRows}</tbody>
-<tfoot><tr><td colspan="2" style="padding:10px;font-weight:700;text-align:right">Total</td><td style="padding:10px;font-weight:700;text-align:center">${fmtCur(loan.totalRepaymentAmount)}</td></tr></tfoot></table></div>
-<div class="card"><h2>Terms & Conditions</h2>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>1. Loan Purpose.</strong> Luxury Wash On Wheels LLC agrees to repay the principal plus interest to ${loan.borrowerName} per the schedule above.</p>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>2. Repayment.</strong> Payments are due on the dates listed. The Borrower agrees to make each payment on or before the due date.</p>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>3. Interest.</strong> Total interest of ${fmtCur(interest)} is included in the total repayment and distributed evenly across all payments.</p>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>4. No Late Penalties.</strong> There are no late payment penalties under this agreement.</p>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>5. Prepayment.</strong> The Borrower may prepay any portion at any time without penalty.</p>
-<p style="font-size:13px;line-height:1.6;color:#555;margin-bottom:10px"><strong>6. Governing Law.</strong> Governed by the laws of the State of Florida. Disputes resolved in Okaloosa County, Florida.</p>
-<p style="font-size:13px;line-height:1.6;color:#555"><strong>7. Entire Agreement.</strong> This document constitutes the entire agreement. Modifications must be in writing and signed by both parties.</p></div>
-<div class="card" id="sig-section"><h2>${isSigned ? "Signature on File" : "Electronic Signature"}</h2>
-<p style="font-size:13px;color:#555;margin-bottom:16px">${isSigned ? "" : "By signing below, you confirm that you have read and agree to all terms of this loan agreement."}</p>
-${sigSection}</div></body></html>`;
-      res.setHeader("Content-Type", "text/html");
-      res.send(html);
-    } catch (err: any) {
-      res.status(500).send(`<h2>Error: ${err.message}</h2>`);
-    }
-  });
-
-  app.get("/api/loan/view-signed/:loanId", (req, res) => {
-    res.redirect(`/sign-loan-contract/${req.params.loanId}`);
-  });
-
   app.get("/crestview", (req, res) => {
     const formPath = path.join(process.cwd(), 'server/public/crestview-booking.html');
     if (fs.existsSync(formPath)) {
@@ -1627,9 +1533,6 @@ ${sigSection}</div></body></html>`;
   // ─── Invoice Routes ──────────────────────────────────────────────────────────
   app.use("/api/invoice", createInvoiceRouter());
 
-  // ─── VIP Program Routes ───────────────────────────────────────────────────────
-  app.use("/api/vip", vipRouter);
-
   // ─── Tip Request Page ────────────────────────────────────────────────────────
   app.get("/tip/:token", async (req, res) => {
     const { token } = req.params;
@@ -1901,8 +1804,6 @@ startAutoDeductMonitor();
 startAbandonedCartMonitor();
 // Start the Stripe reconciliation job (auto-sync unpaid jobs every 5 minutes)
 startStripeReconciliationJob();
-// Start the loan payment reminder scheduler (daily at 9 AM)
-startPaymentReminderScheduler();
 
 // ─── Booking SMS Confirmation ────────────────────────────────────────────────
 /**

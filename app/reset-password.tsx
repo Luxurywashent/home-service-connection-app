@@ -105,9 +105,9 @@ export default function ResetPasswordScreen() {
             {/* Logo */}
             <View style={styles.logoSection}>
               <View style={styles.logoBox}>
-                <Text style={styles.logoText}>LW</Text>
+                <Text style={styles.logoText}>HL</Text>
               </View>
-              <Text style={styles.appName}>Luxury Wash On Wheels</Text>
+              <Text style={styles.appName}>Hearthline CRM</Text>
               <Text style={styles.appSubtitle}>Set your new password</Text>
             </View>
 

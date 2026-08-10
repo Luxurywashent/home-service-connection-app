@@ -120,10 +120,10 @@ export default function SignUpScreen() {
           <View style={styles.container}>
             <View style={styles.form}>
               <Text style={[styles.welcomeText, { color: colors.foreground }]}>
-                Welcome to{"\n"}Luxury Wash On Wheels
+                Welcome to{"\n"}Hearthline CRM
               </Text>
               <Text style={[styles.subText, { color: colors.muted }]}>
-                Create an account to book your detail and track your appointments.
+                Create an account to book home services and track your appointments.
               </Text>
 
               {/* Name Row */}
