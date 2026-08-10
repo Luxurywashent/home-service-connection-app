@@ -3094,3 +3094,5 @@
 - [x] Update the product name and core user-facing branding to Home Service Connection.
 - [x] Resolve the mobile launch link HTTP 500 error and verify server accessibility.
 - [x] Remove remaining copied Luxury Wash On Wheels labels from the core application identity and entry screens.
+- [ ] Repair the Expo Go launch path and validate both the manifest and iOS bundle responses.
+- [ ] Inspect and simplify the Expo Go startup path until the manifest and initial iOS bundle open without HTTP 500 responses.
