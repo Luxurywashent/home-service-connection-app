@@ -42,7 +42,6 @@ import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { NavigationMapModal } from "@/components/navigation-map-modal";
-import { TapToPayCheckout } from "@/components/tap-to-pay-checkout";
 
 // ─── Service Catalog ──────────────────────────────────────────────────────────
 
@@ -1038,11 +1037,13 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
 
   // Card: card_entry → tip → signature. Cash/check/other: reference (or skip) → signature directly (no tip step)
   const handleMethodSelect = (m: PaymentMethod) => {
+    if (m === "credit_debit" || m === "apple_pay" || m === "tap_to_pay") {
+      Alert.alert("Payments unavailable", "Card, Apple Pay, and Tap to Pay have been disabled in this Home Service Connection copy.");
+      setMethod(null);
+      return;
+    }
     setMethod(m);
-    if (m === "credit_debit") setStep("card_entry");
-    else if (m === "apple_pay") setStep("tip"); // tip first, then apple_pay
-    else if (m === "tap_to_pay") setStep("tap_to_pay");
-    else if (m === "check" || m === "other") setStep("reference");
+    if (m === "check" || m === "other") setStep("reference");
     else setStep("signature"); // cash
   };
   const handleCardNext = async () => {
@@ -1053,20 +1054,10 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
       if (cardCvc.length < 3) { Alert.alert("Invalid CVC", "Please enter a valid CVC."); return; }
     } else {
       if (!cardComplete) { Alert.alert("Incomplete Card", "Please complete all card fields."); return; }
-      // Create payment method NOW while CardField is still mounted
-      try {
-        const isExpoGo = Constants.appOwnership === "expo";
-        if (!isExpoGo) {
-          const { createPaymentMethod } = require("@stripe/stripe-react-native");
-          const { paymentMethod, error } = await createPaymentMethod({ paymentMethodType: "Card" });
-          if (error) {
-            Alert.alert("Card Error", error.message || "Could not read card details. Please try again.");
-            return;
-          }
-          if (paymentMethod?.id) setStripePaymentMethodId(paymentMethod.id);
-          if (paymentMethod?.card?.last4) setCardLast4(paymentMethod.card.last4);
-        }
-      } catch { /* ignore — will fall back to confirmPayment without paymentMethodId */ }
+      Alert.alert("Card payments unavailable", "Card processing has been disabled in this copy.");
+      setMethod(null);
+      setStep("method");
+      return;
     }
     setStep("tip"); // card only — after card entry always goes to tip
   };
@@ -1084,37 +1075,10 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
         setStep("result");
         onComplete({ method: "tap_to_pay", subtotal, tipAmount, total, paidAt: new Date().toISOString(), signatureData: signatureData ?? undefined, paymentIntentId: paymentIntentId });
         return;
-      } else if (method === "credit_debit") {
-        // Real Stripe payment on native, recorded on web
-        const amountCents = Math.round(total * 100);
-        const intentResult = await createPaymentIntent.mutateAsync({
-          amountCents,
-          currency: "usd",
-          description: `${job.firstName} ${job.lastName} - ${job.serviceTitle}`,
-          // Pass jobId so the server deduplicates rapid retries within 90 s
-          jobId: job.id ? String(job.id) : undefined,
-        });
-        if (intentResult.demo) {
-          // Demo mode - no real charge
-          if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setPaymentResult({ success: true, message: "Demo payment approved" });
-          setStep("result");
-          const digits = cardNumber.replace(/\s/g, "");
-          onComplete({ method: method!, subtotal, tipAmount, total, paidAt: new Date().toISOString(), signatureData: signatureData ?? undefined, cardLast4: cardLast4 || digits.slice(-4) || undefined, referenceNote: referenceNote.trim() || undefined });
-          return;
-        }
-        const { processStripeCardPayment } = await import("@/lib/stripe-payment");
-        const stripeResult = await processStripeCardPayment(intentResult.clientSecret, stripePaymentMethodId ?? "");
-        if (!stripeResult.success) {
-          if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setPaymentResult({ success: false, message: stripeResult.errorMessage || "Payment declined" });
-          setStep("result");
-          return;
-        }
-        if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setPaymentResult({ success: true, message: "Payment approved", paymentIntentId: stripeResult.paymentIntentId });
+      } else if (method === "credit_debit" || method === "apple_pay") {
+        setPaymentResult({ success: false, message: "Card and Apple Pay processing are disabled in this copy." });
         setStep("result");
-        onComplete({ method: method!, subtotal, tipAmount, total, paidAt: new Date().toISOString(), signatureData: signatureData ?? undefined, cardLast4: cardLast4 || undefined, referenceNote: referenceNote.trim() || undefined, paymentIntentId: stripeResult.paymentIntentId });
+        return;
       } else {
         // Cash / Check / Other / Web card (no real charge)
         if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1197,21 +1161,6 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
     }
   };
   const renderCard = () => {
-    // Only use native Stripe CardField in a real custom build — not in Expo Go (which lacks the native module)
-    const isExpoGo = Constants.appOwnership === "expo";
-    const isNative = Platform.OS !== "web" && !isExpoGo;
-    let StripeCardField: React.ComponentType<{
-      onCardChange: (details: { complete: boolean; last4?: string }) => void;
-      style?: object;
-      cardStyle?: object;
-    }> | null = null;
-    if (isNative) {
-      try {
-        // Dynamic import to avoid bundling native Stripe on web or Expo Go
-        const stripeModule = require("@stripe/stripe-react-native");
-        StripeCardField = stripeModule.CardField ?? null;
-      } catch { /* ignore if module not linked */ }
-    }
     return (
       <View>
         <TouchableOpacity onPress={() => setStep("method")} style={co.backBtn}><Text style={{ color: colors.primary, fontSize: 15 }}>‹ Back</Text></TouchableOpacity>
@@ -1219,28 +1168,14 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
         <Text style={[co.sheetSubtitle, { color: colors.muted }]}>Total: <Text style={{ color: colors.primary, fontWeight: "700" }}>${subtotal.toFixed(2)}</Text></Text>
         {/* Scan Card button removed — Stripe CardField has built-in native card scanning via the camera icon in the card number field */}
         <View style={[co.cardBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {isNative && StripeCardField ? (
-            <>
-              <Text style={[co.inputLabel, { color: colors.muted }]}>Card Details</Text>
-              <StripeCardField
-                onCardChange={(details) => {
-                  setCardComplete(details.complete);
-                  if (details.last4) setCardLast4(details.last4);
-                }}
-                style={{ height: 50, marginBottom: 12 }}
-                cardStyle={{ backgroundColor: colors.background, textColor: colors.foreground, placeholderColor: colors.muted, borderColor: colors.border, borderWidth: 1, borderRadius: 10 }}
-              />
-            </>
-          ) : (
-            <>
+          <>
               <Text style={[co.inputLabel, { color: colors.muted }]}>Card Number</Text>
               <TextInput value={cardNumber} onChangeText={(t) => setCardNumber(fmtCard(t))} placeholder="1234 5678 9012 3456" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={19} style={[co.cardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} />
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <View style={{ flex: 1 }}><Text style={[co.inputLabel, { color: colors.muted }]}>Expiry</Text><TextInput value={cardExpiry} onChangeText={(t) => setCardExpiry(fmtExp(t))} placeholder="MM/YY" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={5} style={[co.cardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /></View>
                 <View style={{ flex: 1 }}><Text style={[co.inputLabel, { color: colors.muted }]}>CVC</Text><TextInput value={cardCvc} onChangeText={(t) => setCardCvc(t.replace(/\D/g, "").slice(0, 4))} placeholder="123" placeholderTextColor={colors.muted} keyboardType="number-pad" maxLength={4} secureTextEntry style={[co.cardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /></View>
               </View>
-            </>
-          )}
+          </>
         </View>
         <TouchableOpacity onPress={handleCardNext} style={[co.primaryBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}><Text style={co.primaryBtnText}>Confirm Charge  ·  ${subtotal.toFixed(2)} →</Text></TouchableOpacity>
       </View>
@@ -1248,40 +1183,6 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
   };
 
   const renderApplePay = () => {
-    const [applePayLoading, setApplePayLoading] = React.useState(false);
-    const handleApplePay = async () => {
-      setApplePayLoading(true);
-      try {
-        const amountCents = Math.round(total * 100);
-        const intentResult = await createPaymentIntent.mutateAsync({
-          amountCents,
-          currency: "usd",
-          description: `${job.firstName} ${job.lastName} - ${job.serviceTitle}`,
-        });
-        if (intentResult.demo) {
-          if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setPaymentResult({ success: true, message: "Demo Apple Pay approved" });
-          setStep("result");
-          onComplete({ method: "apple_pay", subtotal, tipAmount, total, paidAt: new Date().toISOString() });
-          return;
-        }
-        const { processApplePayPayment } = await import("@/lib/stripe-payment");
-        const result = await processApplePayPayment(intentResult.clientSecret, total, job.serviceTitle);
-        if (!result.success) {
-          if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          setPaymentResult({ success: false, message: result.errorMessage || "Apple Pay failed" });
-          setStep("result");
-          return;
-        }
-        if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setPaymentResult({ success: true, message: "Apple Pay approved", paymentIntentId: result.paymentIntentId });
-        setStep("result");
-        onComplete({ method: "apple_pay", subtotal, tipAmount, total, paidAt: new Date().toISOString(), paymentIntentId: result.paymentIntentId });
-      } catch (e: unknown) {
-        setPaymentResult({ success: false, message: e instanceof Error ? e.message : "Apple Pay failed" });
-        setStep("result");
-      } finally { setApplePayLoading(false); }
-    };
     return (
       <View>
         <TouchableOpacity onPress={() => setStep("method")} style={co.backBtn}><Text style={{ color: colors.primary, fontSize: 15 }}>‹ Back</Text></TouchableOpacity>
@@ -1293,31 +1194,22 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
           {tipAmount > 0 && <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>Service ${subtotal.toFixed(2)} + Tip ${tipAmount.toFixed(2)}</Text>}
         </View>
         <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center", marginBottom: 20, lineHeight: 19 }}>Hand the phone to the customer to authenticate with Face ID or Touch ID.</Text>
-        <TouchableOpacity
-          onPress={handleApplePay}
-          disabled={applePayLoading}
-          style={[co.primaryBtn, { backgroundColor: "#000000", flexDirection: "row", justifyContent: "center", gap: 8 }]}
-          activeOpacity={0.8}
-        >
-          {applePayLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[co.primaryBtnText, { fontSize: 18 }]}> Pay ${total.toFixed(2)}</Text>}
+        <TouchableOpacity onPress={() => setStep("method")} style={[co.primaryBtn, { backgroundColor: colors.muted }]} activeOpacity={0.8}>
+          <Text style={co.primaryBtnText}>Apple Pay is disabled</Text>
         </TouchableOpacity>
       </View>
     );
   };
 
   const renderTapToPay = () => (
-    <TapToPayCheckout
-      amountCents={Math.round(total * 100)}
-      jobId={job.id}
-      customerName={`${job.firstName} ${job.lastName}`}
-      serviceTitle={job.serviceTitle}
-      onSuccess={(paymentIntentId) => {
-        setPaymentIntentId(paymentIntentId);
-        setStep("tip");
-      }}
-      onCancel={() => setStep("method")}
-    />
-    );
+    <View style={{ gap: 12 }}>
+      <Text style={[co.sheetTitle, { color: colors.foreground }]}>Tap to Pay unavailable</Text>
+      <Text style={[co.sheetSubtitle, { color: colors.muted }]}>Tap to Pay has been disabled in this copy while Stripe is disconnected.</Text>
+      <TouchableOpacity onPress={() => setStep("method")} style={[co.primaryBtn, { backgroundColor: colors.muted }]}>
+        <Text style={co.primaryBtnText}>Back to payment methods</Text>
+      </TouchableOpacity>
+    </View>
+  );
   const renderCardOnFile = () => (
     <View>
       <TouchableOpacity onPress={() => setStep("method")} style={co.backBtn}><Text style={{ color: colors.primary, fontSize: 15 }}>‹ Back</Text></TouchableOpacity>

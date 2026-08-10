@@ -3099,3 +3099,6 @@
 - [x] Inspect and simplify the Expo Go startup path until the manifest and initial iOS bundle open without HTTP 500 responses.
 - [x] Produce an evidence-based root-cause report for the persistent Expo Go HTTP 500 launch failure, including proxy, manifest, bundle, asset, and runtime analysis.
 - [x] Apply and validate only the repair supported by the Expo Go incident findings.
+- [x] Disconnect Stripe and Stripe Terminal native integrations from this independent copy without affecting the original project or Stripe account.
+- [ ] Revalidate Expo Go compatibility after Stripe removal and document all disabled payment functionality.
+- [ ] Hold TestFlight submission until a native validation route and its prerequisites are confirmed.

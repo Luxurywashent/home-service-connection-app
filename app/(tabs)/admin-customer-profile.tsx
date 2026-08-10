@@ -658,16 +658,7 @@ export default function AdminCustomerProfileScreen() {
       let cardBrand: string | null = null;
       if (isNative) {
         try {
-          const stripeModule = require("@stripe/stripe-react-native");
-          const { confirmSetupIntent, createPaymentMethod } = stripeModule;
-          const { paymentMethod, error: pmError } = await createPaymentMethod({ paymentMethodType: "Card" });
-          if (pmError) throw new Error(pmError.message);
-          stripePaymentMethodId = paymentMethod?.id ?? null;
-          cardLast4 = paymentMethod?.card?.last4 ?? null;
-          cardBrand = paymentMethod?.card?.brand ?? null;
-          if (setupResult.clientSecret && stripePaymentMethodId) {
-            await confirmSetupIntent(setupResult.clientSecret, { paymentMethodType: "Card", paymentMethodData: { paymentMethodId: stripePaymentMethodId } });
-          }
+          throw new Error("Saved cards are disabled while Stripe is disconnected.");
         } catch (e: any) { throw new Error(e?.message ?? "Could not tokenize card."); }
       } else {
         const rawNum = adminCardNumber.replace(/\s/g, "");
@@ -1904,7 +1895,7 @@ export default function AdminCustomerProfileScreen() {
               const isExpoGo = Constants?.appOwnership === "expo";
               const isNative = Platform.OS !== "web" && !isExpoGo;
               let StripeCardField: any = null;
-              if (isNative) { try { StripeCardField = require("@stripe/stripe-react-native").CardField ?? null; } catch {} }
+              // Native Stripe card fields are intentionally disabled in this copy.
               if (isNative && StripeCardField) {
                 return (
                   <View style={{ marginBottom: 14 }}>

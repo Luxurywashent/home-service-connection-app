@@ -46,28 +46,6 @@ function CardOnFileFields({
   formatExpiry: (t: string) => string;
   styles: any;
 }) {
-  const Constants = require("expo-constants").default ?? require("expo-constants");
-  const isExpoGo = Constants?.appOwnership === "expo";
-  const isNative = Platform.OS !== "web" && !isExpoGo;
-  let StripeCardField: React.ComponentType<{ onCardChange: (d: { complete: boolean; last4?: string }) => void; style?: object; cardStyle?: object }> | null = null;
-  if (isNative) {
-    try {
-      const m = require("@stripe/stripe-react-native");
-      StripeCardField = m.CardField ?? null;
-    } catch { /* ignore */ }
-  }
-  if (isNative && StripeCardField) {
-    return (
-      <View style={{ marginBottom: 4 }}>
-        <Text style={styles.fieldLabel}>Card Details</Text>
-        <StripeCardField
-          onCardChange={(d) => onCardComplete(d.complete)}
-          style={{ height: 50, marginBottom: 12 }}
-          cardStyle={{ backgroundColor: "#F9FAFB", textColor: "#1A1A1A", placeholderColor: "#9CA3AF", borderColor: "#E5E7EB", borderWidth: 1, borderRadius: 10 }}
-        />
-      </View>
-    );
-  }
   return (
     <View>
       <Text style={styles.fieldLabel}>Card Number</Text>
@@ -640,21 +618,8 @@ export default function CustomerProfileScreen() {
       if (isNative) {
         // Confirm the SetupIntent with the CardField data
         try {
-          const stripeModule = require("@stripe/stripe-react-native");
-          const { confirmSetupIntent, createPaymentMethod } = stripeModule;
+          throw new Error("Saved cards are disabled while Stripe is disconnected.");
           // First create a payment method from the CardField
-          const { paymentMethod, error: pmError } = await createPaymentMethod({ paymentMethodType: "Card" });
-          if (pmError) throw new Error(pmError.message);
-          stripePaymentMethodId = paymentMethod?.id ?? null;
-          cardLast4 = paymentMethod?.card?.last4 ?? null;
-          cardBrand = paymentMethod?.card?.brand ?? null;
-          // Confirm the SetupIntent to attach PM to customer
-          if (setupResult.clientSecret && stripePaymentMethodId) {
-            await confirmSetupIntent(setupResult.clientSecret, {
-              paymentMethodType: "Card",
-              paymentMethodData: { paymentMethodId: stripePaymentMethodId },
-            });
-          }
         } catch (e: any) {
           throw new Error(e?.message ?? "Could not tokenize card.");
         }
