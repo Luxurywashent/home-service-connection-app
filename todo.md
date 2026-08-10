@@ -3097,3 +3097,5 @@
 - [x] Repair the Expo Go launch path and validate both the manifest and iOS bundle responses.
 - [x] Run the default mobile development server without the unrelated API background workers so the public Expo proxy remains stable.
 - [x] Inspect and simplify the Expo Go startup path until the manifest and initial iOS bundle open without HTTP 500 responses.
+- [x] Produce an evidence-based root-cause report for the persistent Expo Go HTTP 500 launch failure, including proxy, manifest, bundle, asset, and runtime analysis.
+- [x] Apply and validate only the repair supported by the Expo Go incident findings.
