@@ -1,0 +1,21 @@
+{
+  "query": "SELECT id, booking_ref, customer_id, package_name, city, scheduled_date, scheduled_time, status, created_at FROM customer_bookings WHERE created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY created_at DESC LIMIT 20",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, booking_ref, customer_id, package_name, city, scheduled_date, scheduled_time, status, created_at FROM customer_bookings WHERE created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY created_at DESC LIMIT 20",
+  "rows": [
+    {
+      "id": "90001",
+      "booking_ref": "bk_1778768405171_91394c44",
+      "customer_id": "cust_1777691854927_ad341273",
+      "package_name": "Full Detail",
+      "city": "Crestview",
+      "scheduled_date": "2026-05-16",
+      "scheduled_time": "11:00 AM – 2:00 PM",
+      "status": "pending",
+      "created_at": "2026-05-14 14:20:05"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tbooking_ref\tcustomer_id\tpackage_name\tcity\tscheduled_date\tscheduled_time\tstatus\tcreated_at\n90001\tbk_1778768405171_91394c44\tcust_1777691854927_ad341273\tFull Detail\tCrestview\t2026-05-16\t11:00 AM – 2:00 PM\tpending\t2026-05-14 14:20:05\n",
+  "stderr": "",
+  "execution_time_ms": 265
+}

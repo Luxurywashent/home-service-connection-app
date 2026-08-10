@@ -1,0 +1,1 @@
+ALTER TABLE `detailer_locations` MODIFY COLUMN `status` enum('on_my_way','arrived','inactive','clocked_in') NOT NULL DEFAULT 'on_my_way';

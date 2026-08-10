@@ -1,0 +1,34 @@
+{
+  "query": "SHOW COLUMNS FROM schedule_jobs LIKE 'on_my_way_at'; SHOW COLUMNS FROM schedule_jobs LIKE 'arrived_at';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SHOW COLUMNS FROM schedule_jobs LIKE 'on_my_way_at'; SHOW COLUMNS FROM schedule_jobs LIKE 'arrived_at';",
+  "rows": [
+    {
+      "Field": "on_my_way_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "Field",
+      "Type": "Type",
+      "Null": "Null",
+      "Key": "Key",
+      "Default": "Default",
+      "Extra": "Extra"
+    },
+    {
+      "Field": "arrived_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\non_my_way_at\tdatetime\tYES\t\tNULL\t\nField\tType\tNull\tKey\tDefault\tExtra\narrived_at\tdatetime\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 268
+}

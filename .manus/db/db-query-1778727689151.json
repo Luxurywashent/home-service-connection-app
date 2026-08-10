@@ -1,0 +1,80 @@
+{
+  "query": "SELECT entry_id, address, outreach_type, photo_urls, created_at FROM door_hanger_entries ORDER BY created_at DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT entry_id, address, outreach_type, photo_urls, created_at FROM door_hanger_entries ORDER BY created_at DESC LIMIT 10;",
+  "rows": [
+    {
+      "entry_id": "DHE_1777670270600_r8tbgd77d",
+      "address": "220 Partin Dr N Niceville FL 32578",
+      "outreach_type": "door_hangers",
+      "photo_urls": "[\"file:///var/mobile/Containers/Data/Application/F4ED6A16-A660-4F16-8DEE-9F8BAAC09A1C/Library/Caches/ExponentExperienceData/@anonymous/team-luxury-wash-6ab8c054-c3e8-423e-8482-bdb55bf021d6/ImagePicker/F9FCCFD7-1997-4740-BD2B-54F33F2CC402.jpg\"]",
+      "created_at": "2026-05-01 21:17:50"
+    },
+    {
+      "entry_id": "DHE_1777570863663_tm4xx7hcf",
+      "address": "1078 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570863264_bv8889oj.jpg\"]",
+      "created_at": "2026-04-30 17:41:03"
+    },
+    {
+      "entry_id": "DHE_1777570777849_8hyrl50p2",
+      "address": "989 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570777484_cl3m3djd.jpg\"]",
+      "created_at": "2026-04-30 17:39:37"
+    },
+    {
+      "entry_id": "DHE_1777570672169_fsmr9ndme",
+      "address": "981 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570671793_uuxvjd1n.jpg\"]",
+      "created_at": "2026-04-30 17:37:52"
+    },
+    {
+      "entry_id": "DHE_1777570625423_dvx01j64p",
+      "address": "953 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570624989_dyh8l6vg.jpg\"]",
+      "created_at": "2026-04-30 17:37:05"
+    },
+    {
+      "entry_id": "DHE_1777570332931_4jwjksvni",
+      "address": "998 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570332501_3tlliv1s.jpg\"]",
+      "created_at": "2026-04-30 17:32:12"
+    },
+    {
+      "entry_id": "DHE_1777570117092_26vmpqemz",
+      "address": "1012 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570116539_zh3h2z8m.jpg\"]",
+      "created_at": "2026-04-30 17:28:37"
+    },
+    {
+      "entry_id": "DHE_1777570033350_58oj9jcuk",
+      "address": "1012 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570032822_8x7bi8sj.jpg\"]",
+      "created_at": "2026-04-30 17:27:13"
+    },
+    {
+      "entry_id": "DHE_1777569945451_r7ujtzx7d",
+      "address": "1098 S Ferdon Blvd Crestview FL 32536",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777569945130_1mi4khko.jpg\"]",
+      "created_at": "2026-04-30 17:25:45"
+    },
+    {
+      "entry_id": "DHE_1777569788015_9caifzzmw",
+      "address": "552 E Brock Ave Crestview FL 32539",
+      "outreach_type": "business_cards",
+      "photo_urls": "[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777569787600_5y29c4l4.jpg\"]",
+      "created_at": "2026-04-30 17:23:08"
+    }
+  ],
+  "messages": [],
+  "stdout": "entry_id\taddress\toutreach_type\tphoto_urls\tcreated_at\nDHE_1777670270600_r8tbgd77d\t220 Partin Dr N Niceville FL 32578\tdoor_hangers\t[\"file:///var/mobile/Containers/Data/Application/F4ED6A16-A660-4F16-8DEE-9F8BAAC09A1C/Library/Caches/ExponentExperienceData/@anonymous/team-luxury-wash-6ab8c054-c3e8-423e-8482-bdb55bf021d6/ImagePicker/F9FCCFD7-1997-4740-BD2B-54F33F2CC402.jpg\"]\t2026-05-01 21:17:50\nDHE_1777570863663_tm4xx7hcf\t1078 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570863264_bv8889oj.jpg\"]\t2026-04-30 17:41:03\nDHE_1777570777849_8hyrl50p2\t989 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570777484_cl3m3djd.jpg\"]\t2026-04-30 17:39:37\nDHE_1777570672169_fsmr9ndme\t981 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570671793_uuxvjd1n.jpg\"]\t2026-04-30 17:37:52\nDHE_1777570625423_dvx01j64p\t953 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570624989_dyh8l6vg.jpg\"]\t2026-04-30 17:37:05\nDHE_1777570332931_4jwjksvni\t998 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570332501_3tlliv1s.jpg\"]\t2026-04-30 17:32:12\nDHE_1777570117092_26vmpqemz\t1012 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570116539_zh3h2z8m.jpg\"]\t2026-04-30 17:28:37\nDHE_1777570033350_58oj9jcuk\t1012 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777570032822_8x7bi8sj.jpg\"]\t2026-04-30 17:27:13\nDHE_1777569945451_r7ujtzx7d\t1098 S Ferdon Blvd Crestview FL 32536\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777569945130_1mi4khko.jpg\"]\t2026-04-30 17:25:45\nDHE_1777569788015_9caifzzmw\t552 E Brock Ave Crestview FL 32539\tbusiness_cards\t[\"https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/n2wVeYQgKmefAVwyN2KSSe/door-hanger-photos/SALES001/1777569787600_5y29c4l4.jpg\"]\t2026-04-30 17:23:08\n",
+  "stderr": "",
+  "execution_time_ms": 294
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `employees` ADD `push_token` text;

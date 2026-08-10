@@ -1,0 +1,1 @@
+ALTER TABLE `daily_performance` ADD `tips` decimal(10,2) DEFAULT '0';

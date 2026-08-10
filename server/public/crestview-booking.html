@@ -1,0 +1,3207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Detailing Booking Form</title>
+    <style>
+        .car-booking-wrapper * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        .car-booking-wrapper {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border: none;
+            position: relative;
+        }
+
+        .car-booking-header {
+            text-align: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #2fb8ff 100%, #8b5cf6 100%);
+            color: white;
+            top: 0;
+            z-index: 100;
+        }
+
+        .car-booking-header h1,
+        .car-booking-header h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .car-booking-header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .car-booking-content {
+            padding: 40px 20px;
+            position: relative;
+            padding-bottom: 120px;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+            top: 0;
+            padding: 20px 0;
+        }
+
+        .step-indicator-inner {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .step-circle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .step-circle.completed {
+            background: #10b981;
+            color: white;
+        }
+
+        .step-circle.current {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .step-circle.pending {
+            background: #e5e7eb;
+            color: #6b7280;
+        }
+
+        .step-line {
+            width: 48px;
+            height: 2px;
+            transition: background-color 0.3s ease;
+        }
+
+        .step-line.completed {
+            background: #10b981;
+        }
+
+        .step-line.pending {
+            background: #e5e7eb;
+        }
+
+        .booking-step {
+            display: none;
+            min-height: 600px;
+            position: relative;
+        }
+
+        .booking-step.active {
+            display: block;
+        }
+
+        .step-title {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 32px;
+        }
+
+        .step-subtitle {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #6b7280;
+            margin-bottom: 32px;
+        }
+
+        .card-grid {
+            display: grid;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .vehicle-grid {
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+
+        .package-grid {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .addon-grid {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .selection-card {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .selection-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+        }
+
+        .selection-card.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+        }
+
+        .card-image {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            object-fit: contain;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .card-description {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        .card-features {
+            list-style: none;
+            text-align: left;
+        }
+
+        .card-features li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+
+        .card-features li::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #3b82f6;
+            border-radius: 50%;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .card-price {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #3b82f6;
+            margin-top: 12px;
+        }
+
+        .card-price-breakdown {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-top: 6px;
+            font-weight: 500;
+        }
+
+        .package-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: #f3f4f6;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 24px;
+        }
+
+        .selection-card.selected .package-icon {
+            background: #3b82f6;
+            color: white;
+        }
+
+        /* Pop-in Animation */
+        @keyframes popIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.8) translateY(20px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .packages-section,
+        .addons-section {
+            animation: popIn 0.5s ease-out;
+        }
+
+        .packages-placeholder,
+        .addons-placeholder {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+            font-size: 1.1rem;
+        }
+
+        .price-summary {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 32px;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .addons-total {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .grand-total {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #059669;
+        }
+
+        .form-container {
+            max-width: 560px;
+            margin: 0 auto;
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 32px;
+        }
+
+        .form-section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #1f2937;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .form-input.error, .form-select.error {
+            border-color: #ef4444;
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 4px;
+        }
+
+        /* A2P 10DLC SMS Consent Block */
+        .sms-consent-block {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 10px;
+        }
+
+        .sms-consent-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .sms-consent-checkbox {
+            margin-top: 2px;
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .sms-consent-text {
+            font-size: 0.82rem;
+            color: #374151;
+            line-height: 1.55;
+        }
+
+        .sms-consent-text a {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+
+        .sms-consent-error {
+            color: #ef4444;
+            font-size: 0.8rem;
+            margin-top: 6px;
+            display: none;
+        }
+
+        .calendar-container {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 32px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .selected-date-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .calendar-icon {
+            width: 20px;
+            height: 20px;
+            color: #6b7280;
+        }
+
+        .selected-date-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .date-carousel {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .carousel-nav {
+            padding: 8px;
+            border: none;
+            background: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carousel-nav:hover:not(:disabled) {
+            background: #f3f4f6;
+        }
+
+        .carousel-nav:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .carousel-nav svg {
+            width: 24px;
+            height: 24px;
+            color: #6b7280;
+        }
+
+        .dates-container {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .date-card {
+            flex: 1;
+            min-width: 80px;
+            max-width: 110px;
+            padding: 14px 8px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .date-card:hover:not(.unavailable) {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .date-card.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .date-card.unavailable {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .date-day {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .date-card.selected .date-day {
+            color: #3b82f6;
+        }
+
+        .date-card.unavailable .date-day {
+            color: #9ca3af;
+        }
+
+        .date-number {
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+
+        .date-card.selected .date-number {
+            color: #3b82f6;
+        }
+
+        .date-card.unavailable .date-number {
+            color: #9ca3af;
+        }
+
+        .unavailable-text {
+            font-size: 0.75rem;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+
+        .time-slots-container {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 32px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .time-slots-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .time-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .time-slot {
+            padding: 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .time-slot:hover {
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .time-slot.selected {
+            background: #eff6ff;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+
+        .time-slot-text {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .time-slot.selected .time-slot-text {
+            color: #3b82f6;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 32px;
+            padding: 20px 0;
+        }
+
+        .btn {
+            padding: 12px 32px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .btn:disabled {
+            background: #d1d5db;
+            color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .confirmation-container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .confirmation-section {
+            padding: 24px;
+        }
+
+        .confirmation-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 32px;
+            text-align: left;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 16px;
+        }
+
+        .service-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .service-item:last-child {
+            border-bottom: none;
+        }
+
+        .service-name {
+            font-size: 1rem;
+            color: #4b5563;
+        }
+
+        .service-price {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .total-section {
+            background: #f8fafc;
+            padding: 16px 24px;
+            border-top: 2px solid #e5e7eb;
+        }
+
+        .total-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 24px 0;
+        }
+
+        .details-grid {
+            display: grid;
+            gap: 32px;
+            margin-bottom: 24px;
+        }
+
+        .detail-text {
+            font-size: 1rem;
+            color: #4b5563;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .contact-section {
+            background: #f9fafb;
+            padding: 24px;
+        }
+
+        .contact-item {
+            font-size: 1rem;
+            color: #4b5563;
+            margin-bottom: 8px;
+        }
+
+        .confirm-button {
+            width: 100%;
+            padding: 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 24px;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .confirm-button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+
+        .confirm-button.is-disabled {
+            background: #d1d5db !important;
+            color: #9ca3af !important;
+            cursor: not-allowed !important;
+            pointer-events: none !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        .important-notice {
+            background: #dbeafe;
+            border: 1px solid #3b82f6;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: center;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .notice-text {
+            color: #1e40af;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .running-total-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-top: 2px solid #e5e7eb;
+            padding: 16px 20px;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+            z-index: 100;
+            display: none;
+        }
+
+        .running-total-bar.active {
+            display: block;
+        }
+
+        .running-total-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .running-total-label {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .running-total-price {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #059669;
+            cursor: pointer;
+        }
+
+        .running-total-details {
+            font-size: 0.9rem;
+            color: #6b7280;
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .view-order-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            margin-left: 12px;
+            flex-shrink: 0;
+        }
+
+        .view-order-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .view-order-btn:active {
+            transform: translateY(0);
+        }
+
+        .receipt-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .receipt-modal.active {
+            display: flex;
+        }
+
+        .receipt-modal-content {
+            border-radius: 16px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .receipt-header {
+            background: linear-gradient(135deg, #2fb8ff 100%, #8b5cf6 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 16px 16px 0 0;
+            text-align: center;
+        }
+
+        .receipt-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .receipt-header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .receipt-body {
+            padding: 24px;
+        }
+
+        .receipt-section {
+            margin-bottom: 24px;
+        }
+
+        .receipt-section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+
+        .receipt-vehicle {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .receipt-vehicle-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .receipt-vehicle-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .receipt-vehicle-price {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+
+        .receipt-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 0.95rem;
+            color: #4b5563;
+        }
+
+        .receipt-item-name {
+            flex: 1;
+        }
+
+        .receipt-item-price {
+            font-weight: 600;
+            color: #1f2937;
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .receipt-addon {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0 6px 20px;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .receipt-addon-name {
+            flex: 1;
+        }
+
+        .receipt-addon-price {
+            font-weight: 600;
+            color: #059669;
+            min-width: 70px;
+            text-align: right;
+        }
+
+        .receipt-divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 16px 0;
+        }
+
+        .receipt-summary {
+            background: #f0f9ff;
+            border-radius: 8px;
+            padding: 16px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .receipt-total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .receipt-total-row.grand-total {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #059669;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 2px solid #e5e7eb;
+        }
+
+        .receipt-total-label {
+            color: #4b5563;
+        }
+
+        .receipt-total-value {
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .receipt-close-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #6b7280;
+            transition: color 0.2s ease;
+        }
+
+        .receipt-close-btn:hover {
+            color: #1f2937;
+        }
+
+        .receipt-modal-content {
+            position: relative;
+        }
+
+        @media (max-width: 768px) {
+            /* On mobile: hide label, details, and price — show only the button */
+            .running-total-label { display: none; }
+            .running-total-details { display: none; }
+            .running-total-price { display: none; }
+
+            .running-total-content {
+                justify-content: center;
+                padding: 0;
+            }
+
+            .running-total-bar {
+                padding: 10px 16px;
+            }
+
+            .view-order-btn {
+                width: 100%;
+                margin-left: 0;
+                padding: 14px 16px;
+                font-size: 1rem;
+                border-radius: 8px;
+            }
+
+            .receipt-modal {
+                padding: 10px;
+            }
+
+            .receipt-modal-content {
+                max-height: 95vh;
+            }
+
+            .receipt-body {
+                padding: 16px;
+            }
+
+            .receipt-header {
+                padding: 16px;
+            }
+
+            .receipt-header h2 {
+                font-size: 1.2rem;
+            }
+
+            .receipt-vehicle {
+                padding: 12px;
+            }
+
+            .receipt-item {
+                font-size: 0.9rem;
+            }
+
+            .receipt-addon {
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .car-booking-wrapper { position: relative; overflow-x: hidden; }
+            .car-booking-header h1,
+            .car-booking-header h2 { font-size: 1.8rem; }
+            .car-booking-content { padding: 20px 15px; position: relative; padding-bottom: 140px; }
+
+            .step-indicator {
+                top: 0;
+                padding: 15px 0;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            .card-grid { gap: 16px; }
+            .selection-card { padding: 16px; }
+
+            .nav-buttons {
+                bottom: 100px;
+                padding: 15px 0;
+                margin-top: 20px;
+                box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .btn { width: 200px; }
+            .booking-step { min-height: auto; padding-bottom: 80px; }
+
+            .important-notice { margin-left: 0; margin-right: 0; }
+            .form-container { margin-left: 0; margin-right: 0; padding: 20px; }
+
+            .calendar-container { padding: 16px; margin: 0 -15px 24px -15px; }
+
+            /* Mobile: hide arrow buttons, use horizontal scroll instead */
+            .date-carousel { gap: 0; }
+            .carousel-nav { display: none; }
+            .dates-container {
+                flex: 1;
+                gap: 8px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scroll-snap-type: x mandatory;
+                justify-content: flex-start;
+                padding: 4px 4px 8px 4px;
+                scrollbar-width: none;
+            }
+            .dates-container::-webkit-scrollbar { display: none; }
+
+            .date-card {
+                flex: 0 0 auto;
+                min-width: 72px;
+                max-width: 72px;
+                padding: 10px 6px;
+                scroll-snap-align: start;
+            }
+            .date-day { font-size: 0.7rem; white-space: nowrap; }
+            .date-number { font-size: 0.85rem; white-space: nowrap; }
+
+            .time-slots-grid { grid-template-columns: 1fr; gap: 12px; }
+
+            .step-indicator-inner { gap: 8px; }
+            .step-circle { width: 32px; height: 32px; font-size: 12px; min-width: 32px; flex-shrink: 0; }
+            .step-line { width: 24px; flex-shrink: 0; }
+
+            .confirmation-container { margin: 0 -15px; border-radius: 8px; }
+            .details-grid { grid-template-columns: 1fr; gap: 20px; }
+            .confirmation-title { font-size: 1.5rem; }
+
+            .running-total-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .running-total-bar {
+                padding: 12px 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .car-booking-header h1,
+            .car-booking-header h2 { font-size: 1.5rem; }
+            .step-indicator-inner { gap: 6px; }
+            .step-circle { width: 28px; height: 28px; font-size: 11px; min-width: 28px; }
+            .step-line { width: 20px; }
+            .car-booking-content { padding: 15px 10px; padding-bottom: 140px; }
+            /* date cards handled by 768px scroll rules above */
+            .step-title { font-size: 1.2rem; }
+            .nav-buttons { padding: 10px 0; }
+            .btn { width: 180px; padding: 10px 24px; }
+
+            .running-total-price {
+                font-size: 1.2rem;
+            }
+
+            .running-total-label {
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="car-booking-wrapper">
+        <div class="car-booking-header" id="booking-header">
+            <h2>Book Your Detail</h2>
+            <p>Book your professional detailing service</p>
+        </div>
+
+        <div class="car-booking-content">
+            <div class="step-indicator">
+                <div class="step-indicator-inner">
+                    <div class="step-circle current" id="step-1-indicator">1</div>
+                    <div class="step-line pending" id="line-1"></div>
+                    <div class="step-circle pending" id="step-2-indicator">2</div>
+                    <div class="step-line pending" id="line-2"></div>
+                    <div class="step-circle pending" id="step-3-indicator">3</div>
+                    <div class="step-line pending" id="line-3"></div>
+                    <div class="step-circle pending" id="step-4-indicator">4</div>
+                    <div class="step-line pending" id="line-4"></div>
+                    <div class="step-circle pending" id="step-5-indicator">5</div>
+                    <div class="step-line pending" id="line-5"></div>
+                    <div class="step-circle pending" id="step-6-indicator">6</div>
+                    <div class="step-line pending" id="line-6"></div>
+                    <div class="step-circle pending" id="step-7-indicator">7</div>
+                </div>
+            </div>
+
+            <!-- Step 1: Number of Cars -->
+            <div class="booking-step active" id="step-1">
+                <p class="step-title">How many cars would you like to book?</p>
+                <div class="card-grid vehicle-grid" id="car-count-options">
+                    <div class="selection-card" data-value="1">
+                        <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="1 Car" class="card-image">
+                        <div class="card-title">1 Car</div>
+                    </div>
+                    <div class="selection-card" data-value="2">
+                        <div style="display: flex; justify-content: center; gap: 5px; margin-bottom: 16px;">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Car 1" class="card-image" style="width: 40px; height: 40px; margin: 0;">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Car 2" class="card-image" style="width: 40px; height: 40px; margin: 0;">
+                        </div>
+                        <div class="card-title">2 Cars</div>
+                    </div>
+                    <div class="selection-card" data-value="3">
+                        <div style="display: flex; justify-content: center; gap: 5px; margin-bottom: 16px;">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Car 1" class="card-image" style="width: 30px; height: 30px; margin: 0;">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Car 2" class="card-image" style="width: 30px; height: 30px; margin: 0;">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Car 3" class="card-image" style="width: 30px; height: 30px; margin: 0;">
+                        </div>
+                        <div class="card-title">3 Cars</div>
+                    </div>
+                </div>
+                <div class="nav-buttons">
+                    <button class="btn btn-primary" onclick="nextStep(2)" id="step-1-next" disabled>Next Step</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Vehicle Configuration (Sequential) -->
+            <div class="booking-step" id="step-2">
+                <p class="step-title" id="vehicle-config-title">Configure Vehicle 1</p>
+                <p class="step-subtitle" id="vehicle-config-subtitle">Select the vehicle type and detail package</p>
+
+                <!-- Vehicle Type Selection -->
+                <div style="margin-bottom: 32px;">
+                    <p style="font-weight: 600; margin-bottom: 12px; color: #1f2937; text-align: center;">Select Vehicle Type</p>
+                    <div class="card-grid vehicle-grid" id="vehicle-type-options">
+                        <div class="selection-card vehicle-type-card" data-value="small">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Sedan" class="card-image">
+                            <div class="card-title">Sedan</div>
+                        </div>
+                        <div class="selection-card vehicle-type-card" data-value="midsize">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c3a4f63d08cf143b8c.png" alt="SUV" class="card-image">
+                            <div class="card-title">SUV</div>
+                        </div>
+                        <div class="selection-card vehicle-type-card" data-value="fullsize">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c347cd63a232b5372f.png" alt="XL SUV/Van" class="card-image">
+                            <div class="card-title">XL SUV/Van</div>
+                        </div>
+                        <div class="selection-card vehicle-type-card" data-value="pickup">
+                            <img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c3e9c59440ae51d4bc.png" alt="Truck" class="card-image">
+                            <div class="card-title">Truck</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Packages Section (Pop-in) -->
+                <div id="packages-container"></div>
+
+                <!-- Add-ons Section (Pop-in) -->
+                <div id="addons-container"></div>
+
+                <div class="nav-buttons">
+                    <button class="btn btn-secondary" onclick="prevStep(1)">Back</button>
+                    <button class="btn btn-primary" onclick="handleVehicleConfigNext()" id="step-2-next" disabled>Next Vehicle</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Personal Information -->
+            <div class="booking-step" id="step-3">
+                <p class="step-title">Personal Information</p>
+                <div class="form-container">
+                    <div class="form-section-title">Enter your contact info</div>
+
+                    <div class="form-group">
+                        <label for="first-name" class="form-label">First Name *</label>
+                        <input type="text" id="first-name" class="form-input" placeholder="Enter your first name" required>
+                        <div class="error-message" id="first-name-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="last-name" class="form-label">Last Name *</label>
+                        <input type="text" id="last-name" class="form-input" placeholder="Enter your last name" required>
+                        <div class="error-message" id="last-name-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="phone" class="form-label">Phone Number *</label>
+                        <input type="tel" id="phone" class="form-input" placeholder="Enter your phone number" required>
+                        <div class="error-message" id="phone-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email" class="form-label">E-mail Address *</label>
+                        <input type="email" id="email" class="form-input" placeholder="Enter your email address" required>
+                        <div class="error-message" id="email-error" style="display:none;"></div>
+                    </div>
+
+                    <!-- A2P 10DLC Compliant SMS Consent -->
+                    <div class="sms-consent-block">
+                        <label class="sms-consent-label">
+                            <input
+                                type="checkbox"
+                                id="sms-consent"
+                                name="sms-consent"
+                                class="sms-consent-checkbox"
+                            >
+                            <span class="sms-consent-text">
+                                By checking this box, I agree to receive SMS text messages from
+                                <strong>Luxury Wash On Wheels</strong> including appointment
+                                confirmations, reminders, service updates, and promotional offers.
+                                Message frequency varies. Message and data rates may apply.
+                                Reply <strong>STOP</strong> to cancel at any time.
+                                Reply <strong>HELP</strong> for help. View our
+                                <a href="https://luxurywashonwheels.com/privacy-policy/" target="_blank" rel="noopener">Privacy Policy</a>
+                                and
+                                <a href="https://luxurywashonwheels.com/terms-conditions/" target="_blank" rel="noopener">Terms &amp; Conditions</a>.
+                            </span>
+                        </label>
+                        <div class="sms-consent-error" id="sms-consent-error">
+                            Please agree to receive SMS messages to continue.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="nav-buttons">
+                    <button class="btn btn-secondary" onclick="prevStep(2)">Back</button>
+                    <button class="btn btn-primary" onclick="handleLeadStepNext()" id="step-3-next">Next Step</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Address -->
+            <div class="booking-step" id="step-4">
+                <p class="step-title">Service Location</p>
+                <div class="form-container">
+                    <div class="form-section-title">Where should we perform the service?</div>
+                    
+                    <div class="form-group">
+                        <label for="street-address" class="form-label">Street Address *</label>
+                        <input type="text" id="street-address" class="form-input" placeholder="Enter your street address" required>
+                        <div class="error-message" id="street-address-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="unit" class="form-label">Unit/Suite (Optional)</label>
+                        <input type="text" id="unit" class="form-input" placeholder="Enter unit or suite number">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="city" class="form-label">City *</label>
+                        <input type="text" id="city" class="form-input" placeholder="Enter your city" required>
+                        <div class="error-message" id="city-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="state" class="form-label">State *</label>
+                        <input type="text" id="state" class="form-input" placeholder="Enter your state" required>
+                        <div class="error-message" id="state-error" style="display:none;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="zip-code" class="form-label">Zip Code *</label>
+                        <input type="text" id="zip-code" class="form-input" placeholder="Enter your zip code" required>
+                        <div class="error-message" id="zip-code-error" style="display:none;"></div>
+                    </div>
+                </div>
+                <div class="nav-buttons">
+                    <button class="btn btn-secondary" onclick="prevStep(3)">Back</button>
+                    <button class="btn btn-primary" onclick="handleAddressStepNext()" id="step-4-next">Next Step</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Date & Time -->
+            <div class="booking-step" id="step-5">
+                <p class="step-title">Schedule Your Appointment</p>
+                
+                <div class="calendar-container">
+                    <div class="selected-date-display" id="selected-date-display" style="display: none;">
+                        <svg class="calendar-icon" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="selected-date-text" id="selected-date-text"></span>
+                    </div>
+
+                    <!-- Soonest available appointment banner -->
+                    <div id="soonest-available-banner" style="display:none; background:#f0fdf4; border:1.5px solid #22c55e; border-radius:10px; padding:12px 16px; margin-bottom:16px; align-items:center; gap:10px;">
+                        <span style="font-size:1.3rem;">&#x2705;</span>
+                        <div style="font-weight:600; color:#15803d; font-size:0.97rem; margin-left:8px;">Here is the soonest available day for your detail</div>
+                    </div>
+
+                    <div class="date-carousel">
+                        <button class="carousel-nav" id="prev-dates" onclick="navigateCarousel('prev')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <div class="dates-container" id="dates-container"></div>
+                        <button class="carousel-nav" id="next-dates" onclick="navigateCarousel('next')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 5l6 6-6 6" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="time-slots-container" id="time-slots-container" style="display: none;">
+                    <p class="time-slots-title">Available Arrival Windows</p>
+                    <div class="time-slots-grid" id="time-slots-grid"></div>
+                </div>
+
+                <div class="confirmation-container" id="final-confirmation" style="margin-top: 40px;">
+                    <div class="confirmation-section">
+                        <h2 class="confirmation-title">Booking Summary</h2>
+                        
+                        <div class="details-grid">
+                            <div>
+                                <h3 class="section-title">Service Details</h3>
+                                <div id="conf-vehicles-list"></div>
+                            </div>
+                            <div>
+                                <h3 class="section-title">Schedule</h3>
+                                <p class="detail-text"><strong>Arrival Date:</strong> <span id="conf-arrival-date">Not selected</span></p>
+                                <p class="detail-text"><strong>Arrival Window:</strong> <span id="conf-arrival-time">Not selected</span></p>
+                            </div>
+                        </div>
+
+                        <div class="contact-section">
+                            <h3 class="section-title">Your Contact Details</h3>
+                            <p class="contact-item"><span id="conf-full-name"></span></p>
+                            <p class="contact-item"><span id="conf-email"></span></p>
+                            <p class="contact-item"><span id="conf-phone"></span></p>
+                            <p class="contact-item" style="margin-top: 12px;"><span id="conf-address"></span></p>
+                        </div>
+
+                        <div class="divider"></div>
+
+                        <div style="margin-bottom: 24px;">
+                            <label for="discount-code" class="form-label">Discount Code</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="discount-code" class="form-input" placeholder="Enter code" style="flex:1;">
+                                <button type="button" class="btn btn-primary" id="apply-discount-btn" style="padding:12px 18px;">Apply</button>
+                                <button type="button" class="btn btn-secondary" id="remove-discount-btn" style="padding:12px 18px;">Remove</button>
+                            </div>
+                            <div class="error-message" id="discount-code-msg" style="display:none;"></div>
+                        </div>
+
+                        <div class="important-notice">
+                            <div class="notice-text">IMPORTANT: There is a 30 minute arrival window</div>
+                        </div>
+
+                        <div class="nav-buttons">
+                            <button class="btn btn-secondary" onclick="prevStep(4)">Back</button>
+                            <button type="button"
+                               class="confirm-button is-disabled"
+                               id="confirm-booking"
+                               onclick="handleConfirmBooking()">Click Here To Confirm Booking</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Running Total Bar -->
+    <div class="running-total-bar" id="running-total-bar">
+        <div class="running-total-content">
+            <div class="running-total-label">Order Summary:</div>
+            <div class="running-total-details" id="running-total-details">
+                <!-- Details will be populated dynamically -->
+            </div>
+            <div class="running-total-price" id="running-total-price">$0.00</div>
+            <button class="view-order-btn" onclick="openReceiptModal()">View My Order</button>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="receipt-modal" id="receipt-modal" onclick="closeReceiptModal(event)">
+        <div class="receipt-modal-content" onclick="event.stopPropagation()">
+            <button class="receipt-close-btn" onclick="closeReceiptModal()">&times;</button>
+            <div class="receipt-header">
+                <h2>Live Order Receipt</h2>
+                <p>Your current booking summary</p>
+            </div>
+            <div class="receipt-body">
+                <div id="receipt-content"></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    let currentStep = 1;
+    let carCount = 1;
+    let currentVehicleIndex = 0;
+    let vehicles = []; // Array to store each vehicle's configuration
+    let totalPrice = 0;
+
+    let firstName = '';
+    let lastName = '';
+    let email = '';
+    let phone = '';
+    let abandonedCartId = null; // set when visitor completes personal info step
+
+    let streetAddress = '';
+    let unit = '';
+    let city = '';
+    let state = '';
+    let zipCode = '';
+
+    let selectedDate = '';
+    let selectedTime = '';
+    let currentDateIndex = 0;
+    let leadZapSent = false;
+
+    const DISCOUNT_CODES = {
+        VIP10: { type: "percent", value: 10 },
+        WELCOME20: { type: "percent", value: 20 },
+        DETAIL5: { type: "percent", value: 5 }
+    };
+
+    let discountState = {
+        isApplied: false,
+        code: "",
+        type: "",
+        value: 0,
+        amount: 0
+    };
+
+    const packageTimeSlots = {
+        basic: [
+            { id: '1', time: '8:00am - 10:00am' },
+            { id: '2', time: '10:00am - 12:00pm' },
+            { id: '3', time: '1:00pm - 3:00pm' },
+            { id: '4', time: '3:00pm - 5:00pm' }
+        ],
+        full: [
+            { id: '1', time: '8:00am - 11:00am' },
+            { id: '2', time: '11:00am - 2:00pm' },
+            { id: '3', time: '2:00pm - 5:00pm' }
+        ],
+        luxury: [
+            { id: '1', time: '8:00am - 12:00pm' },
+            { id: '2', time: '1:00pm - 5:00pm' }
+        ],
+        interior: [
+            { id: '1', time: '8:00am - 10:00am' },
+            { id: '2', time: '10:00am - 12:00pm' },
+            { id: '3', time: '1:00pm - 3:00pm' },
+            { id: '4', time: '3:00pm - 5:00pm' }
+        ],
+        exterior: [
+            { id: '1', time: '8:00am - 10:00am' },
+            { id: '2', time: '10:00am - 12:00pm' },
+            { id: '3', time: '1:00pm - 3:00pm' },
+            { id: '4', time: '3:00pm - 5:00pm' }
+        ]
+    };
+
+    const basicAddons = [
+        { id: 'rain-x', name: 'Rain-X', price: 10, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b9242b9e19086976.png' },
+        { id: 'paint-sealant', name: 'Paint Sealant', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b72abb6b779888b0.png' },
+        { id: 'clay-bar', name: 'Clay Bar', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd57f63987505.png' },
+        { id: 'leather-conditioning', name: 'Leather Conditioning', price: 40, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf409ab6b61666c2edc.png' },
+        { id: 'leather-cleaning', name: 'Leather Cleaning', price: 30, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd5f7c7987507.png' },
+        { id: 'ozone', name: 'Ozone', price: 100, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b72abbfd5e9888b1.png' },
+        { id: 'shampoo-seats-carpets', name: 'Shampoo Seats & Carpets', price: 75, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf409ab6bc5eb6c2edb.png' },
+        { id: 'pet-hair-removal', name: 'Pet Hair Removal', price: 40, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd50acb987509.png' },
+        { id: 'one-step-paint', name: 'One Step Paint Enhancement', price: 250, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b72abb094f9888b3.png' },
+        { id: 'shampoo-seats-only', name: 'Shampoo Seats (ONLY)', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf409ab6bc5eb6c2edb.png' },
+        { id: 'engine-bay', name: 'Engine Bay Cleaning', price: 30, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf44eb4a1ae970b9495.png' },
+        { id: 'Deep-Interior-Cleaning', name: 'Deep Interior Cleaning', price: 75, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf44eb4a142400b9494.png' },
+        { id: 'shampoo-carpet-only', name: 'Shampoo Carpet (ONLY)', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd53ca4987508.png' }
+    ];
+    const luxuryAddons = [
+        { id: 'rain-x', name: 'Rain-X', price: 10, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b9242b9e19086976.png' },
+        { id: 'clay-bar', name: 'Clay Bar', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd57f63987505.png' },
+        { id: 'ozone', name: 'Ozone', price: 100, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b72abbfd5e9888b1.png' },
+        { id: 'one-step-paint', name: '1 Step Paint Enhancement', price: 250, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4b72abb094f9888b3.png' },
+        { id: 'pet-hair-removal', name: 'Pet Hair Removal', price: 40, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6836ecf4266bd50acb987509.png' }
+    ];
+    const fullAddons = basicAddons.filter(a => !['leather-cleaning', 'Deep-Interior-Cleaning'].includes(a.id));
+    const interiorAddons = basicAddons.filter(a => ['pet-hair-removal', 'ozone', 'Deep-Interior-Cleaning'].includes(a.id));
+    const exteriorAddons = basicAddons.filter(a => ['rain-x', 'paint-sealant', 'clay-bar', 'one-step-paint', 'engine-bay'].includes(a.id));
+
+    const pricingChart = {
+        small:   { basic: 125, full: 200, interior: 150, exterior: 125, luxury: 300 },
+        midsize: { basic: 150, full: 225, interior: 200, exterior: 150, luxury: 325 },
+        fullsize:{ basic: 200, full: 275, interior: 225, exterior: 175, luxury: 375 },
+        pickup:  { basic: 175, full: 250, interior: 175, exterior: 150, luxury: 350 }
+    };
+
+    const vehicleNames = {
+        small: 'Sedan',
+        midsize: 'SUV',
+        fullsize: 'XL SUV/Van',
+        pickup: 'Truck'
+    };
+
+    const packageNames = {
+        basic: 'Basic Detail',
+        full: 'Full Detail',
+        interior: 'Interior Detail',
+        exterior: 'Exterior Detail',
+        luxury: 'Luxury Detail'
+    };
+
+    function initializeVehicles() {
+        vehicles = [];
+        for (let i = 0; i < carCount; i++) {
+            vehicles.push({
+                id: i + 1,
+                vehicleType: '',
+                packageType: '',
+                addons: []
+            });
+        }
+        currentVehicleIndex = 0;
+    }
+
+    function updateVehicleTitle() {
+        document.getElementById('vehicle-config-title').textContent = `Configure Vehicle ${currentVehicleIndex + 1}`;
+        const nextBtn = document.getElementById('step-2-next');
+        if (currentVehicleIndex === carCount - 1) {
+            nextBtn.textContent = 'Next Step';
+        } else {
+            nextBtn.textContent = `Next Vehicle (${currentVehicleIndex + 2}/${carCount})`;
+        }
+    }
+
+    function renderPackagesSection() {
+        const container = document.getElementById('packages-container');
+        const currentVehicle = vehicles[currentVehicleIndex];
+
+        if (!currentVehicle.vehicleType) {
+            container.innerHTML = '<div class="packages-placeholder">Select a vehicle type to see available packages</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="packages-section">
+                <p style="font-weight: 600; margin-bottom: 12px; color: #1f2937; text-align: center;">Select Detail Package</p>
+                <div class="card-grid package-grid" id="package-options">
+                    <div class="selection-card package-card" data-value="basic">
+                        <div class="package-icon">🚗</div>
+                        <div class="card-title">Basic Detail</div>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-bottom:6px;">Exterior</div>
+                        <ul class="card-features">
+                            <li>Spot Free Wash</li>
+                            <li>Door Jambs</li>
+                            <li>Bug Removal</li>
+                            <li>Wheels (Face Only)</li>
+                            <li>Tire Dressing</li>
+                        </ul>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-top:10px;margin-bottom:6px;">Interior</div>
+                        <ul class="card-features">
+                            <li>Wipe Dash/Console</li>
+                            <li>Vacuum Seats & Carpet</li>
+                            <li>Clean Cupholders</li>
+                            <li>Windows Inside/Outside</li>
+                        </ul>
+                        <div class="card-price" id="price-basic">$0.00</div>
+                        <div class="card-price-breakdown">per car</div>
+                    </div>
+                    <div class="selection-card package-card" data-value="full">
+                        <div class="package-icon">✨</div>
+                        <div class="card-title">Full Detail</div>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-bottom:6px;">Exterior</div>
+                        <ul class="card-features">
+                            <li>Spot Free Wash</li>
+                            <li>Door Jambs</li>
+                            <li>Gas Cap</li>
+                            <li>Exhaust Tips</li>
+                            <li>Tar Removal</li>
+                            <li>Bug Removal</li>
+                            <li>Wheels (Front & Back)</li>
+                            <li>Tire Dressing</li>
+                            <li>60 Day Paint Protectant</li>
+                        </ul>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-top:10px;margin-bottom:6px;">Interior</div>
+                        <ul class="card-features">
+                            <li>Wipe Door Panels</li>
+                            <li>Wipe Interior Plastics</li>
+                            <li>Leather Deep Clean</li>
+                            <li>Clean Cupholders</li>
+                            <li>Windows Inside/Outside</li>
+                            <li>Vacuum Seats & Carpet</li>
+                        </ul>
+                        <div class="card-price" id="price-full">$0.00</div>
+                        <div class="card-price-breakdown">per car</div>
+                    </div>
+                    <div class="selection-card package-card" data-value="luxury">
+                        <div class="package-icon">💎</div>
+                        <div class="card-title">Luxury Detail</div>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-bottom:6px;">Exterior</div>
+                        <ul class="card-features">
+                            <li>Spot Free Wash</li>
+                            <li>Exhaust Tips</li>
+                            <li>Gas Cap</li>
+                            <li>Door Jambs</li>
+                            <li>Tar Removal</li>
+                            <li>Bug Removal</li>
+                            <li>Wheels (Front & Back)</li>
+                            <li>Tire Dressing</li>
+                            <li>6 Month Paint Protectant</li>
+                        </ul>
+                        <div class="card-description" style="font-weight:600;color:#374151;margin-top:10px;margin-bottom:6px;">Interior</div>
+                        <ul class="card-features">
+                            <li>Carpet/Seat Shampoo</li>
+                            <li>Wipe Door Panels</li>
+                            <li>Wipe Interior Plastics</li>
+                            <li>Leather Deep Clean</li>
+                            <li>Clean Cupholders</li>
+                            <li>Windows Inside/Outside</li>
+                            <li>Vacuum Seats & Carpet</li>
+                        </ul>
+                        <div class="card-price" id="price-luxury">$0.00</div>
+                        <div class="card-price-breakdown">per car</div>
+                    </div>
+                    <div class="selection-card package-card" data-value="interior">
+                        <div class="package-icon">🛋️</div>
+                        <div class="card-title">Interior Detail</div>
+                        <ul class="card-features" style="margin-top:8px;">
+                            <li>Wipe Door Panels</li>
+                            <li>Carpet & Seat Shampoo</li>
+                            <li>All Plastic Surfaces</li>
+                            <li>All Upholstery</li>
+                            <li>Leather Deep Clean</li>
+                            <li>All Compartments</li>
+                            <li>Vacuum Seats & Carpet</li>
+                        </ul>
+                        <div class="card-price" id="price-interior">$0.00</div>
+                        <div class="card-price-breakdown">per car</div>
+                    </div>
+                    <div class="selection-card package-card" data-value="exterior">
+                        <div class="package-icon">🧼</div>
+                        <div class="card-title">Exterior Detail</div>
+                        <ul class="card-features" style="margin-top:8px;">
+                            <li>Spot Free Wash</li>
+                            <li>Wheels, Tires & Wheel Wells</li>
+                            <li>Gas Cap & Door Jambs</li>
+                            <li>Bug Removal</li>
+                            <li>6-Month Paint Protectant</li>
+                        </ul>
+                        <div class="card-price" id="price-exterior">$0.00</div>
+                        <div class="card-price-breakdown">per car</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Re-attach package card listeners
+        const packageCards = container.querySelectorAll('.package-card');
+        packageCards.forEach(card => {
+            card.addEventListener('click', () => {
+                selectPackage(card.dataset.value);
+            });
+        });
+
+        updatePricingDisplay();
+        smoothScroll('packages-container');
+    }
+
+    function renderAddonsSection() {
+        const container = document.getElementById('addons-container');
+        const currentVehicle = vehicles[currentVehicleIndex];
+
+        if (!currentVehicle.packageType) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let addons = basicAddons;
+        switch (currentVehicle.packageType) {
+            case 'luxury': addons = luxuryAddons; break;
+            case 'full': addons = fullAddons; break;
+            case 'interior': addons = interiorAddons; break;
+            case 'exterior': addons = exteriorAddons; break;
+            default: addons = basicAddons; break;
+        }
+
+        container.innerHTML = `
+            <div class="addons-section">
+                <p style="font-weight: 600; margin-bottom: 12px; color: #1f2937; text-align: center;">Add Optional Enhancements</p>
+                <div class="card-grid addon-grid" id="vehicle-addon-options"></div>
+            </div>
+        `;
+
+        const addonContainer = container.querySelector('#vehicle-addon-options');
+        addons.forEach(addon => {
+            const isSelected = currentVehicle.addons.includes(addon.id);
+            const card = document.createElement('div');
+            card.className = `selection-card ${isSelected ? 'selected' : ''}`;
+            card.dataset.addonId = addon.id;
+
+            card.innerHTML = `
+                <img src="${addon.image}" alt="${addon.name}" class="card-image">
+                <div class="card-title">${addon.name}</div>
+                <div class="card-price">$${addon.price.toFixed(2)}</div>
+                <div class="card-price-breakdown">per car</div>
+            `;
+
+            card.addEventListener('click', () => {
+                toggleVehicleAddon(addon.id);
+            });
+
+            addonContainer.appendChild(card);
+        });
+
+        smoothScroll('addons-container');
+    }
+
+    function toggleVehicleAddon(addonId) {
+        const currentVehicle = vehicles[currentVehicleIndex];
+        if (currentVehicle.addons.includes(addonId)) {
+            currentVehicle.addons = currentVehicle.addons.filter(id => id !== addonId);
+        } else {
+            currentVehicle.addons.push(addonId);
+        }
+        renderAddonsSection();
+        updateRunningTotal();
+        checkStep2Complete();
+    }
+
+    function smoothScroll(elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            setTimeout(() => {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+    }
+
+    function selectVehicleType(vehicleType) {
+        vehicles[currentVehicleIndex].vehicleType = vehicleType;
+        
+        // Remove selected class from all vehicle type cards
+        document.querySelectorAll('.vehicle-type-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked card
+        document.querySelector(`.vehicle-type-card[data-value="${vehicleType}"]`).classList.add('selected');
+        
+        // Clear package and addons selection when vehicle type changes
+        vehicles[currentVehicleIndex].packageType = '';
+        vehicles[currentVehicleIndex].addons = [];
+        
+        renderPackagesSection();
+        document.getElementById('addons-container').innerHTML = '';
+        updatePricingDisplay();
+        checkStep2Complete();
+    }
+
+    function selectPackage(packageType) {
+        vehicles[currentVehicleIndex].packageType = packageType;
+        vehicles[currentVehicleIndex].addons = [];
+        
+        // Remove selected class from all package cards
+        const packageCards = document.querySelectorAll('.package-card');
+        packageCards.forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked card
+        document.querySelector(`.package-card[data-value="${packageType}"]`).classList.add('selected');
+        
+        updatePricingDisplay();
+        renderAddonsSection();
+        updateRunningTotal();
+        checkStep2Complete();
+    }
+
+    function updatePricingDisplay() {
+        const currentVehicle = vehicles[currentVehicleIndex];
+        if (currentVehicle.vehicleType) {
+            const prices = pricingChart[currentVehicle.vehicleType];
+            for (const [pkg, price] of Object.entries(prices)) {
+                const el = document.getElementById(`price-${pkg}`);
+                if (el) el.textContent = `$${price.toFixed(2)}`;
+            }
+        }
+    }
+
+    function checkStep2Complete() {
+        const currentVehicle = vehicles[currentVehicleIndex];
+        document.getElementById('step-2-next').disabled = !(currentVehicle.vehicleType && currentVehicle.packageType);
+    }
+
+    function handleVehicleConfigNext() {
+        const currentVehicle = vehicles[currentVehicleIndex];
+        if (!currentVehicle.vehicleType || !currentVehicle.packageType) return;
+
+        if (currentVehicleIndex < carCount - 1) {
+            currentVehicleIndex++;
+            updateVehicleTitle();
+            clearVehicleSelections();
+            updatePricingDisplay();
+            renderPackagesSection();
+            document.getElementById('addons-container').innerHTML = '';
+            scrollToTop();
+        } else {
+            // Early capture: save vehicle/package before customer reaches contact form
+            earlyCapture();
+            nextStep(3);
+        }
+    }
+
+    // Fires when customer finishes Step 2 (vehicle/package) and advances.
+    // Creates an abandoned cart record with vehicle/package data immediately,
+    // so if they abandon before entering contact info we still know what they wanted.
+    async function earlyCapture() {
+        try {
+            var primaryVehicle = vehicles[0] || {};
+            var vt = primaryVehicle.vehicleType || '';
+            var pt = primaryVehicle.packageType || '';
+            if (!vt || !pt) return;
+            var payload = {
+                firstName: 'Guest',
+                lastName: '',
+                email: '',
+                phone: '',
+                location: LOCATION_SLUG,
+                vehicleType: vt,
+                packageType: pt,
+                selectedDate: '',
+                existingBookingId: abandonedCartId || null,
+            };
+            var resp = await fetch(APP_API_BASE + '/api/booking/abandoned?location=' + LOCATION_SLUG, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (resp.ok) {
+                var data = await resp.json();
+                if (data.bookingId) abandonedCartId = data.bookingId;
+            }
+        } catch(e) {}
+    }
+
+    function clearVehicleSelections() {
+        document.querySelectorAll('.vehicle-type-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        document.querySelectorAll('.package-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+    }
+
+    // Base duration (hours) per package for a single car
+    const packageDuration = {
+        basic: 2, interior: 2, exterior: 2,
+        full: 3,
+        luxury: 4
+    };
+
+    function getTimeSlotsForPackage() {
+        const firstVehicle = vehicles[0];
+        if (!firstVehicle || !firstVehicle.packageType) return [];
+
+        const baseDuration = packageDuration[firstVehicle.packageType] || 2;
+        const totalHours   = baseDuration * carCount;
+
+        // Anything over 7 hours = full day (8 AM only, takes entire day)
+        if (totalHours > 7) {
+            return [{ id: 'fd', time: '8:00am - 5:00pm (Full Day)' }];
+        }
+
+        // Fixed start-time candidates based on job duration
+        // These are the approved schedule slots for each duration bracket
+        let startHours;
+        if (totalHours <= 2) {
+            startHours = [8, 10, 13, 15];       // 2hr: 8am, 10am, 1pm, 3pm
+        } else if (totalHours <= 3) {
+            startHours = [8, 11, 14];            // 3hr: 8am, 11am, 2pm
+        } else if (totalHours <= 4) {
+            startHours = [8, 13];                // 4hr: 8am, 1pm
+        } else if (totalHours <= 6) {
+            startHours = [8, 11];                // 6hr: 8am, 11am (11+6=17 ✓)
+        } else {
+            startHours = [8];                    // 7hr: 8am only
+        }
+
+        const slots = [];
+        startHours.forEach((startH, idx) => {
+            const endH = startH + totalHours;
+            if (endH > 17) return; // safety: skip if runs past 5 PM
+            slots.push({ id: String(idx + 1), time: `${formatHour(startH)} - ${formatHour(endH)}` });
+        });
+        return slots;
+    }
+
+    function formatHour(h) {
+        const period = h < 12 ? 'am' : 'pm';
+        const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        return `${display}:00${period}`;
+    }
+
+    function setDiscountMessageSuccess(text) {
+        const msg = document.getElementById("discount-code-msg");
+        if (!msg) return;
+        msg.textContent = text;
+        msg.style.display = "block";
+        msg.style.color = "#059669";
+        msg.style.fontWeight = "700";
+    }
+
+    function setDiscountMessageError(text) {
+        const msg = document.getElementById("discount-code-msg");
+        if (!msg) return;
+        msg.textContent = text;
+        msg.style.display = "block";
+        msg.style.color = "#ef4444";
+        msg.style.fontWeight = "600";
+    }
+
+    function hideDiscountMessage() {
+        const msg = document.getElementById("discount-code-msg");
+        if (!msg) return;
+        msg.style.display = "none";
+        msg.textContent = "";
+    }
+
+    function applyDiscountCode() {
+        const input = document.getElementById("discount-code");
+        if (!input) return;
+
+        const raw = (input.value || "").trim();
+        const code = raw.toUpperCase();
+
+        if (!code) {
+            clearDiscountCode();
+            return;
+        }
+
+        const found = DISCOUNT_CODES[code];
+        if (!found) {
+            discountState = { isApplied: false, code: "", type: "", value: 0, amount: 0 };
+            setDiscountMessageError("Invalid discount code");
+            updateConfirmation();
+            return;
+        }
+
+        discountState.isApplied = true;
+        discountState.code = code;
+        discountState.type = found.type;
+        discountState.value = found.value;
+
+        setDiscountMessageSuccess(`Code applied: ${code}`);
+        updateConfirmation();
+    }
+
+    function clearDiscountCode() {
+        discountState = { isApplied: false, code: "", type: "", value: 0, amount: 0 };
+        const input = document.getElementById("discount-code");
+        if (input) input.value = "";
+        hideDiscountMessage();
+        updateConfirmation();
+    }
+
+    const getCurrentDateInCDT = () => {
+        const now = new Date();
+        const cdtOffset = -5 * 60;
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        return new Date(utc + (cdtOffset * 60000));
+    };
+
+    const generateCalendarDates = () => {
+        const dates = [];
+        const today = getCurrentDateInCDT();
+        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const daysToGenerate = 365;
+
+        // Determine the earliest bookable start hour today
+        // Last possible slot start is 15 (3pm) for a 2hr job finishing by 5pm
+        // If current CDT hour is past 15, today has no more slots — skip it
+        const currentHourCDT = today.getHours();
+        const todayHasSlots = currentHourCDT < 15; // at least the 3pm slot is still openable
+
+        // Start from today if it still has slots, otherwise start from tomorrow
+        const startOffset = todayHasSlots ? 0 : 1;
+        let currentDate = new Date(todayMidnight);
+        currentDate.setDate(currentDate.getDate() + startOffset);
+
+        for (let i = 0; i < daysToGenerate; i++) {
+            dates.push({
+                date: new Date(currentDate),
+                available: true
+            });
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return dates;
+    };
+
+    const calendarDates = generateCalendarDates();
+
+    const formatDateDisplay = (date) => {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return {
+            shortDay: days[date.getDay()].substring(0, 3),
+            month: months[date.getMonth()],
+            day: date.getDate(),
+            year: date.getFullYear()
+        };
+    };
+
+    const formatDateValue = (date) => date.toISOString().split('T')[0];
+    const DAYS_VISIBLE = 7; // show a full Mon–Sun week
+    const getVisibleDates = () => calendarDates.slice(currentDateIndex, currentDateIndex + DAYS_VISIBLE);
+
+    const navigateCarousel = (direction) => {
+        if (direction === 'prev') {
+            currentDateIndex = Math.max(0, currentDateIndex - DAYS_VISIBLE);
+        } else if (direction === 'next') {
+            currentDateIndex = Math.min(calendarDates.length - DAYS_VISIBLE, currentDateIndex + DAYS_VISIBLE);
+        }
+        renderCalendar();
+    };
+
+    const isMobile = () => window.innerWidth <= 768;
+
+    const renderCalendar = () => {
+        const container = document.getElementById('dates-container');
+        container.innerHTML = '';
+
+        // On mobile: render ALL dates so the user can scroll freely.
+        // On desktop: render only the current 7-day page (arrow navigation).
+        const datesToRender = isMobile() ? calendarDates : getVisibleDates();
+
+        datesToRender.forEach((dateObj) => {
+            const d = formatDateDisplay(dateObj.date);
+            const dateValue = formatDateValue(dateObj.date);
+            const isSelected = selectedDate === dateValue;
+
+            const dateCard = document.createElement('div');
+            dateCard.className = `date-card ${isSelected ? 'selected' : ''} ${!dateObj.available ? 'unavailable' : ''}`;
+
+            if (dateObj.available) {
+                dateCard.onclick = () => selectDate(dateValue, dateObj.date);
+            }
+
+            dateCard.innerHTML = `
+                <div class="date-day">${d.shortDay}</div>
+                <div class="date-number">${d.month} ${d.day}</div>
+                ${!dateObj.available ? '<div class="unavailable-text">Unavailable</div>' : ''}
+            `;
+            container.appendChild(dateCard);
+        });
+
+        // Scroll the selected date into view on mobile after re-render
+        if (isMobile() && selectedDate) {
+            const sel = container.querySelector('.date-card.selected');
+            if (sel) sel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+
+        document.getElementById('prev-dates').disabled = currentDateIndex === 0;
+        document.getElementById('next-dates').disabled = currentDateIndex >= calendarDates.length - DAYS_VISIBLE;
+    };
+
+    const selectDate = (dateValue, dateObj) => {
+        selectedDate = dateValue;
+        selectedTime = '';
+
+        // Hide the soonest-available banner when customer manually picks a different date
+        const banner = document.getElementById('soonest-available-banner');
+        if (banner) banner.style.display = 'none';
+
+        const selectedDateDisplay = document.getElementById('selected-date-display');
+        const selectedDateText = document.getElementById('selected-date-text');
+        selectedDateDisplay.style.display = 'flex';
+        selectedDateText.textContent = dateObj.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        document.getElementById('time-slots-container').style.display = 'block';
+        renderTimeSlots();
+        renderCalendar();
+        updateConfirmEnabled();
+        updateConfirmation();
+        smoothScroll('time-slots-container');
+    };
+
+    const renderTimeSlots = () => {
+        const container = document.getElementById('time-slots-grid');
+        container.innerHTML = '';
+
+        const allSlots = getTimeSlotsForPackage();
+
+        // Determine today's date string in CDT for comparison
+        const nowCDT = getCurrentDateInCDT();
+        const todayISO = formatDateValue(new Date(nowCDT.getFullYear(), nowCDT.getMonth(), nowCDT.getDate()));
+        const currentHourCDT = nowCDT.getHours();
+
+        // Filter out booked slots AND, if today is selected, filter out slots that have already started
+        const slots = selectedDate
+            ? allSlots.filter(s => {
+                if (isSlotBooked(selectedDate, s.time)) return false;
+                if (selectedDate === todayISO) {
+                    // Remove slots whose start hour is at or before the current hour
+                    const startH = timeStringToStartHour(s.time);
+                    if (startH <= currentHourCDT) return false;
+                }
+                return true;
+              })
+            : allSlots;
+
+        if (!slots.length) {
+            container.innerHTML = '<div class="time-slot-text" style="color:#9ca3af;padding:16px 0;">No available times for this date — please select another day.</div>';
+            return;
+        }
+
+        slots.forEach((slot) => {
+            const isSelected = selectedTime === slot.time;
+            const slotCard = document.createElement('div');
+            slotCard.className = `time-slot ${isSelected ? 'selected' : ''}`;
+            slotCard.onclick = () => {
+                selectedTime = slot.time;
+                // Hide the soonest-available banner when customer picks a time
+                const banner = document.getElementById('soonest-available-banner');
+                if (banner) banner.style.display = 'none';
+                renderTimeSlots();
+                updateConfirmEnabled();
+                updateConfirmation();
+            };
+            slotCard.innerHTML = `<div class="time-slot-text">${slot.time}</div>`;
+            container.appendChild(slotCard);
+        });
+    };
+
+    function updateConfirmEnabled() {
+        const confirmBtn = document.getElementById('confirm-booking');
+        if (selectedDate && selectedTime) {
+            confirmBtn.classList.remove('is-disabled');
+        } else {
+            confirmBtn.classList.add('is-disabled');
+        }
+    }
+
+    function updateRunningTotal() {
+        let basePrice = 0;
+        let details = [];
+
+        vehicles.forEach((vehicle, index) => {
+            if (vehicle.vehicleType && vehicle.packageType) {
+                const price = pricingChart[vehicle.vehicleType][vehicle.packageType] || 0;
+                basePrice += price;
+                details.push(`${vehicleNames[vehicle.vehicleType]} - ${packageNames[vehicle.packageType]}`);
+            }
+        });
+
+        const addonsPrice = vehicles.reduce((total, vehicle) => {
+            let addons = basicAddons;
+            switch (vehicle.packageType) {
+                case 'luxury': addons = luxuryAddons; break;
+                case 'full': addons = fullAddons; break;
+                case 'interior': addons = interiorAddons; break;
+                case 'exterior': addons = exteriorAddons; break;
+            }
+            return total + vehicle.addons.reduce((vehicleTotal, addonId) => {
+                const addon = addons.find(a => a.id === addonId);
+                return vehicleTotal + (addon?.price || 0);
+            }, 0);
+        }, 0);
+
+        totalPrice = basePrice + addonsPrice;
+
+        const runningTotalBar = document.getElementById('running-total-bar');
+        if (currentStep >= 2 && currentStep <= 5) {
+            runningTotalBar.classList.add('active');
+            document.getElementById('running-total-details').textContent = details.slice(0, 2).join(' + ') + (details.length > 2 ? '...' : '');
+            document.getElementById('running-total-price').textContent = `$${totalPrice.toFixed(2)}`;
+        } else {
+            runningTotalBar.classList.remove('active');
+        }
+
+        updateReceiptContent();
+    }
+
+    function updateReceiptContent() {
+        const receiptContent = document.getElementById('receipt-content');
+        if (!receiptContent) return;
+
+        let html = '';
+
+        // Vehicles Section
+        const vehiclesWithSelections = vehicles.filter(v => v.vehicleType && v.packageType);
+        if (vehiclesWithSelections.length > 0) {
+            html += '<div class="receipt-section">';
+            html += '<div class="receipt-section-title">Vehicles & Services</div>';
+
+            vehiclesWithSelections.forEach((vehicle) => {
+                const basePrice = pricingChart[vehicle.vehicleType][vehicle.packageType] || 0;
+                let addonsPrice = 0;
+                let addonsHTML = '';
+
+                let addons = basicAddons;
+                switch (vehicle.packageType) {
+                    case 'luxury': addons = luxuryAddons; break;
+                    case 'full': addons = fullAddons; break;
+                    case 'interior': addons = interiorAddons; break;
+                    case 'exterior': addons = exteriorAddons; break;
+                }
+
+                vehicle.addons.forEach(addonId => {
+                    const addon = addons.find(a => a.id === addonId);
+                    if (addon) {
+                        addonsPrice += addon.price;
+                        addonsHTML += `
+                            <div class="receipt-addon">
+                                <span class="receipt-addon-name">+ ${addon.name}</span>
+                                <span class="receipt-addon-price">$${addon.price.toFixed(2)}</span>
+                            </div>
+                        `;
+                    }
+                });
+
+                const vehicleTotal = basePrice + addonsPrice;
+
+                html += `
+                    <div class="receipt-vehicle">
+                        <div class="receipt-vehicle-header">
+                            <span class="receipt-vehicle-name">Vehicle ${vehicle.id}: ${vehicleNames[vehicle.vehicleType]}</span>
+                            <span class="receipt-vehicle-price">$${vehicleTotal.toFixed(2)}</span>
+                        </div>
+                        <div class="receipt-item">
+                            <span class="receipt-item-name">${packageNames[vehicle.packageType]}</span>
+                            <span class="receipt-item-price">$${basePrice.toFixed(2)}</span>
+                        </div>
+                        ${addonsHTML}
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+        } else {
+            html += '<div style="text-align: center; color: #9ca3af; padding: 32px 0;">No vehicles selected yet</div>';
+        }
+
+        // Summary Section
+        const basePrice = vehicles.reduce((total, vehicle) => {
+            if (vehicle.vehicleType && vehicle.packageType) {
+                return total + (pricingChart[vehicle.vehicleType][vehicle.packageType] || 0);
+            }
+            return total;
+        }, 0);
+
+        const addonsPrice = vehicles.reduce((total, vehicle) => {
+            let addons = basicAddons;
+            switch (vehicle.packageType) {
+                case 'luxury': addons = luxuryAddons; break;
+                case 'full': addons = fullAddons; break;
+                case 'interior': addons = interiorAddons; break;
+                case 'exterior': addons = exteriorAddons; break;
+            }
+            return total + vehicle.addons.reduce((vehicleTotal, addonId) => {
+                const addon = addons.find(a => a.id === addonId);
+                return vehicleTotal + (addon?.price || 0);
+            }, 0);
+        }, 0);
+
+        if (vehiclesWithSelections.length > 0) {
+            html += '<div class="receipt-divider"></div>';
+            html += '<div class="receipt-summary">';
+            html += `<div class="receipt-total-row"><span class="receipt-total-label">Subtotal (Services):</span><span class="receipt-total-value">$${basePrice.toFixed(2)}</span></div>`;
+            if (addonsPrice > 0) {
+                html += `<div class="receipt-total-row"><span class="receipt-total-label">Add-ons Total:</span><span class="receipt-total-value">$${addonsPrice.toFixed(2)}</span></div>`;
+            }
+            if (discountState.isApplied) {
+                const discountAmount = discountState.type === 'percent' ? (totalPrice * discountState.value / 100) : discountState.value;
+                html += `<div class="receipt-total-row"><span class="receipt-total-label">Discount (${discountState.code}):</span><span class="receipt-total-value" style="color: #059669;">-$${discountAmount.toFixed(2)}</span></div>`;
+            }
+            html += `<div class="receipt-total-row grand-total"><span>TOTAL:</span><span>$${totalPrice.toFixed(2)}</span></div>`;
+            html += '</div>';
+        }
+
+        receiptContent.innerHTML = html;
+    }
+
+    function openReceiptModal() {
+        const modal = document.getElementById('receipt-modal');
+        if (modal) {
+            modal.classList.add('active');
+            updateReceiptContent();
+        }
+    }
+
+    function closeReceiptModal(event) {
+        if (event && event.target.id !== 'receipt-modal') return;
+        const modal = document.getElementById('receipt-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    // Close receipt modal when pressing Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeReceiptModal();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initSelectionListeners();
+        updateStepIndicator();
+    });
+
+    function initSelectionListeners() {
+        // Car Count Selection
+        const carCountCards = document.querySelectorAll('#car-count-options .selection-card');
+        carCountCards.forEach(card => {
+            card.addEventListener('click', () => {
+                carCountCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                carCount = parseInt(card.dataset.value);
+                document.getElementById('step-1-next').disabled = false;
+                initializeVehicles();
+            });
+        });
+
+        // Vehicle Type Selection
+        const vehicleTypeCards = document.querySelectorAll('.vehicle-type-card');
+        vehicleTypeCards.forEach(card => {
+            card.addEventListener('click', () => {
+                selectVehicleType(card.dataset.value);
+            });
+        });
+
+        ['first-name', 'last-name', 'email', 'phone'].forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input) {
+                input.addEventListener('input', () => validateField(fieldId));
+                input.addEventListener('blur', () => validateField(fieldId));
+            }
+        });
+
+        ['street-address', 'city', 'state', 'zip-code'].forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input) {
+                input.addEventListener('input', () => validateField(fieldId));
+                input.addEventListener('blur', () => validateField(fieldId));
+            }
+        });
+
+        const applyBtn = document.getElementById("apply-discount-btn");
+        const removeBtn = document.getElementById("remove-discount-btn");
+        const codeInput = document.getElementById("discount-code");
+
+        if (applyBtn) applyBtn.addEventListener("click", applyDiscountCode);
+        if (removeBtn) removeBtn.addEventListener("click", clearDiscountCode);
+
+        if (codeInput) {
+            codeInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyDiscountCode();
+                }
+            });
+        }
+    }
+
+    function validateField(fieldId) {
+        const input = document.getElementById(fieldId);
+        const errorElement = document.getElementById(`${fieldId}-error`);
+        const value = (input?.value || '').trim();
+
+        if (fieldId === 'unit') {
+            if (input) input.classList.remove('error');
+            if (errorElement) errorElement.style.display = 'none';
+            return true;
+        }
+
+        if (!value) {
+            input.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'This field is required';
+                errorElement.style.display = 'block';
+            }
+            return false;
+        } else if (value.length < 2 && fieldId !== 'email') {
+            input.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Must be at least 2 characters';
+                errorElement.style.display = 'block';
+            }
+            return false;
+        } else if (fieldId === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+            input.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Please enter a valid email address';
+                errorElement.style.display = 'block';
+            }
+            return false;
+        } else if (fieldId === 'phone' && !/^\d{10,}$/.test(value.replace(/\D/g, ''))) {
+            input.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Please enter a valid phone number';
+                errorElement.style.display = 'block';
+            }
+            return false;
+        } else if (fieldId === 'zip-code' && !/^\d{5}(-\d{4})?$/.test(value)) {
+            input.classList.add('error');
+            if (errorElement) {
+                errorElement.textContent = 'Please enter a valid zip code';
+                errorElement.style.display = 'block';
+            }
+            return false;
+        } else {
+            input.classList.remove('error');
+            if (errorElement) errorElement.style.display = 'none';
+            return true;
+        }
+    }
+
+    function nextStep(step) {
+        currentStep = step;
+        updateStepIndicator();
+        showStep(step);
+        scrollToTop();
+
+        if (step === 2) {
+            updateVehicleTitle();
+            renderPackagesSection();
+        } else if (step === 5) {
+            renderCalendar();
+            updateConfirmEnabled();
+            updateConfirmation();
+            if (availabilityLoaded) autoSelectSoonestDate();
+        }
+
+        updateRunningTotal();
+    }
+
+    function prevStep(step) {
+        currentStep = step;
+        updateStepIndicator();
+        showStep(step);
+        scrollToTop();
+        updateRunningTotal();
+    }
+
+    function showStep(step) {
+        document.querySelectorAll('.booking-step').forEach(s => s.classList.remove('active'));
+        document.getElementById(`step-${step}`).classList.add('active');
+    }
+
+    function updateStepIndicator() {
+        for (let i = 1; i <= 7; i++) {
+            const circle = document.getElementById(`step-${i}-indicator`);
+            const line = document.getElementById(`line-${i}`);
+
+            if (i < currentStep) {
+                circle.className = 'step-circle completed';
+                circle.innerHTML = '✓';
+                if (line) line.className = 'step-line completed';
+            } else if (i === currentStep) {
+                circle.className = 'step-circle current';
+                circle.textContent = i;
+                if (line) line.className = 'step-line pending';
+            } else {
+                circle.className = 'step-circle pending';
+                circle.textContent = i;
+                if (line) line.className = 'step-line pending';
+            }
+        }
+    }
+
+    function scrollToTop() {
+        const header = document.getElementById('booking-header');
+        if (header) {
+            header.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function handleLeadStepNext() {
+        const fields = ['first-name', 'last-name', 'email', 'phone'];
+        let allValid = true;
+
+        fields.forEach(f => {
+            if (!validateField(f)) allValid = false;
+        });
+
+        // A2P 10DLC: validate SMS consent checkbox (must be explicitly checked)
+        const smsConsent = document.getElementById('sms-consent');
+        const smsConsentError = document.getElementById('sms-consent-error');
+        if (!smsConsent.checked) {
+            smsConsentError.style.display = 'block';
+            allValid = false;
+        } else {
+            smsConsentError.style.display = 'none';
+        }
+
+        if (!allValid) return;
+
+        firstName = document.getElementById('first-name').value.trim();
+        lastName  = document.getElementById('last-name').value.trim();
+        email     = document.getElementById('email').value.trim();
+        phone     = document.getElementById('phone').value.trim();
+
+        sendLeadToZapier();
+        sendAbandonedCartToApp();
+        nextStep(4);
+    }
+
+    async function handleAddressStepNext() {
+        const fields = ['street-address', 'city', 'state', 'zip-code'];
+        let allValid = true;
+
+        fields.forEach(f => {
+            if (!validateField(f)) allValid = false;
+        });
+
+        if (!allValid) return;
+
+        streetAddress = document.getElementById('street-address').value.trim();
+        unit          = document.getElementById('unit').value.trim();
+        city          = document.getElementById('city').value.trim();
+        state         = document.getElementById('state').value.trim();
+        zipCode       = document.getElementById('zip-code').value.trim();
+
+        // Show loading state on the Next button while we fetch availability
+        const nextBtn = document.getElementById('step-4-next');
+        const origText = nextBtn ? nextBtn.textContent : 'Next Step';
+        if (nextBtn) { nextBtn.textContent = '⏳ Loading availability...'; nextBtn.disabled = true; }
+
+        // IMPORTANT: await prefetchAvailability so slots are loaded BEFORE showing the calendar
+        if (!availabilityLoaded) {
+            await prefetchAvailability();
+        }
+
+        if (nextBtn) { nextBtn.textContent = origText; nextBtn.disabled = false; }
+
+        nextStep(5);
+
+        // Re-render calendar AFTER availability loads so capacity=0 days show as greyed out
+        setTimeout(() => {
+            renderCalendar();
+            autoSelectSoonestDate();
+        }, 50);
+    }
+
+    const ZAPIER_WEBHOOK = 'https://hooks.zapier.com/hooks/catch/13143841/uy0xzc0/';
+    const APP_API_BASE   = 'https://luxurywashonwheels.app';
+    const LOCATION_SLUG  = 'crestview';
+    const THANK_YOU_URL  = 'https://luxurywashonwheels.com/crestview/thank-you-booking/';
+
+    // ── Availability cache ──────────────────────────────────────────────────────
+    // bookedHoursByDate["2026-04-10"] = [9, 10, 11]  (hours already taken)
+    let bookedHoursByDate = {}; // legacy — kept for compat
+    let bookedSlotsByDate = {}; // NEW: exact slot label sets per date
+    let availabilityLoaded = false;
+
+    function timeStringToStartHour(t) {
+        if (!t) return -1;
+        const clean = t.trim().toLowerCase().replace(/\s+/g, '');
+        const m = clean.match(/^(\d+):(\d+)(am|pm)/);
+        if (!m) return -1;
+        let h = parseInt(m[1]);
+        if (m[3] === 'pm' && h !== 12) h += 12;
+        if (m[3] === 'am' && h === 12) h = 0;
+        return h;
+    }
+
+    function getSlotEndHour(slotTime) {
+        const parts = slotTime.toLowerCase().replace(/\s+/g, '').split('-');
+        if (parts.length < 2) return timeStringToStartHour(slotTime) + 2;
+        const em = parts[1].match(/^(\d+):(\d+)(am|pm)/);
+        if (!em) return timeStringToStartHour(slotTime) + 2;
+        let eh = parseInt(em[1]);
+        if (em[3] === 'pm' && eh !== 12) eh += 12;
+        if (em[3] === 'am' && eh === 12) eh = 0;
+        return eh;
+    }
+
+    function isSlotBooked(dateValue, slotTime) {
+        const bookedSet = bookedSlotsByDate[dateValue];
+        if (!bookedSet) return false;
+        // Sentinel: capacity=0 days have no workers — all slots blocked
+        if (bookedSet === '__NO_WORKERS__') return true;
+        // Exact label match first (fast path)
+        if (bookedSet.has(slotTime)) return true;
+        // Hour-overlap check: a Basic slot like "1:00pm - 3:00pm" should be blocked
+        // when a wider booked slot like "1:00pm - 5:00pm" overlaps it.
+        // This handles the case where different package types use different slot widths.
+        const reqStart = timeStringToStartHour(slotTime);
+        const reqEnd   = getSlotEndHour(slotTime);
+        if (reqStart < 0) return false;
+        for (const bookedSlot of bookedSet) {
+            const bStart = timeStringToStartHour(bookedSlot);
+            const bEnd   = getSlotEndHour(bookedSlot);
+            if (bStart < 0) continue;
+            // Overlap: booked slot covers any part of the requested slot
+            if (bStart < reqEnd && bEnd > reqStart) return true;
+        }
+        return false;
+    }
+
+    async function prefetchAvailability() {
+        try { // returns a promise so callers can .then() after it completes
+            const today = getCurrentDateInCDT();
+            const promises = [];
+            const dateKeys = [];
+            for (let i = 0; i < 90; i++) {
+                const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+                const dow = d.getDay();
+                // All 7 days are now available — no days skipped
+                const iso = d.toISOString().split('T')[0];
+                dateKeys.push(iso);
+                promises.push(
+                    fetch(APP_API_BASE + '/api/booking/availability?location=' + LOCATION_SLUG + '&date=' + iso)
+                        .then(r => r.json())
+                        .catch(() => null)
+                );
+            }
+            const results = await Promise.all(promises);
+            results.forEach((data, idx) => {
+                if (!data) return;
+                const iso = dateKeys[idx];
+
+                // If capacity = 0, no detailers work this day — mark it fully unavailable
+                const effectiveCap = data.effectiveCapacity != null ? data.effectiveCapacity : (data.capacity || 0);
+                if (effectiveCap === 0) {
+                    const calEntry = calendarDates.find(d => formatDateValue(d.date) === iso);
+                    if (calEntry) calEntry.available = false;
+                    bookedSlotsByDate[iso] = '__NO_WORKERS__';
+                    bookedHoursByDate[iso] = [];
+                    return;
+                }
+
+                // PRIMARY: store exact booked slot labels for precise matching
+                const slotLabelSet = new Set();
+                if (data.bookedSlots && Array.isArray(data.bookedSlots)) {
+                    data.bookedSlots.forEach(slot => slotLabelSet.add(slot));
+                }
+                // Also mark slots where slotCounts >= effectiveCapacity
+                if (data.slotCounts && typeof data.slotCounts === 'object') {
+                    Object.keys(data.slotCounts).forEach(slot => {
+                        if ((data.slotCounts[slot] || 0) >= effectiveCap) slotLabelSet.add(slot);
+                    });
+                }
+                bookedSlotsByDate[iso] = slotLabelSet;
+
+                // LEGACY: also build hour array for backward compat
+                const hours = [];
+                slotLabelSet.forEach(slot => {
+                    const startH = timeStringToStartHour(slot);
+                    const endH   = getSlotEndHour(slot);
+                    if (startH >= 0) {
+                        for (let h = startH; h < endH; h++) {
+                            if (!hours.includes(h)) hours.push(h);
+                        }
+                    }
+                });
+                bookedHoursByDate[iso] = hours;
+            });
+            availabilityLoaded = true;
+        } catch(e) {
+            availabilityLoaded = true; // fail open — show all slots
+        }
+    }
+
+    function autoSelectSoonestDate() {
+        // Find the first calendar date that has at least one open website-form slot.
+        // NOTE: We check the website-form slot labels directly against bookedSlotsByDate
+        // rather than calling getTimeSlotsForPackage(), because the customer may not have
+        // selected a package yet at this point — getTimeSlotsForPackage() returns [] in that case.
+        var WEBSITE_SLOTS = ['8:00am - 12:00pm', '1:00pm - 5:00pm'];
+
+        var nowCDT = getCurrentDateInCDT();
+        var todayISO = formatDateValue(new Date(nowCDT.getFullYear(), nowCDT.getMonth(), nowCDT.getDate()));
+        var currentHourCDT = nowCDT.getHours();
+
+        for (var i = 0; i < calendarDates.length; i++) {
+            var dateObj = calendarDates[i];
+            if (!dateObj.available) continue;
+            var dateValue = formatDateValue(dateObj.date);
+
+            // Check if this date has been loaded from the server
+            var bookedSet = bookedSlotsByDate[dateValue];
+            if (!bookedSet) continue; // not yet loaded — skip
+            if (bookedSet === '__NO_WORKERS__') continue; // no detailers this day
+
+            // Find any website slot that is NOT booked
+            var openSlots = WEBSITE_SLOTS.filter(function(slotLabel) {
+                if (bookedSet.has(slotLabel)) return false;
+                // For today: also filter out slots whose start hour has passed
+                if (dateValue === todayISO) {
+                    var startH = timeStringToStartHour(slotLabel);
+                    if (startH >= 0 && startH <= currentHourCDT) return false;
+                }
+                return true;
+            });
+
+            if (openSlots.length > 0) {
+                // Select this date
+                selectDate(dateValue, dateObj.date);
+
+                // Scroll the carousel to show this date on desktop
+                currentDateIndex = Math.max(0, i - 1);
+                renderCalendar();
+
+                // Show the banner
+                var banner = document.getElementById('soonest-available-banner');
+                if (banner) banner.style.display = 'flex';
+                return;
+            }
+        }
+    }
+
+
+    // ─── Abandoned Cart Tracking ──────────────────────────────────────────────
+    // Fires when visitor completes personal info step but before they book.
+    // Creates a status=abandoned record in the app pipeline.
+    async function sendAbandonedCartToApp() {
+        try {
+            var primaryVehicle = vehicles && vehicles[0] ? vehicles[0] : {};
+            var payload = {
+                firstName: firstName,
+                lastName: lastName,
+                email: email,
+                phone: phone,
+                location: LOCATION_SLUG,
+                vehicleType: primaryVehicle.vehicleType || '',
+                packageType: primaryVehicle.packageType || '',
+                selectedDate: selectedDate || '',
+                existingBookingId: abandonedCartId || null,
+            };
+            var resp = await fetch(APP_API_BASE + '/api/booking/abandoned?location=' + LOCATION_SLUG, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (resp.ok) {
+                var data = await resp.json();
+                if (data.bookingId) abandonedCartId = data.bookingId;
+            }
+        } catch(e) {}
+    }
+
+    // Marks the abandoned cart as completed once the booking is confirmed.
+    async function markAbandonedCartComplete() {
+        if (!abandonedCartId) return;
+        try {
+            await fetch(APP_API_BASE + '/api/booking/abandoned/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: abandonedCartId })
+            });
+            abandonedCartId = null;
+        } catch(e) {}
+    }
+
+    function sendLeadToZapier() {
+        if (leadZapSent) return;
+        leadZapSent = true;
+        const leadData = { firstName, lastName, email, phone, carCount, vehicles };
+        const body = 'data=' + encodeURIComponent(JSON.stringify(leadData));
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(ZAPIER_WEBHOOK, new Blob([body], { type: 'application/x-www-form-urlencoded' }));
+            } else {
+                fetch(ZAPIER_WEBHOOK, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(function(){});
+            }
+        } catch(e) {}
+    }
+
+    function sendBookingToZapier() {
+        // Build full addon names list across all vehicles
+        var allAddonNames = [];
+        vehicles.forEach(function(vehicle) {
+            var addons = basicAddons;
+            switch (vehicle.packageType) {
+                case 'luxury': addons = luxuryAddons; break;
+                case 'full': addons = fullAddons; break;
+                case 'interior': addons = interiorAddons; break;
+                case 'exterior': addons = exteriorAddons; break;
+            }
+            (vehicle.addons || []).forEach(function(id) {
+                var addon = addons.find(function(a) { return a.id === id; });
+                if (addon) allAddonNames.push(addon.name);
+            });
+        });
+
+        var discountAmount = 0;
+        if (discountState.isApplied) {
+            discountAmount = discountState.type === 'percent'
+                ? (totalPrice * discountState.value / 100)
+                : discountState.value;
+        }
+        var finalTotal = totalPrice - discountAmount;
+
+        // Build per-vehicle summary string
+        var vehicleSummary = vehicles.map(function(v, i) {
+            var vName = vehicleNames[v.vehicleType] || v.vehicleType || 'Unknown';
+            var pName = packageNames[v.packageType] || v.packageType || 'Unknown';
+            return 'Car ' + (i + 1) + ': ' + vName + ' - ' + pName;
+        }).join(' | ');
+
+        var formData = new URLSearchParams();
+        formData.append('leadOnly', 'false');
+        formData.append('stage', 'booking_confirm');
+        formData.append('firstName', firstName);
+        formData.append('lastName', lastName);
+        formData.append('email', email);
+        formData.append('phone', phone);
+        formData.append('streetAddress', streetAddress);
+        formData.append('unit', unit || '');
+        formData.append('city', city);
+        formData.append('state', state);
+        formData.append('zipCode', zipCode);
+        formData.append('carCount', String(carCount));
+        formData.append('vehicleType', vehicles[0] ? (vehicleNames[vehicles[0].vehicleType] || vehicles[0].vehicleType || '') : '');
+        formData.append('packageType', vehicles[0] ? (packageNames[vehicles[0].packageType] || vehicles[0].packageType || '') : '');
+        formData.append('vehicleSummary', vehicleSummary);
+        formData.append('selectedAddons', allAddonNames.join(', '));
+        formData.append('totalPrice', String(totalPrice.toFixed(2)));
+        formData.append('selectedDate', selectedDate);
+        formData.append('selectedTime', selectedTime);
+        formData.append('discountCode', discountState.isApplied ? discountState.code : '');
+        formData.append('discountAmount', String(discountAmount.toFixed(2)));
+        formData.append('finalTotal', String(finalTotal.toFixed(2)));
+        formData.append('timestamp', new Date().toISOString());
+        formData.append('page', window.location.pathname);
+
+        var body = formData.toString();
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(ZAPIER_WEBHOOK, new Blob([body], { type: 'application/x-www-form-urlencoded' }));
+            } else {
+                fetch(ZAPIER_WEBHOOK, { method: 'POST', body: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(function(){});
+            }
+        } catch(e) {}
+    }
+
+    async function submitBookingToApp() {
+        // Determine primary vehicle info from first vehicle in array
+        var primaryVehicle = vehicles && vehicles[0] ? vehicles[0] : {};
+        var payload = {
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            phone: phone,
+            streetAddress: streetAddress,
+            unit: unit,
+            city: city,
+            state: state,
+            zipCode: zipCode,
+            selectedDate: selectedDate,
+            selectedTime: selectedTime,
+            location: LOCATION_SLUG,
+            vehicleType: primaryVehicle.vehicleType || '',
+            packageType: primaryVehicle.packageType || '',
+            selectedAddons: primaryVehicle.addons ? primaryVehicle.addons.join(',') : '',
+            totalPrice: String(totalPrice || 0),
+            finalTotal: String(totalPrice || 0),
+            carCount: String(carCount),
+            source: 'website',
+            page: window.location.href
+        };
+        var resp = await fetch(APP_API_BASE + '/api/booking/webhook?location=' + LOCATION_SLUG, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+            var errData = {};
+            try { errData = await resp.json(); } catch(e) {}
+            var msg = errData.message || errData.error || 'Server error (' + resp.status + ')';
+            throw new Error(msg);
+        }
+    }
+
+    async function handleConfirmBooking() {
+        var btn = document.getElementById('confirm-booking');
+        if (!btn || btn.classList.contains('is-disabled')) return;
+        btn.textContent = 'Booking...';
+        btn.style.pointerEvents = 'none';
+        sendLeadToZapier();
+        sendBookingToZapier();
+        try {
+            await submitBookingToApp();
+        } catch(e) {
+            // Surface the error to the customer instead of silently redirecting
+            var errMsg = (e && e.message) ? e.message : 'Something went wrong. Please try again or call us directly.';
+            // Re-enable the button so the customer can retry
+            btn.textContent = 'Click Here To Confirm Booking';
+            btn.style.pointerEvents = '';
+            // Show an error banner above the confirm button
+            var errBanner = document.getElementById('booking-error-banner');
+            if (!errBanner) {
+                errBanner = document.createElement('div');
+                errBanner.id = 'booking-error-banner';
+                errBanner.style.cssText = 'background:#fef2f2;border:1.5px solid #ef4444;border-radius:10px;padding:14px 18px;margin-bottom:16px;color:#b91c1c;font-weight:600;font-size:0.95rem;text-align:center;';
+                btn.parentNode.insertBefore(errBanner, btn);
+            }
+            errBanner.textContent = '\u26a0\ufe0f ' + errMsg + ' — Please try again or call (850) 555-0100.';
+            errBanner.style.display = 'block';
+            return;
+        }
+        await markAbandonedCartComplete();
+        window.location.href = THANK_YOU_URL;
+    }
+
+    function updateConfirmation() {
+        const fn = document.getElementById('first-name'); if (fn) firstName = fn.value.trim();
+        const ln = document.getElementById('last-name'); if (ln) lastName = ln.value.trim();
+        const em = document.getElementById('email'); if (em) email = em.value.trim();
+        const ph = document.getElementById('phone'); if (ph) phone = ph.value.trim();
+
+        const sa = document.getElementById('street-address'); if (sa) streetAddress = sa.value.trim();
+        const un = document.getElementById('unit'); if (un) unit = un.value.trim();
+        const cy = document.getElementById('city'); if (cy) city = cy.value.trim();
+        const st = document.getElementById('state'); if (st) state = st.value.trim();
+        const zp = document.getElementById('zip-code'); if (zp) zipCode = zp.value.trim();
+
+        // Build vehicle details list
+        const vehiclesList = document.getElementById('conf-vehicles-list');
+        vehiclesList.innerHTML = '';
+        
+        vehicles.forEach((vehicle, index) => {
+            const vehicleDiv = document.createElement('div');
+            vehicleDiv.style.marginBottom = '16px';
+            
+            let vehicleHTML = `<p class="detail-text"><strong>Vehicle ${vehicle.id}:</strong> ${vehicleNames[vehicle.vehicleType] || 'Not selected'} - ${packageNames[vehicle.packageType] || 'Not selected'}`;
+            
+            if (vehicle.addons && vehicle.addons.length > 0) {
+                let addons = basicAddons;
+                switch (vehicle.packageType) {
+                    case 'luxury': addons = luxuryAddons; break;
+                    case 'full': addons = fullAddons; break;
+                    case 'interior': addons = interiorAddons; break;
+                    case 'exterior': addons = exteriorAddons; break;
+                }
+                const addonNames = vehicle.addons.map(id => {
+                    const addon = addons.find(a => a.id === id);
+                    return addon ? addon.name : '';
+                }).filter(name => name);
+                if (addonNames.length > 0) {
+                    vehicleHTML += `<br/><small style="color: #6b7280;">Add-ons: ${addonNames.join(', ')}</small>`;
+                }
+            }
+            vehicleHTML += `</p>`;
+            
+            vehicleDiv.innerHTML = vehicleHTML;
+            vehiclesList.appendChild(vehicleDiv);
+        });
+
+        if (selectedDate && selectedTime) {
+            const dateObj = new Date(selectedDate + 'T00:00:00');
+            const formattedDate = dateObj.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            document.getElementById('conf-arrival-date').textContent = formattedDate;
+            document.getElementById('conf-arrival-time').textContent = selectedTime;
+        }
+
+        document.getElementById('conf-full-name').textContent = `${firstName} ${lastName}`;
+        document.getElementById('conf-email').textContent = email;
+        document.getElementById('conf-phone').textContent = phone;
+        document.getElementById('conf-address').textContent = `${streetAddress}${unit ? ', ' + unit : ''}, ${city}, ${state} ${zipCode}`;
+    }
+</script>
+
+<!-- LWW Resume Pre-Fill v2 — restores vehicle/package + jumps to correct step -->
+<script>
+(function(){
+  var API = 'https://www.luxurywashonwheels.app/api';
+  var resumeToken = new URLSearchParams(window.location.search).get('resume');
+  if (!resumeToken) return;
+
+  fetch(API + '/resume/' + resumeToken)
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d) return;
+
+      // Wait for DOM to be ready
+      var attempts = 0;
+      var iv = setInterval(function(){
+        attempts++;
+        var step1 = document.getElementById('step-1');
+        if (!step1 && attempts < 40) return;
+        clearInterval(iv);
+
+        // ── Helper: set a text input value and fire events ──────────────────
+        function setField(id, val) {
+          if (!val) return;
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // ── Pre-fill contact + address fields ────────────────────────────────
+        setField('first-name',    d.firstName);
+        setField('last-name',     d.lastName);
+        setField('email',         d.email);
+        setField('phone',         d.phone);
+        setField('street-address',d.streetAddress);
+        setField('unit',          d.unit);
+        setField('city',          d.city);
+        setField('state',         d.state);
+        setField('zip-code',      d.zipCode);
+
+        // Also update the JS variables used by the form state machine
+        if (d.firstName) firstName = d.firstName;
+        if (d.lastName)  lastName  = d.lastName;
+        if (d.email)     email     = d.email;
+        if (d.phone)     phone     = d.phone;
+        if (d.streetAddress) streetAddress = d.streetAddress;
+        if (d.unit)      unit      = d.unit;
+        if (d.city)      city      = d.city;
+        if (d.state)     state     = d.state;
+        if (d.zipCode)   zipCode   = d.zipCode;
+
+        // ── Restore vehicle/package if saved ─────────────────────────────────
+        var hasVehicle = d.vehicleType && d.packageType;
+        if (hasVehicle) {
+          // Initialize vehicle array for 1 car
+          carCount = 1;
+          initializeVehicles();
+
+          // Select vehicle type
+          selectVehicleType(d.vehicleType);
+
+          // Wait for package cards to render, then select package
+          setTimeout(function(){
+            selectPackage(d.packageType);
+
+            // Advance past step 1 (car count) and step 2 (vehicle config)
+            // so the customer lands on step 3 (contact info) with selections intact
+            // First select "1 car" card visually
+            var carCards = document.querySelectorAll('#car-count-options .selection-card');
+            carCards.forEach(function(c){ c.classList.remove('selected'); });
+            var oneCarCard = document.querySelector('#car-count-options .selection-card[data-value="1"]');
+            if (oneCarCard) oneCarCard.classList.add('selected');
+            document.getElementById('step-1-next').disabled = false;
+
+            // Jump directly to step 3 (contact info) — vehicle/package already set
+            nextStep(3);
+
+            // Show the resume banner inside the contact form
+            showResumeBanner();
+          }, 150);
+        } else {
+          // No vehicle data — just show the banner on step 1
+          showResumeBanner();
+        }
+
+        // Mark the abandonedCartId so updates go to the right record
+        if (d.bookingId) abandonedCartId = d.bookingId;
+      }, 100);
+    });
+
+  function showResumeBanner() {
+    var banner = document.createElement('div');
+    banner.id = 'lww-resume-banner';
+    banner.style.cssText = 'background:#0a7ea4;color:white;padding:14px 20px;border-radius:10px;' +
+      'font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:15px;font-weight:600;' +
+      'margin:0 0 20px;text-align:center;';
+    banner.textContent = '\u2705 We saved your info \u2014 just review and confirm!';
+    // Insert at top of the active step
+    var activeStep = document.querySelector('.booking-step.active');
+    if (activeStep) activeStep.insertBefore(banner, activeStep.firstChild);
+  }
+})();
+</script>
+</body>
+</html>

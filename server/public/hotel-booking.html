@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hotel Booking | Luxury Wash On Wheels</title>
+<script>
+  // Google Places callback — called once the API script loads
+  // The hbf-hotel input doesn't exist yet at this point (form is injected later),
+  // so we just mark the API as ready. The actual attachment happens in hbfGo(5).
+  function initGooglePlaces() { window._googlePlacesReady = true; }
+  window.initGooglePlaces = initGooglePlaces;
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCyHAADT6snES3tVLDwz5NGT2mJq9U0Djs&libraries=places&callback=initGooglePlaces" async defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:#060e1c;color:#e2e8f0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;}
+img{max-width:100%;display:block;}
+button{font-family:inherit;cursor:pointer;}
+
+/* ── NAV ── */
+.lwh-nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(6,14,28,0.97);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(59,130,246,0.2);
+  padding:10px 20px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.lwh-nav img{height:36px;object-fit:contain;}
+.lwh-nav-btn{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;border:none;border-radius:8px;
+  padding:10px 18px;font-weight:700;font-size:0.82rem;
+  letter-spacing:0.04em;box-shadow:0 0 16px rgba(37,99,235,0.55);
+}
+
+/* ── HERO ── */
+.lwh-hero{
+  background-image:url('https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/3p3u5Vh4BmXHjtx7CmSe9P/emerald-coast-shore_a6269018.jpg');
+  background-size:cover;background-position:center 40%;
+  padding:56px 20px 48px;text-align:center;
+  position:relative;overflow:hidden;
+  border-bottom:1px solid rgba(37,99,235,0.2);
+}
+.lwh-hero-overlay{
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(4,10,22,0.72) 0%,rgba(6,14,28,0.82) 100%);
+}
+.lwh-hero-inner{max-width:760px;margin:0 auto;position:relative;z-index:1;}
+.lwh-welcome-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;padding:8px 22px;border-radius:30px;
+  font-weight:800;font-size:0.82rem;letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:20px;
+  box-shadow:0 4px 16px rgba(37,99,235,0.5);
+}
+.lwh-hero h1{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(2.6rem,7vw,4.4rem);
+  font-weight:400;letter-spacing:2px;
+  color:#ffffff;line-height:1.1;margin-bottom:16px;
+  text-shadow:0 2px 24px rgba(37,99,235,0.4);
+}
+.lwh-hero-sub{
+  font-size:clamp(1rem,2.5vw,1.2rem);
+  color:#94a3b8;line-height:1.6;
+  max-width:560px;margin:0 auto 28px;
+}
+.lwh-hero-sub span{color:#60a5fa;font-weight:600;}
+.lwh-split{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:32px;}
+.lwh-split-card{
+  border-radius:12px;padding:14px 24px;
+  display:flex;align-items:center;gap:10px;
+}
+.lwh-split-card.dirty{background:rgba(127,29,29,0.75);border:1px solid rgba(239,68,68,0.6);}
+.lwh-split-card.clean{background:rgba(6,60,40,0.75);border:1px solid rgba(16,185,129,0.6);}
+.lwh-split-card .emoji{font-size:1.6rem;}
+.lwh-split-card.dirty .label{color:#fca5a5;font-weight:700;font-size:0.95rem;}
+.lwh-split-card.clean .label{color:#6ee7b7;font-weight:700;font-size:0.95rem;}
+.lwh-hero-cta{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;border:none;border-radius:50px;
+  padding:18px 48px;font-size:1.1rem;font-weight:800;
+  letter-spacing:0.5px;
+  box-shadow:0 6px 24px rgba(37,99,235,0.55);
+  display:block;margin:0 auto;
+}
+.lwh-hero-note{margin-top:14px;font-size:0.82rem;color:#475569;}
+
+/* ── TRUST BAR ── */
+.lwh-trust{
+  background:rgba(10,22,40,0.9);
+  border-bottom:1px solid rgba(37,99,235,0.15);
+  padding:16px 20px;overflow-x:auto;
+}
+.lwh-trust-inner{
+  display:flex;gap:32px;justify-content:center;
+  align-items:center;flex-wrap:wrap;max-width:900px;margin:0 auto;
+}
+.lwh-trust-item{display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.lwh-trust-item .icon{font-size:1.1rem;}
+.lwh-trust-item .text{font-size:0.82rem;font-weight:600;color:#94a3b8;}
+
+/* ── BOOKING SECTION ── */
+.lwh-booking{
+  padding:56px 20px 64px;
+  background:#060e1c;
+  border-top:1px solid rgba(37,99,235,0.15);
+}
+.lwh-section-label{
+  display:inline-block;background:rgba(37,99,235,0.12);
+  border:1px solid rgba(37,99,235,0.3);border-radius:20px;
+  padding:6px 18px;font-size:0.78rem;font-weight:700;
+  color:#60a5fa;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;
+}
+.lwh-booking-head{max-width:900px;margin:0 auto;text-align:center;margin-bottom:32px;}
+.lwh-booking-head h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,5vw,3rem);
+  color:#fff;letter-spacing:1.5px;margin-bottom:10px;
+}
+.lwh-booking-head p{color:#64748b;font-size:0.95rem;}
+
+/* ── HOW IT WORKS ── */
+.lwh-how{padding:56px 20px;background:#060e1c;}
+.lwh-how-inner{max-width:860px;margin:0 auto;text-align:center;}
+.lwh-how h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,5vw,3rem);
+  color:#fff;letter-spacing:1.5px;margin-bottom:40px;
+}
+.lwh-steps{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:20px;
+}
+.lwh-step-card{
+  background:rgba(13,31,60,0.8);
+  border:1px solid rgba(37,99,235,0.2);
+  border-radius:14px;padding:28px 20px;
+  position:relative;
+}
+.lwh-step-num{
+  position:absolute;top:-14px;left:50%;transform:translateX(-50%);
+  background:linear-gradient(135deg,#2563eb,#1d4ed8);
+  color:#fff;width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:0.82rem;
+  box-shadow:0 0 12px rgba(37,99,235,0.5);
+}
+.lwh-step-icon{font-size:2.4rem;margin-bottom:12px;margin-top:8px;}
+.lwh-step-title{font-weight:700;color:#e2e8f0;font-size:1rem;margin-bottom:8px;}
+.lwh-step-desc{font-size:0.88rem;color:#64748b;line-height:1.5;}
+
+/* ── BENEFITS ── */
+.lwh-benefits{
+  padding:56px 20px;
+  background:linear-gradient(180deg,#060e1c 0%,#0a1628 100%);
+  border-top:1px solid rgba(37,99,235,0.12);
+}
+.lwh-benefits-inner{max-width:900px;margin:0 auto;text-align:center;}
+.lwh-benefits h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,4.5vw,2.8rem);
+  color:#fff;letter-spacing:1.5px;margin-bottom:10px;
+}
+.lwh-benefits-sub{color:#64748b;font-size:0.95rem;margin-bottom:36px;}
+.lwh-benefits-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;}
+.lwh-benefit-card{
+  background:rgba(13,31,60,0.7);
+  border:1px solid rgba(37,99,235,0.18);
+  border-radius:14px;padding:24px 20px;text-align:left;
+}
+.lwh-benefit-icon{font-size:2rem;margin-bottom:12px;}
+.lwh-benefit-title{font-weight:700;color:#e2e8f0;font-size:1rem;margin-bottom:6px;}
+.lwh-benefit-desc{font-size:0.85rem;color:#64748b;line-height:1.5;}
+
+/* ── PACKAGES ── */
+.lwh-packages{
+  padding:56px 20px;
+  background:#060e1c;
+  border-top:1px solid rgba(37,99,235,0.15);
+}
+.lwh-packages-inner{max-width:960px;margin:0 auto;text-align:center;}
+.lwh-packages h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,4.5vw,2.8rem);
+  color:#fff;letter-spacing:1.5px;margin-bottom:10px;
+}
+.lwh-packages-sub{color:#64748b;font-size:0.95rem;margin-bottom:40px;}
+.lwh-pkg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;}
+.lwh-pkg-card{
+  background:rgba(13,31,60,0.85);
+  border-radius:16px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.lwh-pkg-card.gold{border:1px solid rgba(240,192,64,0.4);box-shadow:0 0 24px rgba(240,192,64,0.12);}
+.lwh-pkg-card.blue{border:1px solid rgba(37,99,235,0.25);}
+.lwh-pkg-tag{
+  padding:6px 0;font-weight:800;font-size:0.75rem;
+  letter-spacing:0.08em;text-transform:uppercase;text-align:center;
+}
+.lwh-pkg-tag.green{background:#10b981;color:#fff;}
+.lwh-pkg-tag.blue-tag{background:#3b82f6;color:#fff;}
+.lwh-pkg-tag.gold-tag{background:#f0c040;color:#0a1628;}
+.lwh-pkg-body{padding:28px 24px;flex:1;display:flex;flex-direction:column;}
+.lwh-pkg-emoji{font-size:2.4rem;margin-bottom:12px;}
+.lwh-pkg-name{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:#fff;letter-spacing:0.04em;margin-bottom:6px;}
+.lwh-pkg-price{font-size:2rem;font-weight:800;margin-bottom:4px;}
+.lwh-pkg-price.blue-price{color:#60a5fa;}
+.lwh-pkg-price.gold-price{color:#f0c040;}
+.lwh-pkg-meta{font-size:0.78rem;color:#475569;margin-bottom:16px;}
+.lwh-pkg-desc{font-size:0.88rem;color:#64748b;line-height:1.5;margin-bottom:20px;}
+.lwh-pkg-feats{list-style:none;padding:0;margin:0 0 24px;flex:1;}
+.lwh-pkg-feats li{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85rem;color:#94a3b8;}
+.lwh-pkg-feats li::before{content:'✓';color:#10b981;font-weight:700;}
+.lwh-pkg-btn{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;border:none;border-radius:8px;
+  padding:12px;font-weight:700;font-size:0.9rem;
+  width:100%;box-shadow:0 4px 14px rgba(37,99,235,0.35);
+}
+.lwh-pkg-note{margin-top:20px;font-size:0.82rem;color:#334155;}
+
+/* ── REVIEWS ── */
+.lwh-reviews{
+  padding:56px 20px;
+  background:linear-gradient(180deg,#0a1628 0%,#060e1c 100%);
+  border-top:1px solid rgba(37,99,235,0.12);
+}
+.lwh-reviews-inner{max-width:900px;margin:0 auto;text-align:center;}
+.lwh-reviews h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,4.5vw,2.6rem);
+  color:#fff;letter-spacing:1.5px;margin-bottom:36px;
+}
+.lwh-reviews-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;}
+.lwh-review-card{
+  background:rgba(13,31,60,0.7);
+  border:1px solid rgba(37,99,235,0.18);
+  border-radius:14px;padding:24px 20px;text-align:left;
+}
+.lwh-stars{color:#f0c040;font-size:1rem;}
+.lwh-review-text{font-size:0.9rem;color:#94a3b8;line-height:1.6;margin:12px 0;}
+.lwh-review-name{font-size:0.82rem;font-weight:700;color:#60a5fa;}
+
+/* ── FINAL CTA ── */
+.lwh-cta-banner{
+  padding:48px 20px;
+  background:linear-gradient(135deg,#0f2a5c 0%,#1d4ed8 50%,#0f2a5c 100%);
+  text-align:center;
+  border-top:1px solid rgba(59,130,246,0.3);
+}
+.lwh-cta-banner-inner{max-width:640px;margin:0 auto;}
+.lwh-cta-banner h2{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(2rem,5vw,3rem);
+  color:#fff;letter-spacing:2px;margin-bottom:12px;
+}
+.lwh-cta-banner p{color:rgba(255,255,255,0.8);font-size:1rem;margin-bottom:28px;}
+.lwh-cta-banner-btn{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;border:none;border-radius:50px;
+  padding:16px 44px;font-size:1.05rem;font-weight:800;
+  letter-spacing:0.5px;
+  box-shadow:0 6px 24px rgba(37,99,235,0.55);
+}
+
+/* ── FOOTER ── */
+.lwh-footer{
+  background:#030810;
+  border-top:1px solid rgba(37,99,235,0.15);
+  padding:32px 20px;text-align:center;
+}
+.lwh-footer img{height:40px;object-fit:contain;margin:0 auto 14px;}
+.lwh-footer-loc{font-size:0.82rem;color:#334155;margin-bottom:6px;}
+.lwh-footer-copy{font-size:0.78rem;color:#1e293b;}
+
+/* ── STICKY MOBILE BAR ── */
+.lwh-sticky{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(6,14,28,0.97);backdrop-filter:blur(8px);
+  border-top:1px solid rgba(37,99,235,0.3);
+  padding:12px 20px;
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:90;
+}
+.lwh-sticky-txt .top{font-size:0.78rem;color:#64748b;}
+.lwh-sticky-txt .bot{font-size:0.88rem;font-weight:700;color:#e2e8f0;}
+.lwh-sticky-btn{
+  background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;border:none;border-radius:8px;
+  padding:11px 22px;font-weight:800;font-size:0.88rem;
+  white-space:nowrap;box-shadow:0 4px 14px rgba(37,99,235,0.5);
+}
+
+/* ── BOOKING FORM CSS ── */
+.hbf-wrap *,.hbf-wrap *::before,.hbf-wrap *::after{box-sizing:border-box;}
+.hbf-wrap{
+  --bg:#060e1c;--surface:#0d1f3c;--surface2:#0f2a5c;--border:#1e3a5f;
+  --blue:#2563eb;--blue-lt:#3b82f6;--text:#e2e8f0;--muted:#94a3b8;
+  --success:#10b981;--error:#f87171;
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  color:var(--text);line-height:1.6;
+}
+.hbf-section{background:var(--bg);padding:0 0 60px;}
+.hbf-wrap-inner{max-width:900px;margin:0 auto;padding:0 20px;}
+.hbf-header{text-align:center;padding:40px 20px 28px;}
+.hbf-badge{
+  display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);
+  color:#fff;padding:7px 20px;border-radius:30px;font-weight:700;
+  font-size:.82rem;margin-bottom:14px;text-transform:uppercase;
+  letter-spacing:1px;box-shadow:0 4px 16px rgba(37,99,235,.45);
+}
+.hbf-header h2{font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:2px;color:#fff;margin-bottom:8px;}
+.hbf-header p{font-size:.97rem;color:var(--muted);}
+.hbf-step-indicator{display:flex;justify-content:center;padding:0 20px 28px;}
+.hbf-si-inner{display:flex;align-items:center;gap:6px;}
+.hbf-sc{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;transition:all .3s ease;flex-shrink:0;}
+.hbf-sc.current{background:var(--blue);color:#fff;box-shadow:0 0 0 4px rgba(37,99,235,.25);}
+.hbf-sc.done{background:var(--success);color:#fff;}
+.hbf-sc.pending{background:var(--surface);color:var(--muted);border:1px solid var(--border);}
+.hbf-sl{width:32px;height:2px;border-radius:2px;transition:background .3s ease;}
+.hbf-sl.done{background:var(--success);}
+.hbf-sl.pending{background:var(--border);}
+.hbf-content{padding:20px 0 100px;}
+.hbf-step{display:none;}
+.hbf-step.active{display:block;}
+.hbf-step-title{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:1.5px;color:#fff;text-align:center;margin-bottom:24px;}
+.hbf-grid{display:grid;gap:14px;margin-bottom:20px;}
+.hbf-vgrid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));}
+.hbf-pgrid{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));}
+.hbf-agrid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));}
+.hbf-card{background:var(--surface);border:2px solid var(--border);border-radius:14px;padding:18px 14px;text-align:center;cursor:pointer;transition:all .3s ease;}
+.hbf-card:hover{border-color:var(--blue-lt);transform:translateY(-2px);box-shadow:0 6px 20px rgba(37,99,235,.2);}
+.hbf-card.selected{border-color:var(--blue-lt);background:var(--surface2);box-shadow:0 0 0 3px rgba(59,130,246,.2);}
+.hbf-card img{width:80px;height:60px;object-fit:contain;margin:0 auto 10px;display:block;}
+.hbf-pkg-time{font-size:.75rem;color:var(--muted);margin-bottom:8px;}
+.hbf-card-feats{list-style:none;padding:0;margin:0 0 10px;}
+.hbf-card-feats li{font-size:.78rem;color:var(--muted);padding:2px 0;}
+.hbf-card-feats li::before{content:'✓ ';color:var(--success);}
+.hbf-card-price{font-size:1rem;font-weight:700;color:#60a5fa;}
+.hbf-pkg-icon{font-size:1.8rem;margin-bottom:8px;}
+.hbf-card-title{font-weight:700;color:var(--text);font-size:.95rem;margin-bottom:6px;}
+.hbf-form-wrap{max-width:560px;margin:0 auto;}
+.hbf-fg{margin-bottom:18px;}
+.hbf-label{display:block;font-size:.85rem;font-weight:600;color:#cbd5e1;margin-bottom:6px;}
+.hbf-input,.hbf-select{width:100%;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-size:.97rem;font-family:inherit;transition:border-color .2s ease;outline:none;}
+.hbf-input:focus,.hbf-select:focus{border-color:var(--blue-lt);box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+.hbf-input.error,.hbf-select.error{border-color:var(--error);}
+.hbf-input::placeholder{color:#475569;}
+.hbf-select option{background:var(--surface);}
+.hbf-err{display:none;color:var(--error);font-size:.8rem;margin-top:4px;}
+.hbf-city-badge{display:none;align-items:center;gap:8px;margin-top:8px;padding:8px 14px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;font-size:.85rem;color:#6ee7b7;font-weight:600;}
+.hbf-city-badge.show{display:flex;}
+.hbf-price-bar{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid rgba(37,99,235,.2);border-radius:12px;padding:16px 22px;margin-bottom:20px;max-width:560px;margin-left:auto;margin-right:auto;}
+.hbf-addons-total{font-size:.97rem;color:var(--muted);}
+.hbf-grand-total{font-size:1.1rem;font-weight:700;color:var(--text);}
+.hbf-cal-wrap{background:var(--surface);border:1px solid rgba(37,99,235,.2);border-radius:12px;padding:22px;margin-bottom:28px;max-width:780px;margin-left:auto;margin-right:auto;}
+.hbf-sel-date{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px;padding:12px;background:rgba(37,99,235,.1);border-radius:8px;border:1px solid rgba(37,99,235,.2);}
+.hbf-sel-date-text{font-size:1rem;font-weight:600;color:var(--text);}
+.hbf-carousel{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;}
+.hbf-cnav{padding:8px;border:1px solid var(--border);background:var(--surface);border-radius:50%;cursor:pointer;transition:all .2s ease;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.hbf-cnav:hover:not(:disabled){background:var(--border);border-color:var(--blue-lt);}
+.hbf-cnav:disabled{opacity:.4;cursor:not-allowed;}
+.hbf-cnav svg{width:22px;height:22px;color:var(--muted);}
+.hbf-dates{display:flex;gap:10px;flex:1;justify-content:center;align-items:center;}
+.hbf-dcard{flex:1;max-width:105px;padding:13px 8px;border:2px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:all .3s ease;background:var(--surface);color:var(--muted);}
+.hbf-dcard:hover:not(.unavail){border-color:var(--blue-lt);transform:translateY(-2px);box-shadow:0 4px 14px rgba(37,99,235,.2);}
+.hbf-dcard.selected{border-color:var(--blue-lt);background:var(--surface2);color:var(--text);}
+.hbf-dcard.unavail{background:#0a1220;border-color:#1a2540;color:#374151;cursor:not-allowed;}
+.hbf-dday{font-size:.78rem;font-weight:500;margin-bottom:3px;}
+.hbf-dnum{font-size:1.05rem;font-weight:700;}
+.hbf-dcard.selected .hbf-dday,.hbf-dcard.selected .hbf-dnum{color:#60a5fa;}
+.hbf-unavail-txt{font-size:.7rem;color:#374151;margin-top:3px;}
+.hbf-slots-wrap{background:var(--surface);border:1px solid rgba(37,99,235,.2);border-radius:12px;padding:22px;margin-bottom:28px;max-width:780px;margin-left:auto;margin-right:auto;}
+.hbf-slots-title{font-size:1rem;font-weight:600;color:#cbd5e1;margin-bottom:16px;}
+.hbf-slots-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.hbf-slot{padding:15px;border:2px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:all .3s ease;background:var(--bg);}
+.hbf-slot:hover:not(.booked){border-color:var(--blue-lt);transform:translateY(-1px);box-shadow:0 4px 14px rgba(37,99,235,.2);}
+.hbf-slot.selected{background:var(--surface2);border-color:var(--blue-lt);}
+.hbf-slot.booked{background:#0a1220;border-color:#1a2540;cursor:not-allowed;opacity:.5;}
+.hbf-slot-txt{font-size:.97rem;font-weight:600;color:var(--muted);}
+.hbf-slot.selected .hbf-slot-txt{color:#60a5fa;}
+.hbf-soonest{display:none;align-items:center;gap:10px;padding:10px 16px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.35);border-radius:8px;margin-bottom:16px;font-size:.9rem;color:#6ee7b7;font-weight:600;max-width:780px;margin-left:auto;margin-right:auto;}
+.hbf-navbtns{display:flex;justify-content:center;gap:14px;margin-top:28px;position:sticky;bottom:20px;background:var(--bg);padding:18px 0;z-index:50;border-top:1px solid rgba(37,99,235,.15);}
+.hbf-btn{padding:12px 34px;border:none;border-radius:50px;font-size:.97rem;font-weight:600;cursor:pointer;transition:all .3s ease;}
+.hbf-btn-primary{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;box-shadow:0 4px 16px rgba(37,99,235,.35);}
+.hbf-btn-primary:hover:not(:disabled){background:linear-gradient(135deg,#1d4ed8,#2563eb);transform:translateY(-1px);box-shadow:0 6px 22px rgba(37,99,235,.5);}
+.hbf-btn-secondary{background:#1e293b;color:var(--muted);border:1px solid #334155;}
+.hbf-btn-secondary:hover{background:#263348;color:var(--text);}
+.hbf-btn:disabled{background:#1e293b;color:#475569;cursor:not-allowed;box-shadow:none;}
+.hbf-confirm-wrap{max-width:680px;margin:0 auto;background:var(--surface);border:1px solid rgba(37,99,235,.2);border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.4);overflow:hidden;}
+.hbf-confirm-sec{padding:24px;}
+.hbf-confirm-title{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;letter-spacing:1.5px;color:var(--text);margin-bottom:24px;}
+.hbf-sec-lbl{font-size:.82rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;}
+.hbf-svc-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(37,99,235,.1);}
+.hbf-svc-item:last-child{border-bottom:none;}
+.hbf-svc-name{font-size:.95rem;color:var(--muted);}
+.hbf-svc-price{font-size:.95rem;font-weight:600;color:var(--text);}
+.hbf-total-sec{background:rgba(37,99,235,.08);padding:16px 24px;border-top:1px solid rgba(37,99,235,.2);}
+.hbf-total-item{display:flex;justify-content:space-between;align-items:center;font-size:1.15rem;font-weight:700;color:var(--text);}
+.hbf-divider{height:1px;background:rgba(37,99,235,.2);margin:20px 0;}
+.hbf-dets-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:20px;}
+.hbf-det-txt{font-size:.95rem;color:#cbd5e1;margin-bottom:7px;}
+.hbf-contact-sec{background:rgba(37,99,235,.05);padding:20px 24px;}
+.hbf-contact-item{font-size:.95rem;color:var(--muted);margin-bottom:6px;}
+.hbf-disc-row{display:none;font-size:.95rem;font-weight:600;color:var(--error);margin-bottom:6px;justify-content:space-between;}
+.hbf-disc-row.show{display:flex;}
+.hbf-notice{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.35);border-radius:8px;padding:14px;margin-bottom:20px;text-align:center;}
+.hbf-notice-txt{color:#93c5fd;font-weight:600;font-size:.93rem;}
+.hbf-hotel-note{text-align:center;margin-bottom:10px;color:#60a5fa;font-weight:600;font-size:.9rem;}
+.hbf-confirm-btn{width:100%;padding:15px;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:700;cursor:pointer;margin-top:18px;letter-spacing:.5px;box-shadow:0 6px 20px rgba(37,99,235,.45);}
+.hbf-confirm-btn:hover:not(.is-disabled){background:linear-gradient(135deg,#1d4ed8,#2563eb);transform:translateY(-1px);box-shadow:0 8px 28px rgba(37,99,235,.55);}
+.hbf-confirm-btn.is-disabled{background:#1e293b!important;color:#475569!important;cursor:not-allowed!important;pointer-events:none!important;box-shadow:none!important;transform:none!important;}
+@media(max-width:768px){
+  .lwh-steps{grid-template-columns:1fr 1fr;}
+  .hbf-header h2{font-size:2rem;}
+  .hbf-step-title{font-size:1.6rem;}
+  .hbf-navbtns{flex-direction:column;align-items:center;}
+  .hbf-btn{width:200px;}
+  .hbf-dets-grid{grid-template-columns:1fr;gap:16px;}
+  .hbf-dates{gap:4px;}
+  .hbf-dcard{max-width:none;padding:8px 4px;}
+  .hbf-dday{font-size:.68rem;}
+  .hbf-dnum{font-size:.88rem;}
+  .hbf-si-inner{gap:4px;}
+  .hbf-sc{width:30px;height:30px;font-size:11px;}
+  .hbf-sl{width:20px;}
+  .hbf-slots-grid{grid-template-columns:1fr;}
+  .hbf-content{padding:20px 12px 100px;}
+}
+@media(max-width:480px){
+  .lwh-steps{grid-template-columns:1fr;}
+}
+/* Google Places autocomplete dropdown */
+.pac-container{z-index:9999!important;background:#0d1f3c;border:1px solid #1e3a5f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.pac-item{padding:10px 14px;color:#e2e8f0;font-family:'Inter',sans-serif;font-size:.9rem;cursor:pointer;border-top:1px solid #1e3a5f;}
+.pac-item:hover,.pac-item-selected{background:#0f2a5c;}
+.pac-item-query{color:#60a5fa;font-weight:600;}
+.pac-matched{font-weight:700;color:#60a5fa;}
+.pac-icon{filter:invert(1) brightness(0.6);}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav class="lwh-nav">
+  <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/ZBENDWCkljlMbSww.jpg" alt="Luxury Wash On Wheels">
+
+</nav>
+
+<!-- ── HERO ── -->
+<section class="lwh-hero">
+  <div class="lwh-hero-overlay"></div>
+  <div class="lwh-hero-inner">
+    <div class="lwh-welcome-badge">🌴 Welcome to Destin, FL!</div>
+    <h1>Is Your Car Dirty<br>From The Drive?</h1>
+    <p class="lwh-hero-sub">
+      Remove bugs, road grime &amp; travel mess while you enjoy your vacation.
+      <span>We come right to your hotel.</span>
+    </p>
+    <div class="lwh-split">
+      <div class="lwh-split-card dirty">
+        <span class="emoji">😩</span>
+        <span class="label">Dirty from the drive</span>
+      </div>
+      <div class="lwh-split-card clean">
+        <span class="emoji">✨</span>
+        <span class="label">Spotless for vacation</span>
+      </div>
+    </div>
+    <button class="lwh-hero-cta" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book My Detail Now 🚗</button>
+    <p class="lwh-hero-note">Takes 2 minutes · We come to your hotel · 7 days a week</p>
+  </div>
+</section>
+
+<!-- ── TRUST BAR ── -->
+<div class="lwh-trust">
+  <div class="lwh-trust-inner">
+    <div class="lwh-trust-item"><span class="icon">⭐</span><span class="text">5-Star Rated</span></div>
+    <div class="lwh-trust-item"><span class="icon">🛡️</span><span class="text">Licensed &amp; Insured</span></div>
+    <div class="lwh-trust-item"><span class="icon">📍</span><span class="text">We Come to You</span></div>
+    <div class="lwh-trust-item"><span class="icon">📅</span><span class="text">7 Days a Week</span></div>
+    <div class="lwh-trust-item"><span class="icon">🏆</span><span class="text">13+ Years Experience</span></div>
+  </div>
+</div>
+
+<!-- ── BOOKING FORM ── -->
+<section class="lwh-booking" id="hotel-booking">
+  <div class="lwh-booking-head">
+    <div class="lwh-section-label">Book Your Detail</div>
+    <h2>Ready For A Clean Car?</h2>
+    <p>We'll come right to your hotel in Destin. Book now and enjoy your vacation.</p>
+  </div>
+  <!-- FORM INJECTED HERE -->
+  <div class="hbf-wrap" id="hbf-root"></div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="lwh-how">
+  <div class="lwh-how-inner">
+    <div class="lwh-section-label" style="display:inline-block;background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:20px;padding:6px 18px;font-size:0.78rem;font-weight:700;color:#60a5fa;letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;">How It Works</div>
+    <h2>Book Today. Clean Tomorrow.</h2>
+    <div class="lwh-steps">
+      <div class="lwh-step-card">
+        <div class="lwh-step-num">1</div>
+        <div class="lwh-step-icon">📱</div>
+        <div class="lwh-step-title">Book Online</div>
+        <div class="lwh-step-desc">Fill out the quick form above — takes under 2 minutes.</div>
+      </div>
+      <div class="lwh-step-card">
+        <div class="lwh-step-num">2</div>
+        <div class="lwh-step-icon">📅</div>
+        <div class="lwh-step-title">Pick Your Time</div>
+        <div class="lwh-step-desc">Choose a date &amp; time that works for your vacation schedule.</div>
+      </div>
+      <div class="lwh-step-card">
+        <div class="lwh-step-num">3</div>
+        <div class="lwh-step-icon">🚐</div>
+        <div class="lwh-step-title">We Show Up</div>
+        <div class="lwh-step-desc">Our team arrives at your hotel with everything needed.</div>
+      </div>
+      <div class="lwh-step-card">
+        <div class="lwh-step-num">4</div>
+        <div class="lwh-step-icon">🏖️</div>
+        <div class="lwh-step-title">Enjoy Your Vacation</div>
+        <div class="lwh-step-desc">Go relax. Come back to a spotless, vacation-ready vehicle.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── BENEFITS ── -->
+<section class="lwh-benefits">
+  <div class="lwh-benefits-inner">
+    <h2>Everything You Need For A Clean Vacation</h2>
+    <p class="lwh-benefits-sub">Professional mobile detailing services delivered right to your hotel parking lot.</p>
+    <div class="lwh-benefits-grid">
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">🐛</div>
+        <div class="lwh-benefit-title">Bug &amp; Grime Removal</div>
+        <div class="lwh-benefit-desc">Road trip bugs, tar, and travel grime gone before you hit the beach.</div>
+      </div>
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">🏖️</div>
+        <div class="lwh-benefit-title">Vacation-Ready Clean</div>
+        <div class="lwh-benefit-desc">Arrive at every destination with a fresh, showroom-clean vehicle.</div>
+      </div>
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">📍</div>
+        <div class="lwh-benefit-title">We Come to You</div>
+        <div class="lwh-benefit-desc">We detail right at your hotel. No drop-off, no waiting, no hassle.</div>
+      </div>
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">⏱️</div>
+        <div class="lwh-benefit-title">Same-Day Available</div>
+        <div class="lwh-benefit-desc">Book now and we can often be there the same day or next morning.</div>
+      </div>
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">🛡️</div>
+        <div class="lwh-benefit-title">Licensed &amp; Insured</div>
+        <div class="lwh-benefit-desc">13+ years of trusted professional detailing on the Emerald Coast.</div>
+      </div>
+      <div class="lwh-benefit-card">
+        <div class="lwh-benefit-icon">🎯</div>
+        <div class="lwh-benefit-title">Vacation Special Packages</div>
+        <div class="lwh-benefit-desc">Exclusive pricing designed for travelers — quick turnaround packages built for your vacation schedule.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── VACATION PACKAGES ── -->
+<section class="lwh-packages">
+  <div class="lwh-packages-inner">
+    <div class="lwh-section-label">Exclusive Traveler Pricing</div>
+    <h2>Vacation Special Packages</h2>
+    <p class="lwh-packages-sub">Quick-turnaround packages designed for travelers. We work around your vacation schedule.</p>
+    <div class="lwh-pkg-grid">
+      <div class="lwh-pkg-card blue">
+        <div class="lwh-pkg-tag green">Most Popular</div>
+        <div class="lwh-pkg-body">
+          <div class="lwh-pkg-emoji">🚗</div>
+          <div class="lwh-pkg-name">Road Trip Refresh</div>
+          <div class="lwh-pkg-price blue-price">$99</div>
+          <div class="lwh-pkg-meta">Starting price · ~45 min</div>
+          <p class="lwh-pkg-desc">Perfect for washing off the drive. Fast exterior hand wash, wheel cleaning, window wipe-down &amp; tire shine.</p>
+          <ul class="lwh-pkg-feats">
+            <li>Exterior hand wash</li>
+            <li>Wheel &amp; tire cleaning</li>
+            <li>Window cleaning</li>
+            <li>Tire shine</li>
+          </ul>
+          <button class="lwh-pkg-btn" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book This Package →</button>
+        </div>
+      </div>
+      <div class="lwh-pkg-card blue">
+        <div class="lwh-pkg-tag blue-tag">Great Value</div>
+        <div class="lwh-pkg-body">
+          <div class="lwh-pkg-emoji">🪑</div>
+          <div class="lwh-pkg-name">Vacation Interior Clean</div>
+          <div class="lwh-pkg-price blue-price">$129</div>
+          <div class="lwh-pkg-meta">Starting price · ~60 min</div>
+          <p class="lwh-pkg-desc">Get the inside fresh while you hit the beach. Vacuum, wipe-down, and odor treatment.</p>
+          <ul class="lwh-pkg-feats">
+            <li>Full interior vacuum</li>
+            <li>Dashboard &amp; console wipe</li>
+            <li>Door panel cleaning</li>
+            <li>Odor elimination</li>
+          </ul>
+          <button class="lwh-pkg-btn" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book This Package →</button>
+        </div>
+      </div>
+      <div class="lwh-pkg-card gold">
+        <div class="lwh-pkg-tag gold-tag">Best Experience</div>
+        <div class="lwh-pkg-body">
+          <div class="lwh-pkg-emoji">✨</div>
+          <div class="lwh-pkg-name">Full Vacation Detail</div>
+          <div class="lwh-pkg-price gold-price">$199</div>
+          <div class="lwh-pkg-meta">Starting price · ~2 hrs</div>
+          <p class="lwh-pkg-desc">The complete package — inside and out. Leave vacation with a spotless, showroom-clean vehicle.</p>
+          <ul class="lwh-pkg-feats">
+            <li>Complete exterior wash</li>
+            <li>Full interior clean</li>
+            <li>Bug &amp; tar removal</li>
+            <li>Wax &amp; paint sealant</li>
+          </ul>
+          <button class="lwh-pkg-btn" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book This Package →</button>
+        </div>
+      </div>
+    </div>
+    <p class="lwh-pkg-note">* Prices are starting rates for sedans. SUVs, trucks &amp; XL vehicles may vary. Final price confirmed at service.</p>
+  </div>
+</section>
+
+<!-- ── REVIEWS ── -->
+<section class="lwh-reviews">
+  <div class="lwh-reviews-inner">
+    <h2>What Our Guests Are Saying</h2>
+    <div class="lwh-reviews-grid">
+      <div class="lwh-review-card">
+        <div class="lwh-stars">★★★★★</div>
+        <p class="lwh-review-text">"They came right to our hotel parking lot. Car looked brand new after the road trip grime. Absolutely worth it!"</p>
+        <p class="lwh-review-name">— Jessica T.</p>
+      </div>
+      <div class="lwh-review-card">
+        <div class="lwh-stars">★★★★★</div>
+        <p class="lwh-review-text">"Scanned the QR code in the lobby, booked in 5 minutes. They showed up on time and did an incredible job."</p>
+        <p class="lwh-review-name">— Marcus R.</p>
+      </div>
+      <div class="lwh-review-card">
+        <div class="lwh-stars">★★★★★</div>
+        <p class="lwh-review-text">"We drove 8 hours to get here and the car was a mess. LWOW had it spotless in under 2 hours. Amazing service!"</p>
+        <p class="lwh-review-name">— Amber K.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FINAL CTA ── -->
+<section class="lwh-cta-banner">
+  <div class="lwh-cta-banner-inner">
+    <h2>Book Today. Clean Tomorrow.</h2>
+    <p>Don't spend your vacation in a dirty car. Let us handle it while you enjoy Destin.</p>
+    <button class="lwh-cta-banner-btn" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book My Detail Now 🚗</button>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer class="lwh-footer">
+  <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/ZBENDWCkljlMbSww.jpg" alt="Luxury Wash On Wheels">
+  <p class="lwh-footer-loc">Mobile Detailing · Destin, FL · 7 Days a Week</p>
+  <p class="lwh-footer-copy">© 2026 Luxury Wash On Wheels · Licensed &amp; Insured · We Value Your Time, Let Us Bring The Shine.</p>
+</footer>
+
+<!-- ── STICKY MOBILE BAR ── -->
+<div class="lwh-sticky">
+  <div class="lwh-sticky-txt">
+    <div class="top">Mobile Detailing · Destin</div>
+    <div class="bot">We Come To Your Hotel 🏨</div>
+  </div>
+  <button class="lwh-sticky-btn" onclick="document.getElementById('hotel-booking').scrollIntoView({behavior:'smooth'})">Book Now →</button>
+</div>
+
+<!-- ── BOOKING FORM HTML ── -->
+<script>
+(function(){
+  var root = document.getElementById('hbf-root');
+  if (!root) return;
+  root.innerHTML = `
+<div id="hbf-anchor"></div>
+<section class="hbf-section">
+  <div class="hbf-wrap-inner">
+    <div class="hbf-header">
+      <div class="hbf-badge">🏨 Hotel Booking</div>
+      <h2>Hotel Booking</h2>
+      <p>We come right to your hotel parking lot — no drop-off, no waiting.</p>
+    </div>
+    <div class="hbf-step-indicator">
+      <div class="hbf-si-inner">
+        <div class="hbf-sc current" id="hbf-si-1">1</div>
+        <div class="hbf-sl pending" id="hbf-sl-1"></div>
+        <div class="hbf-sc pending" id="hbf-si-2">2</div>
+        <div class="hbf-sl pending" id="hbf-sl-2"></div>
+        <div class="hbf-sc pending" id="hbf-si-3">3</div>
+        <div class="hbf-sl pending" id="hbf-sl-3"></div>
+        <div class="hbf-sc pending" id="hbf-si-4">4</div>
+        <div class="hbf-sl pending" id="hbf-sl-4"></div>
+        <div class="hbf-sc pending" id="hbf-si-5">5</div>
+        <div class="hbf-sl pending" id="hbf-sl-5"></div>
+        <div class="hbf-sc pending" id="hbf-si-6">6</div>
+      </div>
+    </div>
+    <div class="hbf-content">
+      <div class="hbf-step active" id="hbf-step-1">
+        <p class="hbf-step-title">What Type of Vehicle?</p>
+        <div class="hbf-grid hbf-vgrid" id="hbf-veh-opts">
+          <div class="hbf-card" data-v="small"><img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Sedan"><div class="hbf-card-title">Sedan</div></div>
+          <div class="hbf-card" data-v="midsize"><img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/3p3u5Vh4BmXHjtx7CmSe9P/suv_clean_58a3fd18.png" alt="SUV"><div class="hbf-card-title">SUV</div></div>
+          <div class="hbf-card" data-v="fullsize"><img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/3p3u5Vh4BmXHjtx7CmSe9P/xlsuv_clean_754eadbd.png" alt="XL SUV/Van"><div class="hbf-card-title">XL SUV / Van</div></div>
+          <div class="hbf-card" data-v="pickup"><img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663471903126/3p3u5Vh4BmXHjtx7CmSe9P/truck_clean_86e76eb1.png" alt="Truck"><div class="hbf-card-title">Truck</div></div>
+        </div>
+        <div class="hbf-navbtns"><button class="hbf-btn hbf-btn-primary" id="hbf-s1-next" disabled>Next Step</button></div>
+      </div>
+      <div class="hbf-step" id="hbf-step-2">
+        <p class="hbf-step-title">Your Information</p>
+        <div class="hbf-form-wrap">
+          <div class="hbf-fg"><label class="hbf-label">First Name *</label><input type="text" id="hbf-fn" class="hbf-input" placeholder="First name"><div class="hbf-err" id="hbf-fn-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">Last Name *</label><input type="text" id="hbf-ln" class="hbf-input" placeholder="Last name"><div class="hbf-err" id="hbf-ln-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">Phone Number *</label><input type="tel" id="hbf-ph" class="hbf-input" placeholder="(850) 555-0000"><div class="hbf-err" id="hbf-ph-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">Email Address *</label><input type="email" id="hbf-em" class="hbf-input" placeholder="you@example.com"><div class="hbf-err" id="hbf-em-err"></div></div>
+        </div>
+        <div class="hbf-navbtns"><button class="hbf-btn hbf-btn-secondary" onclick="hbfGo(1)">Back</button><button class="hbf-btn hbf-btn-primary" onclick="hbfLeadNext()">Next Step</button></div>
+      </div>
+      <div class="hbf-step" id="hbf-step-3">
+        <p class="hbf-step-title">Choose Your Package</p>
+        <div class="hbf-grid hbf-pgrid" id="hbf-pkg-opts">
+          <div class="hbf-card" data-p="roadtrip"><div class="hbf-pkg-icon">🚗</div><div class="hbf-card-title">Road Trip Refresh</div><div class="hbf-pkg-time">⏱ ~45 min</div><ul class="hbf-card-feats"><li>Exterior Hand Wash &amp; Dry</li><li>Bug &amp; Tar Removal</li><li>Tire &amp; Rim Shine</li><li>Exterior Windows</li><li>Interior Quick Vacuum</li></ul><div class="hbf-card-price" id="hbf-pr-roadtrip">$99.00</div></div>
+          <div class="hbf-card" data-p="vacint"><div class="hbf-pkg-icon">🪑</div><div class="hbf-card-title">Vacation Interior Clean</div><div class="hbf-pkg-time">⏱ ~60 min</div><ul class="hbf-card-feats"><li>Full Interior Deep Clean</li><li>Vacuum Seats &amp; Carpets</li><li>Wipe All Surfaces</li><li>Interior Windows</li><li>Air Freshener</li></ul><div class="hbf-card-price" id="hbf-pr-vacint">$129.00</div></div>
+          <div class="hbf-card" data-p="vacfull"><div class="hbf-pkg-icon">✨</div><div class="hbf-card-title">Full Vacation Detail</div><div class="hbf-pkg-time">⏱ ~2 hrs</div><ul class="hbf-card-feats"><li>Complete Exterior Wash</li><li>Full Interior Deep Clean</li><li>Bug, Tar &amp; Grime Removal</li><li>Leather/Vinyl Conditioning</li><li>Paint Sealant Protection</li></ul><div class="hbf-card-price" id="hbf-pr-vacfull">$199.00</div></div>
+        </div>
+        <div class="hbf-navbtns"><button class="hbf-btn hbf-btn-secondary" onclick="hbfGo(2)">Back</button><button class="hbf-btn hbf-btn-primary" onclick="hbfGo(4)" id="hbf-s3-next" disabled>Next Step</button></div>
+      </div>
+      <div class="hbf-step" id="hbf-step-4">
+        <p class="hbf-step-title">Add-On Services</p>
+        <div class="hbf-grid hbf-agrid" id="hbf-addon-opts"></div>
+        <div class="hbf-price-bar"><div class="hbf-addons-total">Add-ons: <span id="hbf-addon-price">$0.00</span></div><div class="hbf-grand-total">Total: <span id="hbf-total-price">$0.00</span></div></div>
+        <div class="hbf-navbtns"><button class="hbf-btn hbf-btn-secondary" onclick="hbfGo(3)">Back</button><button class="hbf-btn hbf-btn-primary" onclick="hbfGo(5)">Next Step</button></div>
+      </div>
+      <div class="hbf-step" id="hbf-step-5">
+        <p class="hbf-step-title">Your Hotel Location</p>
+        <div class="hbf-form-wrap">
+          <div class="hbf-fg"><label class="hbf-label">Hotel Name *</label><input type="text" id="hbf-hotel" class="hbf-input" placeholder="e.g. Hilton Sandestin"><div class="hbf-err" id="hbf-hotel-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">Hotel Street Address *</label><input type="text" id="hbf-addr" class="hbf-input" placeholder="123 Harbor Blvd"><div class="hbf-err" id="hbf-addr-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">Room / Suite Number (optional)</label><input type="text" id="hbf-unit" class="hbf-input" placeholder="Room 214"></div>
+          <div class="hbf-city-badge show" id="hbf-city-badge" style="margin-bottom:14px"><span>📍</span><span id="hbf-city-badge-txt">Service area will be detected from your address &amp; ZIP</span></div>
+          <input type="hidden" id="hbf-city" value="">
+          <div class="hbf-fg"><label class="hbf-label">State *</label><select id="hbf-state" class="hbf-select"><option value="">Select state</option><option value="FL" selected>Florida</option><option value="AL">Alabama</option><option value="GA">Georgia</option></select><div class="hbf-err" id="hbf-state-err"></div></div>
+          <div class="hbf-fg"><label class="hbf-label">ZIP Code *</label><input type="text" id="hbf-zip" class="hbf-input" placeholder="32541" maxlength="10"><div class="hbf-err" id="hbf-zip-err"></div></div>
+        </div>
+        <div class="hbf-navbtns"><button class="hbf-btn hbf-btn-secondary" onclick="hbfGo(4)">Back</button><button class="hbf-btn hbf-btn-primary" onclick="hbfAddrNext()" id="hbf-s5-next">Next Step</button></div>
+      </div>
+      <div class="hbf-step" id="hbf-step-6">
+        <p class="hbf-step-title">Pick Your Date &amp; Time</p>
+        <div class="hbf-soonest" id="hbf-soonest">✅ Soonest available time auto-selected — your chosen time is confirmed.</div>
+        <div class="hbf-cal-wrap">
+          <div class="hbf-sel-date"><span>📅</span><span class="hbf-sel-date-text" id="hbf-sel-date-txt">No date selected</span></div>
+          <div class="hbf-carousel">
+            <button class="hbf-cnav" id="hbf-prev" onclick="hbfNav('prev')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+            <div class="hbf-dates" id="hbf-dates"></div>
+            <button class="hbf-cnav" id="hbf-next" onclick="hbfNav('next')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>
+          </div>
+        </div>
+        <div class="hbf-slots-wrap" id="hbf-slots-wrap" style="display:none">
+          <p class="hbf-slots-title">Select Your Preferred Arrival Window:</p>
+          <div class="hbf-slots-grid" id="hbf-slots-grid"></div>
+        </div>
+        <div class="hbf-confirm-wrap" style="margin-top:28px">
+          <div class="hbf-confirm-sec">
+            <p class="hbf-confirm-title">Booking Summary</p>
+            <p class="hbf-sec-lbl">Selected Services</p>
+            <div class="hbf-svc-item"><span class="hbf-svc-name">Vehicle</span><span class="hbf-svc-price" id="hbf-c-veh">—</span></div>
+            <div class="hbf-svc-item"><span class="hbf-svc-name">Package</span><span class="hbf-svc-price" id="hbf-c-pkg">—</span></div>
+            <div class="hbf-svc-item" id="hbf-c-addons-row" style="display:none"><span class="hbf-svc-name">Add-ons</span><span class="hbf-svc-price" id="hbf-c-addons">None</span></div>
+          </div>
+          <div class="hbf-total-sec">
+            <div class="hbf-disc-row" id="hbf-c-disc-row"><span>Discount (<span id="hbf-c-disc-code"></span>)</span><span id="hbf-c-disc-amt">-$0.00</span></div>
+            <div class="hbf-total-item"><span>Total</span><span id="hbf-c-total">$0.00</span></div>
+          </div>
+          <div class="hbf-confirm-sec">
+            <div class="hbf-divider"></div>
+            <div class="hbf-dets-grid">
+              <div><p class="hbf-sec-lbl">Arrival</p><div class="hbf-det-txt" id="hbf-c-date">Date not selected</div><div class="hbf-det-txt" id="hbf-c-time">Time not selected</div></div>
+              <div><p class="hbf-sec-lbl">Hotel Location</p><div class="hbf-det-txt" id="hbf-c-addr">Hotel not provided</div></div>
+            </div>
+            <div class="hbf-divider"></div>
+          </div>
+          <div class="hbf-contact-sec"><p class="hbf-sec-lbl">Your Contact</p><div class="hbf-contact-item" id="hbf-c-name">Name: —</div><div class="hbf-contact-item" id="hbf-c-email">Email: —</div></div>
+          <div class="hbf-confirm-sec">
+            <div class="hbf-fg" style="max-width:560px;margin:0 auto 16px">
+              <label class="hbf-label">Discount Code</label>
+              <div style="display:flex;gap:10px;flex-wrap:wrap"><input type="text" id="hbf-disc-input" class="hbf-input" placeholder="Enter code" style="flex:1;min-width:180px"><button type="button" class="hbf-btn hbf-btn-primary" id="hbf-apply-disc" style="padding:11px 18px">Apply</button><button type="button" class="hbf-btn hbf-btn-secondary" id="hbf-remove-disc" style="padding:11px 18px">Remove</button></div>
+              <div class="hbf-err" id="hbf-disc-msg" style="display:none;margin-top:6px"></div>
+            </div>
+            <div class="hbf-notice"><div class="hbf-notice-txt">⏰ IMPORTANT: There is a 30-minute arrival window</div></div>
+            <div class="hbf-hotel-note">🏨 We'll detail your vehicle right in the hotel parking lot</div>
+            <div class="hbf-navbtns">
+              <button class="hbf-btn hbf-btn-secondary" onclick="hbfGo(5)">Back</button>
+              <button class="hbf-confirm-btn is-disabled" id="hbf-confirm-btn" onclick="hbfConfirm()">Confirm My Booking</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>`;
+  setTimeout(function(){
+    if(typeof hbfInit==='function')hbfInit();
+    else setTimeout(hbfInit,200);
+    // Re-run Places init now that the hotel input exists in the DOM
+    if(typeof initGooglePlaces==='function')initGooglePlaces();
+  },150);
+})();
+</script>
+
+<!-- ── BOOKING FORM LOGIC ── -->
+<script>
+(function(){
+var HBF_APP='https://luxurywashonwheels.app';
+var HBF_DEFAULT_HOOK='https://hooks.zapier.com/hooks/catch/13143841/uhuu3tg/';
+var HBF_DEFAULT_TY='https://luxurywashonwheels.com/destin/thank-you-booking/';
+var HBF_DEFAULT_SLUG='hotel-destin';
+var HBF_CITY_NAME='Destin';
+var HBF_HOOKS={
+  pensacola:'https://hooks.zapier.com/hooks/catch/13143841/uol9pzh/',
+  destin:'https://hooks.zapier.com/hooks/catch/13143841/uolypzh/',
+  crestview:'https://hooks.zapier.com/hooks/catch/13143841/uolp9zh/',
+  niceville:'https://hooks.zapier.com/hooks/catch/13143841/uoly9zh/',
+  fwb:'https://hooks.zapier.com/hooks/catch/13143841/uoqp6s6/'
+};
+var HBF_TY={
+  pensacola:'https://luxurywashonwheels.com/pensacola/thank-you-booking/',
+  destin:'https://luxurywashonwheels.com/destin/thank-you-booking/',
+  crestview:'https://luxurywashonwheels.com/crestview/thank-you-booking/',
+  niceville:'https://luxurywashonwheels.com/niceville/thank-you-booking/',
+  fwb:'https://luxurywashonwheels.com/fort-walton-beach/thank-you-booking/'
+};
+var HBF_CITY_DISP={pensacola:'Pensacola',destin:'Destin',crestview:'Crestview',niceville:'Niceville',fwb:'Fort Walton Beach'};
+var HBF_KW=[
+  {kw:['pensacola','gulf breeze','pace','milton','navarre','cantonment','ferry pass','ensley','brent','warrington','brownsville'],slug:'pensacola'},
+  {kw:['destin','miramar beach','sandestin','santa rosa beach','inlet beach','seacrest','rosemary beach','watersound','30a','freeport','shalimar'],slug:'destin'},
+  {kw:['crestview','baker','laurel hill','milligan','holt','blackman','mossy head'],slug:'crestview'},
+  {kw:['niceville','bluewater bay','valparaiso','eglin','hurlburt'],slug:'niceville'},
+  {kw:['fort walton','fort walton beach','fwb','mary esther','wright','cinco bayou','ocean city'],slug:'fwb'}
+];
+function detectSlug(addr,city){var s=((addr||'')+' '+(city||'')).toLowerCase();for(var i=0;i<HBF_KW.length;i++){if(HBF_KW[i].kw.some(function(k){return s.indexOf(k)>-1}))return HBF_KW[i].slug;}return HBF_DEFAULT_SLUG;}
+var PRICING={small:{roadtrip:99,vacint:129,vacfull:199},midsize:{roadtrip:119,vacint:149,vacfull:229},fullsize:{roadtrip:139,vacint:169,vacfull:259},pickup:{roadtrip:129,vacint:159,vacfull:249}};
+var VNAMES={small:'Sedan',midsize:'SUV',fullsize:'XL SUV / Van',pickup:'Truck'};
+var PNAMES={roadtrip:'Road Trip Refresh',vacint:'Vacation Interior Clean',vacfull:'Full Vacation Detail'};
+var ADDONS={roadtrip:[{id:'a1',name:'Odor Eliminator',price:30},{id:'a2',name:'Headlight Restore',price:50},{id:'a3',name:'Pet Hair Removal',price:40}],vacint:[{id:'a1',name:'Odor Eliminator',price:30},{id:'a2',name:'Pet Hair Removal',price:40},{id:'a3',name:'Leather Conditioning',price:45}],vacfull:[{id:'a1',name:'Engine Bay Clean',price:60},{id:'a2',name:'Paint Correction',price:150},{id:'a3',name:'Ceramic Coating',price:200}]};
+var PKG_SLOTS={roadtrip:['8:00am - 10:00am','10:00am - 12:00pm','12:00pm - 2:00pm','2:00pm - 4:00pm','4:00pm - 6:00pm'],vacint:['8:00am - 10:00am','10:00am - 12:00pm','1:00pm - 3:00pm','3:00pm - 5:00pm'],vacfull:['8:00am - 11:00am','11:00am - 2:00pm','2:00pm - 5:00pm']};
+var DISC_CODES={VIP10:{type:'percent',value:10},WELCOME20:{type:'percent',value:20},DETAIL5:{type:'percent',value:5},HOTEL25:{type:'fixed',value:25}};
+var s={step:1,veh:'',pkg:'',addons:[],total:0,fn:'',ln:'',em:'',ph:'',hotel:'',addr:'',unit:'',city:'',state:'FL',zip:'',date:'',time:'',dateIdx:0,slug:HBF_DEFAULT_SLUG,leadSent:false,abandonId:null,availLoaded:false,booked:{},disc:{on:false,code:'',type:'',val:0,amt:0}};
+var calDates=buildDates();
+function buildDates(){var a=[],now=cdtNow(),d=new Date(now.getFullYear(),now.getMonth(),now.getDate());for(var i=0;i<365;i++){a.push({date:new Date(d),avail:true});d.setDate(d.getDate()+1);}return a;}
+function cdtNow(){var n=new Date();return new Date(n.getTime()+(n.getTimezoneOffset()*60000)+(-5*3600000));}
+function iso(d){return d.toISOString().split('T')[0];}
+function fmtDisp(d){var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return{day:days[d.getDay()],month:months[d.getMonth()],num:d.getDate()};}
+function toHour(t){if(!t)return-1;var m=t.trim().toLowerCase().replace(/\s+/g,'').match(/^(\d+):(\d+)(am|pm)/);if(!m)return-1;var h=parseInt(m[1]);if(m[3]==='pm'&&h!==12)h+=12;if(m[3]==='am'&&h===12)h=0;return h;}
+function slotEnd(sl){var p=sl.toLowerCase().replace(/\s+/g,'').split('-');if(p.length<2)return toHour(sl)+2;var m=p[1].match(/^(\d+):(\d+)(am|pm)/);if(!m)return toHour(sl)+2;var h=parseInt(m[1]);if(m[3]==='pm'&&h!==12)h+=12;if(m[3]==='am'&&h===12)h=0;return h;}
+function isBooked(dateISO,sl){var set=s.booked[dateISO];if(!set)return false;if(set==='__NO__')return true;if(set.has(sl))return true;var rs=toHour(sl),re=slotEnd(sl);for(var b of set){var bs=toHour(b),be=slotEnd(b);if(bs<re&&be>rs)return true;}return false;}
+async function prefetch(){try{var today=cdtNow(),promises=[],keys=[];for(var i=0;i<90;i++){var d=new Date(today.getFullYear(),today.getMonth(),today.getDate()+i);var k=iso(d);keys.push(k);promises.push(fetch(HBF_APP+'/api/booking/availability?location='+s.slug+'&date='+k).then(function(r){return r.json();}).catch(function(){return null;}));}var results=await Promise.all(promises);results.forEach(function(data,idx){if(!data)return;var k=keys[idx];var cap=data.effectiveCapacity!=null?data.effectiveCapacity:(data.capacity||0);if(cap===0){var ce=calDates.find(function(d){return iso(d.date)===k;});if(ce)ce.avail=false;s.booked[k]='__NO__';return;}var set=new Set();if(data.bookedSlots)data.bookedSlots.forEach(function(sl){set.add(sl);});if(data.slotCounts)Object.keys(data.slotCounts).forEach(function(sl){if((data.slotCounts[sl]||0)>=cap)set.add(sl);});s.booked[k]=set;});s.availLoaded=true;}catch(e){s.availLoaded=true;}}
+function renderCal(){var c=document.getElementById('hbf-dates');if(!c)return;var vis=calDates.slice(s.dateIdx,s.dateIdx+5);c.innerHTML='';vis.forEach(function(obj){var d=fmtDisp(obj.date),k=iso(obj.date),sel=s.date===k;var el=document.createElement('div');el.className='hbf-dcard'+(sel?' selected':'')+(!obj.avail?' unavail':'');if(obj.avail)el.onclick=(function(kk,dd){return function(){selectDate(kk,dd);};})(k,obj.date);el.innerHTML='<div class="hbf-dday">'+d.day+'</div><div class="hbf-dnum">'+d.month+' '+d.num+'</div>'+(!obj.avail?'<div class="hbf-unavail-txt">Unavail.</div>':'');c.appendChild(el);});var prev=document.getElementById('hbf-prev'),next=document.getElementById('hbf-next');if(prev)prev.disabled=s.dateIdx===0;if(next)next.disabled=s.dateIdx>=calDates.length-5;}
+function hbfNav(dir){if(dir==='prev'&&s.dateIdx>0)s.dateIdx--;else if(dir==='next'&&s.dateIdx<calDates.length-5)s.dateIdx++;renderCal();}
+window.hbfNav=hbfNav;
+function selectDate(k,dateObj){s.date=k;s.time='';var d=fmtDisp(dateObj);var el=document.getElementById('hbf-sel-date-txt');if(el)el.textContent=d.day+', '+d.month+' '+d.num;renderCal();renderSlots();updateConfirm();updateConfirmBtn();}
+function renderSlots(){var wrap=document.getElementById('hbf-slots-wrap'),grid=document.getElementById('hbf-slots-grid');if(!wrap||!grid)return;if(!s.date){wrap.style.display='none';return;}wrap.style.display='block';var slots=PKG_SLOTS[s.pkg]||PKG_SLOTS.roadtrip;grid.innerHTML='';slots.forEach(function(sl){var bk=isBooked(s.date,sl),sel=s.time===sl;var el=document.createElement('div');el.className='hbf-slot'+(sel?' selected':'')+(bk?' booked':'');el.innerHTML='<div class="hbf-slot-txt">'+(bk?'🚫 ':'')+sl+'</div>';if(!bk)el.onclick=(function(sll){return function(){s.time=sll;renderSlots();updateConfirm();updateConfirmBtn();};})(sl);grid.appendChild(el);});}
+function autoSoonest(){var slots=['8:00am - 12:00pm','1:00pm - 5:00pm'];var now=cdtNow(),todayISO=iso(new Date(now.getFullYear(),now.getMonth(),now.getDate())),nowH=now.getHours();for(var i=0;i<calDates.length;i++){var obj=calDates[i];if(!obj.avail)continue;var k=iso(obj.date),set=s.booked[k];if(!set||set==='__NO__')continue;var open=slots.filter(function(sl){if(set.has(sl))return false;if(k===todayISO&&toHour(sl)<=nowH)return false;return true;});if(open.length>0){selectDate(k,obj.date);s.dateIdx=Math.max(0,i-1);renderCal();var b=document.getElementById('hbf-soonest');if(b)b.style.display='flex';return;}}}
+function hbfGo(n){s.step=n;document.querySelectorAll('.hbf-step').forEach(function(el){el.classList.remove('active');});var el=document.getElementById('hbf-step-'+n);if(el)el.classList.add('active');updateSI();if(n===6){renderCal();updateConfirmBtn();updateConfirm();}if(n===4||n===5)updateConfirm();if(n===5){// Re-attach Places autocomplete now that hbf-hotel is visible
+if(window.google&&window.google.maps&&window.google.maps.places&&!window._hbfPlacesAttached){window._hbfPlacesAttached=true;var pi=document.getElementById('hbf-hotel');if(pi){var ac=new google.maps.places.Autocomplete(pi,{types:['lodging','establishment'],componentRestrictions:{country:'us'},fields:['name','formatted_address','address_components','geometry']});ac.addListener('place_changed',function(){var place=ac.getPlace();if(!place||!place.address_components)return;var sn='',rt='',zp='',st='';place.address_components.forEach(function(c){if(c.types.indexOf('street_number')>-1)sn=c.long_name;if(c.types.indexOf('route')>-1)rt=c.long_name;if(c.types.indexOf('postal_code')>-1)zp=c.long_name;if(c.types.indexOf('administrative_area_level_1')>-1)st=c.short_name;});var ad=(sn+' '+rt).trim();var ae=document.getElementById('hbf-addr'),ze=document.getElementById('hbf-zip'),ste=document.getElementById('hbf-state');if(ae&&ad){ae.value=ad;ae.classList.remove('error');}if(ze&&zp){ze.value=zp;ze.classList.remove('error');}if(ste&&st){ste.value=st;ste.classList.remove('error');}if(typeof onAddrChange==='function')onAddrChange();if(typeof updateConfirm==='function')updateConfirm();});}}}
+if(window.innerWidth<=768){var w=document.querySelector('.hbf-wrap-inner');if(w)w.scrollIntoView({behavior:'smooth',block:'start'});}}
+window.hbfGo=hbfGo;
+function updateSI(){for(var i=1;i<=6;i++){var c=document.getElementById('hbf-si-'+i),l=document.getElementById('hbf-sl-'+i);if(!c)continue;if(i<s.step){c.className='hbf-sc done';c.innerHTML='✓';if(l)l.className='hbf-sl done';}else if(i===s.step){c.className='hbf-sc current';c.textContent=String(i);if(l)l.className='hbf-sl pending';}else{c.className='hbf-sc pending';c.textContent=String(i);if(l)l.className='hbf-sl pending';}}}
+function validate(id){var el=document.getElementById(id),err=document.getElementById(id+'-err');if(!el)return true;el.classList.remove('error');if(err)err.style.display='none';var v=el.value.trim(),msg='';if(['hbf-fn','hbf-ln','hbf-addr','hbf-hotel'].indexOf(id)>-1){if(!v)msg='This field is required';}else if(id==='hbf-em'){if(!v)msg='Email is required';else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))msg='Enter a valid email';}else if(id==='hbf-ph'){if(!v)msg='Phone is required';else if(v.replace(/\D/g,'').length<10)msg='Enter a valid phone number';}else if(id==='hbf-zip'){if(!v)msg='ZIP code is required';else if(!/^\d{5}(-\d{4})?$/.test(v))msg='Enter a valid ZIP code';}else if(id==='hbf-state'){if(!v)msg='Please select a state';}if(msg){el.classList.add('error');if(err){err.textContent=msg;err.style.display='block';}return false;}return true;}
+function hbfLeadNext(){if(!['hbf-fn','hbf-ln','hbf-em','hbf-ph'].every(validate))return;s.fn=document.getElementById('hbf-fn').value.trim();s.ln=document.getElementById('hbf-ln').value.trim();s.em=document.getElementById('hbf-em').value.trim();s.ph=document.getElementById('hbf-ph').value.trim();sendLead();sendAbandoned();updatePrices();hbfGo(3);}
+window.hbfLeadNext=hbfLeadNext;
+async function hbfAddrNext(){if(!['hbf-hotel','hbf-addr','hbf-state','hbf-zip'].every(validate))return;s.hotel=document.getElementById('hbf-hotel').value.trim();s.addr=document.getElementById('hbf-addr').value.trim();s.unit=(document.getElementById('hbf-unit')||{}).value||'';s.state=document.getElementById('hbf-state').value.trim();s.zip=document.getElementById('hbf-zip').value.trim();s.slug=detectSlug(s.addr+' '+s.zip,'');s.city=HBF_CITY_DISP[s.slug]||HBF_CITY_NAME;var cityEl=document.getElementById('hbf-city');if(cityEl)cityEl.value=s.city;var btn=document.getElementById('hbf-s5-next'),orig=btn?btn.textContent:'';if(btn){btn.textContent='⏳ Loading availability...';btn.disabled=true;}if(!s.availLoaded)await prefetch();if(btn){btn.textContent=orig;btn.disabled=false;}hbfGo(6);setTimeout(function(){renderCal();autoSoonest();},50);}
+window.hbfAddrNext=hbfAddrNext;
+function updatePrices(){if(!s.veh)return;var ch=PRICING[s.veh]||{};['roadtrip','vacint','vacfull'].forEach(function(p){var el=document.getElementById('hbf-pr-'+p);if(el)el.textContent='$'+(ch[p]||0).toFixed(2);});}
+function getAddons(){return ADDONS[s.pkg]||ADDONS.roadtrip;}
+function renderAddons(){var c=document.getElementById('hbf-addon-opts');if(!c)return;c.innerHTML='';getAddons().forEach(function(a){var card=document.createElement('div');card.className='hbf-card'+(s.addons.indexOf(a.id)>-1?' selected':'');card.innerHTML='<div class="hbf-card-title">'+a.name+'</div><div class="hbf-card-price">+$'+a.price.toFixed(2)+'</div>';card.onclick=(function(aa){return function(){var idx=s.addons.indexOf(aa.id);if(idx>-1)s.addons.splice(idx,1);else s.addons.push(aa.id);renderAddons();updateTotal();updateConfirm();};})(a);c.appendChild(card);});updateTotal();}
+function getBase(){return((PRICING[s.veh]||{})[s.pkg])||0;}
+function updateTotal(){var base=getBase(),addT=getAddons().filter(function(a){return s.addons.indexOf(a.id)>-1;}).reduce(function(sum,a){return sum+a.price;},0);s.total=base+addT;var ap=document.getElementById('hbf-addon-price'),tp=document.getElementById('hbf-total-price');if(ap)ap.textContent='$'+addT.toFixed(2);if(tp)tp.textContent='$'+s.total.toFixed(2);}
+function discountedTotal(){if(!s.disc.on){s.disc.amt=0;return+s.total.toFixed(2);}var amt=s.disc.type==='percent'?s.total*s.disc.val/100:s.disc.val;amt=Math.min(amt,s.total);s.disc.amt=+amt.toFixed(2);return+(s.total-amt).toFixed(2);}
+function applyDisc(){var code=(document.getElementById('hbf-disc-input').value||'').trim().toUpperCase();if(!code){clearDisc();return;}var found=DISC_CODES[code];if(!found){s.disc={on:false,code:'',type:'',val:0,amt:0};showDiscMsg('Invalid discount code','error');updateConfirm();return;}s.disc={on:true,code:code,type:found.type,val:found.value,amt:0};showDiscMsg('Code applied: '+code,'success');updateConfirm();}
+function clearDisc(){s.disc={on:false,code:'',type:'',val:0,amt:0};var el=document.getElementById('hbf-disc-input');if(el)el.value='';var msg=document.getElementById('hbf-disc-msg');if(msg){msg.style.display='none';msg.textContent='';}updateConfirm();}
+function showDiscMsg(txt,type){var msg=document.getElementById('hbf-disc-msg');if(!msg)return;msg.textContent=txt;msg.style.display='block';msg.style.color=type==='success'?'#10b981':'#f87171';}
+function setText(id,val){var el=document.getElementById(id);if(el)el.textContent=val;}
+function updateConfirm(){var fn=document.getElementById('hbf-fn');if(fn)s.fn=fn.value.trim();var ln=document.getElementById('hbf-ln');if(ln)s.ln=ln.value.trim();var em=document.getElementById('hbf-em');if(em)s.em=em.value.trim();var ht=document.getElementById('hbf-hotel');if(ht)s.hotel=ht.value.trim();var ad=document.getElementById('hbf-addr');if(ad)s.addr=ad.value.trim();var un=document.getElementById('hbf-unit');if(un)s.unit=un.value||'';var cy=document.getElementById('hbf-city');if(cy)s.city=cy.value.trim();var st=document.getElementById('hbf-state');if(st)s.state=st.value.trim();var zp=document.getElementById('hbf-zip');if(zp)s.zip=zp.value.trim();setText('hbf-c-veh',VNAMES[s.veh]||'—');setText('hbf-c-pkg',PNAMES[s.pkg]||'—');var addons=getAddons().filter(function(a){return s.addons.indexOf(a.id)>-1;});var ar=document.getElementById('hbf-c-addons-row');if(addons.length>0){setText('hbf-c-addons',addons.map(function(a){return a.name;}).join(', '));if(ar)ar.style.display='flex';}else{if(ar)ar.style.display='none';}var disc=discountedTotal();setText('hbf-c-total','$'+disc.toFixed(2));var dr=document.getElementById('hbf-c-disc-row');if(s.disc.on){if(dr)dr.classList.add('show');setText('hbf-c-disc-code',s.disc.code);setText('hbf-c-disc-amt','-$'+s.disc.amt.toFixed(2));}else{if(dr)dr.classList.remove('show');}if(s.date){var obj=calDates.find(function(d){return iso(d.date)===s.date;});if(obj){var d=fmtDisp(obj.date);setText('hbf-c-date',d.day+', '+d.month+' '+d.num);}}else setText('hbf-c-date','Date not selected');setText('hbf-c-time',s.time||'Time not selected');var hotelLine=s.hotel?s.hotel+' — ':'';setText('hbf-c-addr',hotelLine+[s.addr,s.unit,s.city,s.state,s.zip].filter(Boolean).join(', ')||'Hotel not provided');setText('hbf-c-name','Name: '+([s.fn,s.ln].filter(Boolean).join(' ')||'Not provided'));setText('hbf-c-email','Email: '+(s.em||'Not provided'));}
+function updateConfirmBtn(){var btn=document.getElementById('hbf-confirm-btn');if(!btn)return;btn.classList.toggle('is-disabled',!(s.date&&s.time));}
+function sendLead(){if(s.leadSent)return;s.leadSent=true;var hook=HBF_HOOKS[s.slug]||HBF_DEFAULT_HOOK;var body='data='+encodeURIComponent(JSON.stringify({stage:'lead_capture',firstName:s.fn,lastName:s.ln,email:s.em,phone:s.ph,vehicleType:s.veh,vehicleName:VNAMES[s.veh]||'',hotelName:s.hotel,source:'hotel-landing',submittedAt:new Date().toISOString(),page:location.href}));try{if(navigator.sendBeacon)navigator.sendBeacon(hook,new Blob([body],{type:'application/x-www-form-urlencoded'}));else fetch(hook,{method:'POST',body:body,headers:{'Content-Type':'application/x-www-form-urlencoded'}}).catch(function(){});}catch(e){}}
+async function sendAbandoned(){try{var resp=await fetch(HBF_APP+'/api/booking/abandoned?location='+s.slug,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({firstName:s.fn,lastName:s.ln,email:s.em,phone:s.ph,location:s.slug,vehicleType:s.veh,packageType:s.pkg,selectedDate:s.date||'',existingBookingId:s.abandonId||null})});if(resp.ok){var d=await resp.json();if(d.bookingId)s.abandonId=d.bookingId;}}catch(e){}}
+async function markComplete(){if(!s.abandonId)return;try{await fetch(HBF_APP+'/api/booking/abandoned/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:s.abandonId})});s.abandonId=null;}catch(e){}}
+function sendBookingZap(){var hook=HBF_HOOKS[s.slug]||HBF_DEFAULT_HOOK;var disc=discountedTotal();var addonNames=getAddons().filter(function(a){return s.addons.indexOf(a.id)>-1;}).map(function(a){return a.name;});var params=new URLSearchParams({stage:'booking_confirm',firstName:s.fn,lastName:s.ln,email:s.em,phone:s.ph,hotelName:s.hotel,streetAddress:s.addr,unit:s.unit||'',city:s.city,state:s.state,zipCode:s.zip,vehicleType:s.veh,vehicleName:VNAMES[s.veh]||'',packageType:s.pkg,packageName:PNAMES[s.pkg]||'',selectedAddons:addonNames.join(', '),totalPrice:s.total.toFixed(2),finalTotal:disc.toFixed(2),discountCode:s.disc.on?s.disc.code:'',discountAmount:s.disc.amt.toFixed(2),selectedDate:s.date,selectedTime:s.time,location:s.slug,source:'hotel-landing',submittedAt:new Date().toISOString(),page:location.href});var body=params.toString();try{if(navigator.sendBeacon)navigator.sendBeacon(hook,new Blob([body],{type:'application/x-www-form-urlencoded'}));else fetch(hook,{method:'POST',body:body,headers:{'Content-Type':'application/x-www-form-urlencoded'}}).catch(function(){});}catch(e){}}
+async function submitToApp(){try{var addonIds=getAddons().filter(function(a){return s.addons.indexOf(a.id)>-1;}).map(function(a){return a.id;});await fetch(HBF_APP+'/api/booking/webhook?location='+s.slug,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({firstName:s.fn,lastName:s.ln,email:s.em,phone:s.ph,hotelName:s.hotel,streetAddress:s.addr,unit:s.unit,city:s.city,state:s.state,zipCode:s.zip,selectedDate:s.date,selectedTime:s.time,location:s.slug,vehicleType:s.veh,packageType:s.pkg,selectedAddons:addonIds.join(','),totalPrice:String(discountedTotal()),finalTotal:String(discountedTotal()),carCount:'1',source:'hotel-landing',page:location.href})});}catch(e){}}
+async function hbfConfirm(){var btn=document.getElementById('hbf-confirm-btn');if(!btn||btn.classList.contains('is-disabled'))return;btn.textContent='⏳ Booking...';btn.style.pointerEvents='none';sendLead();sendBookingZap();await submitToApp();await markComplete();window.location.href=HBF_TY[s.slug]||HBF_DEFAULT_TY;}
+window.hbfConfirm=hbfConfirm;
+function onAddrChange(){var ad=(document.getElementById('hbf-addr')||{}).value||'';var zp=(document.getElementById('hbf-zip')||{}).value||'';if(!ad&&!zp)return;var slug=detectSlug(ad+' '+zp,'');s.slug=slug;var detectedCity=HBF_CITY_DISP[slug]||HBF_CITY_NAME;s.city=detectedCity;var cityEl=document.getElementById('hbf-city');if(cityEl)cityEl.value=detectedCity;var badge=document.getElementById('hbf-city-badge'),txt=document.getElementById('hbf-city-badge-txt');if(badge&&txt&&(ad||zp)){txt.textContent='📍 Service area: '+detectedCity;badge.classList.add('show');}}
+function hbfInit(){
+  document.querySelectorAll('#hbf-veh-opts .hbf-card').forEach(function(card){card.addEventListener('click',function(){document.querySelectorAll('#hbf-veh-opts .hbf-card').forEach(function(c){c.classList.remove('selected');});this.classList.add('selected');s.veh=this.dataset.v;var btn=document.getElementById('hbf-s1-next');if(btn)btn.disabled=false;updatePrices();});});
+  document.querySelectorAll('#hbf-pkg-opts .hbf-card').forEach(function(card){card.addEventListener('click',function(){document.querySelectorAll('#hbf-pkg-opts .hbf-card').forEach(function(c){c.classList.remove('selected');});this.classList.add('selected');s.pkg=this.dataset.p;s.addons=[];var btn=document.getElementById('hbf-s3-next');if(btn)btn.disabled=false;updateTotal();renderAddons();updateConfirm();});});
+  ['hbf-addr','hbf-zip'].forEach(function(id){var el=document.getElementById(id);if(el){el.addEventListener('input',onAddrChange);el.addEventListener('blur',onAddrChange);}});
+  var ab=document.getElementById('hbf-apply-disc'),rb=document.getElementById('hbf-remove-disc');
+  if(ab)ab.addEventListener('click',applyDisc);if(rb)rb.addEventListener('click',clearDisc);
+  var di=document.getElementById('hbf-disc-input');
+  if(di){di.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyDisc();}});di.addEventListener('input',function(){var msg=document.getElementById('hbf-disc-msg');if(msg){msg.style.display='none';msg.textContent='';}});}
+  ['hbf-fn','hbf-ln','hbf-em','hbf-ph','hbf-hotel','hbf-addr','hbf-unit','hbf-state','hbf-zip'].forEach(function(id){var el=document.getElementById(id);if(el){el.addEventListener('input',updateConfirm);el.addEventListener('blur',updateConfirm);}});
+  var s1btn=document.getElementById('hbf-s1-next');if(s1btn)s1btn.addEventListener('click',function(){if(!this.disabled)hbfGo(2);});
+}
+window.hbfInit=hbfInit;
+})();
+</script>
+
+</body>
+</html>

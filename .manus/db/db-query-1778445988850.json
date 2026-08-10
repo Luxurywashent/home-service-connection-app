@@ -1,0 +1,106 @@
+{
+  "query": "DESCRIBE vip_visits;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute DESCRIBE vip_visits;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "contract_id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "visit_number",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "scheduled_date",
+      "Type": "date",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "scheduled_time",
+      "Type": "varchar(10)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "job_id",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "status",
+      "Type": "enum('scheduled','completed','missed','cancelled')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "scheduled",
+      "Extra": ""
+    },
+    {
+      "Field": "add_ons",
+      "Type": "json",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "completed_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "created_at",
+      "Type": "datetime",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "schedule_job_id",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\ncontract_id\tint\tNO\tMUL\tNULL\t\nvisit_number\tint\tNO\t\tNULL\t\nscheduled_date\tdate\tYES\t\tNULL\t\nscheduled_time\tvarchar(10)\tYES\t\tNULL\t\njob_id\tvarchar(100)\tYES\t\tNULL\t\nstatus\tenum('scheduled','completed','missed','cancelled')\tNO\t\tscheduled\t\nadd_ons\tjson\tYES\t\tNULL\t\nnotes\ttext\tYES\t\tNULL\t\ncompleted_at\tdatetime\tYES\t\tNULL\t\ncreated_at\tdatetime\tNO\t\tCURRENT_TIMESTAMP\t\nschedule_job_id\tvarchar(64)\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 260
+}

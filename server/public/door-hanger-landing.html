@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Luxury Wash On Wheels — Book Your Detail</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #060e1c;
+      --surface:   #0d1f3c;
+      --surface2:  #0f2a5c;
+      --border:    #1e3a5f;
+      --blue:      #2563eb;
+      --blue-lt:   #3b82f6;
+      --gold:      #2563eb;
+      --gold-lt:   #60a5fa;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --success:   #10b981;
+      --error:     #f87171;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ─── TOP BANNER ──────────────────────────────────────────────────────── */
+    .top-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(90deg, #1d4ed8, #2563eb, #1d4ed8);
+      background-size: 200% 100%;
+      animation: shimmer 3s ease-in-out infinite;
+      color: #fff;
+      text-decoration: none;
+      padding: 11px 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .top-banner:hover { background: #1e40af; }
+    .top-banner-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .top-banner-text { flex: 1; }
+    .top-banner-cta {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    @keyframes shimmer {
+      0%,100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    @media (max-width: 480px) {
+      .top-banner { font-size: 0.8rem; gap: 7px; padding: 10px 14px; }
+      .top-banner-cta { display: none; }
+    }
+
+    /* ─── HERO ─────────────────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(160deg, #0a1628 0%, #060e1c 50%, #0d1f3c 100%);
+      padding: 56px 20px 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      border-bottom: 1px solid rgba(37,99,235,0.3);
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37,99,235,0.18) 0%, transparent 70%),
+        url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600"><defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1"/></pattern></defs><rect width="1200" height="600" fill="url(%23g)"/></svg>');
+      pointer-events: none;
+    }
+    .hero-inner { max-width: 860px; margin: 0 auto; position: relative; z-index: 1; }
+
+    .badge {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--blue), var(--blue-lt));
+      color: #fff;
+      padding: 7px 20px;
+      border-radius: 30px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 16px rgba(37,99,235,0.45);
+    }
+
+    .hero h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 3.2rem;
+      letter-spacing: 2px;
+      line-height: 1.05;
+      color: #fff;
+      text-shadow: 0 2px 20px rgba(37,99,235,0.4);
+      margin-bottom: 10px;
+    }
+    .hero h1 span { color: #93c5fd; }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      color: var(--muted);
+      max-width: 620px;
+      margin: 0 auto 6px;
+    }
+
+    .neighborhood-callout {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(37,99,235,0.15);
+      border: 1px solid rgba(37,99,235,0.45);
+      border-radius: 50px;
+      padding: 10px 22px;
+      margin: 18px auto 0;
+      font-size: 0.97rem;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+    .neighborhood-callout .dot {
+      width: 10px; height: 10px;
+      background: var(--success);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+      50%      { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+    }
+
+    /* Hanger image */
+    .hanger-wrap {
+      position: relative;
+      max-width: 220px;
+      margin: 28px auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hanger-glow {
+      position: absolute;
+      width: 280px; height: 320px;
+      background: radial-gradient(ellipse, rgba(37,99,235,0.25) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: float 6s ease-in-out infinite;
+    }
+    .hanger-img {
+      max-width: 380px;
+      width: 100%;
+      height: auto;
+      position: relative;
+      z-index: 10;
+      animation: float 6s ease-in-out infinite;
+      filter: drop-shadow(0 12px 32px rgba(0,0,0,0.5));
+      border-radius: 12px;
+    }
+    @keyframes float {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-14px); }
+    }
+
+    /* Highlights */
+    .highlights {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid rgba(37,99,235,0.25);
+    }
+    .highlight {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(37,99,235,0.2);
+      padding: 14px 12px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .highlight-icon { font-size: 1.6rem; margin-bottom: 6px; }
+    .highlight-title { font-size: 0.82rem; font-weight: 700; color: #93c5fd; margin-bottom: 4px; line-height: 1.3; }
+    .highlight-text  { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+
+    /* CTA reminder */
+    .cta-box {
+      margin-top: 28px;
+      padding: 18px 22px;
+      background: rgba(37,99,235,0.1);
+      border-radius: 12px;
+      border: 1px solid rgba(37,99,235,0.4);
+    }
+    .cta-text    { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .cta-subtext { font-size: 0.9rem; color: var(--muted); }
+
+    /* Scroll CTA button */
+    .scroll-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--blue), var(--blue-lt));
+      color: #fff;
+      padding: 14px 42px;
+      border: none;
+      border-radius: 50px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 26px;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      box-shadow: 0 6px 22px rgba(37,99,235,0.5);
+      transition: all 0.3s ease;
+    }
+    .scroll-btn:hover {
+      background: linear-gradient(135deg, #1d4ed8, var(--blue));
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(37,99,235,0.65);
+    }
+
+    /* ─── TEAM PHOTOS ─────────────────────────────────────────────────────── */
+    .team-photos-section {
+      background: linear-gradient(160deg, #060e1c 0%, #0a1628 100%);
+      padding: 52px 20px 40px;
+      border-top: 1px solid rgba(37,99,235,0.2);
+    }
+    .team-photos-inner { max-width: 1060px; margin: 0 auto; }
+    .team-photos-header { text-align: center; margin-bottom: 32px; }
+    .team-photos-header h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.4rem;
+      letter-spacing: 2px;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .team-photos-header p { font-size: 0.97rem; color: var(--muted); max-width: 560px; margin: 0 auto; }
+    .team-photos-grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 768px) {
+      .team-photos-grid { grid-template-columns: 1fr 1fr; }
+      .team-photo-card.featured { grid-column: 1 / -1; }
+    }
+    @media (max-width: 480px) {
+      .team-photos-grid { grid-template-columns: 1fr; }
+      .team-photo-card.featured { grid-column: auto; }
+    }
+    .team-photo-card {
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(37,99,235,0.2);
+      background: var(--surface);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.4);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .team-photo-card:hover { transform: translateY(-4px); box-shadow: 0 14px 40px rgba(37,99,235,0.25); }
+    .team-photo-card img { width: 100%; height: 260px; object-fit: cover; display: block; }
+    .team-photo-card.featured img { height: 340px; }
+    .team-photo-card.app-preview img { height: 260px; object-fit: contain; background: #0a1628; padding: 12px; }
+    .photo-caption {
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #93c5fd;
+      background: rgba(37,99,235,0.08);
+      border-top: 1px solid rgba(37,99,235,0.15);
+    }
+
+    /* ─── APP DOWNLOAD BANNER ───────────────────────────────────────────────── */
+    .app-banner {
+      background: linear-gradient(135deg, #0a1628 0%, #0d1f3c 100%);
+      border-top: 1px solid rgba(37,99,235,0.25);
+      border-bottom: 1px solid rgba(37,99,235,0.25);
+      padding: 32px 20px;
+      text-align: center;
+    }
+    .app-banner-inner { max-width: 700px; margin: 0 auto; }
+    .app-banner h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 1.5px;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .app-banner p { font-size: 0.95rem; color: var(--muted); margin-bottom: 20px; }
+    .app-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .app-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      color: #0a1628;
+      padding: 12px 22px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    }
+    .app-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+    .app-btn svg { width: 24px; height: 24px; flex-shrink: 0; }
+    .app-btn-sub { font-size: 0.72rem; font-weight: 400; display: block; }
+    .app-btn-main { font-size: 1rem; font-weight: 700; display: block; }
+
+    /* ─── BOOKING SECTION ───────────────────────────────────────────────────── */
+    .booking-section { padding: 0 20px 60px; background: var(--bg); }
+    .booking-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid rgba(37,99,235,0.25);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    .booking-header {
+      text-align: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #0f2a5c 0%, #0a1a3e 100%);
+      border-bottom: 1px solid rgba(37,99,235,0.3);
+    }
+    .booking-header .door-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--blue), var(--blue-lt));
+      color: #fff;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+    .booking-header h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.6rem;
+      letter-spacing: 2px;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .booking-header p { font-size: 0.95rem; color: var(--muted); }
+
+    /* Step indicator */
+    .step-indicator {
+      display: flex;
+      justify-content: center;
+      padding: 22px 20px;
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      border-bottom: 1px solid rgba(37,99,235,0.15);
+    }
+    .step-indicator-inner { display: flex; align-items: center; gap: 12px; }
+    .step-circle {
+      display: flex; align-items: center; justify-content: center;
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      font-weight: 600; font-size: 14px;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+    .step-circle.completed { background: var(--success); color: #fff; }
+    .step-circle.current   { background: linear-gradient(135deg, var(--blue), var(--blue-lt)); color: #fff; box-shadow: 0 0 16px rgba(37,99,235,0.5); }
+    .step-circle.pending   { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+    .step-line { width: 44px; height: 2px; transition: background-color 0.3s ease; flex-shrink: 0; }
+    .step-line.completed { background: var(--success); }
+    .step-line.pending   { background: #1e293b; }
+
+    /* Booking content */
+    .booking-content { padding: 36px 20px 120px; background: var(--bg); }
+    .booking-step { display: none; min-height: 500px; }
+    .booking-step.active { display: block; }
+
+    .step-title {
+      text-align: center;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 1.5px;
+      color: var(--text);
+      margin-bottom: 28px;
+    }
+
+    /* Cards */
+    .card-grid { display: grid; gap: 18px; margin-bottom: 28px; }
+    .vehicle-grid  { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .package-grid  { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); max-width: 960px; margin-left: auto; margin-right: auto; }
+    .addon-grid    { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+    .sel-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      color: var(--text);
+    }
+    .sel-card:hover { border-color: var(--blue-lt); transform: translateY(-3px); box-shadow: 0 8px 28px rgba(37,99,235,0.25); }
+    .sel-card.selected { border-color: var(--blue-lt); background: var(--surface2); box-shadow: 0 8px 28px rgba(37,99,235,0.3); }
+    .sel-card img { width: 60px; height: 60px; object-fit: contain; margin: 0 auto 14px; display: block; background: transparent; border-radius: 8px; }
+    .sel-card .pkg-icon, .sel-card img { display: flex; align-items: center; justify-content: center; }
+    .card-title { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .card-desc  { font-size: 0.85rem; color: #64748b; margin-bottom: 12px; }
+    .card-features { list-style: none; text-align: left; }
+    .card-features li { display: flex; align-items: center; margin-bottom: 7px; font-size: 0.85rem; color: var(--muted); }
+    .card-features li::before { content: ''; width: 7px; height: 7px; background: var(--blue-lt); border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+    .card-price { font-size: 1.15rem; font-weight: 700; color: #60a5fa; margin-top: 10px; }
+    .pkg-icon {
+      width: 60px; height: 60px;
+      margin: 0 auto 14px;
+      background: rgba(37,99,235,0.15);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      border: 1px solid rgba(37,99,235,0.3);
+    }
+    .sel-card.selected .pkg-icon { background: linear-gradient(135deg, var(--blue), var(--blue-lt)); border-color: var(--blue-lt); }
+    .original-price { text-decoration: line-through; color: #64748b; font-size: 0.88rem; display: block; }
+    .discount-price { color: var(--success); font-weight: 700; font-size: 1.2rem; }
+
+    /* Price summary */
+    .price-summary {
+      background: rgba(37,99,235,0.08);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 28px;
+      max-width: 380px;
+      margin-left: auto; margin-right: auto;
+    }
+    .addons-total { font-size: 1.1rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+    .grand-total  { font-size: 1.8rem; font-weight: 700; color: #60a5fa; }
+
+    /* Form */
+    .form-container {
+      max-width: 540px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 12px;
+      padding: 30px;
+    }
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 0.93rem; font-weight: 600; color: #cbd5e1; margin-bottom: 7px; }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.97rem;
+      background: var(--bg);
+      color: var(--text);
+      transition: all 0.3s ease;
+    }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--blue-lt); box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+    .form-input::placeholder { color: #475569; }
+    .form-input.error, .form-select.error { border-color: var(--error); }
+    .error-msg { color: var(--error); font-size: 0.85rem; margin-top: 4px; display: none; }
+    .form-select option { background: var(--surface); }
+
+    /* City detection badge */
+    .city-detected {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 8px 14px;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.35);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      color: #6ee7b7;
+      font-weight: 600;
+    }
+    .city-detected.show { display: flex; }
+
+    /* Calendar */
+    .cal-container {
+      background: var(--surface);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 28px;
+      max-width: 780px;
+      margin-left: auto; margin-right: auto;
+    }
+    .sel-date-display {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      margin-bottom: 20px;
+      padding: 12px;
+      background: rgba(37,99,235,0.1);
+      border-radius: 8px;
+      border: 1px solid rgba(37,99,235,0.2);
+    }
+    .sel-date-text { font-size: 1rem; font-weight: 600; color: var(--text); }
+
+    .date-carousel { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .carousel-nav {
+      padding: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .carousel-nav:hover:not(:disabled) { background: var(--border); border-color: var(--blue-lt); }
+    .carousel-nav:disabled { opacity: 0.4; cursor: not-allowed; }
+    .carousel-nav svg { width: 22px; height: 22px; color: var(--muted); }
+    .dates-container { display: flex; gap: 10px; flex: 1; justify-content: center; align-items: center; }
+    .date-card {
+      flex: 1; max-width: 105px;
+      padding: 13px 8px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--surface);
+      color: var(--muted);
+    }
+    .date-card:hover:not(.unavailable) { border-color: var(--blue-lt); transform: translateY(-2px); box-shadow: 0 4px 14px rgba(37,99,235,0.2); }
+    .date-card.selected { border-color: var(--blue-lt); background: var(--surface2); color: var(--text); }
+    .date-card.unavailable { background: #0a1220; border-color: #1a2540; color: #374151; cursor: not-allowed; }
+    .date-day    { font-size: 0.78rem; font-weight: 500; margin-bottom: 3px; }
+    .date-number { font-size: 1.05rem; font-weight: 700; }
+    .date-card.selected .date-day, .date-card.selected .date-number { color: #60a5fa; }
+    .unavail-text { font-size: 0.7rem; color: #374151; margin-top: 3px; }
+
+    /* Time slots */
+    .time-slots-wrap {
+      background: var(--surface);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 28px;
+      max-width: 780px;
+      margin-left: auto; margin-right: auto;
+    }
+    .time-slots-title { font-size: 1rem; font-weight: 600; color: #cbd5e1; margin-bottom: 16px; }
+    .time-slots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .time-slot {
+      padding: 15px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--bg);
+    }
+    .time-slot:hover:not(.booked) { border-color: var(--blue-lt); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(37,99,235,0.2); }
+    .time-slot.selected { background: var(--surface2); border-color: var(--blue-lt); }
+    .time-slot.booked   { background: #0a1220; border-color: #1a2540; cursor: not-allowed; opacity: 0.5; }
+    .time-slot-text { font-size: 0.97rem; font-weight: 600; color: var(--muted); }
+    .time-slot.selected .time-slot-text { color: #60a5fa; }
+
+    /* Soonest available banner */
+    .soonest-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.35);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+      color: #6ee7b7;
+      font-weight: 600;
+      max-width: 780px;
+      margin-left: auto; margin-right: auto;
+    }
+
+    /* Nav buttons */
+    .nav-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 28px;
+      position: sticky;
+      bottom: 20px;
+      background: var(--bg);
+      padding: 18px 0;
+      z-index: 50;
+      border-top: 1px solid rgba(37,99,235,0.15);
+    }
+    .btn {
+      padding: 12px 34px;
+      border: none;
+      border-radius: 50px;
+      font-size: 0.97rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--blue), var(--blue-lt)); color: #fff; box-shadow: 0 4px 16px rgba(37,99,235,0.35); }
+    .btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #1d4ed8, var(--blue)); transform: translateY(-1px); box-shadow: 0 6px 22px rgba(37,99,235,0.5); }
+    .btn-secondary { background: #1e293b; color: var(--muted); border: 1px solid #334155; }
+    .btn-secondary:hover { background: #263348; color: var(--text); }
+    .btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; box-shadow: none; }
+
+    /* Confirmation */
+    .confirm-container {
+      max-width: 680px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .confirm-section { padding: 24px; }
+    .confirm-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.9rem; letter-spacing: 1.5px; color: var(--text); margin-bottom: 24px; }
+    .section-label { font-size: 0.82rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .service-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(37,99,235,0.1); }
+    .service-item:last-child { border-bottom: none; }
+    .service-name  { font-size: 0.95rem; color: var(--muted); }
+    .service-price { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+    .total-section { background: rgba(37,99,235,0.08); padding: 16px 24px; border-top: 1px solid rgba(37,99,235,0.2); }
+    .total-item { display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; font-weight: 700; color: var(--text); }
+    .divider { height: 1px; background: rgba(37,99,235,0.2); margin: 20px 0; }
+    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 20px; }
+    .detail-text { font-size: 0.95rem; color: #cbd5e1; margin-bottom: 7px; }
+    .contact-section { background: rgba(37,99,235,0.05); padding: 20px 24px; }
+    .contact-item { font-size: 0.95rem; color: var(--muted); margin-bottom: 6px; }
+
+    /* Discount */
+    .discount-row { display: none; font-size: 0.95rem; font-weight: 600; color: var(--error); margin-bottom: 6px; justify-content: space-between; }
+    .discount-row.show { display: flex; }
+
+    /* Important notice */
+    .important-notice {
+      background: rgba(37,99,235,0.1);
+      border: 1px solid rgba(37,99,235,0.35);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .notice-text { color: #93c5fd; font-weight: 600; font-size: 0.93rem; }
+
+    .door-hanger-warning { text-align: center; margin-bottom: 10px; color: var(--error); font-weight: 600; font-size: 0.9rem; }
+
+    .confirm-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-lt));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 18px;
+      letter-spacing: 0.5px;
+      box-shadow: 0 6px 20px rgba(37,99,235,0.4);
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+    }
+    .confirm-btn:hover:not(.is-disabled) { background: linear-gradient(135deg, #1d4ed8, var(--blue)); transform: translateY(-1px); box-shadow: 0 8px 28px rgba(37,99,235,0.55); }
+    .confirm-btn.is-disabled { background: #1e293b !important; color: #475569 !important; cursor: not-allowed !important; pointer-events: none !important; box-shadow: none !important; transform: none !important; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 28px 20px;
+      background: #030810;
+      border-top: 1px solid rgba(37,99,235,0.15);
+      font-size: 0.85rem;
+      color: #475569;
+    }
+    .footer a { color: var(--blue-lt); text-decoration: none; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.8rem; }
+      .booking-header h2 { font-size: 2rem; }
+      .step-title { font-size: 1.6rem; }
+      .nav-buttons { flex-direction: column; align-items: center; }
+      .btn { width: 200px; }
+      .details-grid { grid-template-columns: 1fr; gap: 16px; }
+      .dates-container { gap: 4px; }
+      .date-card { max-width: none; padding: 8px 4px; }
+      .date-day { font-size: 0.68rem; }
+      .date-number { font-size: 0.88rem; }
+      .step-indicator-inner { gap: 8px; }
+      .step-circle { width: 32px; height: 32px; font-size: 12px; }
+      .step-line { width: 24px; }
+      .carousel-nav { flex-shrink: 0; padding: 6px; }
+      .carousel-nav svg { width: 18px; height: 18px; }
+      .time-slots-grid { grid-template-columns: 1fr; }
+      .form-container { padding: 20px; }
+    }
+    @media (max-width: 480px) {
+      .hero h1 { font-size: 2.2rem; }
+      .step-circle { width: 28px; height: 28px; font-size: 11px; }
+      .step-line { width: 18px; }
+      .booking-content { padding: 20px 12px 100px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOP ANNOUNCEMENT BANNER -->
+<a href="https://apps.apple.com/us/app/luxury-wash-on-wheels/id6768833519" target="_blank" class="top-banner">
+  <span class="top-banner-icon">📱</span>
+  <span class="top-banner-text"><strong>Save Even More</strong> — Download the Luxury Wash On Wheels App</span>
+  <span class="top-banner-cta">Get the App →</span>
+</a>
+
+<!-- ═══════════════════════════════════════════════════════════ HERO ══════ -->
+<section class="hero" style="padding-bottom:0;">
+  <div class="hero-inner">
+    <div class="badge">🎁 Exclusive Door Hanger Offer</div>
+    <h1>We're Detailing<br><span>In Your Neighborhood</span></h1>
+    <p class="hero-sub">Luxury Wash On Wheels is in your area today — your neighbors are already getting their cars detailed. Claim your exclusive discount before we leave.</p>
+
+    <div class="neighborhood-callout">
+      <span class="dot"></span>
+      Actively detailing in your area today
+    </div>
+
+    <div class="hanger-wrap">
+      <div class="hanger-glow"></div>
+      <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/ljVYOgxIZQAIJsmm.png"
+           alt="Luxury Wash On Wheels Mobile Detailing Van" class="hanger-img">
+    </div>
+
+    <p class="hero-sub">This is our van — we're in your neighborhood right now. Book online in minutes and we'll come straight to you.</p>
+
+    <button class="scroll-btn" onclick="document.getElementById('booking-anchor').scrollIntoView({behavior:'smooth'})">
+      📅 Book My Appointment Now
+    </button>
+
+    <div class="highlights">
+      <div class="highlight">
+        <div class="highlight-icon">🏘️</div>
+        <div class="highlight-title">In Your Neighborhood</div>
+        <div class="highlight-text">We're already on your street. Your neighbors booked — now it's your turn.</div>
+      </div>
+      <div class="highlight">
+        <div class="highlight-icon">🎟️</div>
+        <div class="highlight-title">Keep Your Door Hanger</div>
+        <div class="highlight-text">Hold on to it — your exclusive discount is applied at checkout.</div>
+      </div>
+      <div class="highlight">
+        <div class="highlight-icon">✨</div>
+        <div class="highlight-title">Premium Mobile Detailing</div>
+        <div class="highlight-text">13+ years trusted on the Emerald Coast. We come to your driveway.</div>
+      </div>
+      <div class="highlight">
+        <div class="highlight-icon">📍</div>
+        <div class="highlight-title">We Come to You</div>
+        <div class="highlight-text">No drop-off, no waiting. We detail at your home or office.</div>
+      </div>
+    </div>
+
+    <div class="cta-box">
+      <div class="cta-text">💡 Don't lose your door hanger — it's your discount ticket!</div>
+      <div class="cta-subtext">Book below and mention it at checkout to get your $50 off applied.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ BOOKING FORM ═══ -->
+<div id="booking-anchor"></div>
+<section class="booking-section" style="padding-top:0;">
+  <div class="booking-wrap">
+    <div class="booking-header">
+      <div class="door-badge">🎁 $50 OFF — Door Hanger Exclusive</div>
+      <h2>Book Your Detail Online</h2>
+      <p>We're in your neighborhood now. Lock in your spot before we move on.</p>
+    </div>
+    <div class="step-indicator">
+      <div class="step-indicator-inner">
+        <div class="step-circle current" id="si-1">1</div>
+        <div class="step-line pending" id="sl-1"></div>
+        <div class="step-circle pending" id="si-2">2</div>
+        <div class="step-line pending" id="sl-2"></div>
+        <div class="step-circle pending" id="si-3">3</div>
+        <div class="step-line pending" id="sl-3"></div>
+        <div class="step-circle pending" id="si-4">4</div>
+        <div class="step-line pending" id="sl-4"></div>
+        <div class="step-circle pending" id="si-5">5</div>
+        <div class="step-line pending" id="sl-5"></div>
+        <div class="step-circle pending" id="si-6">6</div>
+      </div>
+    </div>
+    <div class="booking-content">
+      <!-- Step 1: Vehicle -->
+      <div class="booking-step active" id="step-1">
+        <p class="step-title">What Type of Vehicle?</p>
+        <div class="card-grid vehicle-grid" id="vehicle-options">
+          <div class="sel-card" data-value="small"><img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c33c05b62bf7950af7.png" alt="Sedan"><div class="card-title">Sedan</div></div>
+          <div class="sel-card" data-value="midsize"><img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c3a4f63d08cf143b8c.png" alt="SUV"><div class="card-title">SUV</div></div>
+          <div class="sel-card" data-value="fullsize"><img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c347cd63a232b5372f.png" alt="XL SUV/Van"><div class="card-title">XL SUV / Van</div></div>
+          <div class="sel-card" data-value="pickup"><img src="https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/684710c3e9c59440ae51d4bc.png" alt="Truck"><div class="card-title">Truck</div></div>
+        </div>
+        <div class="nav-buttons"><button class="btn btn-primary" onclick="goStep(2)" id="s1-next" disabled>Next Step</button></div>
+      </div>
+      <!-- Step 2: Personal Info -->
+      <div class="booking-step" id="step-2">
+        <p class="step-title">Your Information</p>
+        <div class="form-container">
+          <div class="form-group"><label class="form-label">First Name *</label><input type="text" id="first-name" class="form-input" placeholder="First name"><div class="error-msg" id="first-name-error"></div></div>
+          <div class="form-group"><label class="form-label">Last Name *</label><input type="text" id="last-name" class="form-input" placeholder="Last name"><div class="error-msg" id="last-name-error"></div></div>
+          <div class="form-group"><label class="form-label">Phone Number *</label><input type="tel" id="phone" class="form-input" placeholder="(850) 555-0000"><div class="error-msg" id="phone-error"></div></div>
+          <div class="form-group"><label class="form-label">Email Address *</label><input type="email" id="email" class="form-input" placeholder="you@example.com"><div class="error-msg" id="email-error"></div></div>
+        </div>
+        <div class="nav-buttons"><button class="btn btn-secondary" onclick="goStep(1)">Back</button><button class="btn btn-primary" onclick="handleLeadNext()">Next Step</button></div>
+      </div>
+      <!-- Step 3: Package -->
+      <div class="booking-step" id="step-3">
+        <p class="step-title">Choose Your Package</p>
+        <div class="card-grid package-grid" id="package-options">
+          <div class="sel-card" data-value="basic"><div class="pkg-icon">🚿</div><div class="card-title">Basic Detail</div><ul class="card-features"><li>Exterior Hand Wash</li><li>Interior Vacuum</li><li>Window Cleaning</li><li>Tire Shine</li></ul><div class="card-price" id="price-basic">$175.00</div></div>
+          <div class="sel-card" data-value="full"><div class="pkg-icon">✨</div><div class="card-title">Full Detail</div><ul class="card-features"><li>Everything in Basic +</li><li>Interior Deep Clean</li><li>Leather/Vinyl Condition</li><li>Air Freshener</li></ul><div class="card-price" id="price-full">$275.00</div></div>
+          <div class="sel-card" data-value="luxury"><div class="pkg-icon">👑</div><div class="card-title">Luxury Detail</div><ul class="card-features"><li>Everything in Full +</li><li>Engine Bay</li><li>6-Month Paint Sealant</li><li>Shampoo Seats &amp; Carpets</li></ul><div class="card-price" id="price-luxury">$375.00</div></div>
+          <div class="sel-card" data-value="interior"><div class="pkg-icon">🪑</div><div class="card-title">Interior Only</div><ul class="card-features"><li>Full Interior Vacuum</li><li>Wipe Down All Surfaces</li><li>Window Cleaning</li></ul><div class="card-price" id="price-interior">$200.00</div></div>
+          <div class="sel-card" data-value="exterior"><div class="pkg-icon">🚗</div><div class="card-title">Exterior Only</div><ul class="card-features"><li>Hand Wash &amp; Dry</li><li>Tire &amp; Rim Cleaning</li><li>Exterior Windows</li></ul><div class="card-price" id="price-exterior">$175.00</div></div>
+        </div>
+        <div class="nav-buttons"><button class="btn btn-secondary" onclick="goStep(2)">Back</button><button class="btn btn-primary" onclick="goStep(4)" id="s3-next" disabled>Next Step</button></div>
+      </div>
+      <!-- Step 4: Add-ons -->
+      <div class="booking-step" id="step-4">
+        <p class="step-title">Add-On Services</p>
+        <div class="card-grid addon-grid" id="addon-options"></div>
+        <div class="price-summary"><div class="addons-total">Add-ons: <span id="addons-price">$0.00</span></div><div class="grand-total">Total: <span id="total-price">$0.00</span></div></div>
+        <div class="nav-buttons"><button class="btn btn-secondary" onclick="goStep(3)">Back</button><button class="btn btn-primary" onclick="goStep(5)">Next Step</button></div>
+      </div>
+      <!-- Step 5: Address -->
+      <div class="booking-step" id="step-5">
+        <p class="step-title">Where Should We Come?</p>
+        <div class="form-container">
+          <div class="form-group"><label class="form-label">Street Address *</label><input type="text" id="street-address" class="form-input" placeholder="123 Main Street"><div class="error-msg" id="street-address-error"></div></div>
+          <div class="form-group"><label class="form-label">Unit / Apt (optional)</label><input type="text" id="unit" class="form-input" placeholder="Apt 4B"></div>
+          <div class="form-group"><label class="form-label">City *</label><input type="text" id="city" class="form-input" placeholder="Crestview"><div class="error-msg" id="city-error"></div><div class="city-detected" id="city-detected-badge"><span>📍</span><span id="city-detected-text">Calendar: Crestview</span></div></div>
+          <div class="form-group"><label class="form-label">State *</label><select id="state" class="form-select"><option value="">Select state</option><option value="FL" selected>Florida</option><option value="AL">Alabama</option><option value="GA">Georgia</option></select><div class="error-msg" id="state-error"></div></div>
+          <div class="form-group"><label class="form-label">ZIP Code *</label><input type="text" id="zip-code" class="form-input" placeholder="32536" maxlength="10"><div class="error-msg" id="zip-code-error"></div></div>
+        </div>
+        <div class="nav-buttons"><button class="btn btn-secondary" onclick="goStep(4)">Back</button><button class="btn btn-primary" onclick="handleAddressNext()" id="s5-next">Next Step</button></div>
+      </div>
+      <!-- Step 6: Date/Time + Confirm -->
+      <div class="booking-step" id="step-6">
+        <p class="step-title">Pick Your Date &amp; Time</p>
+        <div class="soonest-banner" id="soonest-banner">✅ Soonest available time auto-selected — your chosen time is confirmed.</div>
+        <div class="cal-container">
+          <div class="sel-date-display"><span>📅</span><span class="sel-date-text" id="sel-date-text">No date selected</span></div>
+          <div class="date-carousel">
+            <button class="carousel-nav" id="prev-dates" onclick="navCarousel('prev')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+            <div class="dates-container" id="dates-container"></div>
+            <button class="carousel-nav" id="next-dates" onclick="navCarousel('next')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>
+          </div>
+        </div>
+        <div class="time-slots-wrap" id="time-slots-wrap" style="display:none;">
+          <p class="time-slots-title">Select Your Preferred Arrival Window:</p>
+
+          <div class="time-slots-grid" id="time-slots-grid"></div>
+        </div>
+        <div class="confirm-container" id="confirm-container" style="margin-top:28px;">
+          <div class="confirm-section">
+            <p class="confirm-title">Booking Summary</p>
+            <p class="section-label">Selected Services</p>
+            <div class="service-item"><span class="service-name">Vehicle</span><span class="service-price" id="c-vehicle">—</span></div>
+            <div class="service-item"><span class="service-name">Package</span><span class="service-price" id="c-package">—</span></div>
+            <div class="service-item" id="c-addons-row" style="display:none;"><span class="service-name">Add-ons</span><span class="service-price" id="c-addons">None</span></div>
+          </div>
+          <div class="total-section">
+            <div class="discount-row" id="c-discount-row"><span>Discount (<span id="c-discount-code"></span>)</span><span id="c-discount-amt">-$0.00</span></div>
+            <div class="total-item"><span>Total</span><span id="c-total">$0.00</span></div>
+          </div>
+          <div class="confirm-section">
+            <div class="divider"></div>
+            <div class="details-grid">
+              <div><p class="section-label">Arrival</p><div class="detail-text" id="c-date">Date not selected</div><div class="detail-text" id="c-time">Time not selected</div></div>
+              <div><p class="section-label">Location</p><div class="detail-text" id="c-address">Address not provided</div></div>
+            </div>
+            <div class="divider"></div>
+          </div>
+          <div class="contact-section"><p class="section-label">Your Contact</p><div class="contact-item" id="c-name">Name: —</div><div class="contact-item" id="c-email">Email: —</div></div>
+          <div class="confirm-section">
+            <div class="form-group" style="max-width:560px;margin:0 auto 16px;">
+              <label class="form-label">Discount Code</label>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;"><input type="text" id="discount-code" class="form-input" placeholder="Enter code" style="flex:1;min-width:180px;"><button type="button" class="btn btn-primary" id="apply-discount-btn" style="padding:11px 18px;">Apply</button><button type="button" class="btn btn-secondary" id="remove-discount-btn" style="padding:11px 18px;">Remove</button></div>
+              <div class="error-msg" id="discount-msg" style="display:none;"></div>
+            </div>
+            <div class="important-notice"><div class="notice-text">⏰ IMPORTANT: There is a 30-minute arrival window</div></div>
+            <div class="door-hanger-warning">⚠️ This $50 OFF offer is only available for a limited time</div>
+            <div class="nav-buttons">
+              <button class="btn btn-secondary" onclick="goStep(5)">Back</button>
+              <button class="confirm-btn is-disabled" id="confirm-booking" onclick="handleConfirm()">Confirm My Booking</button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /step-6 -->
+    </div><!-- /booking-content -->
+  </div><!-- /booking-wrap -->
+</section>
+
+<!-- ══════════════════════════════════════════════════ TEAM PHOTOS ══════ -->
+<section class="team-photos-section">
+  <div class="team-photos-inner">
+    <div class="team-photos-header">
+      <h2>Your Neighbors Are Already Getting Detailed</h2>
+      <p>See the Luxury Wash On Wheels team in action — right in neighborhoods like yours.</p>
+    </div>
+    <div class="team-photos-grid">
+      <div class="team-photo-card featured">
+        <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/egxImRKwMfqdNTXx.webp" alt="Team detailing a BMW in Destin" loading="lazy">
+        <div class="photo-caption">🔵 Maintenance Detail — Destin, FL</div>
+      </div>
+      <div class="team-photo-card">
+        <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/uQxtnTbnJAyJeaia.jpg" alt="Luxury Wash On Wheels team at work" loading="lazy">
+        <div class="photo-caption">⚡ Team in Action — Your Neighborhood</div>
+      </div>
+      <div class="team-photo-card app-preview">
+        <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/wHknvXHaTcXIAqGR.png" alt="Luxury Wash On Wheels mobile app" loading="lazy">
+        <div class="photo-caption">📱 Track your detail live in the app</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ APP DOWNLOAD ══ -->
+<section class="app-banner">
+  <div class="app-banner-inner">
+    <h2>📱 Download Our App</h2>
+    <p>Track your detail in real-time, manage bookings, and get exclusive member perks — all from your phone.</p>
+    <div class="app-btns">
+      <a href="https://apps.apple.com/us/app/luxury-wash-on-wheels/id6768833519" target="_blank" class="app-btn">
+        <!-- Apple logo -->
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+        <span><span class="app-btn-sub">Download on the</span><span class="app-btn-main">App Store</span></span>
+      </a>
+
+    </div>
+  </div>
+</section>
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+const APP_API_BASE = 'https://luxurywashonwheels.app';
+
+const CITY_KEYWORDS = [
+  { keywords: ['pensacola','gulf breeze','pace','milton','navarre','cantonment','ferry pass','ensley','brent','warrington','brownsville'], slug: 'pensacola' },
+  { keywords: ['destin','miramar beach','sandestin','santa rosa beach','inlet beach','seacrest','rosemary beach','watersound','30a','freeport','shalimar'], slug: 'destin' },
+  { keywords: ['crestview','baker','laurel hill','milligan','holt','blackman','mossy head'], slug: 'crestview' },
+  { keywords: ['niceville','bluewater bay','valparaiso','eglin','hurlburt'], slug: 'niceville' },
+  { keywords: ['fort walton','fort walton beach','fwb','mary esther','wright','cinco bayou','ocean city'], slug: 'fwb' },
+];
+
+const ZAPIER_HOOKS = {
+  pensacola: 'https://hooks.zapier.com/hooks/catch/13143841/uol9pzh/',
+  destin:    'https://hooks.zapier.com/hooks/catch/13143841/uolypzh/',
+  crestview: 'https://hooks.zapier.com/hooks/catch/13143841/uolp9zh/',
+  niceville: 'https://hooks.zapier.com/hooks/catch/13143841/uoly9zh/',
+  fwb:       'https://hooks.zapier.com/hooks/catch/13143841/uoqp6s6/',
+};
+
+const THANK_YOU_URLS = {
+  pensacola: 'https://luxurywashonwheels.com/pensacola/thank-you-booking/',
+  destin:    'https://luxurywashonwheels.com/destin/thank-you-booking/',
+  crestview: 'https://luxurywashonwheels.com/crestview/thank-you-booking/',
+  niceville: 'https://luxurywashonwheels.com/niceville/thank-you-booking/',
+  fwb:       'https://luxurywashonwheels.com/fort-walton-beach/thank-you-booking/',
+};
+
+const CITY_DISPLAY = {
+  pensacola: 'Pensacola',
+  destin:    'Destin',
+  crestview: 'Crestview',
+  niceville: 'Niceville',
+  fwb:       'Fort Walton Beach',
+};
+
+function detectLocationSlug(address, cityField) {
+  const combined = ((address || '') + ' ' + (cityField || '')).toLowerCase();
+  for (const { keywords, slug } of CITY_KEYWORDS) {
+    if (keywords.some(kw => combined.includes(kw))) return slug;
+  }
+  return 'crestview'; // default
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let currentStep = 1;
+let vehicleType = '';
+let packageType = '';
+let selectedAddons = [];
+let totalPrice = 0;
+let firstName = '', lastName = '', email = '', phone = '';
+let streetAddress = '', unit = '', city = '', state = 'FL', zipCode = '';
+let selectedDate = '', selectedTime = '';
+let currentDateIndex = 0;
+let locationSlug = 'crestview';
+let leadZapSent = false;
+let abandonedCartId = null;
+let availabilityLoaded = false;
+let bookedSlotsByDate = {};
+
+const DISCOUNT_CODES = {
+  VIP10:     { type: 'percent', value: 10 },
+  WELCOME20: { type: 'percent', value: 20 },
+  DETAIL5:   { type: 'percent', value: 5 },
+  DOOR50:    { type: 'fixed',   value: 50 },
+};
+let discountState = { isApplied: false, code: '', type: '', value: 0, amount: 0 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRICING
+// ═══════════════════════════════════════════════════════════════════════════
+const pricingChart = {
+  small:    { basic: 175, full: 275, interior: 200, exterior: 175, luxury: 375 },
+  midsize:  { basic: 200, full: 300, interior: 250, exterior: 200, luxury: 400 },
+  fullsize: { basic: 250, full: 350, interior: 275, exterior: 225, luxury: 450 },
+  pickup:   { basic: 225, full: 325, interior: 225, exterior: 200, luxury: 425 },
+};
+
+const vehicleNames  = { small: 'Sedan', midsize: 'SUV', fullsize: 'XL SUV / Van', pickup: 'Truck' };
+const packageNames  = { basic: 'Basic Detail', full: 'Full Detail', interior: 'Interior Only', exterior: 'Exterior Only', luxury: 'Luxury Detail' };
+
+function getBasePrice() {
+  let p = (pricingChart[vehicleType] || {})[packageType] || 0;
+  if (['basic','full','luxury'].includes(packageType)) p -= 50; // door hanger discount
+  return p;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADD-ONS
+// ═══════════════════════════════════════════════════════════════════════════
+const basicAddons = [
+  { id: 'ba1', name: 'Odor Eliminator',   price: 30, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c1.png' },
+  { id: 'ba2', name: 'Pet Hair Removal',  price: 40, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c2.png' },
+  { id: 'ba3', name: 'Headlight Restore', price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c3.png' },
+];
+const fullAddons = [
+  ...basicAddons,
+  { id: 'fa1', name: 'Engine Bay Clean', price: 60, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c4.png' },
+];
+const luxuryAddons = [
+  { id: 'la1', name: 'Paint Correction', price: 150, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c5.png' },
+  { id: 'la2', name: 'Ceramic Coating',  price: 200, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c6.png' },
+];
+const interiorAddons = basicAddons;
+const exteriorAddons = [
+  { id: 'ea1', name: 'Clay Bar Treatment', price: 70, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c7.png' },
+  { id: 'ea2', name: 'Headlight Restore',  price: 50, image: 'https://storage.googleapis.com/msgsndr/n1nXAGycuKW5u1GfiXPB/media/6847b1a9b2b8e5b2a7e2b3c3.png' },
+];
+
+function getAddonsForPackage() {
+  switch (packageType) {
+    case 'luxury':   return luxuryAddons;
+    case 'full':     return fullAddons;
+    case 'interior': return interiorAddons;
+    case 'exterior': return exteriorAddons;
+    default:         return basicAddons;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TIME SLOTS
+// ═══════════════════════════════════════════════════════════════════════════
+const packageSlots = {
+  basic:    ['8:00am - 10:00am','10:00am - 12:00pm','1:00pm - 3:00pm','3:00pm - 5:00pm'],
+  full:     ['8:00am - 11:00am','11:00am - 2:00pm','2:00pm - 5:00pm'],
+  luxury:   ['8:00am - 12:00pm','1:00pm - 5:00pm'],
+  interior: ['8:00am - 11:00am','11:00am - 2:00pm','2:00pm - 5:00pm'],
+  exterior: ['8:00am - 10:00am','10:00am - 12:00pm','1:00pm - 3:00pm','3:00pm - 5:00pm'],
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CALENDAR
+// ═══════════════════════════════════════════════════════════════════════════
+function getCDTNow() {
+  const now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (-5 * 3600000));
+}
+
+function buildCalendarDates() {
+  const dates = [];
+  const today = getCDTNow();
+  let d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  for (let i = 0; i < 365; i++) {
+    dates.push({ date: new Date(d), available: true });
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+const calendarDates = buildCalendarDates();
+
+function fmtDateDisplay(date) {
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return { day: days[date.getDay()], month: months[date.getMonth()], num: date.getDate() };
+}
+function fmtDateISO(date) { return date.toISOString().split('T')[0]; }
+
+function timeToHour(t) {
+  if (!t) return -1;
+  const m = t.trim().toLowerCase().replace(/\s+/g,'').match(/^(\d+):(\d+)(am|pm)/);
+  if (!m) return -1;
+  let h = parseInt(m[1]);
+  if (m[3] === 'pm' && h !== 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  return h;
+}
+function slotEndHour(slot) {
+  const parts = slot.toLowerCase().replace(/\s+/g,'').split('-');
+  if (parts.length < 2) return timeToHour(slot) + 2;
+  const m = parts[1].match(/^(\d+):(\d+)(am|pm)/);
+  if (!m) return timeToHour(slot) + 2;
+  let h = parseInt(m[1]);
+  if (m[3] === 'pm' && h !== 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  return h;
+}
+function isSlotBooked(dateISO, slotLabel) {
+  const set = bookedSlotsByDate[dateISO];
+  if (!set) return false;
+  if (set === '__NO_WORKERS__') return true;
+  if (set.has(slotLabel)) return true;
+  const rs = timeToHour(slotLabel), re = slotEndHour(slotLabel);
+  for (const b of set) {
+    const bs = timeToHour(b), be = slotEndHour(b);
+    if (bs < re && be > rs) return true;
+  }
+  return false;
+}
+
+async function prefetchAvailability() {
+  try {
+    const today = getCDTNow();
+    const promises = [], keys = [];
+    for (let i = 0; i < 90; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+      const iso = fmtDateISO(d);
+      keys.push(iso);
+      promises.push(
+        fetch(APP_API_BASE + '/api/booking/availability?location=' + locationSlug + '&date=' + iso)
+          .then(r => r.json()).catch(() => null)
+      );
+    }
+    const results = await Promise.all(promises);
+    results.forEach((data, idx) => {
+      if (!data) return;
+      const iso = keys[idx];
+      const cap = data.effectiveCapacity != null ? data.effectiveCapacity : (data.capacity || 0);
+      if (cap === 0) {
+        const ce = calendarDates.find(d => fmtDateISO(d.date) === iso);
+        if (ce) ce.available = false;
+        bookedSlotsByDate[iso] = '__NO_WORKERS__';
+        return;
+      }
+      const set = new Set();
+      if (data.bookedSlots) data.bookedSlots.forEach(s => set.add(s));
+      if (data.slotCounts) Object.keys(data.slotCounts).forEach(s => { if ((data.slotCounts[s]||0) >= cap) set.add(s); });
+      bookedSlotsByDate[iso] = set;
+    });
+    availabilityLoaded = true;
+  } catch(e) { availabilityLoaded = true; }
+}
+
+function renderCalendar() {
+  const container = document.getElementById('dates-container');
+  const visible = calendarDates.slice(currentDateIndex, currentDateIndex + 5);
+  container.innerHTML = '';
+  visible.forEach(obj => {
+    const d = fmtDateDisplay(obj.date);
+    const iso = fmtDateISO(obj.date);
+    const isSelected = selectedDate === iso;
+    const card = document.createElement('div');
+    card.className = 'date-card' + (isSelected ? ' selected' : '') + (!obj.available ? ' unavailable' : '');
+    if (obj.available) card.onclick = () => selectDate(iso, obj.date);
+    card.innerHTML = `<div class="date-day">${d.day}</div><div class="date-number">${d.month} ${d.num}</div>${!obj.available ? '<div class="unavail-text">Unavail.</div>' : ''}`;
+    container.appendChild(card);
+  });
+  document.getElementById('prev-dates').disabled = currentDateIndex === 0;
+  document.getElementById('next-dates').disabled = currentDateIndex >= calendarDates.length - 5;
+}
+
+function navCarousel(dir) {
+  if (dir === 'prev' && currentDateIndex > 0) currentDateIndex--;
+  else if (dir === 'next' && currentDateIndex < calendarDates.length - 5) currentDateIndex++;
+  renderCalendar();
+}
+
+function selectDate(iso, dateObj) {
+  selectedDate = iso;
+  selectedTime = '';
+  const d = fmtDateDisplay(dateObj);
+  document.getElementById('sel-date-text').textContent = d.day + ', ' + d.month + ' ' + d.num;
+  renderCalendar();
+  renderTimeSlots();
+  updateConfirmation();
+  updateConfirmEnabled();
+}
+
+function renderTimeSlots() {
+  const wrap = document.getElementById('time-slots-wrap');
+  const grid = document.getElementById('time-slots-grid');
+  if (!selectedDate) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  const slots = (packageSlots[packageType] || packageSlots.full);
+  grid.innerHTML = '';
+  slots.forEach(slot => {
+    const booked = isSlotBooked(selectedDate, slot);
+    const isSelected = selectedTime === slot;
+    const el = document.createElement('div');
+    el.className = 'time-slot' + (isSelected ? ' selected' : '') + (booked ? ' booked' : '');
+    el.innerHTML = `<div class="time-slot-text">${booked ? '🚫 ' : ''}${slot}</div>`;
+    if (!booked) el.onclick = () => { selectedTime = slot; renderTimeSlots(); updateConfirmation(); updateConfirmEnabled(); };
+    grid.appendChild(el);
+  });
+}
+
+function autoSelectSoonest() {
+  const slots = ['8:00am - 12:00pm','1:00pm - 5:00pm'];
+  const now = getCDTNow();
+  const todayISO = fmtDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  const nowHour = now.getHours();
+  for (let i = 0; i < calendarDates.length; i++) {
+    const obj = calendarDates[i];
+    if (!obj.available) continue;
+    const iso = fmtDateISO(obj.date);
+    const set = bookedSlotsByDate[iso];
+    if (!set || set === '__NO_WORKERS__') continue;
+    const open = slots.filter(s => {
+      if (set.has(s)) return false;
+      if (iso === todayISO && timeToHour(s) <= nowHour) return false;
+      return true;
+    });
+    if (open.length > 0) {
+      selectDate(iso, obj.date);
+      currentDateIndex = Math.max(0, i - 1);
+      renderCalendar();
+      document.getElementById('soonest-banner').style.display = 'flex';
+      return;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STEP NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════
+function goStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.booking-step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-' + n).classList.add('active');
+  updateStepIndicator();
+  if (n === 6) { renderCalendar(); updateConfirmEnabled(); updateConfirmation(); }
+  if (n === 4 || n === 5) updateConfirmation();
+  // Scroll to booking section top on mobile
+  if (window.innerWidth <= 768) {
+    document.querySelector('.booking-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function updateStepIndicator() {
+  for (let i = 1; i <= 6; i++) {
+    const c = document.getElementById('si-' + i);
+    const l = document.getElementById('sl-' + i);
+    if (i < currentStep)      { c.className = 'step-circle completed'; c.innerHTML = '✓'; if (l) l.className = 'step-line completed'; }
+    else if (i === currentStep){ c.className = 'step-circle current';   c.textContent = i; if (l) l.className = 'step-line pending'; }
+    else                       { c.className = 'step-circle pending';   c.textContent = i; if (l) l.className = 'step-line pending'; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════
+function validateField(id) {
+  const el = document.getElementById(id);
+  const err = document.getElementById(id + '-error');
+  if (!el) return true;
+  el.classList.remove('error');
+  if (err) err.style.display = 'none';
+  const v = el.value.trim();
+  let msg = '';
+  switch (id) {
+    case 'first-name': case 'last-name': case 'street-address': case 'city':
+      if (!v) msg = 'This field is required'; break;
+    case 'email':
+      if (!v) msg = 'Email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) msg = 'Enter a valid email'; break;
+    case 'phone':
+      if (!v) msg = 'Phone is required';
+      else if (v.replace(/\D/g,'').length < 10) msg = 'Enter a valid phone number'; break;
+    case 'zip-code':
+      if (!v) msg = 'ZIP code is required';
+      else if (!/^\d{5}(-\d{4})?$/.test(v)) msg = 'Enter a valid ZIP code'; break;
+    case 'state':
+      if (!v) msg = 'Please select a state'; break;
+  }
+  if (msg) {
+    el.classList.add('error');
+    if (err) { err.textContent = msg; err.style.display = 'block'; }
+    return false;
+  }
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STEP HANDLERS
+// ═══════════════════════════════════════════════════════════════════════════
+function handleLeadNext() {
+  const fields = ['first-name','last-name','email','phone'];
+  if (!fields.every(f => validateField(f))) return;
+  firstName = document.getElementById('first-name').value.trim();
+  lastName  = document.getElementById('last-name').value.trim();
+  email     = document.getElementById('email').value.trim();
+  phone     = document.getElementById('phone').value.trim();
+  sendLeadZap();
+  sendAbandonedCart();
+  updatePackagePrices();
+  goStep(3);
+}
+
+async function handleAddressNext() {
+  const fields = ['street-address','city','state','zip-code'];
+  if (!fields.every(f => validateField(f))) return;
+  streetAddress = document.getElementById('street-address').value.trim();
+  unit          = document.getElementById('unit').value.trim();
+  city          = document.getElementById('city').value.trim();
+  state         = document.getElementById('state').value.trim();
+  zipCode       = document.getElementById('zip-code').value.trim();
+
+  // Detect location slug from address
+  locationSlug = detectLocationSlug(streetAddress + ' ' + city + ' ' + zipCode, city);
+
+  const btn = document.getElementById('s5-next');
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Loading availability...';
+  btn.disabled = true;
+
+  if (!availabilityLoaded) await prefetchAvailability();
+
+  btn.textContent = orig;
+  btn.disabled = false;
+
+  goStep(6);
+  setTimeout(() => { renderCalendar(); autoSelectSoonest(); }, 50);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PACKAGE PRICES & ADD-ONS
+// ═══════════════════════════════════════════════════════════════════════════
+function updatePackagePrices() {
+  if (!vehicleType) return;
+  const chart = pricingChart[vehicleType] || {};
+  const setPrice = (id, orig, discounted) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (discounted !== undefined) {
+      el.innerHTML = `<span class="original-price">$${orig.toFixed(2)}</span><span class="discount-price">$${discounted.toFixed(2)}</span>`;
+    } else {
+      el.textContent = '$' + orig.toFixed(2);
+    }
+  };
+  setPrice('price-basic',    chart.basic,   chart.basic - 50);
+  setPrice('price-full',     chart.full,    chart.full - 50);
+  setPrice('price-luxury',   chart.luxury,  chart.luxury - 50);
+  setPrice('price-interior', chart.interior);
+  setPrice('price-exterior', chart.exterior);
+}
+
+function renderAddons() {
+  const container = document.getElementById('addon-options');
+  container.innerHTML = '';
+  getAddonsForPackage().forEach(addon => {
+    const card = document.createElement('div');
+    card.className = 'sel-card' + (selectedAddons.includes(addon.id) ? ' selected' : '');
+    card.innerHTML = `<img src="${addon.image}" alt="${addon.name}" onerror="this.style.display='none'"><div class="card-title">${addon.name}</div><div class="card-price">+$${addon.price.toFixed(2)}</div>`;
+    card.onclick = () => {
+      if (selectedAddons.includes(addon.id)) selectedAddons = selectedAddons.filter(id => id !== addon.id);
+      else selectedAddons.push(addon.id);
+      renderAddons();
+      updateTotalPrice();
+      updateConfirmation();
+    };
+    container.appendChild(card);
+  });
+  updateTotalPrice();
+}
+
+function updateTotalPrice() {
+  const base = getBasePrice();
+  const addonsTotal = getAddonsForPackage().filter(a => selectedAddons.includes(a.id)).reduce((s, a) => s + a.price, 0);
+  totalPrice = base + addonsTotal;
+  const ap = document.getElementById('addons-price');
+  const tp = document.getElementById('total-price');
+  if (ap) ap.textContent = '$' + addonsTotal.toFixed(2);
+  if (tp) tp.textContent = '$' + totalPrice.toFixed(2);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DISCOUNT
+// ═══════════════════════════════════════════════════════════════════════════
+function getDiscountedTotal() {
+  if (!discountState.isApplied) { discountState.amount = 0; return +totalPrice.toFixed(2); }
+  const base = totalPrice;
+  let amt = discountState.type === 'percent' ? base * discountState.value / 100 : discountState.value;
+  amt = Math.min(amt, base);
+  discountState.amount = +amt.toFixed(2);
+  return +(base - amt).toFixed(2);
+}
+
+function applyDiscount() {
+  const code = (document.getElementById('discount-code').value || '').trim().toUpperCase();
+  if (!code) { clearDiscount(); return; }
+  const found = DISCOUNT_CODES[code];
+  if (!found) {
+    discountState = { isApplied: false, code: '', type: '', value: 0, amount: 0 };
+    showDiscountMsg('Invalid discount code', 'error');
+    updateConfirmation();
+    return;
+  }
+  discountState = { isApplied: true, code, type: found.type, value: found.value, amount: 0 };
+  showDiscountMsg('Code applied: ' + code, 'success');
+  updateConfirmation();
+}
+
+function clearDiscount() {
+  discountState = { isApplied: false, code: '', type: '', value: 0, amount: 0 };
+  const el = document.getElementById('discount-code');
+  if (el) el.value = '';
+  const msg = document.getElementById('discount-msg');
+  if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+  updateConfirmation();
+}
+
+function showDiscountMsg(text, type) {
+  const msg = document.getElementById('discount-msg');
+  if (!msg) return;
+  msg.textContent = text;
+  msg.style.display = 'block';
+  msg.style.color = type === 'success' ? '#10b981' : '#f87171';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONFIRMATION UPDATE
+// ═══════════════════════════════════════════════════════════════════════════
+function updateConfirmation() {
+  const fn = document.getElementById('first-name'); if (fn) firstName = fn.value.trim();
+  const ln = document.getElementById('last-name');  if (ln) lastName  = ln.value.trim();
+  const em = document.getElementById('email');      if (em) email     = em.value.trim();
+  const ph = document.getElementById('phone');      if (ph) phone     = ph.value.trim();
+  const sa = document.getElementById('street-address'); if (sa) streetAddress = sa.value.trim();
+  const un = document.getElementById('unit');           if (un) unit          = un.value.trim();
+  const cy = document.getElementById('city');           if (cy) city          = cy.value.trim();
+  const st = document.getElementById('state');          if (st) state         = st.value.trim();
+  const zp = document.getElementById('zip-code');       if (zp) zipCode       = zp.value.trim();
+
+  setText('c-vehicle',  vehicleNames[vehicleType] || '—');
+  setText('c-package',  packageNames[packageType] || '—');
+
+  const addons = getAddonsForPackage().filter(a => selectedAddons.includes(a.id));
+  const addonsRow = document.getElementById('c-addons-row');
+  if (addons.length > 0) {
+    setText('c-addons', addons.map(a => a.name).join(', '));
+    if (addonsRow) addonsRow.style.display = 'flex';
+  } else {
+    if (addonsRow) addonsRow.style.display = 'none';
+  }
+
+  const discounted = getDiscountedTotal();
+  setText('c-total', '$' + discounted.toFixed(2));
+
+  const discRow = document.getElementById('c-discount-row');
+  if (discountState.isApplied) {
+    if (discRow) discRow.classList.add('show');
+    setText('c-discount-code', discountState.code);
+    setText('c-discount-amt', '-$' + discountState.amount.toFixed(2));
+  } else {
+    if (discRow) discRow.classList.remove('show');
+  }
+
+  if (selectedDate) {
+    const dateObj = calendarDates.find(d => fmtDateISO(d.date) === selectedDate);
+    if (dateObj) {
+      const d = fmtDateDisplay(dateObj.date);
+      setText('c-date', d.day + ', ' + d.month + ' ' + d.num);
+    }
+  } else {
+    setText('c-date', 'Date not selected');
+  }
+  setText('c-time', selectedTime || 'Time not selected');
+
+  const fullAddr = [streetAddress, unit, city, state, zipCode].filter(Boolean).join(', ');
+  setText('c-address', fullAddr || 'Address not provided');
+  setText('c-name',  'Name: ' + [firstName, lastName].filter(Boolean).join(' ') || 'Not provided');
+  setText('c-email', 'Email: ' + (email || 'Not provided'));
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function updateConfirmEnabled() {
+  const btn = document.getElementById('confirm-booking');
+  if (!btn) return;
+  const ok = selectedDate && selectedTime;
+  btn.classList.toggle('is-disabled', !ok);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  API CALLS
+// ═══════════════════════════════════════════════════════════════════════════
+function sendLeadZap() {
+  if (leadZapSent) return;
+  leadZapSent = true;
+  const hook = ZAPIER_HOOKS[locationSlug] || ZAPIER_HOOKS.crestview;
+  const body = 'data=' + encodeURIComponent(JSON.stringify({
+    stage: 'lead_capture', firstName, lastName, email, phone, vehicleType,
+    vehicleName: vehicleNames[vehicleType] || '', submittedAt: new Date().toISOString(), page: location.href
+  }));
+  try {
+    if (navigator.sendBeacon) navigator.sendBeacon(hook, new Blob([body], { type: 'application/x-www-form-urlencoded' }));
+    else fetch(hook, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(() => {});
+  } catch(e) {}
+}
+
+async function sendAbandonedCart() {
+  try {
+    const resp = await fetch(APP_API_BASE + '/api/booking/abandoned?location=' + locationSlug, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firstName, lastName, email, phone, location: locationSlug, vehicleType, packageType, selectedDate: selectedDate || '', existingBookingId: abandonedCartId || null })
+    });
+    if (resp.ok) { const d = await resp.json(); if (d.bookingId) abandonedCartId = d.bookingId; }
+  } catch(e) {}
+}
+
+async function markAbandonedComplete() {
+  if (!abandonedCartId) return;
+  try {
+    await fetch(APP_API_BASE + '/api/booking/abandoned/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId: abandonedCartId })
+    });
+    abandonedCartId = null;
+  } catch(e) {}
+}
+
+function sendBookingZap() {
+  const hook = ZAPIER_HOOKS[locationSlug] || ZAPIER_HOOKS.crestview;
+  const discounted = getDiscountedTotal();
+  const addonNames = getAddonsForPackage().filter(a => selectedAddons.includes(a.id)).map(a => a.name);
+  const params = new URLSearchParams({
+    stage: 'booking_confirm', firstName, lastName, email, phone,
+    streetAddress, unit: unit || '', city, state, zipCode,
+    vehicleType, vehicleName: vehicleNames[vehicleType] || '',
+    packageType, packageName: packageNames[packageType] || '',
+    selectedAddons: addonNames.join(', '),
+    totalPrice: totalPrice.toFixed(2),
+    finalTotal: discounted.toFixed(2),
+    discountCode: discountState.isApplied ? discountState.code : '',
+    discountAmount: discountState.amount.toFixed(2),
+    selectedDate, selectedTime,
+    location: locationSlug,
+    submittedAt: new Date().toISOString(),
+    page: location.href
+  });
+  const body = params.toString();
+  try {
+    if (navigator.sendBeacon) navigator.sendBeacon(hook, new Blob([body], { type: 'application/x-www-form-urlencoded' }));
+    else fetch(hook, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(() => {});
+  } catch(e) {}
+}
+
+async function submitBookingToApp() {
+  try {
+    const addonNames = getAddonsForPackage().filter(a => selectedAddons.includes(a.id)).map(a => a.id);
+    await fetch(APP_API_BASE + '/api/booking/webhook?location=' + locationSlug, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName, lastName, email, phone,
+        streetAddress, unit, city, state, zipCode,
+        selectedDate, selectedTime,
+        location: locationSlug,
+        vehicleType, packageType,
+        selectedAddons: addonNames.join(','),
+        totalPrice: String(getDiscountedTotal()),
+        finalTotal: String(getDiscountedTotal()),
+        carCount: '1',
+        source: 'door-hanger',
+        page: location.href
+      })
+    });
+  } catch(e) {}
+}
+
+async function handleConfirm() {
+  const btn = document.getElementById('confirm-booking');
+  if (!btn || btn.classList.contains('is-disabled')) return;
+  btn.textContent = '⏳ Booking...';
+  btn.style.pointerEvents = 'none';
+  sendLeadZap();
+  sendBookingZap();
+  await submitBookingToApp();
+  await markAbandonedComplete();
+  const thankYou = THANK_YOU_URLS[locationSlug] || THANK_YOU_URLS.crestview;
+  window.location.href = thankYou;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CITY DETECTION ON ADDRESS INPUT
+// ═══════════════════════════════════════════════════════════════════════════
+function onAddressChange() {
+  const sa = (document.getElementById('street-address') || {}).value || '';
+  const cy = (document.getElementById('city') || {}).value || '';
+  const zp = (document.getElementById('zip-code') || {}).value || '';
+  if (!cy && !sa) return;
+  const slug = detectLocationSlug(sa + ' ' + cy + ' ' + zp, cy);
+  locationSlug = slug;
+  const badge = document.getElementById('city-detected-badge');
+  const text  = document.getElementById('city-detected-text');
+  if (badge && text && (cy || sa)) {
+    text.textContent = '📍 Calendar: ' + (CITY_DISPLAY[slug] || 'Crestview');
+    badge.classList.add('show');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+  // Vehicle selection
+  document.querySelectorAll('#vehicle-options .sel-card').forEach(card => {
+    card.addEventListener('click', function() {
+      document.querySelectorAll('#vehicle-options .sel-card').forEach(c => c.classList.remove('selected'));
+      this.classList.add('selected');
+      vehicleType = this.dataset.value;
+      document.getElementById('s1-next').disabled = false;
+      updatePackagePrices();
+    });
+  });
+
+  // Package selection
+  document.querySelectorAll('#package-options .sel-card').forEach(card => {
+    card.addEventListener('click', function() {
+      document.querySelectorAll('#package-options .sel-card').forEach(c => c.classList.remove('selected'));
+      this.classList.add('selected');
+      packageType = this.dataset.value;
+      selectedAddons = [];
+      document.getElementById('s3-next').disabled = false;
+      updateTotalPrice();
+      renderAddons();
+      updateConfirmation();
+    });
+  });
+
+  // Address city detection
+  ['street-address','city','zip-code'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.addEventListener('input', onAddressChange); el.addEventListener('blur', onAddressChange); }
+  });
+
+  // Discount
+  document.getElementById('apply-discount-btn').addEventListener('click', applyDiscount);
+  document.getElementById('remove-discount-btn').addEventListener('click', clearDiscount);
+  const dcInput = document.getElementById('discount-code');
+  if (dcInput) {
+    dcInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyDiscount(); } });
+    dcInput.addEventListener('input', () => {
+      const msg = document.getElementById('discount-msg');
+      if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+    });
+  }
+
+  // Live update confirmation on input
+  ['first-name','last-name','email','phone','street-address','unit','city','state','zip-code'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.addEventListener('input', updateConfirmation); el.addEventListener('blur', updateConfirmation); }
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT id, full_name, employee_id, city, shift FROM employees WHERE full_name ILIKE '%joseph%' OR full_name ILIKE '%joeseph%';\n\nSELECT id, assigned_to, start_hour, end_hour, status, job_date, location FROM schedule_jobs WHERE location = 'destin' AND job_date = '2026-05-18';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute \nSELECT id, full_name, employee_id, city, shift FROM employees WHERE full_name ILIKE '%joseph%' OR full_name ILIKE '%joeseph%';\n\nSELECT id, assigned_to, start_hour, end_hour, status, job_date, location FROM schedule_jobs WHERE location = 'destin' AND job_date = '2026-05-18';\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'shift' in 'field list'"
+  ]
+}

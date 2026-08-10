@@ -1,0 +1,20 @@
+{
+  "query": "\nALTER TABLE employees ADD COLUMN shift ENUM('shift1','shift2') NOT NULL DEFAULT 'shift1';\n\nUPDATE employees SET shift = 'shift2' WHERE employee_id = 'ELIJAH';\nUPDATE employees SET shift = 'shift1' WHERE employee_id = 'NICK';\nUPDATE employees SET shift = 'shift1' WHERE employee_id = 'SEAN';\n\nSELECT employee_id, full_name, shift FROM employees WHERE employee_id IN ('ELIJAH','NICK','SEAN');\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute \nALTER TABLE employees ADD COLUMN shift ENUM('shift1','shift2') NOT NULL DEFAULT 'shift1';\n\nUPDATE employees SET shift = 'shift2' WHERE employee_id = 'ELIJAH';\nUPDATE employees SET shift = 'shift1' WHERE employee_id = 'NICK';\nUPDATE employees SET shift = 'shift1' WHERE employee_id = 'SEAN';\n\nSELECT employee_id, full_name, shift FROM employees WHERE employee_id IN ('ELIJAH','NICK','SEAN');\n",
+  "rows": [
+    {
+      "employee_id": "ELIJAH",
+      "full_name": "Elijah",
+      "shift": "shift2"
+    },
+    {
+      "employee_id": "NICK",
+      "full_name": "Nick",
+      "shift": "shift1"
+    }
+  ],
+  "messages": [],
+  "stdout": "employee_id\tfull_name\tshift\nELIJAH\tElijah\tshift2\nNICK\tNick\tshift1\n",
+  "stderr": "",
+  "execution_time_ms": 462
+}

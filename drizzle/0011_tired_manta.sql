@@ -1,0 +1,1 @@
+ALTER TABLE `door_hanger_entries` MODIFY COLUMN `outreach_type` enum('door_hangers','business_cards','yard_signs','table_toppers') NOT NULL;

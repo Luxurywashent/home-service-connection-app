@@ -1,0 +1,190 @@
+{
+  "query": "SELECT notification_id, employee_id, notification_type, title, message, status, created_at FROM notifications ORDER BY created_at DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT notification_id, employee_id, notification_type, title, message, status, created_at FROM notifications ORDER BY created_at DESC LIMIT 20;",
+  "rows": [
+    {
+      "notification_id": "CLOCK_1778279405643_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "clock_alert",
+      "title": "⏰ Auto Clock-Out: Cameron",
+      "message": "Cameron was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 4.61h.",
+      "status": "unread",
+      "created_at": "2026-05-08 22:30:05"
+    },
+    {
+      "notification_id": "CLOCK_1778279404644_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_alert",
+      "title": "⏰ Auto Clock-Out: Cameron",
+      "message": "Cameron was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 4.61h.",
+      "status": "unread",
+      "created_at": "2026-05-08 22:30:04"
+    },
+    {
+      "notification_id": "CLOCK_5PM_1778277640646_DET_CAMERON",
+      "employee_id": "DET_CAMERON",
+      "notification_type": "clock_check_5pm",
+      "title": "Are you still working?",
+      "message": "Hi Cameron, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.",
+      "status": "acknowledged",
+      "created_at": "2026-05-08 22:00:40"
+    },
+    {
+      "notification_id": "CLOCK_5PM_1778277602066_DET_CAMERON",
+      "employee_id": "DET_CAMERON",
+      "notification_type": "clock_check_5pm",
+      "title": "Are you still working?",
+      "message": "Hi Cameron, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.",
+      "status": "acknowledged",
+      "created_at": "2026-05-08 22:00:02"
+    },
+    {
+      "notification_id": "CLOCK_1778257273168_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_alert",
+      "title": "⚠️ Break Overrun: Sales Rep",
+      "message": "Sales Rep went over their 15-minute break by 0 minutes. They have been automatically clocked back in from their morning 15min.",
+      "status": "unread",
+      "created_at": "2026-05-08 16:21:13"
+    },
+    {
+      "notification_id": "CLOCK_1778257273178_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "clock_alert",
+      "title": "⚠️ Break Overrun: Sales Rep",
+      "message": "Sales Rep went over their 15-minute break by 0 minutes. They have been automatically clocked back in from their morning 15min.",
+      "status": "unread",
+      "created_at": "2026-05-08 16:21:13"
+    },
+    {
+      "notification_id": "REPAIR-NOTIF-1778255891538-ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "repair_request",
+      "title": "🔧 Repair Request: DU 3",
+      "message": "Lamont reported: Extractor — Not sucking [🟡 MEDIUM]",
+      "status": "unread",
+      "created_at": "2026-05-08 15:58:11"
+    },
+    {
+      "notification_id": "REPAIR-NOTIF-1778255891554-OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "repair_request",
+      "title": "🔧 Repair Request: DU 3",
+      "message": "Lamont reported: Extractor — Not sucking [🟡 MEDIUM]",
+      "status": "unread",
+      "created_at": "2026-05-08 15:58:11"
+    },
+    {
+      "notification_id": "PORTAL_BOOKING_bk_1778104128508_41a9b2b0_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "ai_booking",
+      "title": "New Portal Booking: Adrian Miller",
+      "message": "Adrian Miller booked a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Ref: bk_1778104128508_41a9b2b0",
+      "status": "unread",
+      "created_at": "2026-05-06 21:48:49"
+    },
+    {
+      "notification_id": "PORTAL_BOOKING_bk_1778104128508_41a9b2b0_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "ai_booking",
+      "title": "New Portal Booking: Adrian Miller",
+      "message": "Adrian Miller booked a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Ref: bk_1778104128508_41a9b2b0",
+      "status": "unread",
+      "created_at": "2026-05-06 21:48:49"
+    },
+    {
+      "notification_id": "ASSIGNED_bk_1778104128508_41a9b2b0_DET_MICHAEL",
+      "employee_id": "DET_MICHAEL",
+      "notification_type": "ai_booking",
+      "title": "New Job Assigned: Adrian Miller",
+      "message": "You have been assigned a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Customer: Adrian Miller. Ref: bk_1778104128508_41a9b2b0",
+      "status": "unread",
+      "created_at": "2026-05-06 21:48:48"
+    },
+    {
+      "notification_id": "EOD_SUBMIT_EOD-DET_LAMONT-2026-05-04_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_alert",
+      "title": "✅ EOD Checklist Submitted: Lamont",
+      "message": "Lamont has submitted their end-of-day van checklist.",
+      "status": "unread",
+      "created_at": "2026-05-04 00:15:03"
+    },
+    {
+      "notification_id": "EOD_SUBMIT_EOD-DET_LAMONT-2026-05-04_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "clock_alert",
+      "title": "✅ EOD Checklist Submitted: Lamont",
+      "message": "Lamont has submitted their end-of-day van checklist.",
+      "status": "unread",
+      "created_at": "2026-05-04 00:15:03"
+    },
+    {
+      "notification_id": "EOD_SUBMIT_EOD-DET_MICHAEL-2026-05-03_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "clock_alert",
+      "title": "✅ EOD Checklist Submitted: Michael",
+      "message": "Michael has submitted their end-of-day van checklist.",
+      "status": "unread",
+      "created_at": "2026-05-03 20:41:54"
+    },
+    {
+      "notification_id": "EOD_SUBMIT_EOD-DET_MICHAEL-2026-05-03_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_alert",
+      "title": "✅ EOD Checklist Submitted: Michael",
+      "message": "Michael has submitted their end-of-day van checklist.",
+      "status": "unread",
+      "created_at": "2026-05-03 20:41:54"
+    },
+    {
+      "notification_id": "CLOCK_1777761021997_OPS_MANAGER",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "clock_alert",
+      "title": "⏰ Auto Clock-Out: Owner",
+      "message": "Owner was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 1.95h.",
+      "status": "unread",
+      "created_at": "2026-05-02 22:30:22"
+    },
+    {
+      "notification_id": "CLOCK_1777761021098_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_alert",
+      "title": "⏰ Auto Clock-Out: Owner",
+      "message": "Owner was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 1.95h.",
+      "status": "unread",
+      "created_at": "2026-05-02 22:30:21"
+    },
+    {
+      "notification_id": "CLOCK_5PM_1777759258266_ADM_OWNER",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "clock_check_5pm",
+      "title": "Are you still working?",
+      "message": "Hi Owner, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.",
+      "status": "unread",
+      "created_at": "2026-05-02 22:00:58"
+    },
+    {
+      "notification_id": "RESCHEDULE_bk_1777699151577_5394764d_ADM_OWNER_1777748707819",
+      "employee_id": "ADM_OWNER",
+      "notification_type": "ai_booking",
+      "title": "Booking Rescheduled: Adrian Miller",
+      "message": "Adrian Miller rescheduled their Luxury Detail from 2026-05-04 8:00 AM to 2026-05-05 8:00 AM – 12:00 PM. Ref: bk_1777699151577_5394764d",
+      "status": "unread",
+      "created_at": "2026-05-02 19:05:07"
+    },
+    {
+      "notification_id": "RESCHEDULE_bk_1777699151577_5394764d_OPS_MANAGER_1777748707833",
+      "employee_id": "OPS_MANAGER",
+      "notification_type": "ai_booking",
+      "title": "Booking Rescheduled: Adrian Miller",
+      "message": "Adrian Miller rescheduled their Luxury Detail from 2026-05-04 8:00 AM to 2026-05-05 8:00 AM – 12:00 PM. Ref: bk_1777699151577_5394764d",
+      "status": "unread",
+      "created_at": "2026-05-02 19:05:07"
+    }
+  ],
+  "messages": [],
+  "stdout": "notification_id\temployee_id\tnotification_type\ttitle\tmessage\tstatus\tcreated_at\nCLOCK_1778279405643_OPS_MANAGER\tOPS_MANAGER\tclock_alert\t⏰ Auto Clock-Out: Cameron\tCameron was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 4.61h.\tunread\t2026-05-08 22:30:05\nCLOCK_1778279404644_ADM_OWNER\tADM_OWNER\tclock_alert\t⏰ Auto Clock-Out: Cameron\tCameron was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 4.61h.\tunread\t2026-05-08 22:30:04\nCLOCK_5PM_1778277640646_DET_CAMERON\tDET_CAMERON\tclock_check_5pm\tAre you still working?\tHi Cameron, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.\tacknowledged\t2026-05-08 22:00:40\nCLOCK_5PM_1778277602066_DET_CAMERON\tDET_CAMERON\tclock_check_5pm\tAre you still working?\tHi Cameron, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.\tacknowledged\t2026-05-08 22:00:02\nCLOCK_1778257273168_ADM_OWNER\tADM_OWNER\tclock_alert\t⚠️ Break Overrun: Sales Rep\tSales Rep went over their 15-minute break by 0 minutes. They have been automatically clocked back in from their morning 15min.\tunread\t2026-05-08 16:21:13\nCLOCK_1778257273178_OPS_MANAGER\tOPS_MANAGER\tclock_alert\t⚠️ Break Overrun: Sales Rep\tSales Rep went over their 15-minute break by 0 minutes. They have been automatically clocked back in from their morning 15min.\tunread\t2026-05-08 16:21:13\nREPAIR-NOTIF-1778255891538-ADM_OWNER\tADM_OWNER\trepair_request\t🔧 Repair Request: DU 3\tLamont reported: Extractor — Not sucking [🟡 MEDIUM]\tunread\t2026-05-08 15:58:11\nREPAIR-NOTIF-1778255891554-OPS_MANAGER\tOPS_MANAGER\trepair_request\t🔧 Repair Request: DU 3\tLamont reported: Extractor — Not sucking [🟡 MEDIUM]\tunread\t2026-05-08 15:58:11\nPORTAL_BOOKING_bk_1778104128508_41a9b2b0_ADM_OWNER\tADM_OWNER\tai_booking\tNew Portal Booking: Adrian Miller\tAdrian Miller booked a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Ref: bk_1778104128508_41a9b2b0\tunread\t2026-05-06 21:48:49\nPORTAL_BOOKING_bk_1778104128508_41a9b2b0_OPS_MANAGER\tOPS_MANAGER\tai_booking\tNew Portal Booking: Adrian Miller\tAdrian Miller booked a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Ref: bk_1778104128508_41a9b2b0\tunread\t2026-05-06 21:48:49\nASSIGNED_bk_1778104128508_41a9b2b0_DET_MICHAEL\tDET_MICHAEL\tai_booking\tNew Job Assigned: Adrian Miller\tYou have been assigned a Basic Detail on 2026-05-09 at 8:00 AM – 10:00 AM in Crestview. Customer: Adrian Miller. Ref: bk_1778104128508_41a9b2b0\tunread\t2026-05-06 21:48:48\nEOD_SUBMIT_EOD-DET_LAMONT-2026-05-04_ADM_OWNER\tADM_OWNER\tclock_alert\t✅ EOD Checklist Submitted: Lamont\tLamont has submitted their end-of-day van checklist.\tunread\t2026-05-04 00:15:03\nEOD_SUBMIT_EOD-DET_LAMONT-2026-05-04_OPS_MANAGER\tOPS_MANAGER\tclock_alert\t✅ EOD Checklist Submitted: Lamont\tLamont has submitted their end-of-day van checklist.\tunread\t2026-05-04 00:15:03\nEOD_SUBMIT_EOD-DET_MICHAEL-2026-05-03_OPS_MANAGER\tOPS_MANAGER\tclock_alert\t✅ EOD Checklist Submitted: Michael\tMichael has submitted their end-of-day van checklist.\tunread\t2026-05-03 20:41:54\nEOD_SUBMIT_EOD-DET_MICHAEL-2026-05-03_ADM_OWNER\tADM_OWNER\tclock_alert\t✅ EOD Checklist Submitted: Michael\tMichael has submitted their end-of-day van checklist.\tunread\t2026-05-03 20:41:54\nCLOCK_1777761021997_OPS_MANAGER\tOPS_MANAGER\tclock_alert\t⏰ Auto Clock-Out: Owner\tOwner was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 1.95h.\tunread\t2026-05-02 22:30:22\nCLOCK_1777761021098_ADM_OWNER\tADM_OWNER\tclock_alert\t⏰ Auto Clock-Out: Owner\tOwner was automatically clocked out at 5:30 PM after no response to the 5:00 PM check-in prompt. Total hours: 1.95h.\tunread\t2026-05-02 22:30:21\nCLOCK_5PM_1777759258266_ADM_OWNER\tADM_OWNER\tclock_check_5pm\tAre you still working?\tHi Owner, it's 5:00 PM. Are you still working? Tap \"Still Working\" to continue or \"Clock Me Out\" to end your shift. If no response by 5:30 PM you will be automatically clocked out.\tunread\t2026-05-02 22:00:58\nRESCHEDULE_bk_1777699151577_5394764d_ADM_OWNER_1777748707819\tADM_OWNER\tai_booking\tBooking Rescheduled: Adrian Miller\tAdrian Miller rescheduled their Luxury Detail from 2026-05-04 8:00 AM to 2026-05-05 8:00 AM – 12:00 PM. Ref: bk_1777699151577_5394764d\tunread\t2026-05-02 19:05:07\nRESCHEDULE_bk_1777699151577_5394764d_OPS_MANAGER_1777748707833\tOPS_MANAGER\tai_booking\tBooking Rescheduled: Adrian Miller\tAdrian Miller rescheduled their Luxury Detail from 2026-05-04 8:00 AM to 2026-05-05 8:00 AM – 12:00 PM. Ref: bk_1777699151577_5394764d\tunread\t2026-05-02 19:05:07\n",
+  "stderr": "",
+  "execution_time_ms": 309
+}

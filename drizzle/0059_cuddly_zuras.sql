@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_jobs` ADD `customer_id` varchar(64);

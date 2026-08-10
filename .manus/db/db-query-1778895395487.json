@@ -1,0 +1,60 @@
+{
+  "query": "SELECT job_id, customer_name, customer_email, date, time_slot, package_type, vehicle_type, customer_address FROM schedule_jobs WHERE status NOT IN ('cancelled', 'completed') AND customer_email IS NOT NULL AND customer_email != '' ORDER BY date ASC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT job_id, customer_name, customer_email, date, time_slot, package_type, vehicle_type, customer_address FROM schedule_jobs WHERE status NOT IN ('cancelled', 'completed') AND customer_email IS NOT NULL AND customer_email != '' ORDER BY date ASC LIMIT 5;",
+  "rows": [
+    {
+      "job_id": "online_BK_1775677480117_DR50B7",
+      "customer_name": "ROBYN Cole",
+      "customer_email": "robynkuiper73@gmail.com",
+      "date": "2026-04-09",
+      "time_slot": "8 AM - Noon",
+      "package_type": "luxury",
+      "vehicle_type": "midsize",
+      "customer_address": "NULL"
+    },
+    {
+      "job_id": "online_BK_1775836360748_TWX8X3",
+      "customer_name": "Tristan Allen",
+      "customer_email": "tristanevan1995@gmail.com",
+      "date": "2026-04-10",
+      "time_slot": "1:00pm - 3:00pm",
+      "package_type": "basic",
+      "vehicle_type": "small",
+      "customer_address": "NULL"
+    },
+    {
+      "job_id": "online_BK_1775825397549_7ZNAOU",
+      "customer_name": "Roselyn Clemente Fuentes",
+      "customer_email": "roselyn.clemente.fuentes@gmail.com",
+      "date": "2026-04-10",
+      "time_slot": "3:00pm - 5:00pm",
+      "package_type": "interior",
+      "vehicle_type": "midsize",
+      "customer_address": "NULL"
+    },
+    {
+      "job_id": "online_BK_1776109530357_N99ZQK",
+      "customer_name": "Jeffery Ratcliff",
+      "customer_email": "jnd388@cox.net",
+      "date": "2026-04-14",
+      "time_slot": "1:00pm - 3:00pm",
+      "package_type": "exterior",
+      "vehicle_type": "pickup",
+      "customer_address": "NULL"
+    },
+    {
+      "job_id": "online_BK_1776178002921_B3JC53",
+      "customer_name": "Terrance Barbary",
+      "customer_email": "wbarbary@hotmail.com",
+      "date": "2026-04-15",
+      "time_slot": "11:00am - 5:00pm",
+      "package_type": "full",
+      "vehicle_type": "small",
+      "customer_address": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "job_id\tcustomer_name\tcustomer_email\tdate\ttime_slot\tpackage_type\tvehicle_type\tcustomer_address\nonline_BK_1775677480117_DR50B7\tROBYN Cole\trobynkuiper73@gmail.com\t2026-04-09\t8 AM - Noon\tluxury\tmidsize\tNULL\nonline_BK_1775836360748_TWX8X3\tTristan Allen\ttristanevan1995@gmail.com\t2026-04-10\t1:00pm - 3:00pm\tbasic\tsmall\tNULL\nonline_BK_1775825397549_7ZNAOU\tRoselyn Clemente Fuentes\troselyn.clemente.fuentes@gmail.com\t2026-04-10\t3:00pm - 5:00pm\tinterior\tmidsize\tNULL\nonline_BK_1776109530357_N99ZQK\tJeffery Ratcliff\tjnd388@cox.net\t2026-04-14\t1:00pm - 3:00pm\texterior\tpickup\tNULL\nonline_BK_1776178002921_B3JC53\tTerrance Barbary\twbarbary@hotmail.com\t2026-04-15\t11:00am - 5:00pm\tfull\tsmall\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 267
+}

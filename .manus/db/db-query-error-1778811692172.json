@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, assigned_to, start_hour, end_hour, status, job_date, location FROM schedule_jobs WHERE location = 'destin' AND job_date = '2026-05-18';\n\nSELECT column_name FROM information_schema.columns WHERE table_name = 'employees' ORDER BY ordinal_position;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, assigned_to, start_hour, end_hour, status, job_date, location FROM schedule_jobs WHERE location = 'destin' AND job_date = '2026-05-18';\n\nSELECT column_name FROM information_schema.columns WHERE table_name = 'employees' ORDER BY ordinal_position;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'job_date' in 'where clause'"
+  ]
+}

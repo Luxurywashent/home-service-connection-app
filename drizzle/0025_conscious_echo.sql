@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_jobs` ADD `photo_urls` text;

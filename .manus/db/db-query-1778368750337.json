@@ -1,0 +1,65 @@
+{
+  "query": "SELECT notification_type, COUNT(*) as count, MIN(title) as sample_title FROM notifications GROUP BY notification_type ORDER BY count DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT notification_type, COUNT(*) as count, MIN(title) as sample_title FROM notifications GROUP BY notification_type ORDER BY count DESC;",
+  "rows": [
+    {
+      "notification_type": "clock_alert",
+      "count": "62",
+      "sample_title": "⏰ Auto Clock-Out: Cameron"
+    },
+    {
+      "notification_type": "time_off_update",
+      "count": "12",
+      "sample_title": "Time Off Request Approved"
+    },
+    {
+      "notification_type": "ai_booking",
+      "count": "9",
+      "sample_title": "Booking Rescheduled: Adrian Miller"
+    },
+    {
+      "notification_type": "clock_check_5pm",
+      "count": "8",
+      "sample_title": "Are you still working?"
+    },
+    {
+      "notification_type": "company_announcement",
+      "count": "6",
+      "sample_title": "Fishing trip"
+    },
+    {
+      "notification_type": "repair_request",
+      "count": "6",
+      "sample_title": "🔧 Repair Request: DU 3"
+    },
+    {
+      "notification_type": "callback_reminder",
+      "count": "5",
+      "sample_title": "📞 Callback in ~15 min"
+    },
+    {
+      "notification_type": "qc_issue",
+      "count": "2",
+      "sample_title": "Miss"
+    },
+    {
+      "notification_type": "coaching_note",
+      "count": "1",
+      "sample_title": "Great work this week!"
+    },
+    {
+      "notification_type": "write_up",
+      "count": "1",
+      "sample_title": "bad detail"
+    },
+    {
+      "notification_type": "missed_step",
+      "count": "1",
+      "sample_title": "Missed Step - Tire Dressing"
+    }
+  ],
+  "messages": [],
+  "stdout": "notification_type\tcount\tsample_title\nclock_alert\t62\t⏰ Auto Clock-Out: Cameron\ntime_off_update\t12\tTime Off Request Approved\nai_booking\t9\tBooking Rescheduled: Adrian Miller\nclock_check_5pm\t8\tAre you still working?\ncompany_announcement\t6\tFishing trip\nrepair_request\t6\t🔧 Repair Request: DU 3\ncallback_reminder\t5\t📞 Callback in ~15 min\nqc_issue\t2\tMiss\ncoaching_note\t1\tGreat work this week!\nwrite_up\t1\tbad detail\nmissed_step\t1\tMissed Step - Tire Dressing\n",
+  "stderr": "",
+  "execution_time_ms": 256
+}

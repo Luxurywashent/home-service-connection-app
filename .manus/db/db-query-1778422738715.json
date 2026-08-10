@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE schedule_jobs\n  ADD COLUMN invoice_token VARCHAR(64) NULL DEFAULT NULL,\n  ADD COLUMN invoice_sent_at DATETIME NULL DEFAULT NULL,\n  ADD COLUMN invoice_paid_at DATETIME NULL DEFAULT NULL,\n  ADD COLUMN invoice_payment_intent_id VARCHAR(128) NULL DEFAULT NULL;\n\nCREATE INDEX idx_invoice_token ON schedule_jobs(invoice_token);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute \nALTER TABLE schedule_jobs\n  ADD COLUMN invoice_token VARCHAR(64) NULL DEFAULT NULL,\n  ADD COLUMN invoice_sent_at DATETIME NULL DEFAULT NULL,\n  ADD COLUMN invoice_paid_at DATETIME NULL DEFAULT NULL,\n  ADD COLUMN invoice_payment_intent_id VARCHAR(128) NULL DEFAULT NULL;\n\nCREATE INDEX idx_invoice_token ON schedule_jobs(invoice_token);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1126
+}

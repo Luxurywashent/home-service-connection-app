@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS company_meetings (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  meeting_id VARCHAR(64) NOT NULL UNIQUE,\n  title_cm VARCHAR(255) NOT NULL,\n  description_cm TEXT,\n  meeting_date VARCHAR(16) NOT NULL,\n  meeting_time_cm VARCHAR(8) NOT NULL,\n  zoom_link_cm TEXT,\n  is_recurring ENUM('yes','no') NOT NULL DEFAULT 'no',\n  recurring_day VARCHAR(16),\n  status_cm ENUM('upcoming','cancelled','completed') NOT NULL DEFAULT 'upcoming',\n  created_by_cm VARCHAR(64),\n  created_at_cm TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updated_at_cm TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute \nCREATE TABLE IF NOT EXISTS company_meetings (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  meeting_id VARCHAR(64) NOT NULL UNIQUE,\n  title_cm VARCHAR(255) NOT NULL,\n  description_cm TEXT,\n  meeting_date VARCHAR(16) NOT NULL,\n  meeting_time_cm VARCHAR(8) NOT NULL,\n  zoom_link_cm TEXT,\n  is_recurring ENUM('yes','no') NOT NULL DEFAULT 'no',\n  recurring_day VARCHAR(16),\n  status_cm ENUM('upcoming','cancelled','completed') NOT NULL DEFAULT 'upcoming',\n  created_by_cm VARCHAR(64),\n  created_at_cm TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  updated_at_cm TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 179
+}

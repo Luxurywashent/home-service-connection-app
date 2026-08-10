@@ -1,0 +1,1 @@
+ALTER TABLE `daily_performance` MODIFY COLUMN `upsells` decimal(10,2) DEFAULT '0';

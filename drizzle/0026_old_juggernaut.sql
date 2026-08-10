@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_jobs` ADD `deposit_amount` decimal(10,2) DEFAULT '0';

@@ -1,0 +1,490 @@
+{
+  "query": "SHOW COLUMNS FROM schedule_jobs;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SHOW COLUMNS FROM schedule_jobs;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "job_id",
+      "Type": "varchar(64)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "location",
+      "Type": "varchar(64)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "date",
+      "Type": "varchar(16)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "time_slot",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "start_hour",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "end_hour",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_name",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_phone",
+      "Type": "varchar(32)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_email",
+      "Type": "varchar(320)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_type",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_color",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_year",
+      "Type": "varchar(8)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_make",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_model",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "package_type",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "service_description",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "selected_addons",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "total_price",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "tips",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "upsell_total",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "assigned_to",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "status",
+      "Type": "enum('pending','confirmed','in_progress','completed','cancelled')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "confirmed",
+      "Extra": ""
+    },
+    {
+      "Field": "source",
+      "Type": "enum('manual','online')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "manual",
+      "Extra": ""
+    },
+    {
+      "Field": "online_booking_id",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "created_by",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "created_at",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updated_at",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "private_notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "tags",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "lead_source",
+      "Type": "varchar(128)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "tax_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_code",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "additional_vehicles",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "photo_urls",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "deposit_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "recommended_services",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "video_urls",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_address",
+      "Type": "varchar(512)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_id",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "recurrence_rule",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "recurrence_parent_id",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_method",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_intent_id",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_subtotal",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_tip",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_total",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_paid_at",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_signature_url",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "payment_reference_note",
+      "Type": "varchar(512)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_confirmation_status",
+      "Type": "enum('pending','confirmed','no_response')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "pending",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_reminder_sent",
+      "Type": "tinyint(1)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_reminder_sent_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_confirmed_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_confirm_token",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "appt_confirm_method",
+      "Type": "enum('email','sms')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "on_my_way_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "arrived_at",
+      "Type": "datetime",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\njob_id\tvarchar(64)\tNO\tUNI\tNULL\t\nlocation\tvarchar(64)\tNO\t\tNULL\t\ndate\tvarchar(16)\tNO\t\tNULL\t\ntime_slot\tvarchar(64)\tYES\t\tNULL\t\nstart_hour\tint\tYES\t\tNULL\t\nend_hour\tint\tYES\t\tNULL\t\ncustomer_name\tvarchar(255)\tYES\t\tNULL\t\ncustomer_phone\tvarchar(32)\tYES\t\tNULL\t\ncustomer_email\tvarchar(320)\tYES\t\tNULL\t\nvehicle_type\tvarchar(64)\tYES\t\tNULL\t\nvehicle_color\tvarchar(64)\tYES\t\tNULL\t\nvehicle_year\tvarchar(8)\tYES\t\tNULL\t\nvehicle_make\tvarchar(64)\tYES\t\tNULL\t\nvehicle_model\tvarchar(64)\tYES\t\tNULL\t\npackage_type\tvarchar(64)\tYES\t\tNULL\t\nservice_description\ttext\tYES\t\tNULL\t\nselected_addons\ttext\tYES\t\tNULL\t\ntotal_price\tdecimal(10,2)\tYES\t\tNULL\t\ntips\tdecimal(10,2)\tYES\t\t0\t\nupsell_total\tdecimal(10,2)\tYES\t\t0\t\nassigned_to\tvarchar(255)\tYES\t\tNULL\t\nstatus\tenum('pending','confirmed','in_progress','completed','cancelled')\tNO\t\tconfirmed\t\nsource\tenum('manual','online')\tNO\t\tmanual\t\nonline_booking_id\tvarchar(64)\tYES\t\tNULL\t\nnotes\ttext\tYES\t\tNULL\t\ncreated_by\tvarchar(64)\tYES\t\tNULL\t\ncreated_at\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdated_at\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nprivate_notes\ttext\tYES\t\tNULL\t\ntags\ttext\tYES\t\tNULL\t\nlead_source\tvarchar(128)\tYES\t\tNULL\t\ntax_amount\tdecimal(10,2)\tYES\t\t0\t\ndiscount_code\tvarchar(64)\tYES\t\tNULL\t\ndiscount_amount\tdecimal(10,2)\tYES\t\t0\t\nadditional_vehicles\ttext\tYES\t\tNULL\t\nphoto_urls\ttext\tYES\t\tNULL\t\ndeposit_amount\tdecimal(10,2)\tYES\t\t0\t\nrecommended_services\ttext\tYES\t\tNULL\t\nvideo_urls\ttext\tYES\t\tNULL\t\ncustomer_address\tvarchar(512)\tYES\t\tNULL\t\ncustomer_id\tvarchar(64)\tYES\t\tNULL\t\nrecurrence_rule\ttext\tYES\t\tNULL\t\nrecurrence_parent_id\tvarchar(64)\tYES\t\tNULL\t\npayment_method\tvarchar(64)\tYES\t\tNULL\t\npayment_intent_id\tvarchar(255)\tYES\t\tNULL\t\npayment_subtotal\tdecimal(10,2)\tYES\t\tNULL\t\npayment_tip\tdecimal(10,2)\tYES\t\tNULL\t\npayment_total\tdecimal(10,2)\tYES\t\tNULL\t\npayment_paid_at\ttimestamp\tYES\t\tNULL\t\npayment_signature_url\ttext\tYES\t\tNULL\t\npayment_reference_note\tvarchar(512)\tYES\t\tNULL\t\nappt_confirmation_status\tenum('pending','confirmed','no_response')\tYES\t\tpending\t\nappt_reminder_sent\ttinyint(1)\tYES\t\t0\t\nappt_reminder_sent_at\tdatetime\tYES\t\tNULL\t\nappt_confirmed_at\tdatetime\tYES\t\tNULL\t\nappt_confirm_token\tvarchar(64)\tYES\t\tNULL\t\nappt_confirm_method\tenum('email','sms')\tYES\t\tNULL\t\non_my_way_at\tdatetime\tYES\t\tNULL\t\narrived_at\tdatetime\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 262
+}

@@ -1,0 +1,202 @@
+{
+  "query": "SELECT column_name FROM information_schema.columns WHERE table_name = 'schedule_jobs' ORDER BY ordinal_position;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT column_name FROM information_schema.columns WHERE table_name = 'schedule_jobs' ORDER BY ordinal_position;",
+  "rows": [
+    {
+      "column_name": "id"
+    },
+    {
+      "column_name": "job_id"
+    },
+    {
+      "column_name": "location"
+    },
+    {
+      "column_name": "date"
+    },
+    {
+      "column_name": "time_slot"
+    },
+    {
+      "column_name": "start_hour"
+    },
+    {
+      "column_name": "end_hour"
+    },
+    {
+      "column_name": "customer_name"
+    },
+    {
+      "column_name": "customer_phone"
+    },
+    {
+      "column_name": "customer_email"
+    },
+    {
+      "column_name": "vehicle_type"
+    },
+    {
+      "column_name": "vehicle_color"
+    },
+    {
+      "column_name": "vehicle_year"
+    },
+    {
+      "column_name": "vehicle_make"
+    },
+    {
+      "column_name": "vehicle_model"
+    },
+    {
+      "column_name": "package_type"
+    },
+    {
+      "column_name": "service_description"
+    },
+    {
+      "column_name": "selected_addons"
+    },
+    {
+      "column_name": "total_price"
+    },
+    {
+      "column_name": "tips"
+    },
+    {
+      "column_name": "upsell_total"
+    },
+    {
+      "column_name": "assigned_to"
+    },
+    {
+      "column_name": "status"
+    },
+    {
+      "column_name": "source"
+    },
+    {
+      "column_name": "online_booking_id"
+    },
+    {
+      "column_name": "notes"
+    },
+    {
+      "column_name": "created_by"
+    },
+    {
+      "column_name": "created_at"
+    },
+    {
+      "column_name": "updated_at"
+    },
+    {
+      "column_name": "private_notes"
+    },
+    {
+      "column_name": "tags"
+    },
+    {
+      "column_name": "lead_source"
+    },
+    {
+      "column_name": "tax_amount"
+    },
+    {
+      "column_name": "discount_code"
+    },
+    {
+      "column_name": "discount_amount"
+    },
+    {
+      "column_name": "additional_vehicles"
+    },
+    {
+      "column_name": "photo_urls"
+    },
+    {
+      "column_name": "deposit_amount"
+    },
+    {
+      "column_name": "recommended_services"
+    },
+    {
+      "column_name": "video_urls"
+    },
+    {
+      "column_name": "customer_address"
+    },
+    {
+      "column_name": "customer_id"
+    },
+    {
+      "column_name": "recurrence_rule"
+    },
+    {
+      "column_name": "recurrence_parent_id"
+    },
+    {
+      "column_name": "payment_method"
+    },
+    {
+      "column_name": "payment_intent_id"
+    },
+    {
+      "column_name": "payment_subtotal"
+    },
+    {
+      "column_name": "payment_tip"
+    },
+    {
+      "column_name": "payment_total"
+    },
+    {
+      "column_name": "payment_paid_at"
+    },
+    {
+      "column_name": "payment_signature_url"
+    },
+    {
+      "column_name": "payment_reference_note"
+    },
+    {
+      "column_name": "appt_confirmation_status"
+    },
+    {
+      "column_name": "appt_reminder_sent"
+    },
+    {
+      "column_name": "appt_reminder_sent_at"
+    },
+    {
+      "column_name": "appt_confirmed_at"
+    },
+    {
+      "column_name": "appt_confirm_token"
+    },
+    {
+      "column_name": "appt_confirm_method"
+    },
+    {
+      "column_name": "on_my_way_at"
+    },
+    {
+      "column_name": "arrived_at"
+    },
+    {
+      "column_name": "invoice_token"
+    },
+    {
+      "column_name": "invoice_sent_at"
+    },
+    {
+      "column_name": "invoice_paid_at"
+    },
+    {
+      "column_name": "invoice_payment_intent_id"
+    }
+  ],
+  "messages": [],
+  "stdout": "column_name\nid\njob_id\nlocation\ndate\ntime_slot\nstart_hour\nend_hour\ncustomer_name\ncustomer_phone\ncustomer_email\nvehicle_type\nvehicle_color\nvehicle_year\nvehicle_make\nvehicle_model\npackage_type\nservice_description\nselected_addons\ntotal_price\ntips\nupsell_total\nassigned_to\nstatus\nsource\nonline_booking_id\nnotes\ncreated_by\ncreated_at\nupdated_at\nprivate_notes\ntags\nlead_source\ntax_amount\ndiscount_code\ndiscount_amount\nadditional_vehicles\nphoto_urls\ndeposit_amount\nrecommended_services\nvideo_urls\ncustomer_address\ncustomer_id\nrecurrence_rule\nrecurrence_parent_id\npayment_method\npayment_intent_id\npayment_subtotal\npayment_tip\npayment_total\npayment_paid_at\npayment_signature_url\npayment_reference_note\nappt_confirmation_status\nappt_reminder_sent\nappt_reminder_sent_at\nappt_confirmed_at\nappt_confirm_token\nappt_confirm_method\non_my_way_at\narrived_at\ninvoice_token\ninvoice_sent_at\ninvoice_paid_at\ninvoice_payment_intent_id\n",
+  "stderr": "",
+  "execution_time_ms": 264
+}

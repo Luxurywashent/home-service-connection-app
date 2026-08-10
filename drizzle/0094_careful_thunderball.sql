@@ -1,0 +1,1 @@
+ALTER TABLE `employees` ADD `custom_work_days` varchar(32);

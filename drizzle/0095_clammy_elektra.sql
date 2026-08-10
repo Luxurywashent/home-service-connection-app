@@ -1,0 +1,1 @@
+ALTER TABLE `eod_checklist_items` MODIFY COLUMN `step_key` enum('back_photo','driver_side_photo','passenger_side_photo','driver_area','box_photo','chemicals_stocked','towels_stocked') NOT NULL;

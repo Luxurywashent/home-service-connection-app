@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, full_name, role, location, active_status, employee_id FROM employees WHERE full_name LIKE '%Sean%' OR full_name LIKE '%sean%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, full_name, role, location, active_status, employee_id FROM employees WHERE full_name LIKE '%Sean%' OR full_name LIKE '%sean%';",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'location' in 'field list'"
+  ]
+}

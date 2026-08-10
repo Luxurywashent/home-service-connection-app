@@ -1,0 +1,45 @@
+{
+  "query": "SELECT service_id, name, emoji, vehicle_prices, sort_order_pb FROM price_book_services ORDER BY sort_order_pb LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT service_id, name, emoji, vehicle_prices, sort_order_pb FROM price_book_services ORDER BY sort_order_pb LIMIT 20;",
+  "rows": [
+    {
+      "service_id": "pb_luxury",
+      "name": "Luxury Detail",
+      "emoji": "✨",
+      "vehicle_prices": "{\"sedan\":400,\"suv\":450,\"xl_suv_van\":500,\"truck\":450}",
+      "sort_order_pb": "0"
+    },
+    {
+      "service_id": "pb_full",
+      "name": "Full Detail",
+      "emoji": "🧼",
+      "vehicle_prices": "{\"sedan\":300,\"suv\":325,\"xl_suv_van\":375,\"truck\":325}",
+      "sort_order_pb": "1"
+    },
+    {
+      "service_id": "pb_basic",
+      "name": "Basic Detail",
+      "emoji": "🚗",
+      "vehicle_prices": "{\"sedan\":200,\"suv\":225,\"xl_suv_van\":250,\"truck\":225}",
+      "sort_order_pb": "2"
+    },
+    {
+      "service_id": "pb_interior",
+      "name": "Interior Detail",
+      "emoji": "🪑",
+      "vehicle_prices": "{\"sedan\":200,\"suv\":225,\"xl_suv_van\":250,\"truck\":225}",
+      "sort_order_pb": "3"
+    },
+    {
+      "service_id": "pb_exterior",
+      "name": "Exterior Detail",
+      "emoji": "🚿",
+      "vehicle_prices": "{\"sedan\":175,\"suv\":200,\"xl_suv_van\":225,\"truck\":200}",
+      "sort_order_pb": "4"
+    }
+  ],
+  "messages": [],
+  "stdout": "service_id\tname\temoji\tvehicle_prices\tsort_order_pb\npb_luxury\tLuxury Detail\t✨\t{\"sedan\":400,\"suv\":450,\"xl_suv_van\":500,\"truck\":450}\t0\npb_full\tFull Detail\t🧼\t{\"sedan\":300,\"suv\":325,\"xl_suv_van\":375,\"truck\":325}\t1\npb_basic\tBasic Detail\t🚗\t{\"sedan\":200,\"suv\":225,\"xl_suv_van\":250,\"truck\":225}\t2\npb_interior\tInterior Detail\t🪑\t{\"sedan\":200,\"suv\":225,\"xl_suv_van\":250,\"truck\":225}\t3\npb_exterior\tExterior Detail\t🚿\t{\"sedan\":175,\"suv\":200,\"xl_suv_van\":225,\"truck\":200}\t4\n",
+  "stderr": "",
+  "execution_time_ms": 263
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_jobs` ADD `recommended_services` text;

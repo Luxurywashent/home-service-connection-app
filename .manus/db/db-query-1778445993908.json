@@ -1,0 +1,22 @@
+{
+  "query": "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'vip_contracts' AND COLUMN_NAME IN ('schedule_week', 'schedule_day', 'contract_number');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'vip_contracts' AND COLUMN_NAME IN ('schedule_week', 'schedule_day', 'contract_number');",
+  "rows": [
+    {
+      "COLUMN_NAME": "contract_number",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "schedule_week",
+      "DATA_TYPE": "tinyint"
+    },
+    {
+      "COLUMN_NAME": "schedule_day",
+      "DATA_TYPE": "tinyint"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tDATA_TYPE\ncontract_number\tvarchar\nschedule_week\ttinyint\nschedule_day\ttinyint\n",
+  "stderr": "",
+  "execution_time_ms": 254
+}

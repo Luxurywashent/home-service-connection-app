@@ -1,0 +1,38 @@
+{
+  "query": "\nSELECT e.employee_id, e.full_name, e.city, e.active_status, eva.shift\nFROM employees e\nLEFT JOIN employee_van_assignments eva ON e.employee_id = eva.employee_id\nWHERE e.role = 'detailer' AND LOWER(e.city) = 'crestview'\nORDER BY e.full_name;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute \nSELECT e.employee_id, e.full_name, e.city, e.active_status, eva.shift\nFROM employees e\nLEFT JOIN employee_van_assignments eva ON e.employee_id = eva.employee_id\nWHERE e.role = 'detailer' AND LOWER(e.city) = 'crestview'\nORDER BY e.full_name;\n",
+  "rows": [
+    {
+      "employee_id": "ELIJAH",
+      "full_name": "Elijah",
+      "city": "Crestview",
+      "active_status": "active",
+      "shift": "shift2"
+    },
+    {
+      "employee_id": "DET_MICHAEL",
+      "full_name": "Michael",
+      "city": "Crestview",
+      "active_status": "inactive",
+      "shift": "NULL"
+    },
+    {
+      "employee_id": "NICK",
+      "full_name": "Nick",
+      "city": "Crestview",
+      "active_status": "active",
+      "shift": "shift1"
+    },
+    {
+      "employee_id": "Sean",
+      "full_name": "Sean Moyer",
+      "city": "Crestview",
+      "active_status": "active",
+      "shift": "shift1"
+    }
+  ],
+  "messages": [],
+  "stdout": "employee_id\tfull_name\tcity\tactive_status\tshift\nELIJAH\tElijah\tCrestview\tactive\tshift2\nDET_MICHAEL\tMichael\tCrestview\tinactive\tNULL\nNICK\tNick\tCrestview\tactive\tshift1\nSean\tSean Moyer\tCrestview\tactive\tshift1\n",
+  "stderr": "",
+  "execution_time_ms": 306
+}

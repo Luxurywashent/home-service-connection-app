@@ -1,0 +1,13 @@
+{
+  "query": "SHOW TABLES LIKE '%schedule%'",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SHOW TABLES LIKE '%schedule%'",
+  "rows": [
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe (%schedule%)": "schedule_jobs"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_n2wVeYQgKmefAVwyN2KSSe (%schedule%)\nschedule_jobs\n",
+  "stderr": "",
+  "execution_time_ms": 259
+}

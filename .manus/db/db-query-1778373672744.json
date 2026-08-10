@@ -1,0 +1,98 @@
+{
+  "query": "DESCRIBE price_book_services;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute DESCRIBE price_book_services;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "service_id",
+      "Type": "varchar(64)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "name",
+      "Type": "varchar(255)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "emoji",
+      "Type": "varchar(8)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "🚗",
+      "Extra": ""
+    },
+    {
+      "Field": "description",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "features",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "vehicle_prices",
+      "Type": "text",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "is_active_pb",
+      "Type": "enum('yes','no')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "yes",
+      "Extra": ""
+    },
+    {
+      "Field": "sort_order_pb",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "created_at_pb",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updated_at_pb",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nservice_id\tvarchar(64)\tNO\tUNI\tNULL\t\nname\tvarchar(255)\tNO\t\tNULL\t\nemoji\tvarchar(8)\tNO\t\t🚗\t\ndescription\ttext\tYES\t\tNULL\t\nfeatures\ttext\tYES\t\tNULL\t\nvehicle_prices\ttext\tNO\t\tNULL\t\nis_active_pb\tenum('yes','no')\tNO\t\tyes\t\nsort_order_pb\tint\tNO\t\t0\t\ncreated_at_pb\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdated_at_pb\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\n",
+  "stderr": "",
+  "execution_time_ms": 260
+}

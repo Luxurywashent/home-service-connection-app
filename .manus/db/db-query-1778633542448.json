@@ -1,0 +1,244 @@
+{
+  "query": "SELECT id, employee_id, full_name, email, pin, role, active_status FROM employees;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, employee_id, full_name, email, pin, role, active_status FROM employees;",
+  "rows": [
+    {
+      "id": "60001",
+      "employee_id": "EMP001",
+      "full_name": "Marcus Johnson",
+      "email": "marcus@luxurywash.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60002",
+      "employee_id": "EMP002",
+      "full_name": "Sarah Williams",
+      "email": "sarah@luxurywash.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60003",
+      "employee_id": "EMP003",
+      "full_name": "David Martinez",
+      "email": "david@luxurywash.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60004",
+      "employee_id": "EMP004",
+      "full_name": "James Thompson",
+      "email": "james@luxurywash.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60005",
+      "employee_id": "EMP005",
+      "full_name": "Ashley Chen",
+      "email": "ashley@luxurywash.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60006",
+      "employee_id": "ADM001",
+      "full_name": "Michael Rivera",
+      "email": "michael@luxurywash.com",
+      "pin": "0000",
+      "role": "admin",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60007",
+      "employee_id": "OPS001",
+      "full_name": "Jennifer Lee",
+      "email": "jennifer@luxurywash.com",
+      "pin": "0000",
+      "role": "operations_manager",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60008",
+      "employee_id": "DHR001",
+      "full_name": "Dieon Green",
+      "email": "NULL",
+      "pin": "5555",
+      "role": "door_hanger_rep",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60009",
+      "employee_id": "DHR002",
+      "full_name": "Lisa Anderson",
+      "email": "lisa@luxurywash.com",
+      "pin": "5555",
+      "role": "door_hanger_rep",
+      "active_status": "inactive"
+    },
+    {
+      "id": "60010",
+      "employee_id": "DIEON001",
+      "full_name": "Dieon Green",
+      "email": "NULL",
+      "pin": "0000",
+      "role": "door_hanger_rep",
+      "active_status": "active"
+    },
+    {
+      "id": "90001",
+      "employee_id": "DET_MICHAEL",
+      "full_name": "Michael",
+      "email": "michael@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "90002",
+      "employee_id": "DET_CAMERON",
+      "full_name": "Cameron",
+      "email": "cameron@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "90003",
+      "employee_id": "DET_LAMONT",
+      "full_name": "Lamont",
+      "email": "lamont@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "90004",
+      "employee_id": "DET_CASEY",
+      "full_name": "Casey",
+      "email": "casey@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "90005",
+      "employee_id": "DET_GIOVANNI",
+      "full_name": "Giovanni",
+      "email": "giovanni@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "90006",
+      "employee_id": "DET_GABE",
+      "full_name": "Gabe",
+      "email": "gabe@luxurywashonwheels.com",
+      "pin": "6666",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "120001",
+      "employee_id": "ADM_OWNER",
+      "full_name": "Owner",
+      "email": "owner@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "admin",
+      "active_status": "active"
+    },
+    {
+      "id": "120002",
+      "employee_id": "OPS_MANAGER",
+      "full_name": "Ops Manager",
+      "email": "ops@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "operations_manager",
+      "active_status": "active"
+    },
+    {
+      "id": "150001",
+      "employee_id": "DET_GIOVANNI_V2",
+      "full_name": "Giovanni",
+      "email": "giovanni@luxurywashonwheels.com",
+      "pin": "1234",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "180001",
+      "employee_id": "SALES001",
+      "full_name": "Sales Rep",
+      "email": "sales@luxurywashonwheels.com",
+      "pin": "0000",
+      "role": "sales",
+      "active_status": "active"
+    },
+    {
+      "id": "210001",
+      "employee_id": "DET_TERRY",
+      "full_name": "Terry",
+      "email": "NULL",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "inactive"
+    },
+    {
+      "id": "270001",
+      "employee_id": "Sean",
+      "full_name": "Sean Moyer",
+      "email": "sdmoyer@gmail.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "300001",
+      "employee_id": "DIEON",
+      "full_name": "Dieon Green",
+      "email": "gdieon300600@gmail.com",
+      "pin": "0000",
+      "role": "sales",
+      "active_status": "active"
+    },
+    {
+      "id": "330001",
+      "employee_id": "ADRIAN",
+      "full_name": "Amills miller",
+      "email": "lilmerge43@yahoo.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "330002",
+      "employee_id": "DUSTIN",
+      "full_name": "Dustin Brown",
+      "email": "lil@yahoo.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    },
+    {
+      "id": "330003",
+      "employee_id": "WERE",
+      "full_name": "Larry Becket",
+      "email": "Larry@yahoo.com",
+      "pin": "0000",
+      "role": "detailer",
+      "active_status": "active"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\temployee_id\tfull_name\temail\tpin\trole\tactive_status\n60001\tEMP001\tMarcus Johnson\tmarcus@luxurywash.com\t1234\tdetailer\tinactive\n60002\tEMP002\tSarah Williams\tsarah@luxurywash.com\t1234\tdetailer\tinactive\n60003\tEMP003\tDavid Martinez\tdavid@luxurywash.com\t1234\tdetailer\tinactive\n60004\tEMP004\tJames Thompson\tjames@luxurywash.com\t1234\tdetailer\tinactive\n60005\tEMP005\tAshley Chen\tashley@luxurywash.com\t1234\tdetailer\tinactive\n60006\tADM001\tMichael Rivera\tmichael@luxurywash.com\t0000\tadmin\tinactive\n60007\tOPS001\tJennifer Lee\tjennifer@luxurywash.com\t0000\toperations_manager\tinactive\n60008\tDHR001\tDieon Green\tNULL\t5555\tdoor_hanger_rep\tinactive\n60009\tDHR002\tLisa Anderson\tlisa@luxurywash.com\t5555\tdoor_hanger_rep\tinactive\n60010\tDIEON001\tDieon Green\tNULL\t0000\tdoor_hanger_rep\tactive\n90001\tDET_MICHAEL\tMichael\tmichael@luxurywashonwheels.com\t0000\tdetailer\tinactive\n90002\tDET_CAMERON\tCameron\tcameron@luxurywashonwheels.com\t0000\tdetailer\tactive\n90003\tDET_LAMONT\tLamont\tlamont@luxurywashonwheels.com\t0000\tdetailer\tactive\n90004\tDET_CASEY\tCasey\tcasey@luxurywashonwheels.com\t0000\tdetailer\tinactive\n90005\tDET_GIOVANNI\tGiovanni\tgiovanni@luxurywashonwheels.com\t0000\tdetailer\tinactive\n90006\tDET_GABE\tGabe\tgabe@luxurywashonwheels.com\t6666\tdetailer\tactive\n120001\tADM_OWNER\tOwner\towner@luxurywashonwheels.com\t0000\tadmin\tactive\n120002\tOPS_MANAGER\tOps Manager\tops@luxurywashonwheels.com\t0000\toperations_manager\tactive\n150001\tDET_GIOVANNI_V2\tGiovanni\tgiovanni@luxurywashonwheels.com\t1234\tdetailer\tactive\n180001\tSALES001\tSales Rep\tsales@luxurywashonwheels.com\t0000\tsales\tactive\n210001\tDET_TERRY\tTerry\tNULL\t0000\tdetailer\tinactive\n270001\tSean\tSean Moyer\tsdmoyer@gmail.com\t0000\tdetailer\tactive\n300001\tDIEON\tDieon Green\tgdieon300600@gmail.com\t0000\tsales\tactive\n330001\tADRIAN\tAmills miller\tlilmerge43@yahoo.com\t0000\tdetailer\tactive\n330002\tDUSTIN\tDustin Brown\tlil@yahoo.com\t0000\tdetailer\tactive\n330003\tWERE\tLarry Becket\tLarry@yahoo.com\t0000\tdetailer\tactive\n",
+  "stderr": "",
+  "execution_time_ms": 264
+}

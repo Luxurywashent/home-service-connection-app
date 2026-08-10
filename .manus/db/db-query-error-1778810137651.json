@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, customer_name, location, job_date, time_slot, package_name, status, source, created_at FROM schedule_jobs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY created_at DESC LIMIT 20",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, customer_name, location, job_date, time_slot, package_name, status, source, created_at FROM schedule_jobs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY created_at DESC LIMIT 20",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'job_date' in 'field list'"
+  ]
+}

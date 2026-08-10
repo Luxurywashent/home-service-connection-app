@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, assigned_to, start_hour, end_hour, status, date, location FROM schedule_jobs WHERE location = 'destin' AND date = '2026-05-18';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT id, assigned_to, start_hour, end_hour, status, date, location FROM schedule_jobs WHERE location = 'destin' AND date = '2026-05-18';",
+  "rows": [
+    {
+      "id": "1050001",
+      "assigned_to": "JOSEPH",
+      "start_hour": "8",
+      "end_hour": "12",
+      "status": "confirmed",
+      "date": "2026-05-18",
+      "location": "destin"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tassigned_to\tstart_hour\tend_hour\tstatus\tdate\tlocation\n1050001\tJOSEPH\t8\t12\tconfirmed\t2026-05-18\tdestin\n",
+  "stderr": "",
+  "execution_time_ms": 263
+}

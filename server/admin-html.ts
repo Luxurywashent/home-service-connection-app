@@ -1,0 +1,3546 @@
+// Auto-generated: admin portal HTML inlined for deployment
+export const adminHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luxury Wash On Wheels — Admin Portal</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f172a;--surface:#1e293b;--surface2:#263347;--border:#334155;
+  --primary:#0a7ea4;--primary-hover:#0891b2;--text:#e2e8f0;--muted:#94a3b8;
+  --success:#22c55e;--warning:#f59e0b;--error:#ef4444;--radius:10px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--primary);text-decoration:none}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit;font-size:14px}
+
+/* ── Layout ── */
+#app{display:flex;min-height:100vh}
+#sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:1000;overflow-y:auto}
+#main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+#topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+#content{padding:24px;flex:1;position:relative;z-index:1}
+
+/* ── Sidebar ── */
+.sidebar-logo{padding:20px 16px 12px;border-bottom:1px solid var(--border)}
+.sidebar-logo h2{font-size:15px;font-weight:700;color:var(--text)}
+.sidebar-logo p{font-size:11px;color:var(--muted);margin-top:2px}
+.nav-section{padding:8px 0}
+.nav-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:6px 16px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{color:var(--primary);border-left-color:var(--primary);background:rgba(10,126,164,.1)}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
+.user-badge{display:flex;align-items:center;gap:10px}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.user-info{flex:1;min-width:0}
+.user-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:11px;color:var(--muted)}
+.logout-btn{background:none;border:none;color:var(--muted);font-size:18px;padding:4px;border-radius:6px;transition:color .15s}
+.logout-btn:hover{color:var(--error)}
+
+/* ── Topbar ── */
+.topbar-title{font-size:18px;font-weight:700;color:var(--text)}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.badge{display:inline-flex;align-items:center;justify-content:center;background:var(--error);color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;padding:0 5px}
+
+/* ── Cards & Panels ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:15px;font-weight:700;color:var(--text)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+
+/* ── Stat Cards ── */
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.stat-label{font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px}
+.stat-value{font-size:26px;font-weight:800;color:var(--text)}
+.stat-sub{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;transition:all .15s;cursor:pointer}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--border)}
+.btn-danger{background:var(--error);color:#fff}
+.btn-danger:hover{opacity:.85}
+.btn-success{background:var(--success);color:#fff}
+.btn-sm{padding:5px 11px;font-size:12px}
+.btn-icon{padding:7px;border-radius:8px}
+
+/* ── Tables ── */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface2)}
+
+/* ── Status Pills ── */
+.pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.pill-scheduled{background:rgba(10,126,164,.2);color:#38bdf8}
+.pill-confirmed{background:rgba(10,126,164,.2);color:#38bdf8}
+.pill-on_my_way{background:rgba(245,158,11,.2);color:#fbbf24}
+.pill-in_progress{background:rgba(245,158,11,.2);color:#fbbf24}
+.pill-arrived{background:rgba(245,158,11,.2);color:#fbbf24}
+.pill-finished{background:rgba(34,197,94,.2);color:#4ade80}
+.pill-completed{background:rgba(34,197,94,.2);color:#4ade80}
+.pill-cancelled{background:rgba(239,68,68,.2);color:#f87171}
+.pill-pending{background:rgba(148,163,184,.2);color:#94a3b8}
+.pill-approved{background:rgba(34,197,94,.2);color:#4ade80}
+.pill-denied{background:rgba(239,68,68,.2);color:#f87171}
+.pill-detailer{background:rgba(139,92,246,.2);color:#a78bfa}
+.pill-admin{background:rgba(10,126,164,.2);color:#38bdf8}
+.pill-office{background:rgba(245,158,11,.2);color:#fbbf24}
+
+/* ── Forms ── */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
+.form-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+.form-input:focus{border-color:var(--primary)}
+.form-input::placeholder{color:var(--muted)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-title{font-size:16px;font-weight:700;color:var(--text)}
+.modal-close{background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:4px;border-radius:6px}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:20px 24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+
+/* ── Dispatch Board ── */
+.dispatch-wrap{display:flex;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+.time-col{width:60px;flex-shrink:0;border-right:1px solid var(--border)}
+.time-slot{height:64px;display:flex;align-items:flex-start;justify-content:flex-end;padding:4px 8px 0 0;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)}
+.det-col{min-width:200px;flex:1;position:relative;border-right:1px solid var(--border)}
+.det-col:last-child{border-right:none}
+.det-header{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2);position:sticky;top:0;z-index:5}
+.det-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.det-name{font-size:13px;font-weight:700;color:var(--text)}
+.det-count{font-size:11px;color:var(--muted);margin-left:auto}
+.det-grid{position:relative}
+.hour-row{height:64px;border-bottom:1px solid var(--border)}
+.job-card{position:absolute;left:3px;right:3px;border-radius:7px;padding:5px 7px;overflow:hidden;cursor:pointer;z-index:10;border:1px solid rgba(255,255,255,.2);transition:opacity .15s}
+.job-card:hover{opacity:.85}
+.job-card-name{font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job-card-svc{font-size:10px;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job-card-time{font-size:10px;color:rgba(255,255,255,.65);margin-top:2px}
+.job-card-edit{position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;color:#fff;cursor:pointer}
+.job-card-edit:hover{background:rgba(255,255,255,.35)}
+.dispatch-controls{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.date-nav{display:flex;align-items:center;gap:8px}
+.date-nav button{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 12px;font-size:14px;cursor:pointer}
+.date-nav button:hover{background:var(--border)}
+.date-display{font-size:15px;font-weight:700;color:var(--text);min-width:200px;text-align:center}
+.loc-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.loc-tab{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s}
+.loc-tab.active{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* ── Login ── */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:380px}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo h1{font-size:22px;font-weight:800;color:var(--text)}
+.login-logo p{font-size:13px;color:var(--muted);margin-top:4px}
+.login-error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px}
+
+/* ── Alerts ── */
+.alert-item{display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--surface2);border-radius:8px;margin-bottom:10px;border:1px solid var(--border)}
+.alert-icon{font-size:20px;flex-shrink:0;margin-top:1px}
+.alert-body{flex:1}
+.alert-title{font-size:13px;font-weight:600;color:var(--text)}
+.alert-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.alert-time{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* ── Misc ── */
+.hidden{display:none!important}
+.flex{display:flex}
+.items-center{align-items:center}
+.gap-2{gap:8px}
+.gap-3{gap:12px}
+.mt-4{margin-top:16px}
+.mt-2{margin-top:8px}
+.mb-4{margin-bottom:16px}
+.text-muted{color:var(--muted)}
+.text-sm{font-size:13px}
+.font-bold{font-weight:700}
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-state .icon{font-size:40px;margin-bottom:12px}
+.empty-state p{font-size:14px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+.search-input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;width:220px}
+.search-input:focus{border-color:var(--primary)}
+.section-title{font-size:20px;font-weight:800;color:var(--text);margin-bottom:20px}
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+select.form-input option{background:var(--surface)}
+
+/* ── Drag-to-create ── */
+.drag-preview{position:absolute;left:3px;right:3px;border-radius:7px;background:rgba(10,126,164,.4);border:2px dashed var(--primary);z-index:20;pointer-events:none;display:none}
+.det-grid.drag-active{cursor:crosshair}
+
+/* ── Address Autocomplete ── */
+.autocomplete-wrap{position:relative}
+.autocomplete-list{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;margin-top:2px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.autocomplete-item{padding:9px 12px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)}
+.autocomplete-item:last-child{border-bottom:none}
+.autocomplete-item:hover{background:var(--surface2)}
+
+/* ── Vehicle/Package Picker ── */
+.picker-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px}
+.picker-card{background:var(--surface2);border:2px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .15s;text-align:center}
+.picker-card:hover{border-color:var(--primary);background:rgba(10,126,164,.1)}
+.picker-card.selected{border-color:var(--primary);background:rgba(10,126,164,.2)}
+.picker-card .pc-emoji{font-size:22px;margin-bottom:4px}
+.picker-card .pc-label{font-size:12px;font-weight:700;color:var(--text)}
+.picker-card .pc-price{font-size:11px;color:var(--muted);margin-top:2px}
+.picker-card .pc-tagline{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.3}
+
+/* ── Map ── */
+#map-container{height:calc(100vh - 120px);min-height:500px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);position:relative}
+#fleet-map{height:100%;width:100%;background:#1a2332}
+.map-legend{position:absolute;bottom:20px;left:20px;z-index:1000;background:rgba(30,41,59,.95);border:1px solid var(--border);border-radius:10px;padding:12px 16px;min-width:160px;backdrop-filter:blur(8px)}
+.map-legend-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.map-legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);margin-bottom:6px}
+.map-legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
+.map-controls{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.map-stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--text)}
+.map-stat span{font-weight:700;color:var(--primary)}
+@media(max-width:768px){
+  #sidebar{display:none}
+  #main{margin-left:0}
+  .grid-4{grid-template-columns:1fr 1fr}
+  .grid-3{grid-template-columns:1fr 1fr}
+  .grid-2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div style="font-size:48px;margin-bottom:8px">🚗</div>
+      <h1>Luxury Wash On Wheels</h1>
+      <p>Admin Portal</p>
+    </div>
+    <div id="login-error" class="login-error hidden"></div>
+    <div class="form-group">
+      <label class="form-label">Team Member ID or Email</label>
+      <input id="login-id" class="form-input" type="text" placeholder="e.g. ADM_OWNER" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">PIN</label>
+      <input id="login-pin" class="form-input" type="password" placeholder="4–6 digit PIN" autocomplete="current-password" maxlength="6">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" class="hidden">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <h2>🚗 Luxury Wash On Wheels</h2>
+      <p>Admin Portal</p>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <div class="nav-item active" onclick="showSection('dashboard')" data-section="dashboard">
+        <span class="icon">📊</span> Dashboard
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Schedule</div>
+      <div class="nav-item" onclick="showSection('dispatch')" data-section="dispatch">
+        <span class="icon">📅</span> Dispatch Board
+      </div>
+      <div class="nav-item" onclick="showSection('jobs')" data-section="jobs">
+        <span class="icon">🔧</span> All Jobs
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Team</div>
+      <div class="nav-item" onclick="showSection('team')" data-section="team">
+        <span class="icon">👥</span> Team Members
+      </div>
+      <div class="nav-item" onclick="showSection('archive')" data-section="archive">
+        <span class="icon">📦</span> Archive
+      </div>
+      <div class="nav-item" onclick="showSection('timesheets')" data-section="timesheets">
+        <span class="icon">⏱</span> Timesheets
+      </div>
+      <div class="nav-item" onclick="showSection('timeoff')" data-section="timeoff">
+        <span class="icon">🌴</span> Time Off <span id="timeoff-badge" class="badge hidden" style="margin-left:auto"></span>
+      </div>
+      <div class="nav-item" onclick="showSection('bonus')" data-section="bonus">
+        <span class="icon">🎯</span> Bonus & Quiz
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">AI & Automation</div>
+      <div class="nav-item" onclick="showSection('receptionist')" data-section="receptionist">
+        <span class="icon">🤖</span> AI Receptionist
+      </div>
+      <div class="nav-item" onclick="showSection('aicoach')" data-section="aicoach">
+        <span class="icon">🧠</span> AI Coach
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Sales</div>
+      <div class="nav-item" onclick="showSection('callbacks')" data-section="callbacks">
+        <span class="icon">📞</span> Callbacks
+      </div>
+      <div class="nav-item" onclick="showSection('doorhangers')" data-section="doorhangers">
+        <span class="icon">🚪</span> Door Hangers
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Customers</div>
+      <div class="nav-item" onclick="showSection('customers')" data-section="customers">
+        <span class="icon">👤</span> All Customers
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Operations</div>
+      <div class="nav-item" onclick="showSection('alerts')" data-section="alerts">
+        <span class="icon">🔔</span> Alerts <span id="alerts-badge" class="badge hidden" style="margin-left:auto"></span>
+      </div>
+      <div class="nav-item" onclick="showSection('mapview')" data-section="mapview">
+        <span class="icon">🗺️</span> Fleet Map
+      </div>
+      <div class="nav-item" onclick="showSection('fleet')" data-section="fleet">
+        <span class="icon">🚐</span> Fleet & Vans
+      </div>
+      <div class="nav-item" onclick="showSection('inventory')" data-section="inventory">
+        <span class="icon">📦</span> Inventory
+      </div>
+      <div class="nav-item" onclick="showSection('finance')" data-section="finance">
+        <span class="icon">💰</span> Finance
+      </div>
+      <div class="nav-item" onclick="showSection('chat')" data-section="chat">
+        <span class="icon">💬</span> Chat
+      </div>
+      <div class="nav-item" onclick="showSection('settings')" data-section="settings">
+        <span class="icon">⚙️</span> Settings
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Learning</div>
+      <div class="nav-item" onclick="showSection('training')" data-section="training">
+        <span class="icon">📚</span> Training
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-badge">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-name">—</div>
+          <div class="user-role" id="sidebar-role">—</div>
+        </div>
+        <button class="logout-btn" onclick="doLogout()" title="Sign out">⏻</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div id="main">
+    <div id="topbar">
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="topbar-add-btn" onclick="openAddJobModal()" style="display:none">+ New Job</button>
+        <span id="topbar-date" class="text-muted text-sm"></span>
+      </div>
+    </div>
+    <div id="content">
+      <!-- Sections injected here -->
+    </div>
+  </div>
+</div>
+
+<!-- Job Modal -->
+<div id="job-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="job-modal-title">Job Details</div>
+      <button class="modal-close" onclick="closeJobModal()">✕</button>
+    </div>
+    <div class="modal-body" id="job-modal-body"></div>
+    <div class="modal-footer" id="job-modal-footer"></div>
+  </div>
+</div>
+
+<!-- Team Member Modal -->
+<div id="team-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="team-modal-title">Team Member</div>
+      <button class="modal-close" onclick="closeTeamModal()">✕</button>
+    </div>
+    <div class="modal-body" id="team-modal-body"></div>
+    <div class="modal-footer" id="team-modal-footer"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = '/api/trpc';
+let currentEmployee = null;
+let currentSection = 'dashboard';
+let dispatchDate = new Date();
+let dispatchLocation = 'crestview';
+let allDetailers = [];
+let allTeam = [];
+let editingJob = null;
+let editingTeam = null;
+
+const LOCATIONS = [
+  {slug:'crestview', label:'Crestview'},
+  {slug:'niceville', label:'Niceville'},
+  {slug:'destin', label:'Destin'},
+  {slug:'fwb', label:'Fort Walton'},
+  {slug:'pcb', label:'PCB'},
+  {slug:'pensacola', label:'Pensacola'},
+];
+const DET_COLORS = ['#3B82F6','#8B5CF6','#10B981','#F59E0B','#EF4444','#EC4899','#06B6D4','#F97316'];
+const STATUS_COLOR = {
+  scheduled:'#0a7ea4', confirmed:'#0a7ea4', on_my_way:'#f59e0b',
+  in_progress:'#f59e0b', arrived:'#f59e0b', finished:'#22c55e',
+  completed:'#22c55e', cancelled:'#ef4444', pending:'#64748b',
+};
+const HOURS = [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+const SLOT_H = 64;
+
+const VEHICLE_SIZES = [
+  {id:'sedan', label:'Sedan', emoji:'🚗'},
+  {id:'suv', label:'SUV', emoji:'🚙'},
+  {id:'xl_suv_van', label:'XL SUV / Van', emoji:'🚐'},
+  {id:'truck', label:'Truck', emoji:'🛻'},
+];
+const PACKAGES = [
+  {id:'basic', title:'Basic Detail', emoji:'🚗', tagline:'Best for vehicles less than 2 yrs old or detailed in last 60 days', basePrice:{sedan:200,suv:225,xl_suv_van:250,truck:225}},
+  {id:'full', title:'Full Detail', emoji:'🧼', tagline:'Best for vehicles detailed in the last 90 days', basePrice:{sedan:300,suv:325,xl_suv_van:375,truck:325}},
+  {id:'luxury', title:'Luxury Detail', emoji:'✨', tagline:'Best for vehicles not cleaned in 90+ days', basePrice:{sedan:400,suv:450,xl_suv_van:500,truck:450}},
+  {id:'interior', title:'Interior Detail', emoji:'🪑', tagline:'Deep interior cleaning', basePrice:{sedan:250,suv:275,xl_suv_van:325,truck:275}},
+  {id:'exterior', title:'Exterior Detail', emoji:'🛡️', tagline:'Thorough exterior clean & protect', basePrice:{sedan:200,suv:225,xl_suv_van:250,truck:225}},
+];
+
+// ── tRPC helpers ───────────────────────────────────────────────────────────
+async function trpcQuery(path, input) {
+  const url = \`\${API}/\${path}?input=\${encodeURIComponent(JSON.stringify({json: input ?? null}))}\`;
+  const r = await fetch(url, {headers:{'Content-Type':'application/json'}});
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || 'API error');
+  return j.result?.data?.json ?? j.result?.data;
+}
+async function trpcMutate(path, input) {
+  const r = await fetch(\`\${API}/\${path}\`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({json: input}),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || 'API error');
+  return j.result?.data?.json ?? j.result?.data;
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const id = document.getElementById('login-id').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.classList.add('hidden');
+  if (!id || !pin) { errEl.textContent = 'Please enter your ID and PIN.'; errEl.classList.remove('hidden'); return; }
+  try {
+    const res = await trpcMutate('employee.login', {identifier: id, pin});
+    if (!res.success) { errEl.textContent = res.error || 'Invalid credentials.'; errEl.classList.remove('hidden'); return; }
+    const emp = res.employee;
+    if (!['admin','operations_manager','office'].includes(emp.role)) {
+      errEl.textContent = 'Access denied. Admin accounts only.'; errEl.classList.remove('hidden'); return;
+    }
+    currentEmployee = emp;
+    sessionStorage.setItem('tlw_admin', JSON.stringify(emp));
+    launchApp();
+  } catch(e) { errEl.textContent = 'Login failed: ' + e.message; errEl.classList.remove('hidden'); }
+}
+function doLogout() {
+  currentEmployee = null;
+  sessionStorage.removeItem('tlw_admin');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+document.getElementById('login-pin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('login-id').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('login-pin').focus(); });
+
+// ── App Launch ─────────────────────────────────────────────────────────────
+async function launchApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  const n = currentEmployee.fullName || currentEmployee.employeeId;
+  document.getElementById('sidebar-name').textContent = n;
+  document.getElementById('sidebar-role').textContent = currentEmployee.role.replace('_',' ');
+  document.getElementById('sidebar-avatar').textContent = n.charAt(0).toUpperCase();
+  document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  // Load detailers
+  allDetailers = await trpcQuery('employee.listDetailers') || [];
+  allTeam = await trpcQuery('employee.listAll') || [];
+  await refreshBadges();
+  showSection('dashboard');
+}
+
+async function refreshBadges() {
+  try {
+    const pending = await trpcQuery('timeOff.getPendingCount');
+    const cnt = typeof pending === 'number' ? pending : (pending?.count ?? 0);
+    const badge = document.getElementById('timeoff-badge');
+    if (cnt > 0) { badge.textContent = cnt; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  } catch(e) {}
+  try {
+    const alerts = await trpcQuery('notifications.getUnacknowledgedCritical') || [];
+    const badge = document.getElementById('alerts-badge');
+    if (alerts.length > 0) { badge.textContent = alerts.length; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  } catch(e) {}
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showSection(name) {
+  currentSection = name;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+  const titles = {dashboard:'Dashboard',dispatch:'Dispatch Board',jobs:'All Jobs',customers:'All Customers',team:'Team Members',archive:'Team Archive',timesheets:'Timesheets',timeoff:'Time Off Requests',bonus:'Bonus & Quiz',alerts:'Alerts & Notifications',mapview:'Fleet Map',fleet:'Fleet & Vans',inventory:'Inventory',finance:'Finance',chat:'Team Chat',settings:'Settings',training:'Training Management',receptionist:'AI Receptionist',aicoach:'AI Coach',callbacks:'Sales Callbacks',doorhangers:'Door Hangers'};
+  document.getElementById('topbar-title').textContent = titles[name] || name;
+  document.getElementById('topbar-add-btn').style.display = ['dispatch','jobs'].includes(name) ? '' : 'none';
+  const c = document.getElementById('content');
+  c.innerHTML = '<div style="text-align:center;padding:60px"><div class="spinner"></div></div>';
+  const renderFn = ({dashboard:renderDashboard, dispatch:renderDispatch, jobs:renderJobs, customers:renderCustomers, team:renderTeam, archive:renderArchive, timesheets:renderTimesheets, timeoff:renderTimeOff, bonus:renderBonus, alerts:renderAlerts, mapview:renderMapView, fleet:renderFleet, inventory:renderInventory, finance:renderFinance, chat:renderChat, settings:renderSettings, training:renderTraining, receptionist:renderReceptionist, aicoach:renderAiCoach, callbacks:renderCallbacks, doorhangers:renderDoorHangers}[name] || (() => {}));
+  const result = renderFn();
+  if (result instanceof Promise) result.catch(e => console.error('Error rendering', name, ':', e));
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function renderDashboard() {
+  const today = fmtDate(new Date());
+  const weekStart = fmtDate(getWeekStart(new Date()));
+  const weekEnd = fmtDate(getWeekEnd(new Date()));
+  let jobs = [], team = [], pending = 0;
+  try { jobs = await trpcQuery('jobs.listAll', {startDate: weekStart, endDate: weekEnd}) || []; } catch(e) {}
+  try { team = allTeam; } catch(e) {}
+  try { const p = await trpcQuery('timeOff.getPendingCount'); pending = typeof p === 'number' ? p : (p?.count ?? 0); } catch(e) {}
+
+  const todayJobs = jobs.filter(j => j.date === today);
+  const revenue = jobs.filter(j => j.status === 'completed').reduce((s,j) => s + parseFloat(j.totalPrice||'0'), 0);
+  const todayRev = todayJobs.filter(j => j.status === 'completed').reduce((s,j) => s + parseFloat(j.totalPrice||'0'), 0);
+  const active = todayJobs.filter(j => ['in_progress','arrived','on_my_way'].includes(j.status)).length;
+  const notCompletedStatuses = ['scheduled','confirmed','on_my_way','in_progress','arrived','finished','pending'];
+  const scheduledJobs = jobs.filter(j => notCompletedStatuses.includes(j.status));
+  const scheduledRev = scheduledJobs.reduce((s,j) => s + parseFloat(j.totalPrice||'0'), 0);
+  const scheduledCount = scheduledJobs.length;
+
+  // Fetch and render morning meeting banner with countdown
+  let meetingBannerHtml = '';
+  try {
+    const config = await trpcQuery('morningMeeting.getConfig');
+    if (config && config.enabled === 'yes' && config.zoomLink) {
+      // Only show banner between 7:15 AM and 7:31 AM CST
+      const nowCST = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'}));
+      const cstHour = nowCST.getHours();
+      const cstMin = nowCST.getMinutes();
+      const cstTotal = cstHour * 60 + cstMin;
+      const showStart = 7 * 60 + 15; // 7:15 AM = 435 minutes
+      const showEnd = 7 * 60 + 31;   // 7:31 AM = 451 minutes
+      const inWindow = cstTotal >= showStart && cstTotal < showEnd;
+      if (inWindow) {
+        const countdownId = 'meeting-countdown-' + Date.now();
+        const bannerId = 'meeting-banner-' + Date.now();
+        const isAdmin = currentEmployee.role === 'admin' || currentEmployee.role === 'owner';
+        const minsLeft = showEnd - cstTotal;
+        meetingBannerHtml = \`<div id="\${bannerId}" style="background:linear-gradient(135deg,#0a7ea4,#0d5f7f);border-radius:12px;padding:16px;margin-bottom:20px;transition:all .2s" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="flex:1;cursor:pointer" onclick="window.open('\${config.zoomLink}','_blank')"><div style="color:#fff;font-weight:700;font-size:16px">📹 Morning Meeting — Starting Now!</div><div style="color:#b0d4e3;font-size:13px;margin-top:4px" id="\${countdownId}">Banner disappears in \${minsLeft} min</div></div>
+            <div style="display:flex;gap:8px;align-items:center;white-space:nowrap">
+              \${isAdmin ? \`<button onclick="showSection('settings')" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 12px;font-size:11px;cursor:pointer">Edit</button>\` : ''}
+              <div style="background:rgba(255,255,255,.2);padding:8px 16px;border-radius:20px;color:#fff;font-weight:600;font-size:12px;cursor:pointer" onclick="window.open('\${config.zoomLink}','_blank')">Join Now</div>
+            </div>
+          </div>
+        </div>\`;
+        setTimeout(() => {
+          const _bid = bannerId;
+          const _cid = countdownId;
+          const _end = showEnd;
+          const checkWindow = () => {
+            const n = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'}));
+            const t = n.getHours() * 60 + n.getMinutes();
+            const el = document.getElementById(_bid);
+            const cd = document.getElementById(_cid);
+            if (t >= _end) {
+              if (el) el.remove();
+            } else if (cd) {
+              cd.textContent = 'Banner disappears in ' + (_end - t) + ' min';
+            }
+          };
+          checkWindow();
+          setInterval(checkWindow, 30000);
+        }, 100);
+      }
+    }
+  } catch(e) {}
+
+  document.getElementById('content').innerHTML = \`
+    \${meetingBannerHtml}
+    <div class="section-title">Good \${getGreeting()}, \${currentEmployee.fullName?.split(' ')[0] || 'Admin'} 👋</div>
+    <div class="grid-4 mb-4">
+      <div class="stat-card"><div class="stat-label">Today's Jobs</div><div class="stat-value">\${todayJobs.length}</div><div class="stat-sub">\${active} active now</div></div>
+      <div class="stat-card"><div class="stat-label">Today's Revenue</div><div class="stat-value">$\${todayRev.toFixed(0)}</div><div class="stat-sub">completed today</div></div>
+      <div class="stat-card" style="border-color:#0a7ea4"><div class="stat-label" style="color:#38bdf8">📅 Scheduled Revenue</div><div class="stat-value" style="color:#38bdf8">$\${scheduledRev.toFixed(0)}</div><div class="stat-sub">\${scheduledCount} jobs not yet completed</div></div>
+      <div class="stat-card"><div class="stat-label">Week Completed</div><div class="stat-value">$\${revenue.toFixed(0)}</div><div class="stat-sub">\${weekStart} – \${weekEnd}</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Today's Jobs</div><button class="btn btn-secondary btn-sm" onclick="showSection('dispatch')">View Board →</button></div>
+        \${todayJobs.length === 0 ? '<div class="empty-state"><div class="icon">📅</div><p>No jobs today</p></div>' :
+          '<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Service</th><th>Time</th><th>Detailer</th><th>Status</th></tr></thead><tbody>' +
+          todayJobs.slice(0,8).map(j => \`<tr style="cursor:pointer" onclick="openJobDetailById('\${j.jobId}')">
+            <td class="font-bold">\${j.customerName||'—'}</td>
+            <td>\${j.packageType||j.serviceDescription||'—'}</td>
+            <td>\${fmtHour(j.startHour)}–\${fmtHour(j.endHour)}</td>
+            <td>\${j.assignedTo||'<span class="text-muted">Unassigned</span>'}</td>
+            <td>\${statusPill(j.status)}</td>
+          </tr>\`).join('') + '</tbody></table></div>'
+        }
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Team Status Today</div></div>
+        \${allDetailers.length === 0 ? '<div class="empty-state"><div class="icon">👥</div><p>No detailers found</p></div>' :
+          '<div class="table-wrap"><table><thead><tr><th>Name</th><th>City</th><th>Jobs Today</th><th>Revenue</th></tr></thead><tbody>' +
+          allDetailers.map(d => {
+            const dJobs = todayJobs.filter(j => j.assignedTo === d.employeeId || j.assignedTo === d.fullName);
+            const dRev = dJobs.filter(j=>j.status==='completed').reduce((s,j)=>s+parseFloat(j.totalPrice||'0'),0);
+            return \`<tr><td class="font-bold">\${d.fullName}</td><td>\${d.city||'—'}</td><td>\${dJobs.length}</td><td>$\${dRev.toFixed(0)}</td></tr>\`;
+          }).join('') + '</tbody></table></div>'
+        }
+      </div>
+    </div>\`;
+}
+
+// ── Dispatch Board ─────────────────────────────────────────────────────────
+async function renderDispatch() {
+  const locTabs = LOCATIONS.map(l => \`<div class="loc-tab\${l.slug===dispatchLocation?' active':''}" onclick="setDispatchLoc('\${l.slug}')">\${l.label}</div>\`).join('');
+  document.getElementById('content').innerHTML = \`
+    <div class="dispatch-controls">
+      <div class="date-nav">
+        <button onclick="shiftDate(-1)">‹</button>
+        <div class="date-display" id="dispatch-date-label">\${fmtFullDate(dispatchDate)}</div>
+        <button onclick="shiftDate(1)">›</button>
+        <button class="btn btn-secondary btn-sm" onclick="dispatchDate=new Date();renderDispatch()">Today</button>
+      </div>
+      <div class="loc-tabs">\${locTabs}</div>
+    </div>
+    <div id="dispatch-board"><div style="text-align:center;padding:40px"><div class="spinner"></div></div></div>\`;
+  await loadDispatchBoard();
+}
+function setDispatchLoc(slug) { dispatchLocation = slug; renderDispatch(); }
+function shiftDate(d) { dispatchDate.setDate(dispatchDate.getDate()+d); renderDispatch(); }
+
+async function loadDispatchBoard() {
+  const dateStr = fmtDate(dispatchDate);
+  let jobs = [];
+  try { jobs = await trpcQuery('jobs.listByLocation', {location: dispatchLocation, startDate: dateStr, endDate: dateStr}) || []; } catch(e) {}
+  const detailers = allDetailers.filter(d => !d.city || cityToSlug(d.city) === dispatchLocation);
+  const cols = detailers.length > 0 ? detailers : [{employeeId:'__all', fullName:'All Jobs'}];
+
+  const timeCol = HOURS.map(h => \`<div class="time-slot">\${fmtHour(h)}</div>\`).join('');
+  const detCols = cols.map((det, ci) => {
+    const color = DET_COLORS[ci % DET_COLORS.length];
+    const colJobs = det.employeeId === '__all' ? jobs : jobs.filter(j =>
+      j.assignedTo === det.employeeId || j.assignedTo === det.fullName ||
+      (j.assignedTo && det.fullName && j.assignedTo.toLowerCase() === det.fullName.split(' ')[0].toLowerCase())
+    );
+    const cards = colJobs.map(job => {
+      const si = HOURS.indexOf(job.startHour ?? 8);
+      const ei = HOURS.indexOf(job.endHour ?? (job.startHour ?? 8) + 2);
+      const top = (si >= 0 ? si : 0) * SLOT_H + 2;
+      const h = Math.max(SLOT_H - 4, ((ei >= 0 ? ei : (si>=0?si:0)+1) - (si>=0?si:0)) * SLOT_H - 4);
+      const bg = STATUS_COLOR[job.status] || '#0a7ea4';
+      return \`<div class="job-card" style="top:\${top}px;height:\${h}px;background:\${bg}" onclick="openJobDetailById('\${job.jobId}')">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:\${color};border-radius:7px 0 0 7px"></div>
+        <div class="job-card-name" style="padding-left:6px">\${job.customerName||'—'}</div>
+        <div class="job-card-svc" style="padding-left:6px">\${job.packageType||job.serviceDescription||'—'}</div>
+        \${h>=48?\`<div class="job-card-time" style="padding-left:6px">\${fmtHour(job.startHour)}–\${fmtHour(job.endHour)}</div>\`:''}
+        <button class="job-card-edit" onclick="event.stopPropagation();openJobDetailById('\${job.jobId}')">Edit</button>
+      </div>\`;
+    }).join('');
+    const rows = HOURS.map(() => \`<div class="hour-row"></div>\`).join('');
+    const detId = det.employeeId;
+    const detName = det.fullName;
+    return \`<div class="det-col">
+      <div class="det-header"><div class="det-dot" style="background:\${color}"></div><div class="det-name">\${det.fullName.split(' ')[0]}</div><div class="det-count">\${colJobs.length} job\${colJobs.length!==1?'s':''}</div></div>
+      <div class="det-grid" id="grid-\${detId}" style="position:relative" data-det-id="\${detId}" data-det-name="\${detName}">
+        \${rows}\${cards}
+        <div class="drag-preview" id="drag-preview-\${detId}"></div>
+      </div>
+    </div>\`;
+  }).join('');
+
+  // Build Unassigned column (jobs with no assignedTo)
+  const unassignedJobs = jobs.filter(j => !j.assignedTo || j.assignedTo === '' || j.assignedTo === null);
+  const unassignedCards = unassignedJobs.map(job => {
+    const si = HOURS.indexOf(job.startHour ?? 8);
+    const ei = HOURS.indexOf(job.endHour ?? (job.startHour ?? 8) + 2);
+    const top = (si >= 0 ? si : 0) * SLOT_H + 2;
+    const h = Math.max(SLOT_H - 4, ((ei >= 0 ? ei : (si>=0?si:0)+1) - (si>=0?si:0)) * SLOT_H - 4);
+    return \`<div class="job-card" style="top:\${top}px;height:\${h}px;background:#475569" onclick="openJobDetailById('\${job.jobId}')">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#94a3b8;border-radius:7px 0 0 7px"></div>
+      <div class="job-card-name" style="padding-left:6px">\${job.customerName||'—'}</div>
+      <div class="job-card-svc" style="padding-left:6px">\${job.packageType||job.serviceDescription||'—'}</div>
+      \${h>=48?\`<div class="job-card-time" style="padding-left:6px">\${fmtHour(job.startHour)}–\${fmtHour(job.endHour)}</div>\`:''}
+      <button class="job-card-edit" onclick="event.stopPropagation();openJobDetailById('\${job.jobId}')">Assign</button>
+    </div>\`;
+  }).join('');
+  const unassignedRows = HOURS.map(() => \`<div class="hour-row"></div>\`).join('');
+  const unassignedCol = \`<div class="det-col" style="border-left:2px dashed #475569">
+    <div class="det-header" style="background:rgba(71,85,105,.2)">
+      <div class="det-dot" style="background:#94a3b8"></div>
+      <div class="det-name" style="color:#94a3b8">Unassigned</div>
+      <div class="det-count">\${unassignedJobs.length} job\${unassignedJobs.length!==1?'s':''}</div>
+    </div>
+    <div class="det-grid" id="grid-__unassigned" style="position:relative" data-det-id="__unassigned" data-det-name="Unassigned">
+      \${unassignedRows}\${unassignedCards}
+      <div class="drag-preview" id="drag-preview-__unassigned"></div>
+    </div>
+  </div>\`;
+
+  document.getElementById('dispatch-board').innerHTML = \`
+    <div class="dispatch-wrap">
+      <div class="time-col">\${timeCol}</div>
+      \${detCols}
+      \${unassignedCol}
+    </div>\`;
+  setupDragToCreate();
+}
+
+let _drag = null;
+function setupDragToCreate() {
+  document.querySelectorAll('.det-grid').forEach(grid => {
+    const detId = grid.dataset.detId;
+    const detName = grid.dataset.detName;
+    const preview = document.getElementById('drag-preview-' + detId);
+    if (!preview) return;
+
+    function yToHourIndex(y) {
+      return Math.max(0, Math.min(HOURS.length - 1, Math.floor(y / SLOT_H)));
+    }
+
+    grid.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.job-card')) return;
+      const rect = grid.getBoundingClientRect();
+      const startY = e.clientY - rect.top;
+      const startIdx = yToHourIndex(startY);
+      _drag = { grid, detId, detName, startIdx, endIdx: startIdx, rect };
+      preview.style.display = 'block';
+      preview.style.top = (startIdx * SLOT_H) + 'px';
+      preview.style.height = SLOT_H + 'px';
+      grid.classList.add('drag-active');
+      e.preventDefault();
+    });
+
+    grid.addEventListener('mousemove', e => {
+      if (!_drag || _drag.detId !== detId) return;
+      const y = e.clientY - _drag.rect.top;
+      const curIdx = yToHourIndex(y);
+      _drag.endIdx = Math.max(_drag.startIdx, curIdx);
+      const top = _drag.startIdx * SLOT_H;
+      const height = (_drag.endIdx - _drag.startIdx + 1) * SLOT_H;
+      preview.style.top = top + 'px';
+      preview.style.height = height + 'px';
+      const label = \`\${fmtHour(HOURS[_drag.startIdx])} – \${fmtHour(HOURS[_drag.endIdx + 1] ?? HOURS[_drag.endIdx] + 1)}\`;
+      preview.textContent = label;
+      preview.style.display = 'flex';
+      preview.style.alignItems = 'center';
+      preview.style.justifyContent = 'center';
+      preview.style.color = '#fff';
+      preview.style.fontSize = '12px';
+      preview.style.fontWeight = '700';
+    });
+
+    grid.addEventListener('mouseup', e => {
+      if (!_drag || _drag.detId !== detId) return;
+      const startH = HOURS[_drag.startIdx];
+      const endH = HOURS[_drag.endIdx + 1] ?? (HOURS[_drag.endIdx] + 1);
+      const savedDrag = { detId: _drag.detId, detName: _drag.detName, startH, endH };
+      preview.style.display = 'none';
+      grid.classList.remove('drag-active');
+      _drag = null;
+      if (endH > startH) {
+        openAddJobModalWithPrefill(savedDrag.detId, savedDrag.detName, savedDrag.startH, savedDrag.endH);
+      }
+    });
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (_drag) {
+      const preview = document.getElementById('drag-preview-' + _drag.detId);
+      if (preview) preview.style.display = 'none';
+      const grid = document.getElementById('grid-' + _drag.detId);
+      if (grid) grid.classList.remove('drag-active');
+      _drag = null;
+    }
+  }, { once: false });
+}
+
+// ── All Jobs ───────────────────────────────────────────────────────────────
+async function renderJobs() {
+  const today = new Date();
+  const weekStart = fmtDate(getWeekStart(today));
+  const weekEnd = fmtDate(getWeekEnd(today));
+  let jobs = [];
+  try { jobs = await trpcQuery('jobs.listAll', {startDate: weekStart, endDate: weekEnd}) || []; } catch(e) {}
+  jobs.sort((a,b) => (b.date||'').localeCompare(a.date||'') || (a.startHour||0) - (b.startHour||0));
+
+  document.getElementById('content').innerHTML = \`
+    <div class="flex items-center gap-3 mb-4" style="flex-wrap:wrap">
+      <input class="search-input" id="jobs-search" placeholder="Search customer, service…" oninput="filterJobsTable()" style="flex:1;min-width:200px">
+      <select class="form-input" id="jobs-status-filter" onchange="filterJobsTable()" style="width:160px">
+        <option value="">All Statuses</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="in_progress">In Progress</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="pending">Pending</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table id="jobs-table">
+          <thead><tr><th>Date</th><th>Customer</th><th>Service</th><th>Time</th><th>Detailer</th><th>Location</th><th>Price</th><th>Status</th><th></th></tr></thead>
+          <tbody id="jobs-tbody">
+            \${jobs.map(j => jobRow(j)).join('')}
+          </tbody>
+        </table>
+        \${jobs.length===0?'<div class="empty-state"><div class="icon">🔧</div><p>No jobs this week</p></div>':''}
+      </div>
+    </div>\`;
+  window._jobsData = jobs;
+}
+function jobRow(j) {
+  return \`<tr data-id="\${j.jobId}" style="cursor:pointer" onclick="openJobDetailById('\${j.jobId}')">
+    <td>\${j.date||'—'}</td>
+    <td class="font-bold">\${j.customerName||'—'}</td>
+    <td>\${j.packageType||j.serviceDescription||'—'}</td>
+    <td>\${fmtHour(j.startHour)}–\${fmtHour(j.endHour)}</td>
+    <td>\${j.assignedTo||'<span class="text-muted">Unassigned</span>'}</td>
+    <td>\${j.location||'—'}</td>
+    <td>$\${parseFloat(j.totalPrice||'0').toFixed(2)}</td>
+    <td>\${statusPill(j.status)}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openJobDetailById('\${j.jobId}')">Edit</button></td>
+  </tr>\`;
+}
+function filterJobsTable() {
+  const q = document.getElementById('jobs-search')?.value.toLowerCase() || '';
+  const st = document.getElementById('jobs-status-filter')?.value || '';
+  const jobs = (window._jobsData || []).filter(j => {
+    const txt = \`\${j.customerName} \${j.packageType} \${j.serviceDescription} \${j.assignedTo}\`.toLowerCase();
+    return (!q || txt.includes(q)) && (!st || j.status === st);
+  });
+  document.getElementById('jobs-tbody').innerHTML = jobs.map(j => jobRow(j)).join('');
+}
+
+// ── Job Detail Modal ───────────────────────────────────────────────────────
+async function openJobDetailById(jobId) {
+  // Find job in current data or fetch
+  let job = (window._jobsData||[]).find(j=>j.jobId===jobId);
+  if (!job) {
+    // Try fetching from dispatch
+    try {
+      const dateStr = fmtDate(dispatchDate);
+      const jobs = await trpcQuery('jobs.listByLocation', {location: dispatchLocation, startDate: dateStr, endDate: dateStr}) || [];
+      job = jobs.find(j=>j.jobId===jobId);
+    } catch(e){}
+  }
+  if (!job) { alert('Job not found'); return; }
+  editingJob = job;
+  showJobModal(job);
+}
+
+function showJobModal(job) {
+  document.getElementById('job-modal-title').textContent = 'Edit Job';
+  const detOptions = allDetailers.map(d => \`<option value="\${d.employeeId}" \${job.assignedTo===d.employeeId||job.assignedTo===d.fullName?'selected':''}>\${d.fullName}</option>\`).join('');
+  const statusOptions = ['pending','confirmed','in_progress','completed','cancelled'].map(s => \`<option value="\${s}" \${job.status===s?'selected':''}>\${s.replace('_',' ')}</option>\`).join('');
+  const hourOptions = (h) => HOURS.map(hr => \`<option value="\${hr}" \${hr===h?'selected':''}>\${fmtHour(hr)}</option>\`).join('');
+
+  document.getElementById('job-modal-body').innerHTML = \`
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Customer Name</label><input class="form-input" id="jm-name" value="\${job.customerName||''}"></div>
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="jm-phone" value="\${job.customerPhone||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="jm-email" value="\${job.customerEmail||''}"></div>
+      <div class="form-group"><label class="form-label">Price ($)</label><input class="form-input" id="jm-price" type="number" value="\${parseFloat(job.totalPrice||'0').toFixed(2)}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Address</label><input class="form-input" id="jm-address" value="\${job.streetAddress||''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Start Time</label><select class="form-input" id="jm-start">\${hourOptions(job.startHour)}</select></div>
+      <div class="form-group"><label class="form-label">End Time</label><select class="form-input" id="jm-end">\${hourOptions(job.endHour)}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Assigned Detailer</label><select class="form-input" id="jm-detailer"><option value="">Unassigned</option>\${detOptions}</select></div>
+      <div class="form-group"><label class="form-label">Status</label><select class="form-input" id="jm-status">\${statusOptions}</select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Service / Package</label><input class="form-input" id="jm-service" value="\${job.packageType||job.serviceDescription||''}"></div>
+    <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" id="jm-notes" rows="3">\${job.notes||''}</textarea></div>
+    <div class="form-group"><label class="form-label">Vehicle</label><input class="form-input" id="jm-vehicle" value="\${[job.vehicleYear,job.vehicleMake,job.vehicleModel,job.vehicleColor].filter(Boolean).join(' ')||''}"></div>
+  \`;
+  document.getElementById('job-modal-footer').innerHTML = \`
+    <button class="btn btn-danger btn-sm" onclick="deleteJob('\${job.jobId}')">Delete</button>
+    <button class="btn btn-secondary" onclick="closeJobModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveJobEdits('\${job.jobId}')">Save Changes</button>
+  \`;
+  document.getElementById('job-modal').classList.remove('hidden');
+}
+
+async function saveJobEdits(jobId) {
+  const newDetailer = document.getElementById('jm-detailer').value;
+  const newStatus = document.getElementById('jm-status').value;
+  const startHour = parseInt(document.getElementById('jm-start').value);
+  const endHour = parseInt(document.getElementById('jm-end').value);
+  const price = parseFloat(document.getElementById('jm-price').value) || 0;
+  const notes = document.getElementById('jm-notes').value.trim();
+  const name = document.getElementById('jm-name').value.trim();
+  const phone = document.getElementById('jm-phone').value.trim();
+  const email = document.getElementById('jm-email').value.trim();
+  const address = document.getElementById('jm-address').value.trim();
+  const service = document.getElementById('jm-service').value.trim();
+
+  try {
+    // Upsert the full job
+    await trpcMutate('jobs.upsert', {
+      jobId,
+      location: editingJob.location || dispatchLocation,
+      date: editingJob.date || fmtDate(dispatchDate),
+      startHour, endHour,
+      customerName: name,
+      customerPhone: phone,
+      customerEmail: email,
+      streetAddress: address,
+      packageType: service,
+      serviceDescription: service,
+      totalPrice: price,
+      assignedTo: newDetailer || null,
+      status: newStatus,
+      notes,
+    });
+    // Update status separately if changed
+    if (newStatus !== editingJob.status) {
+      await trpcMutate('jobs.updateStatus', {jobId, status: newStatus});
+    }
+    closeJobModal();
+    if (currentSection === 'dispatch') await loadDispatchBoard();
+    else if (currentSection === 'jobs') await renderJobs();
+    else if (currentSection === 'dashboard') await renderDashboard();
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function deleteJob(jobId) {
+  if (!confirm('Delete this job? This cannot be undone.')) return;
+  try {
+    await trpcMutate('jobs.delete', {jobId});
+    closeJobModal();
+    if (currentSection === 'dispatch') await loadDispatchBoard();
+    else if (currentSection === 'jobs') await renderJobs();
+    else if (currentSection === 'dashboard') await renderDashboard();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+function closeJobModal() { document.getElementById('job-modal').classList.add('hidden'); editingJob = null; }
+
+function buildNewJobForm(prefill = {}) {
+  const detOptions = allDetailers.map(d => \`<option value="\${d.employeeId}" \${prefill.detailerId === d.employeeId ? 'selected' : ''}>\${d.fullName}</option>\`).join('');
+  const hourOptions = (h) => HOURS.map(hr => \`<option value="\${hr}" \${hr===h?'selected':''}>\${fmtHour(hr)}</option>\`).join('');
+  const locOptions = LOCATIONS.map(l => \`<option value="\${l.slug}" \${l.slug===dispatchLocation?'selected':''}>\${l.label}</option>\`).join('');
+  const startH = prefill.startH ?? 8;
+  const endH = prefill.endH ?? 10;
+  const vehicleCards = VEHICLE_SIZES.map(v => \`<div class="picker-card" id="vc-\${v.id}" onclick="selectVehicle('\${v.id}')"><div class="pc-emoji">\${v.emoji}</div><div class="pc-label">\${v.label}</div></div>\`).join('');
+  const pkgCards = PACKAGES.map(p => \`<div class="picker-card" id="pc-\${p.id}" onclick="selectPackage('\${p.id}')"><div class="pc-emoji">\${p.emoji}</div><div class="pc-label">\${p.title}</div><div class="pc-tagline">\${p.tagline}</div></div>\`).join('');
+  return \`
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">First Name</label><input class="form-input" id="jm-fname" placeholder="First"></div>
+      <div class="form-group"><label class="form-label">Last Name</label><input class="form-input" id="jm-lname" placeholder="Last"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="jm-phone" placeholder="(850) 555-0000"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="jm-email" placeholder="customer@email.com"></div>
+    </div>
+    <div class="form-group autocomplete-wrap">
+      <label class="form-label">Address</label>
+      <input class="form-input" id="jm-address" placeholder="Start typing address..." autocomplete="off" oninput="addressAutocomplete(this.value)">
+      <div class="autocomplete-list hidden" id="jm-address-list"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="jm-date" type="date" value="\${fmtDate(dispatchDate)}"></div>
+      <div class="form-group"><label class="form-label">Location</label><select class="form-input" id="jm-loc">\${locOptions}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Start Time</label><select class="form-input" id="jm-start">\${hourOptions(startH)}</select></div>
+      <div class="form-group"><label class="form-label">End Time</label><select class="form-input" id="jm-end">\${hourOptions(endH)}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Assigned Detailer</label><select class="form-input" id="jm-detailer"><option value="">Unassigned</option>\${detOptions}</select></div>
+      <div class="form-group"><label class="form-label">Status</label><select class="form-input" id="jm-status"><option value="confirmed">Confirmed</option><option value="pending">Pending</option></select></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Vehicle Size</label>
+      <div class="picker-grid">\${vehicleCards}</div>
+      <input type="hidden" id="jm-vehicle-size">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Detail Package</label>
+      <div class="picker-grid" style="grid-template-columns:repeat(2,1fr)">\${pkgCards}</div>
+      <input type="hidden" id="jm-package">
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Price ($)</label><input class="form-input" id="jm-price" type="number" placeholder="0.00"></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" id="jm-notes" rows="1"></textarea></div>
+    </div>
+  \`;
+}
+
+window._selectedVehicle = null;
+window._selectedPackage = null;
+function selectVehicle(id) {
+  window._selectedVehicle = id;
+  document.querySelectorAll('[id^="vc-"]').forEach(el => el.classList.remove('selected'));
+  document.getElementById('vc-' + id)?.classList.add('selected');
+  document.getElementById('jm-vehicle-size').value = id;
+  updatePriceFromPicker();
+}
+function selectPackage(id) {
+  window._selectedPackage = id;
+  document.querySelectorAll('[id^="pc-"]').forEach(el => el.classList.remove('selected'));
+  document.getElementById('pc-' + id)?.classList.add('selected');
+  document.getElementById('jm-package').value = id;
+  updatePriceFromPicker();
+}
+function updatePriceFromPicker() {
+  const v = window._selectedVehicle;
+  const p = window._selectedPackage;
+  if (!v || !p) return;
+  const pkg = PACKAGES.find(x => x.id === p);
+  if (pkg && pkg.basePrice[v]) {
+    document.getElementById('jm-price').value = pkg.basePrice[v];
+  }
+}
+
+let _acTimer = null;
+async function addressAutocomplete(val) {
+  const list = document.getElementById('jm-address-list');
+  if (!list) return;
+  if (val.length < 3) { list.classList.add('hidden'); return; }
+  clearTimeout(_acTimer);
+  _acTimer = setTimeout(async () => {
+    try {
+      const q = encodeURIComponent(val + ', Florida, USA');
+      const res = await fetch(\`https://nominatim.openstreetmap.org/search?q=\${q}&format=json&limit=5&addressdetails=1\`, {
+        headers: { 'Accept-Language': 'en', 'User-Agent': 'TeamLuxuryWash/1.0' }
+      });
+      const data = await res.json();
+      if (!data.length) { list.classList.add('hidden'); return; }
+      list.innerHTML = data.map(r => \`<div class="autocomplete-item" onclick="selectAddress('\${r.display_name.replace(/'/g, "&apos;")}')">\${r.display_name}</div>\`).join('');
+      list.classList.remove('hidden');
+    } catch(e) { list.classList.add('hidden'); }
+  }, 400);
+}
+function selectAddress(addr) {
+  const input = document.getElementById('jm-address');
+  if (input) input.value = addr;
+  const list = document.getElementById('jm-address-list');
+  if (list) list.classList.add('hidden');
+}
+
+function openAddJobModal() {
+  editingJob = null;
+  window._selectedVehicle = null;
+  window._selectedPackage = null;
+  document.getElementById('job-modal-title').textContent = 'New Job';
+  document.getElementById('job-modal-body').innerHTML = buildNewJobForm();
+  document.getElementById('job-modal-footer').innerHTML = \`
+    <button class="btn btn-secondary" onclick="closeJobModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="createNewJob()">Create Job</button>
+  \`;
+  document.getElementById('job-modal').classList.remove('hidden');
+}
+
+function openAddJobModalWithPrefill(detailerId, detailerName, startH, endH) {
+  editingJob = null;
+  window._selectedVehicle = null;
+  window._selectedPackage = null;
+  document.getElementById('job-modal-title').textContent = \`New Job — \${detailerName.split(' ')[0]} \${fmtHour(startH)}–\${fmtHour(endH)}\`;
+  document.getElementById('job-modal-body').innerHTML = buildNewJobForm({ detailerId, startH, endH });
+  document.getElementById('job-modal-footer').innerHTML = \`
+    <button class="btn btn-secondary" onclick="closeJobModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="createNewJob()">Create Job</button>
+  \`;
+  document.getElementById('job-modal').classList.remove('hidden');
+}
+
+async function createNewJob() {
+  const fname = document.getElementById('jm-fname')?.value?.trim() || '';
+  const lname = document.getElementById('jm-lname')?.value?.trim() || '';
+  const name = [fname, lname].filter(Boolean).join(' ');
+  const phone = document.getElementById('jm-phone').value.trim();
+  const email = document.getElementById('jm-email').value.trim();
+  const price = parseFloat(document.getElementById('jm-price').value) || 0;
+  const address = document.getElementById('jm-address').value.trim();
+  const date = document.getElementById('jm-date').value;
+  const loc = document.getElementById('jm-loc').value;
+  const startHour = parseInt(document.getElementById('jm-start').value);
+  const endHour = parseInt(document.getElementById('jm-end').value);
+  const detailer = document.getElementById('jm-detailer').value;
+  const status = document.getElementById('jm-status').value;
+  const vehicleSize = document.getElementById('jm-vehicle-size')?.value || '';
+  const packageId = document.getElementById('jm-package')?.value || '';
+  const pkg = PACKAGES.find(p => p.id === packageId);
+  const service = pkg ? pkg.title : (document.getElementById('jm-service')?.value?.trim() || '');
+  const notes = document.getElementById('jm-notes').value.trim();
+  if (!name || !date) { alert('Customer name and date are required.'); return; }
+  const jobId = 'WEB_' + Date.now();
+  try {
+    await trpcMutate('jobs.upsert', {
+      jobId, location: loc, date, startHour, endHour,
+      customerName: name, customerPhone: phone, customerEmail: email,
+      streetAddress: address, packageType: service, serviceDescription: service,
+      vehicleSize: vehicleSize || null,
+      totalPrice: price, assignedTo: detailer || null, status, notes,
+      source: 'manual', createdBy: currentEmployee.employeeId,
+    });
+    closeJobModal();
+    if (currentSection === 'dispatch') await loadDispatchBoard();
+    else if (currentSection === 'jobs') await renderJobs();
+  } catch(e) { alert('Create failed: ' + e.message); }
+}
+
+// ── Team Members ───────────────────────────────────────────────────────────
+async function renderTeam() {
+  let team = [];
+  try { team = await trpcQuery('employee.listAll') || []; allTeam = team; } catch(e) {}
+  document.getElementById('content').innerHTML = \`
+    <div class="flex items-center gap-3 mb-4">
+      <input class="search-input" id="team-search" placeholder="Search name, ID, city…" oninput="filterTeamTable()" style="flex:1;min-width:200px">
+      <button class="btn btn-primary" onclick="openAddTeamModal()">+ Add Team Member</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table id="team-table">
+          <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>City</th><th>Email</th><th>Phone</th><th>Hire Date</th><th></th></tr></thead>
+          <tbody id="team-tbody">\${team.map(m => teamRow(m)).join('')}</tbody>
+        </table>
+        \${team.length===0?'<div class="empty-state"><div class="icon">👥</div><p>No team members found</p></div>':''}
+      </div>
+    </div>\`;
+  window._teamData = team;
+}
+function teamRow(m) {
+  return \`<tr data-id="\${m.employeeId}">
+    <td class="text-muted">\${m.employeeId}</td>
+    <td class="font-bold">\${m.fullName||'—'}</td>
+    <td>\${rolePill(m.role)}</td>
+    <td>\${m.city||'—'}</td>
+    <td>\${m.email||'—'}</td>
+    <td>\${m.phoneNumber||'—'}</td>
+    <td>\${m.hireDate||'—'}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="openEditTeamModal('\${m.employeeId}')">Edit</button></td>
+  </tr>\`;
+}
+function filterTeamTable() {
+  const q = document.getElementById('team-search')?.value.toLowerCase() || '';
+  const team = (window._teamData||[]).filter(m => \`\${m.fullName} \${m.employeeId} \${m.city} \${m.role}\`.toLowerCase().includes(q));
+  document.getElementById('team-tbody').innerHTML = team.map(m => teamRow(m)).join('');
+}
+function openAddTeamModal() {
+  editingTeam = null;
+  document.getElementById('team-modal-title').textContent = 'Add Team Member';
+  const roleOptions = ['detailer','admin','office','operations_manager','door_hanger_rep','sales'].map(r => \`<option value="\${r}">\${r.replace('_',' ')}</option>\`).join('');
+  document.getElementById('team-modal-body').innerHTML = \`
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Team Member ID</label><input class="form-input" id="tm-id" placeholder="e.g. DET_JOHN"></div>
+      <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="tm-name" placeholder="John Smith"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">PIN (4–6 digits)</label><input class="form-input" id="tm-pin" type="password" maxlength="6" placeholder="••••"></div>
+      <div class="form-group"><label class="form-label">Role</label><select class="form-input" id="tm-role">\${roleOptions}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">City / Location</label><input class="form-input" id="tm-city" placeholder="e.g. Niceville"></div>
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="tm-phone" placeholder="(850) 555-0000"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="tm-email" placeholder="john@example.com"></div>
+      <div class="form-group"><label class="form-label">Hire Date</label><input class="form-input" id="tm-hire" type="date"></div>
+    </div>
+  \`;
+  document.getElementById('team-modal-footer').innerHTML = \`
+    <button class="btn btn-secondary" onclick="closeTeamModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveNewTeamMember()">Add Member</button>
+  \`;
+  document.getElementById('team-modal').classList.remove('hidden');
+}
+function openEditTeamModal(empId) {
+  const m = (window._teamData||[]).find(x=>x.employeeId===empId);
+  if (!m) return;
+  editingTeam = m;
+  document.getElementById('team-modal-title').textContent = 'Edit Team Member';
+  const roleOptions = ['detailer','admin','office','operations_manager','door_hanger_rep','sales'].map(r => \`<option value="\${r}" \${r===m.role?'selected':''}>\${r.replace('_',' ')}</option>\`).join('');
+  document.getElementById('team-modal-body').innerHTML = \`
+    <div class="form-group"><label class="form-label">Team Member ID</label><input class="form-input" value="\${m.employeeId}" disabled></div>
+    <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="tm-name" value="\${m.fullName||''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Role</label><select class="form-input" id="tm-role">\${roleOptions}</select></div>
+      <div class="form-group"><label class="form-label">City / Location</label><input class="form-input" id="tm-city" value="\${m.city||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="tm-phone" value="\${m.phoneNumber||''}"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="tm-email" value="\${m.email||''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">New PIN (leave blank to keep current)</label><input class="form-input" id="tm-pin" type="password" maxlength="6" placeholder="••••"></div>
+  \`;
+  document.getElementById('team-modal-footer').innerHTML = \`
+    <button class="btn btn-danger btn-sm" onclick="deactivateTeamMember('\${m.employeeId}')">Deactivate</button>
+    <button class="btn btn-secondary" onclick="closeTeamModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveTeamEdits('\${m.employeeId}')">Save Changes</button>
+  \`;
+  document.getElementById('team-modal').classList.remove('hidden');
+}
+async function saveNewTeamMember() {
+  const id = document.getElementById('tm-id').value.trim();
+  const name = document.getElementById('tm-name').value.trim();
+  const pin = document.getElementById('tm-pin').value.trim();
+  const role = document.getElementById('tm-role').value;
+  const city = document.getElementById('tm-city').value.trim();
+  const phone = document.getElementById('tm-phone').value.trim();
+  const email = document.getElementById('tm-email').value.trim();
+  const hire = document.getElementById('tm-hire').value;
+  if (!id || !name || !pin) { alert('ID, name, and PIN are required.'); return; }
+  try {
+    const res = await trpcMutate('employee.create', {employeeId:id, fullName:name, pin, role, city:city||undefined, phoneNumber:phone||undefined, email:email||undefined, hireDate:hire||undefined});
+    if (!res.success) { alert(res.error || 'Failed to create team member'); return; }
+    closeTeamModal();
+    await renderTeam();
+    allDetailers = await trpcQuery('employee.listDetailers') || [];
+    allTeam = await trpcQuery('employee.listAll') || [];
+  } catch(e) { alert('Error: ' + e.message); }
+}
+async function saveTeamEdits(empId) {
+  const name = document.getElementById('tm-name').value.trim();
+  const role = document.getElementById('tm-role').value;
+  const city = document.getElementById('tm-city').value.trim();
+  const phone = document.getElementById('tm-phone').value.trim();
+  const email = document.getElementById('tm-email').value.trim();
+  const pin = document.getElementById('tm-pin').value.trim();
+  try {
+    await trpcMutate('employee.update', {employeeId:empId, fullName:name||undefined, role, city:city||null, phoneNumber:phone||null, email:email||null, pin:pin||undefined});
+    closeTeamModal();
+    await renderTeam();
+    allDetailers = await trpcQuery('employee.listDetailers') || [];
+    allTeam = await trpcQuery('employee.listAll') || [];
+  } catch(e) { alert('Error: ' + e.message); }
+}
+async function deactivateTeamMember(empId) {
+  if (!confirm('Deactivate this team member? They will no longer be able to log in.')) return;
+  try {
+    await trpcMutate('employee.deactivate', {employeeId: empId});
+    closeTeamModal();
+    await renderTeam();
+    allDetailers = await trpcQuery('employee.listDetailers') || [];
+    allTeam = await trpcQuery('employee.listAll') || [];
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function closeTeamModal() { document.getElementById('team-modal').classList.add('hidden'); editingTeam = null; }
+
+// ── Timesheets ─────────────────────────────────────────────────────────────
+
+let currentTimesheetDate = null; // Store current date for navigation
+
+async function renderTimesheets(selectedDate = null) {
+  const dateToUse = selectedDate ? new Date(selectedDate) : new Date();
+  currentTimesheetDate = dateToUse.toISOString().split('T')[0]; // Store for navigation
+  const weekStart = fmtDate(getWeekStart(dateToUse));
+  const weekEnd = fmtDate(getWeekEnd(dateToUse));
+  let detailers = {};
+  for (const emp of allTeam.filter(e=>e.role==='detailer')) {
+    try {
+      const response = await trpcQuery('timesheet.getWeeklyLogs', {employeeId: emp.employeeId, startDate: weekStart, endDate: weekEnd}) || {};
+      const logs = response.logs || [];
+      if (!detailers[emp.employeeId]) detailers[emp.employeeId] = {name: emp.fullName, logs: []};
+      detailers[emp.employeeId].logs = logs;
+    } catch(e) { console.error('Error loading timesheet for', emp.employeeId, ':', e); }
+  }
+  const detailerList = Object.entries(detailers).map(([id, d]) => {
+    const totalHours = d.logs.reduce((sum, l) => {
+      const cin = l.clockIn ? new Date(l.clockIn) : null;
+      const cout = l.clockOut ? new Date(l.clockOut) : null;
+      return sum + (cin && cout ? (cout - cin) / 3600000 : 0);
+    }, 0);
+    return \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;cursor:pointer" onclick="viewDetailerTimesheet('\${id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:700;color:var(--text);font-size:14px">\${d.name}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">\${d.logs.length} clock records • \${totalHours.toFixed(1)} hours this week</div>
+        </div>
+        <div style="font-size:20px;color:var(--muted)">→</div>
+      </div>
+    </div>\`;
+  }).join('');
+  
+  document.getElementById('content').innerHTML = \`<div style="max-width:800px;margin:0 auto">
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:24px;font-weight:700;color:var(--text)">Timesheets</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Week of \${weekStart} – \${weekEnd}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="const d=new Date('\${currentTimesheetDate}');d.setDate(d.getDate()-7);renderTimesheets(d.toISOString().split('T')[0])" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">← Previous Week</button>
+          <input type="date" id="timesheet-date-picker" value="\${dateToUse.toISOString().split('T')[0]}" onchange="renderTimesheets(this.value)" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">
+          <button onclick="renderTimesheets()" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">Today</button>
+          <button onclick="const d=new Date('\${currentTimesheetDate}');d.setDate(d.getDate()+7);renderTimesheets(d.toISOString().split('T')[0])" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">Next Week →</button>
+        </div>
+      </div>
+    </div>
+    \${detailerList || '<div style="text-align:center;color:var(--muted);padding:40px">No timesheets available</div>'}
+  </div>\`;
+}
+
+async function viewDetailerTimesheet(employeeId, selectedDate = null) {
+  const emp = allTeam.find(e => e.employeeId === employeeId);
+  if (!emp) return;
+  
+  const dateToUse = selectedDate ? new Date(selectedDate) : new Date();
+  const weekStart = fmtDate(getWeekStart(dateToUse));
+  const weekEnd = fmtDate(getWeekEnd(dateToUse));
+  let logs = [];
+  try {
+    const response = await trpcQuery('timesheet.getWeeklyLogs', {employeeId, startDate: weekStart, endDate: weekEnd}) || {};
+    logs = response.logs || [];
+  } catch(e) { console.error('Error loading timesheet:', e); }
+  
+  const logsHtml = logs.map(l => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    const hrs = cin && cout ? ((cout - cin) / 3600000).toFixed(2) : '—';
+    return \`<tr>
+      <td>\${cin ? cin.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}) : '—'}</td>
+      <td>\${cin ? cin.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '—'}</td>
+      <td>\${cout ? cout.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '<span class="pill pill-in_progress">Still clocked in</span>'}</td>
+      <td>\${hrs}</td>
+    </tr>\`;
+  }).join('');
+  
+  const totalHours = logs.reduce((sum, l) => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    return sum + (cin && cout ? (cout - cin) / 3600000 : 0);
+  }, 0);
+  
+  const overtimeHours = Math.max(0, totalHours - 40);
+  const hasOvertime = overtimeHours > 0;
+  
+  document.getElementById('content').innerHTML = \`<div style="max-width:800px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn" onclick="renderTimesheets()" style="background:var(--surface);color:var(--text);padding:8px 12px;font-size:13px">← Back</button>
+        <div>
+          <div style="font-size:24px;font-weight:700;color:var(--text)">\${emp.fullName}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Week of \${weekStart} – \${weekEnd}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="const d=new Date('\${dateToUse.toISOString().split('T')[0]}');d.setDate(d.getDate()-7);viewDetailerTimesheet('\${employeeId}', d.toISOString().split('T')[0])" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">← Prev</button>
+        <input type="date" value="\${dateToUse.toISOString().split('T')[0]}" onchange="viewDetailerTimesheet('\${employeeId}', this.value)" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">
+        <button onclick="viewDetailerTimesheet('\${employeeId}')" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">Today</button>
+        <button onclick="const d=new Date('\${dateToUse.toISOString().split('T')[0]}');d.setDate(d.getDate()+7);viewDetailerTimesheet('\${employeeId}', d.toISOString().split('T')[0])" style="background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px">Next →</button>
+      </div>
+    </div>
+    
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="font-size:13px;color:var(--muted)">Total Hours This Week</div>
+        \${hasOvertime ? '<span style="background:var(--warning);color:#000;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">⚠️ OVERTIME</span>' : ''}
+      </div>
+      <div style="font-size:32px;font-weight:700;color:\${hasOvertime ? 'var(--warning)' : 'var(--primary)'}">\${totalHours.toFixed(1)}</div>
+      \${hasOvertime ? \`<div style="font-size:12px;color:var(--warning);margin-top:8px">+\${overtimeHours.toFixed(1)} hours over 40</div>\` : ''}
+    </div>
+    
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-secondary" onclick="exportTimesheetCSV('\${employeeId}', '\${emp.fullName}')">📥 Export CSV</button>
+        <button class="btn btn-secondary" onclick="exportTimesheetPDF('\${employeeId}', '\${emp.fullName}')">📄 Export PDF</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+          <tbody>
+            \${logsHtml || '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--muted)">No clock records this week</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>\`;
+}
+
+// ── Timesheet Export Functions ─────────────────────────────────────────────
+async function exportTimesheetCSV(employeeId, fullName) {
+  const emp = allTeam.find(e => e.employeeId === employeeId);
+  if (!emp) return;
+  
+  const today = new Date();
+  const weekStart = fmtDate(getWeekStart(today));
+  const weekEnd = fmtDate(getWeekEnd(today));
+  let logs = [];
+  try {
+    const response = await trpcQuery('timesheet.getWeeklyLogs', {employeeId, startDate: weekStart, endDate: weekEnd}) || {};
+    logs = response.logs || [];
+  } catch(e) { console.error('Error loading timesheet:', e); }
+  
+  const totalHours = logs.reduce((sum, l) => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    return sum + (cin && cout ? (cout - cin) / 3600000 : 0);
+  }, 0);
+  
+  let csv = 'Team Member Timesheet\\n';
+  csv += \`Name,\${fullName}\\n\`;
+  csv += \`Week,\${weekStart} to \${weekEnd}\\n\`;
+  csv += \`Total Hours,\${totalHours.toFixed(2)}\\n\\n\`;
+  csv += 'Date,Clock In,Clock Out,Hours\\n';
+  
+  logs.forEach(l => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    const hrs = cin && cout ? ((cout - cin) / 3600000).toFixed(2) : '';
+    const date = cin ? cin.toLocaleDateString('en-US') : '';
+    const clockIn = cin ? cin.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '';
+    const clockOut = cout ? cout.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : 'Still clocked in';
+    csv += \`"\${date}","\${clockIn}","\${clockOut}",\${hrs}\\n\`;
+  });
+  
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = \`timesheet_\${fullName.replace(/\\s+/g, '_')}_\${weekStart}.csv\`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportTimesheetPDF(employeeId, fullName) {
+  const emp = allTeam.find(e => e.employeeId === employeeId);
+  if (!emp) return;
+  
+  const today = new Date();
+  const weekStart = fmtDate(getWeekStart(today));
+  const weekEnd = fmtDate(getWeekEnd(today));
+  let logs = [];
+  try {
+    const response = await trpcQuery('timesheet.getWeeklyLogs', {employeeId, startDate: weekStart, endDate: weekEnd}) || {};
+    logs = response.logs || [];
+  } catch(e) { console.error('Error loading timesheet:', e); }
+  
+  const totalHours = logs.reduce((sum, l) => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    return sum + (cin && cout ? (cout - cin) / 3600000 : 0);
+  }, 0);
+  
+  let html = \`
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { color: #0a7ea4; margin-bottom: 10px; }
+          .info { margin-bottom: 20px; font-size: 14px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+          th { background-color: #0a7ea4; color: white; }
+          tr:nth-child(even) { background-color: #f5f5f5; }
+          .total { font-weight: bold; background-color: #e8f4f8; }
+        </style>
+      </head>
+      <body>
+        <h1>Team Member Timesheet</h1>
+        <div class="info">
+          <p><strong>Name:</strong> \${fullName}</p>
+          <p><strong>Week:</strong> \${weekStart} to \${weekEnd}</p>
+          <p><strong>Total Hours:</strong> \${totalHours.toFixed(2)}</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+  \`;
+  
+  logs.forEach(l => {
+    const cin = l.clockIn ? new Date(l.clockIn) : null;
+    const cout = l.clockOut ? new Date(l.clockOut) : null;
+    const hrs = cin && cout ? ((cout - cin) / 3600000).toFixed(2) : '';
+    const date = cin ? cin.toLocaleDateString('en-US') : '';
+    const clockIn = cin ? cin.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '';
+    const clockOut = cout ? cout.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : 'Still clocked in';
+    html += \`
+            <tr>
+              <td>\${date}</td>
+              <td>\${clockIn}</td>
+              <td>\${clockOut}</td>
+              <td>\${hrs}</td>
+            </tr>
+    \`;
+  });
+  
+  html += \`
+            <tr class="total">
+              <td colspan="3">Total</td>
+              <td>\${totalHours.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+    </html>
+  \`;
+  
+  const blob = new Blob([html], {type: 'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = \`timesheet_\${fullName.replace(/\\s+/g, '_')}_\${weekStart}.html\`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+
+// ── Time Off ───────────────────────────────────────────────────────────────
+async function renderTimeOff() {
+  let requests = [];
+  try { requests = await trpcQuery('timeOff.getAll') || []; } catch(e) {}
+  requests.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+  document.getElementById('content').innerHTML = \`
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Team Member</th><th>Dates</th><th>Reason</th><th>Requested</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            \${requests.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No time-off requests</td></tr>' :
+              requests.map(r => {
+                const emp = allTeam.find(e=>e.employeeId===r.employeeId);
+                return \`<tr>
+                  <td class="font-bold">\${emp?.fullName||r.employeeId}</td>
+                  <td>\${r.startDate||'—'} → \${r.endDate||'—'}</td>
+                  <td>\${r.reason||'—'}</td>
+                  <td>\${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}</td>
+                  <td>\${statusPill(r.status)}</td>
+                  <td>
+                    \${r.status==='pending'?\`
+                      <button class="btn btn-success btn-sm" onclick="updateTimeOff('\${r.id}','approved')">Approve</button>
+                      <button class="btn btn-danger btn-sm" onclick="updateTimeOff('\${r.id}','denied')" style="margin-left:6px">Deny</button>
+                    \`:''}
+                  </td>
+                </tr>\`;
+              }).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>\`;
+}
+async function updateTimeOff(id, status) {
+  try {
+    await trpcMutate('timeOff.updateStatus', {requestId: id, status, reviewedBy: currentEmployee.employeeId});
+    await renderTimeOff();
+    await refreshBadges();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Alerts ─────────────────────────────────────────────────────────────────
+async function renderAlerts() {
+  let alerts = [];
+  try { alerts = await trpcQuery('notifications.getAll') || []; } catch(e) {}
+  alerts.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+  const icons = {critical:'🚨', warning:'⚠️', info:'ℹ️', success:'✅'};
+  document.getElementById('content').innerHTML = \`
+    <div id="alerts-list">
+      \${alerts.length === 0 ? '<div class="empty-state"><div class="icon">🔔</div><p>No alerts</p></div>' :
+        alerts.map(a => \`
+          <div class="alert-item">
+            <div class="alert-icon">\${icons[a.type]||'🔔'}</div>
+            <div class="alert-body">
+              <div class="alert-title">\${a.title||'Alert'}</div>
+              <div class="alert-sub">\${a.message||''}</div>
+              <div class="alert-time">\${a.createdAt ? new Date(a.createdAt).toLocaleString() : ''} \${a.employeeId?'· '+a.employeeId:''}</div>
+            </div>
+            \${!a.acknowledgedAt ? \`<button class="btn btn-secondary btn-sm" onclick="ackAlert('\${a.id}')">Dismiss</button>\` : '<span class="text-muted text-sm">Dismissed</span>'}
+          </div>\`).join('')
+      }
+    </div>\`;
+}
+async function ackAlert(id) {
+  try {
+    await trpcMutate('notifications.markAcknowledged', {notificationId: id, acknowledgedBy: currentEmployee.employeeId});
+    await renderAlerts();
+    await refreshBadges();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Fleet Map ─────────────────────────────────────────────────────────────
+let _fleetMap = null;
+let _mapRefreshTimer = null;
+let _mapMarkers = [];
+
+async function renderMapView() {
+  const today = fmtDate(new Date());
+  document.getElementById('content').innerHTML = \`
+    <div class="map-controls">
+      <div class="map-stat">Live vans: <span id="map-van-count">—</span></div>
+      <div class="map-stat">Today's jobs: <span id="map-job-count">—</span></div>
+      <button class="btn btn-secondary btn-sm" onclick="refreshMapData()">↻ Refresh</button>
+      <span class="text-muted text-sm" id="map-last-update"></span>
+    </div>
+    <div id="map-container">
+      <div id="fleet-map"></div>
+      <div class="map-legend" id="map-legend">
+        <div class="map-legend-title">Legend</div>
+        <div class="map-legend-item"><span style="font-size:18px">🚐</span> Live Van</div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:#22c55e"></div> Completed</div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:#f59e0b"></div> In Progress</div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:#0a7ea4"></div> Scheduled</div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:#ef4444"></div> Cancelled</div>
+      </div>
+    </div>\`;
+
+  // Init Leaflet map centered on NW Florida
+  if (_fleetMap) { _fleetMap.remove(); _fleetMap = null; }
+  _fleetMap = L.map('fleet-map', {zoomControl: true}).setView([30.52, -86.48], 10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(_fleetMap);
+
+  await refreshMapData();
+
+  // Auto-refresh every 30s
+  if (_mapRefreshTimer) clearInterval(_mapRefreshTimer);
+  _mapRefreshTimer = setInterval(() => {
+    if (currentSection === 'mapview') refreshMapData();
+    else { clearInterval(_mapRefreshTimer); _mapRefreshTimer = null; }
+  }, 30000);
+}
+
+async function refreshMapData() {
+  if (!_fleetMap) return;
+  const today = fmtDate(new Date());
+
+  // Clear old markers
+  _mapMarkers.forEach(m => m.remove());
+  _mapMarkers = [];
+
+  // 1. Live van locations
+  let vans = [];
+  try { vans = await trpcQuery('location.getActive') || []; } catch(e) {}
+  const vanCount = document.getElementById('map-van-count');
+  if (vanCount) vanCount.textContent = vans.length;
+
+  vans.forEach((van, i) => {
+    const lat = parseFloat(van.lat);
+    const lng = parseFloat(van.lng);
+    if (isNaN(lat) || isNaN(lng)) return;
+    const color = DET_COLORS[i % DET_COLORS.length];
+    const isOnMyWay = van.status === 'on_my_way';
+    const emoji = isOnMyWay ? '🚐' : '👷';
+    const label = isOnMyWay ? 'On My Way' : 'Clocked In';
+    const icon = L.divIcon({
+      html: \`<div style="position:relative">
+        <div style="background:\${color};border:3px solid #fff;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 8px rgba(0,0,0,.6)">\${emoji}</div>
+        \${isOnMyWay ? '<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid #fff;animation:pulse 1.5s infinite"></div>' : ''}
+      </div>\`,
+      iconSize: [40, 40], iconAnchor: [20, 20], className: ''
+    });
+    const name = van.fullName || van.employeeId || 'Detailer';
+    const marker = L.marker([lat, lng], {icon}).addTo(_fleetMap);
+    marker.bindPopup(\`<div style="font-family:-apple-system,sans-serif;min-width:160px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">\${name}</div>
+      <div style="font-size:12px;color:#666;margin-bottom:4px"><span style="background:\${isOnMyWay?'#0a7ea4':'#22c55e'};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px">\${label}</span></div>
+      \${van.customerAddress ? \`<div style="font-size:12px;color:#666;margin-top:4px">📍 \${van.customerAddress}</div>\` : '<div style="font-size:12px;color:#999">Location from last clock-in</div>'}
+    </div>\`);
+    _mapMarkers.push(marker);
+  });
+
+  // 2. Today's job locations (geocode addresses)
+  let jobs = [];
+  try { jobs = await trpcQuery('jobs.listAll', {startDate: today, endDate: today}) || []; } catch(e) {}
+  const jobCount = document.getElementById('map-job-count');
+  if (jobCount) jobCount.textContent = jobs.length;
+
+  // Build detailer color map
+  const detColorMap = {};
+  allDetailers.forEach((d, i) => { detColorMap[d.employeeId] = DET_COLORS[i % DET_COLORS.length]; detColorMap[d.fullName] = DET_COLORS[i % DET_COLORS.length]; });
+
+  // Update legend with detailer colors
+  const legend = document.getElementById('map-legend');
+  if (legend && allDetailers.length > 0) {
+    const detItems = allDetailers.map((d, i) => \`<div class="map-legend-item"><div class="map-legend-dot" style="background:\${DET_COLORS[i%DET_COLORS.length]}"></div>\${d.fullName.split(' ')[0]}</div>\`).join('');
+    legend.innerHTML = \`<div class="map-legend-title">Detailers</div>\${detItems}<hr style="border-color:#334155;margin:8px 0"><div class="map-legend-title">Status</div><div class="map-legend-item"><div class="map-legend-dot" style="background:#22c55e"></div>Completed</div><div class="map-legend-item"><div class="map-legend-dot" style="background:#f59e0b"></div>In Progress</div><div class="map-legend-item"><div class="map-legend-dot" style="background:#0a7ea4"></div>Scheduled</div><div class="map-legend-item"><span style="font-size:16px">🚐</span>&nbsp;Live Van</div>\`;
+  }
+
+  // Geocode jobs with addresses
+  const jobsWithAddr = jobs.filter(j => j.streetAddress && j.status !== 'cancelled');
+  const geocodePromises = jobsWithAddr.map(async (job) => {
+    try {
+      const addr = encodeURIComponent(\`\${job.streetAddress}, Florida, USA\`);
+      const r = await fetch(\`https://nominatim.openstreetmap.org/search?format=json&q=\${addr}&limit=1\`, {
+        headers: {'User-Agent': 'TeamLuxuryWash-Admin/1.0'}
+      });
+      const data = await r.json();
+      if (data && data[0]) return {...job, geoLat: parseFloat(data[0].lat), geoLng: parseFloat(data[0].lon)};
+    } catch(e) {}
+    return null;
+  });
+
+  const geocoded = (await Promise.all(geocodePromises)).filter(Boolean);
+  geocoded.forEach(job => {
+    const statusBg = STATUS_COLOR[job.status] || '#0a7ea4';
+    const detColor = detColorMap[job.assignedTo] || statusBg;
+    const icon = L.divIcon({
+      html: \`<div style="position:relative">
+        <div style="background:\${detColor};border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.5);font-size:13px">🔧</div>
+        <div style="position:absolute;bottom:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:\${statusBg};border:2px solid #fff"></div>
+      </div>\`,
+      iconSize: [28, 28], iconAnchor: [14, 14], className: ''
+    });
+    const det = allDetailers.find(d => d.employeeId === job.assignedTo || d.fullName === job.assignedTo);
+    const marker = L.marker([job.geoLat, job.geoLng], {icon}).addTo(_fleetMap);
+    marker.bindPopup(\`<div style="font-family:-apple-system,sans-serif;min-width:180px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">\${job.customerName || '—'}</div>
+      <div style="font-size:12px;color:#666">\${job.packageType || job.serviceDescription || 'Service'}</div>
+      <div style="font-size:12px;color:#666;margin-top:2px">⏰ \${fmtHour(job.startHour)} – \${fmtHour(job.endHour)}</div>
+      <div style="font-size:12px;color:#666">📍 \${job.streetAddress}</div>
+      \${det ? \`<div style="font-size:12px;color:#666">👤 \${det.fullName}</div>\` : ''}
+      <div style="margin-top:6px"><span style="background:\${statusBg};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">\${job.status}</span></div>
+      <button onclick="openJobDetailById('\${job.jobId}')" style="margin-top:8px;background:#0a7ea4;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;width:100%">Edit Job</button>
+    </div>\`);
+    _mapMarkers.push(marker);
+  });
+
+  // Fit map to all markers if any
+  if (_mapMarkers.length > 0) {
+    const group = L.featureGroup(_mapMarkers);
+    _fleetMap.fitBounds(group.getBounds().pad(0.15));
+  }
+
+  const upd = document.getElementById('map-last-update');
+  if (upd) upd.textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+// ── Training ─────────────────────────────────────────────────────────────
+async function renderTraining() {
+  let modules = [];
+  try { modules = await trpcQuery('training.getAllModules') || []; } catch(e) { console.error(e); }
+  
+  const modulesList = modules.map(m => \`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;cursor:pointer" onclick="editTrainingModule('\${m.moduleId}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:700;color:var(--text);font-size:14px">\${m.name}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">\${m.description || 'No description'}</div>
+        </div>
+        <div style="font-size:20px">→</div>
+      </div>
+    </div>
+  \`).join('');
+  
+  document.getElementById('content').innerHTML = \`
+    <div style="max-width:800px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <div style="font-size:24px;font-weight:700;color:var(--text)">Training Management</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">\${modules.length} modules available</div>
+        </div>
+        <button class="btn btn-primary" onclick="addTrainingModule()">+ Add Module</button>
+      </div>
+      <div>\${modulesList || '<div style="text-align:center;color:var(--muted);padding:40px">No training modules yet</div>'}</div>
+    </div>
+  \`;
+}
+
+async function editTrainingModule(moduleId) {
+  let module = {};
+  let steps = [];
+  try {
+    module = await trpcQuery('training.getModuleById', {moduleId}) || {};
+    steps = await trpcQuery('training.getStepsForModule', {moduleId}) || [];
+  } catch(e) { console.error(e); }
+  
+  const stepsHtml = steps.map((s, i) => \`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="flex:1">
+        <div style="font-weight:600;color:var(--text);font-size:13px">Step \${s.orderIndex + 1}: \${s.title}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">\${s.description.substring(0, 60)}...</div>
+      </div>
+      <button class="btn btn-sm" style="background:var(--error);color:white;padding:4px 8px;font-size:11px" onclick="deleteTrainingStep('\${s.stepId}')">Delete</button>
+    </div>
+  \`).join('');
+  
+  const modal = \`
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2000">
+      <div style="background:var(--bg);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <h2 style="margin:0;color:var(--text)">\${module.name || 'Training Module'}</h2>
+          <button onclick="closeTrainingModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted)">×</button>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Module Name</label>
+          <input id="train-name" class="form-input" value="\${module.name || ''}" placeholder="e.g. Exterior Wash">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="train-desc" class="form-input" style="resize:vertical;min-height:80px" placeholder="Module description">\${module.description || ''}</textarea>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Video URL (optional)</label>
+          <input id="train-video" class="form-input" value="\${module.videoUrl || ''}" placeholder="https://example.com/video.mp4">
+        </div>
+        
+        <div style="margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <label class="form-label" style="margin:0">Training Steps (\${steps.length})</label>
+            <button class="btn btn-sm btn-primary" onclick="addTrainingStep('\${moduleId}')">+ Add Step</button>
+          </div>
+          \${stepsHtml || '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">No steps yet</div>'}
+        </div>
+        
+        <div style="display:flex;gap:12px;margin-top:24px">
+          <button class="btn btn-primary" style="flex:1" onclick="saveTrainingModule('\${moduleId}')">Save Changes</button>
+          <button class="btn" style="flex:1;background:var(--surface);color:var(--text)" onclick="closeTrainingModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  \`;
+  
+  document.body.insertAdjacentHTML('beforeend', modal);
+}
+
+function closeTrainingModal() {
+  const modal = document.querySelector('[style*="position:fixed"]');
+  if (modal) modal.remove();
+}
+
+async function saveTrainingModule(moduleId) {
+  const name = document.getElementById('train-name')?.value || '';
+  const desc = document.getElementById('train-desc')?.value || '';
+  const videoUrl = document.getElementById('train-video')?.value || '';
+  
+  if (!name) { alert('Module name is required'); return; }
+  
+  try {
+    await trpcQuery('training.updateModule', {moduleId, name, description: desc, videoUrl});
+    closeTrainingModal();
+    renderTraining();
+  } catch(e) {
+    alert('Error saving module: ' + (e.message || 'Unknown error'));
+  }
+}
+
+async function deleteTrainingStep(stepId) {
+  if (!confirm('Delete this step?')) return;
+  try {
+    // TODO: Add delete endpoint to server
+    alert('Delete step: ' + stepId + ' (coming soon)');
+  } catch(e) {
+    alert('Error deleting step');
+  }
+}
+
+async function addTrainingStep(moduleId) {
+  const title = prompt('Step title:');
+  if (!title) return;
+  const desc = prompt('Step description:');
+  if (!desc) return;
+  
+  try {
+    // TODO: Add create step endpoint to server
+    alert('Add step: ' + title + ' (coming soon)');
+  } catch(e) {
+    alert('Error adding step');
+  }
+}
+
+function addTrainingModule() {
+  const name = prompt('New module name:');
+  if (!name) return;
+  const desc = prompt('Module description:');
+  
+  try {
+    // TODO: Add create module endpoint to server
+    alert('Add module: ' + name + ' (coming soon)');
+  } catch(e) {
+    alert('Error adding module');
+  }
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────
+async function renderSettings() {
+  let config = {zoomLink: '', meetingTime: '7:30 AM', enabled: 'yes'};
+  try { config = await trpcQuery('morningMeeting.getConfig') || config; } catch(e) {}
+  
+  document.getElementById('content').innerHTML = \`
+    <div style="max-width:600px;margin:0 auto">
+      <div class="section-title">Morning Meeting Settings</div>
+      <div style="background:#1e2022;border-radius:12px;padding:24px;margin-bottom:20px">
+        <div style="margin-bottom:20px">
+          <label style="display:block;color:#ecedee;font-weight:600;margin-bottom:8px">Zoom Meeting Link</label>
+          <input type="text" id="settings-zoom-link" value="\${config.zoomLink||''}" placeholder="https://zoom.us/j/..." style="width:100%;padding:12px;border-radius:8px;border:1px solid #334155;background:#151718;color:#ecedee;font-family:monospace;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="display:block;color:#ecedee;font-weight:600;margin-bottom:8px">Meeting Time</label>
+          <input type="time" id="settings-meeting-time" value="\${config.meetingTime||'07:30'}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #334155;background:#151718;color:#ecedee;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="display:flex;align-items:center;gap:8px;color:#ecedee;font-weight:600;cursor:pointer">
+            <input type="checkbox" id="settings-enabled" \${config.enabled==='yes'?'checked':''} style="cursor:pointer">
+            Enable Morning Meeting Banner
+          </label>
+        </div>
+        <button onclick="saveSettings()" style="width:100%;background:#0a7ea4;color:#fff;border:none;border-radius:8px;padding:12px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Save Settings</button>
+      </div>
+    </div>\`;
+}
+
+async function saveSettings() {
+  const zoomLink = document.getElementById('settings-zoom-link').value.trim();
+  const meetingTime = document.getElementById('settings-meeting-time').value;
+  const enabled = document.getElementById('settings-enabled').checked ? 'yes' : 'no';
+  
+  if (!zoomLink) { alert('Please enter a Zoom link'); return; }
+  
+  try {
+    await trpcMutate('morningMeeting.upsertConfig', {zoomLink, meetingTime: meetingTime || '07:30', enabled});
+    alert('Settings saved!');
+    await renderSettings();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Customers ─────────────────────────────────────────────────────────────
+let customersData = [];
+let customersSearch = '';
+let customerDetailModal = null;
+
+async function renderCustomers() {
+  customersSearch = '';
+  const c = document.getElementById('content');
+  c.innerHTML = \`
+    <div style="margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="position:relative;flex:1;min-width:220px;max-width:480px">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px">🔍</span>
+        <input id="cust-search" class="form-input" style="padding-left:36px;width:100%" placeholder="Search by name, phone, email, or address..." oninput="filterCustomers(this.value)">
+      </div>
+      <div id="cust-count" style="color:var(--muted);font-size:13px"></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap">
+        <table id="cust-table">
+          <thead><tr>
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Customer</th>
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Phone</th>
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Address</th>
+            <th style="padding:12px 16px;text-align:right;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Jobs</th>
+            <th style="padding:12px 16px;text-align:right;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Lifetime Value</th>
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Last Service</th>
+          </tr></thead>
+          <tbody id="cust-tbody"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  \`;
+
+  try {
+    customersData = await trpcQuery('customers.listAll', {search: ''}) || [];
+    renderCustomerRows(customersData);
+  } catch(e) {
+    document.getElementById('cust-tbody').innerHTML = \`<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--error)">Failed to load customers: \${e.message}</td></tr>\`;
+  }
+}
+
+function renderCustomerRows(list) {
+  const tbody = document.getElementById('cust-tbody');
+  const countEl = document.getElementById('cust-count');
+  if (!tbody) return;
+  if (countEl) countEl.textContent = \`\${list.length.toLocaleString()} record\${list.length !== 1 ? 's' : ''}\`;
+  if (!list.length) {
+    tbody.innerHTML = \`<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">No customers found</td></tr>\`;
+    return;
+  }
+  tbody.innerHTML = list.map((c, i) => {
+    const lv = parseFloat(c.lifetimeValue || 0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
+    const lastDate = c.lastServiceDate ? new Date(c.lastServiceDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
+    const addr = c.address || (c.city ? c.city : '—');
+    const addrShort = addr.length > 40 ? addr.slice(0,38) + '…' : addr;
+    const rowBg = i % 2 === 0 ? '' : 'background:rgba(255,255,255,.02)';
+    return \`<tr style="cursor:pointer;transition:background .12s;\${rowBg}" onmouseover="this.style.background='rgba(10,126,164,.08)'" onmouseout="this.style.background='\${i%2===0?'':'rgba(255,255,255,.02)'}'" onclick="openCustomerDetail(\${i})">
+      <td style="padding:12px 16px;font-weight:600;color:var(--text)">\${escHtml(c.fullName)}</td>
+      <td style="padding:12px 16px;color:var(--muted);font-size:13px">\${c.phone ? escHtml(c.phone) : '—'}</td>
+      <td style="padding:12px 16px;color:var(--muted);font-size:13px" title="\${escHtml(addr)}">\${escHtml(addrShort)}</td>
+      <td style="padding:12px 16px;text-align:right;color:var(--text);font-weight:600">\${c.jobCount}</td>
+      <td style="padding:12px 16px;text-align:right;color:var(--success);font-weight:700">\${lv}</td>
+      <td style="padding:12px 16px;color:var(--muted);font-size:13px">\${lastDate}</td>
+    </tr>\`;
+  }).join('');
+  // Store visible list for openCustomerDetail index lookup
+  window._custVisible = list;
+}
+
+function filterCustomers(q) {
+  customersSearch = q;
+  if (!q.trim()) { renderCustomerRows(customersData); return; }
+  const lq = q.toLowerCase();
+  const nq = q.replace(/\\D/g,'');
+  const filtered = customersData.filter(c =>
+    c.fullName.toLowerCase().includes(lq) ||
+    (c.phone && c.phone.replace(/\\D/g,'').includes(nq)) ||
+    (c.email && c.email.toLowerCase().includes(lq)) ||
+    (c.address && c.address.toLowerCase().includes(lq))
+  );
+  renderCustomerRows(filtered);
+}
+
+// Current customer being viewed in full-page profile
+let _custProfileData = null;
+let _custProfileTab = 'profile';
+let _custProfileJobs = [];
+let _custProfileNotes = [];
+let _custProfileAttachments = null;
+let _custProfileEstimates = null;
+
+async function openCustomerDetail(idx) {
+  const cust = (window._custVisible || customersData)[idx];
+  if (!cust) return;
+  _custProfileData = cust;
+  _custProfileTab = 'profile';
+  _custProfileJobs = [];
+  _custProfileNotes = [];
+  _custProfileAttachments = null;
+  _custProfileEstimates = null;
+  await renderCustomerProfile();
+}
+
+async function renderCustomerProfile() {
+  const cust = _custProfileData;
+  if (!cust) return;
+
+  const c = document.getElementById('content');
+  const lv = parseFloat(cust.lifetimeValue || 0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
+  const firstDate = cust.firstServiceDate ? new Date(cust.firstServiceDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
+  const lastDate = cust.lastServiceDate ? new Date(cust.lastServiceDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
+  const createdDate = cust.firstServiceDate ? new Date(cust.firstServiceDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
+
+  c.innerHTML = \`
+    <div style="margin-bottom:16px">
+      <button onclick="showSection('customers')" style="background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;padding:0;display:flex;align-items:center;gap:6px">
+        ← Back to All Customers
+      </button>
+    </div>
+    <div style="margin-bottom:20px">
+      <h2 style="font-size:22px;font-weight:800;color:var(--text);margin:0 0 4px">\${escHtml(cust.fullName)}</h2>
+      <div style="color:var(--muted);font-size:13px">\${cust.jobCount} job\${cust.jobCount !== 1 ? 's' : ''} · Customer since \${createdDate}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
+      <!-- LEFT SIDEBAR -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <!-- Summary -->
+        <div class="card">
+          <div class="card-header"><div class="card-title">Summary</div></div>
+          <div style="font-size:13px;display:flex;flex-direction:column;gap:10px">
+            <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">LAST SERVICE</div><div style="font-weight:600">\${lastDate}</div></div>
+            <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">CUSTOMER SINCE</div><div style="font-weight:600">\${createdDate}</div></div>
+            <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">LIFETIME VALUE</div><div style="font-weight:700;font-size:18px;color:var(--success)">\${lv}</div></div>
+            <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">TOTAL JOBS</div><div style="font-weight:600">\${cust.jobCount}</div></div>
+          </div>
+        </div>
+        <!-- Contact Info -->
+        <div class="card">
+          <div class="card-header"><div class="card-title">Contact Info</div></div>
+          <div style="font-size:13px;display:flex;flex-direction:column;gap:10px">
+            \${cust.phone ? \`<div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">PHONE</div><a href="tel:\${escHtml(cust.phone)}" style="font-weight:600">\${escHtml(cust.phone)}</a></div>\` : ''}
+            \${cust.email ? \`<div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">EMAIL</div><a href="mailto:\${escHtml(cust.email)}" style="font-weight:600;word-break:break-all">\${escHtml(cust.email)}</a></div>\` : ''}
+            \${cust.address ? \`<div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">ADDRESS</div><div style="font-weight:600">\${escHtml(cust.address)}</div></div>\` : ''}
+            \${!cust.phone && !cust.email && !cust.address ? '<div style="color:var(--muted);font-style:italic">No contact info on file</div>' : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT MAIN CONTENT -->
+      <div>
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;flex-wrap:wrap">
+          \${['profile','jobs','attachments','estimates','notes'].map(tab => \`
+            <button onclick="switchCustTab('\${tab}')" id="cust-tab-\${tab}" style="background:none;border:none;padding:10px 18px;cursor:pointer;font-size:13px;font-weight:600;color:\${_custProfileTab===tab ? 'var(--primary)' : 'var(--muted)'};border-bottom:2px solid \${_custProfileTab===tab ? 'var(--primary)' : 'transparent'};margin-bottom:-2px;transition:all .15s">
+              \${tab.charAt(0).toUpperCase()+tab.slice(1)}
+            </button>\`).join('')}
+        </div>
+        <!-- Tab Content -->
+        <div id="cust-tab-content"><div style="text-align:center;padding:40px"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+  \`;
+
+  await loadCustTabContent();
+}
+
+async function switchCustTab(tab) {
+  _custProfileTab = tab;
+  // Update tab button styles
+  ['profile','jobs','attachments','estimates','notes'].forEach(t => {
+    const btn = document.getElementById('cust-tab-' + t);
+    if (!btn) return;
+    btn.style.color = t === tab ? 'var(--primary)' : 'var(--muted)';
+    btn.style.borderBottom = t === tab ? '2px solid var(--primary)' : '2px solid transparent';
+  });
+  await loadCustTabContent();
+}
+
+async function loadCustTabContent() {
+  const cust = _custProfileData;
+  const container = document.getElementById('cust-tab-content');
+  if (!container || !cust) return;
+
+  if (_custProfileTab === 'profile') {
+    // Load jobs to show upcoming
+    if (!_custProfileJobs.length) {
+      container.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+      try {
+        const data = await trpcQuery('customers.getJobs', {phone: cust.phone, email: cust.email, name: cust.fullName});
+        _custProfileJobs = data?.scheduleJobsList || [];
+      } catch(e) { _custProfileJobs = []; }
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = _custProfileJobs.filter(j => j.date && j.date >= today && j.status !== 'cancelled').sort((a,b) => a.date.localeCompare(b.date));
+    const past = _custProfileJobs.filter(j => !j.date || j.date < today || j.status === 'cancelled').sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+    container.innerHTML = \`
+      \${upcoming.length ? \`
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><div class="card-title">Upcoming Appointments</div><div style="color:var(--muted);font-size:12px">Next \${Math.min(upcoming.length,5)} of \${upcoming.length}</div></div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Date</th>
+            <th style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Time</th>
+            <th style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Service</th>
+            <th style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Detailer</th>
+            <th style="padding:8px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Status</th>
+          </tr></thead>
+          <tbody>
+            \${upcoming.slice(0,5).map(j => {
+              const d = j.date ? new Date(j.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}) : '—';
+              return \`<tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:10px 12px;font-size:13px;font-weight:600">\${d}</td>
+                <td style="padding:10px 12px;font-size:13px;color:var(--muted)">\${escHtml(j.timeSlot||'—')}</td>
+                <td style="padding:10px 12px;font-size:13px">\${escHtml(j.packageType||'—')}</td>
+                <td style="padding:10px 12px;font-size:13px;color:var(--muted)">\${escHtml(j.assignedTo||'—')}</td>
+                <td style="padding:10px 12px">\${statusPill(j.status)}</td>
+              </tr>\`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>\` : ''}
+      <div class="card">
+        <div class="card-header"><div class="card-title">Vehicle Info</div></div>
+        \${(() => {
+          const vehicles = {};
+          _custProfileJobs.forEach(j => {
+            const key = [j.vehicleYear,j.vehicleMake,j.vehicleModel].filter(Boolean).join(' ');
+            if (key && !vehicles[key]) vehicles[key] = {key, color: j.vehicleColor, type: j.vehicleType, count: 0};
+            if (key) vehicles[key].count++;
+          });
+          const vList = Object.values(vehicles);
+          if (!vList.length) return '<div style="color:var(--muted);font-size:13px;padding:4px 0">No vehicle info on file</div>';
+          return vList.map(v => \`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <div><span style="font-weight:600">\${escHtml(v.key)}</span>\${v.color ? ' <span style="color:var(--muted)">('+escHtml(v.color)+')</span>' : ''}</div>
+            <div style="color:var(--muted)">\${v.count} service\${v.count!==1?'s':''}</div>
+          </div>\`).join('');
+        })()}
+      </div>
+    \`;
+
+  } else if (_custProfileTab === 'jobs') {
+    if (!_custProfileJobs.length && _custProfileJobs !== null) {
+      container.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+      try {
+        const data = await trpcQuery('customers.getJobs', {phone: cust.phone, email: cust.email, name: cust.fullName});
+        _custProfileJobs = data?.scheduleJobsList || [];
+      } catch(e) { _custProfileJobs = []; }
+    }
+    const jobs = _custProfileJobs;
+    if (!jobs.length) {
+      container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No jobs found for this customer</div>';
+      return;
+    }
+    container.innerHTML = \`
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700;font-size:15px">\${jobs.length} Jobs</div>
+          <div style="color:var(--success);font-weight:700">\${parseFloat(cust.lifetimeValue||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2})} total</div>
+        </div>
+        <div class="table-wrap">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Date</th>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Service</th>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Vehicle</th>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Detailer</th>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:right;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Amount</th>
+              <th style="padding:10px 12px;font-size:11px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Status</th>
+            </tr></thead>
+            <tbody>
+              \${jobs.map((j,i) => {
+                const d = j.date ? new Date(j.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                const price = parseFloat(j.totalPrice||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});
+                const vehicle = [j.vehicleYear,j.vehicleMake,j.vehicleModel].filter(Boolean).join(' ');
+                const rowBg = i%2===0 ? '' : 'background:rgba(255,255,255,.02)';
+                return \`<tr style="\${rowBg}">
+                  <td style="padding:10px 12px;font-size:13px;color:var(--muted)">\${d}</td>
+                  <td style="padding:10px 12px;font-size:13px;font-weight:600">\${escHtml(j.packageType||'—')}</td>
+                  <td style="padding:10px 12px;font-size:13px;color:var(--muted)">\${escHtml(vehicle)||'—'}\${j.vehicleColor?' ('+escHtml(j.vehicleColor)+')':''}</td>
+                  <td style="padding:10px 12px;font-size:13px;color:var(--muted)">\${escHtml(j.assignedTo||'—')}</td>
+                  <td style="padding:10px 12px;font-size:13px;text-align:right;color:var(--success);font-weight:700">\${price}</td>
+                  <td style="padding:10px 12px">\${statusPill(j.status)}</td>
+                </tr>\`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    \`;
+
+  } else if (_custProfileTab === 'attachments') {
+    container.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+    if (_custProfileAttachments === null) {
+      try {
+        _custProfileAttachments = await trpcQuery('attachments.listForCustomer', {customerName: cust.fullName, customerPhone: cust.phone, customerEmail: cust.email});
+      } catch(e) { _custProfileAttachments = []; }
+    }
+    const atts = _custProfileAttachments || [];
+    container.innerHTML = \`
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Attachments (\${atts.length})</div>
+          <label class="btn btn-primary" style="cursor:pointer;margin:0">
+            + Upload Photo
+            <input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="uploadCustAttachments(this.files)">
+          </label>
+        </div>
+        <div id="cust-att-upload-status" style="margin-bottom:8px"></div>
+        \${atts.length === 0 ? '<div style="color:var(--muted);font-size:13px;font-style:italic;padding:20px 0">No attachments yet. Upload photos or documents above.</div>' : ''}
+        <div id="cust-att-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-top:8px">
+          \${atts.map(a => {
+            const isImg = (a.mimeType||'').startsWith('image/');
+            return \`<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);position:relative">
+              \${isImg ? \`<img src="\${escHtml(a.fileUrl)}" style="width:100%;height:120px;object-fit:cover;display:block" loading="lazy" onclick="window.open('\${escHtml(a.fileUrl)}','_blank')">\` : \`<div style="height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer" onclick="window.open('\${escHtml(a.fileUrl)}','_blank')">📄</div>\`}
+              <div style="padding:8px">
+                <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${escHtml(a.fileName)}</div>
+                \${a.caption ? \`<div style="font-size:11px;color:var(--text);margin-top:2px">\${escHtml(a.caption)}</div>\` : ''}
+                <div style="font-size:10px;color:var(--muted);margin-top:4px">\${new Date(a.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+              </div>
+              <button onclick="deleteCustAttachment('\${escHtml(a.attachmentId)}')" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
+            </div>\`;
+          }).join('')}
+        </div>
+      </div>
+    \`;
+
+  } else if (_custProfileTab === 'estimates') {
+    container.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+    if (_custProfileEstimates === null) {
+      try {
+        _custProfileEstimates = await trpcQuery('estimates.listForCustomer', {customerName: cust.fullName, customerPhone: cust.phone, customerEmail: cust.email});
+      } catch(e) { _custProfileEstimates = []; }
+    }
+    const ests = _custProfileEstimates || [];
+    container.innerHTML = \`
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Estimates (\${ests.length})</div>
+          <button class="btn btn-primary" onclick="openNewEstimateForm()">+ New Estimate</button>
+        </div>
+        <div id="cust-est-form-area"></div>
+        \${ests.length === 0 ? '<div style="color:var(--muted);font-size:13px;font-style:italic;padding:20px 0">No estimates yet. Create one above.</div>' : ''}
+        <div id="cust-est-list">
+          \${ests.map(e => {
+            const statusColors = {draft:'var(--muted)',sent:'var(--primary)',viewed:'#a78bfa',accepted:'var(--success)',declined:'var(--error)',expired:'var(--warning)'};
+            const sc = statusColors[e.status] || 'var(--muted)';
+            const total = parseFloat(e.total||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});
+            const created = new Date(e.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+            return \`<div style="padding:14px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:var(--surface)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-weight:700;font-size:14px">Estimate #\${e.estimateNumber}</div>
+                <span style="background:\${sc}22;color:\${sc};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase">\${e.status}</span>
+              </div>
+              <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Created \${created}\${e.validUntil ? ' · Valid until '+new Date(e.validUntil+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+              <div style="font-size:18px;font-weight:800;color:var(--success);margin-bottom:10px">\${total}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" style="font-size:12px;padding:5px 12px" onclick="viewEstimateDetail('\${e.estimateId}')">View</button>
+                \${e.status === 'draft' ? \`<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="sendEstimate('\${e.estimateId}')">Send via Email</button>\` : ''}
+                \${e.status === 'draft' ? \`<button class="btn" style="font-size:12px;padding:5px 12px;color:var(--error);border-color:var(--error)" onclick="deleteEstimate('\${e.estimateId}')">Delete</button>\` : ''}
+              </div>
+            </div>\`;
+          }).join('')}
+        </div>
+      </div>
+    \`;
+
+  } else if (_custProfileTab === 'notes') {
+    container.innerHTML = \`
+      <div class="card">
+        <div class="card-header"><div class="card-title">Private Notes</div></div>
+        <div style="margin-bottom:16px">
+          <textarea id="cust-note-input" class="form-input" rows="3" placeholder="Add a note about this customer..." style="width:100%;resize:vertical"></textarea>
+          <button class="btn btn-primary" style="margin-top:8px" onclick="saveCustNote()">Save Note</button>
+        </div>
+        <div id="cust-notes-list">
+          \${_custProfileNotes.length ? _custProfileNotes.map(n => \`
+            <div style="padding:12px;background:var(--surface);border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+              <div style="font-size:13px;color:var(--text);margin-bottom:6px">\${escHtml(n.text)}</div>
+              <div style="font-size:11px;color:var(--muted)">\${escHtml(n.authorName||'Admin')} · \${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
+            </div>\`).join('') : '<div style="color:var(--muted);font-size:13px;font-style:italic">No notes yet. Add the first note above.</div>'}
+        </div>
+      </div>
+    \`;
+  }
+}
+
+async function uploadCustAttachments(files) {
+  const cust = _custProfileData;
+  if (!cust || !files || !files.length) return;
+  const status = document.getElementById('cust-att-upload-status');
+  if (status) status.innerHTML = '<div style="color:var(--primary);font-size:13px">Uploading...</div>';
+  let uploaded = 0;
+  for (const file of Array.from(files)) {
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const attachmentId = 'ATT-' + Date.now() + '-' + Math.random().toString(36).substring(2,8);
+      await trpcMutate('attachments.upload', {
+        attachmentId,
+        customerName: cust.fullName,
+        customerPhone: cust.phone,
+        customerEmail: cust.email,
+        fileName: file.name,
+        mimeType: file.type,
+        base64Data: base64,
+        fileSizeBytes: file.size,
+        uploadedBy: currentEmployee?.name || 'Admin',
+      });
+      uploaded++;
+    } catch(e) {
+      console.error('Upload failed:', e);
+    }
+  }
+  _custProfileAttachments = null; // force reload
+  if (status) status.innerHTML = \`<div style="color:var(--success);font-size:13px">\${uploaded} file(s) uploaded successfully</div>\`;
+  setTimeout(() => switchCustTab('attachments'), 500);
+}
+
+async function deleteCustAttachment(attachmentId) {
+  if (!confirm('Delete this attachment?')) return;
+  try {
+    await trpcMutate('attachments.delete', { attachmentId });
+    _custProfileAttachments = null;
+    await switchCustTab('attachments');
+  } catch(e) { alert('Failed to delete attachment'); }
+}
+
+function openNewEstimateForm() {
+  const cust = _custProfileData;
+  if (!cust) return;
+  const area = document.getElementById('cust-est-form-area');
+  if (!area) return;
+  area.innerHTML = \`
+    <div style="border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;background:var(--bg)">
+      <div style="font-weight:700;font-size:15px;margin-bottom:16px">New Estimate for \${escHtml(cust.fullName)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Vehicle Year</label>
+          <input id="est-veh-year" class="form-input" placeholder="2022" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Make</label>
+          <input id="est-veh-make" class="form-input" placeholder="Toyota" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Model</label>
+          <input id="est-veh-model" class="form-input" placeholder="Camry" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Color</label>
+          <input id="est-veh-color" class="form-input" placeholder="White" style="width:100%">
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Line Items</div>
+        <div id="est-line-items">
+          <div class="est-line-row" style="display:grid;grid-template-columns:1fr 60px 90px 24px;gap:8px;margin-bottom:6px">
+            <input class="form-input est-desc" placeholder="Service description" style="width:100%">
+            <input class="form-input est-qty" type="number" value="1" min="1" placeholder="Qty" style="width:100%">
+            <input class="form-input est-price" type="number" step="0.01" placeholder="Price" style="width:100%">
+            <button onclick="this.closest('.est-line-row').remove();calcEstTotal()" style="background:none;border:none;color:var(--error);cursor:pointer;font-size:18px;padding:0">×</button>
+          </div>
+        </div>
+        <button onclick="addEstLineRow()" style="background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;padding:4px 0">+ Add line item</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:16px;align-items:center;margin-bottom:12px">
+        <div style="font-size:13px;color:var(--muted)">Total: <span id="est-total-display" style="font-weight:800;color:var(--success);font-size:16px">$0.00</span></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Notes (shown to customer)</label>
+        <textarea id="est-notes" class="form-input" rows="2" placeholder="Optional notes for the customer..." style="width:100%;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" onclick="saveNewEstimate()">Save Estimate</button>
+        <button class="btn" onclick="document.getElementById('cust-est-form-area').innerHTML=''">Cancel</button>
+      </div>
+    </div>
+  \`;
+  // Attach input listeners for live total
+  document.getElementById('est-line-items').addEventListener('input', calcEstTotal);
+}
+
+function addEstLineRow() {
+  const container = document.getElementById('est-line-items');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'est-line-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 60px 90px 24px;gap:8px;margin-bottom:6px';
+  row.innerHTML = \`
+    <input class="form-input est-desc" placeholder="Service description" style="width:100%">
+    <input class="form-input est-qty" type="number" value="1" min="1" placeholder="Qty" style="width:100%">
+    <input class="form-input est-price" type="number" step="0.01" placeholder="Price" style="width:100%">
+    <button onclick="this.closest('.est-line-row').remove();calcEstTotal()" style="background:none;border:none;color:var(--error);cursor:pointer;font-size:18px;padding:0">×</button>
+  \`;
+  container.appendChild(row);
+  row.querySelector('.est-desc').focus();
+}
+
+function calcEstTotal() {
+  let total = 0;
+  document.querySelectorAll('.est-line-row').forEach(row => {
+    const qty = parseFloat(row.querySelector('.est-qty')?.value || 0);
+    const price = parseFloat(row.querySelector('.est-price')?.value || 0);
+    total += qty * price;
+  });
+  const disp = document.getElementById('est-total-display');
+  if (disp) disp.textContent = total.toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});
+}
+
+async function saveNewEstimate() {
+  const cust = _custProfileData;
+  if (!cust) return;
+  const lineItems = [];
+  let subtotal = 0;
+  document.querySelectorAll('.est-line-row').forEach(row => {
+    const desc = row.querySelector('.est-desc')?.value?.trim();
+    const qty = parseFloat(row.querySelector('.est-qty')?.value || 1);
+    const unitPrice = parseFloat(row.querySelector('.est-price')?.value || 0);
+    const total = qty * unitPrice;
+    if (desc) { lineItems.push({description: desc, qty, unitPrice, total}); subtotal += total; }
+  });
+  if (!lineItems.length) { alert('Please add at least one line item'); return; }
+  const estimateId = 'EST-' + Date.now() + '-' + Math.random().toString(36).substring(2,8);
+  try {
+    await trpcMutate('estimates.create', {
+      estimateId,
+      customerName: cust.fullName,
+      customerPhone: cust.phone,
+      customerEmail: cust.email,
+      customerAddress: cust.address,
+      vehicleYear: document.getElementById('est-veh-year')?.value?.trim() || null,
+      vehicleMake: document.getElementById('est-veh-make')?.value?.trim() || null,
+      vehicleModel: document.getElementById('est-veh-model')?.value?.trim() || null,
+      vehicleColor: document.getElementById('est-veh-color')?.value?.trim() || null,
+      lineItems,
+      subtotal,
+      total: subtotal,
+      notes: document.getElementById('est-notes')?.value?.trim() || null,
+      createdBy: currentEmployee?.name || 'Admin',
+    });
+    _custProfileEstimates = null;
+    document.getElementById('cust-est-form-area').innerHTML = '';
+    await switchCustTab('estimates');
+    showToast('Estimate created successfully');
+  } catch(e) { alert('Failed to create estimate: ' + (e.message || e)); }
+}
+
+async function sendEstimate(estimateId) {
+  const cust = _custProfileData;
+  if (!cust) return;
+  if (!cust.email) { alert('This customer has no email address on file. Cannot send estimate.'); return; }
+  if (!confirm(\`Send this estimate to \${cust.email}?\`)) return;
+  try {
+    await trpcMutate('estimates.markSent', { estimateId });
+    _custProfileEstimates = null;
+    await switchCustTab('estimates');
+    showToast('Estimate marked as sent');
+  } catch(e) { alert('Failed to send estimate'); }
+}
+
+async function deleteEstimate(estimateId) {
+  if (!confirm('Delete this estimate? This cannot be undone.')) return;
+  try {
+    await trpcMutate('estimates.delete', { estimateId });
+    _custProfileEstimates = null;
+    await switchCustTab('estimates');
+    showToast('Estimate deleted');
+  } catch(e) { alert('Failed to delete estimate'); }
+}
+
+async function viewEstimateDetail(estimateId) {
+  try {
+    const est = await trpcQuery('estimates.getById', { estimateId });
+    if (!est) { alert('Estimate not found'); return; }
+    const lineItems = typeof est.lineItems === 'string' ? JSON.parse(est.lineItems) : (est.lineItems || []);
+    const total = parseFloat(est.total||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2});
+    const vehicle = [est.vehicleYear,est.vehicleMake,est.vehicleModel].filter(Boolean).join(' ');
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = \`
+      <div style="background:var(--card);border-radius:16px;padding:28px;max-width:560px;width:100%;max-height:80vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <div style="font-size:20px;font-weight:800">Estimate #\${est.estimateNumber}</div>
+            <div style="font-size:13px;color:var(--muted)">\${escHtml(est.customerName)} · \${new Date(est.createdAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+          </div>
+          <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)">×</button>
+        </div>
+        \${vehicle ? \`<div style="margin-bottom:16px;padding:12px;background:var(--surface);border-radius:8px;font-size:13px"><strong>Vehicle:</strong> \${escHtml(vehicle)}\${est.vehicleColor?' ('+escHtml(est.vehicleColor)+')':''}</div>\` : ''}
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <thead><tr>
+            <th style="text-align:left;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);text-transform:uppercase">Description</th>
+            <th style="text-align:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);text-transform:uppercase">Qty</th>
+            <th style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);text-transform:uppercase">Unit</th>
+            <th style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);text-transform:uppercase">Total</th>
+          </tr></thead>
+          <tbody>
+            \${lineItems.map(li => \`<tr>
+              <td style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">\${escHtml(li.description)}</td>
+              <td style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;text-align:center">\${li.qty}</td>
+              <td style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;text-align:right">\${parseFloat(li.unitPrice).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2})}</td>
+              <td style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;text-align:right;font-weight:600">\${parseFloat(li.total).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2})}</td>
+            </tr>\`).join('')}
+          </tbody>
+        </table>
+        <div style="text-align:right;font-size:20px;font-weight:800;color:var(--success)">Total: \${total}</div>
+        \${est.notes ? \`<div style="margin-top:16px;padding:12px;background:var(--surface);border-radius:8px;font-size:13px"><strong>Notes:</strong> \${escHtml(est.notes)}</div>\` : ''}
+      </div>
+    \`;
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+  } catch(e) { alert('Failed to load estimate'); }
+}
+
+function saveCustNote() {
+  const input = document.getElementById('cust-note-input');
+  if (!input || !input.value.trim()) return;
+  const note = {
+    id: Date.now().toString(),
+    text: input.value.trim(),
+    authorName: currentEmployee?.name || 'Admin',
+    createdAt: new Date().toISOString(),
+  };
+  _custProfileNotes.unshift(note);
+  input.value = '';
+  // Re-render notes list
+  const list = document.getElementById('cust-notes-list');
+  if (list) {
+    list.innerHTML = _custProfileNotes.map(n => \`
+      <div style="padding:12px;background:var(--surface);border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+        <div style="font-size:13px;color:var(--text);margin-bottom:6px">\${escHtml(n.text)}</div>
+        <div style="font-size:11px;color:var(--muted)">\${escHtml(n.authorName||'Admin')} · \${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
+      </div>\`).join('');
+  }
+}
+
+function closeCustDetail() {
+  // Legacy — now we just go back to list
+  showSection('customers');
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function timeAgo(date) {
+  const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (secs < 60) return secs + 's ago';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs/24) + 'd ago';
+}
+function fmtDate(d) { return d.toISOString().split('T')[0]; }
+function fmtFullDate(d) { return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
+function fmtHour(h) {
+  if (h == null) return '—';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 || 12;
+  return \`\${hr} \${ampm}\`;
+}
+function getWeekStart(d) { const s = new Date(d); s.setDate(s.getDate()-s.getDay()); return s; }
+function getWeekEnd(d) { const e = new Date(d); e.setDate(e.getDate()+(6-e.getDay())); return e; }
+function getGreeting() { const h=new Date().getHours(); return h<12?'morning':h<17?'afternoon':'evening'; }
+function cityToSlug(city) {
+  if (!city) return 'crestview';
+  const c = city.toLowerCase();
+  if (c.includes('niceville')||c.includes('nice')) return 'niceville';
+  if (c.includes('destin')) return 'destin';
+  if (c.includes('fort walton')||c.includes('fwb')||c.includes('walton')) return 'fwb';
+  if (c.includes('panama')||c.includes('pcb')) return 'pcb';
+  if (c.includes('pensacola')) return 'pensacola';
+  return 'crestview';
+}
+function statusPill(s) {
+  const labels = {scheduled:'Scheduled',confirmed:'Confirmed',on_my_way:'On My Way',in_progress:'In Progress',arrived:'Arrived',finished:'Finished',completed:'Completed',cancelled:'Cancelled',pending:'Pending',approved:'Approved',denied:'Denied'};
+  return \`<span class="pill pill-\${s||'pending'}">\${labels[s]||s||'—'}</span>\`;
+}
+function rolePill(r) {
+  return \`<span class="pill pill-\${r||'detailer'}">\${(r||'').replace('_',' ')}</span>\`;
+}
+
+// ── AI Receptionist ───────────────────────────────────────────────────────
+let receptionistTab = 'calls';
+async function renderReceptionist() {
+  const c = document.getElementById('content');
+  let status = {}, calls = [];
+  try { const r = await fetch('/api/receptionist/status'); const d = await r.json(); if(d.success) status = d; } catch(e) {}
+  try { const r = await fetch('/api/receptionist/calls'); const d = await r.json(); if(d.success) calls = d.calls || []; } catch(e) {}
+
+  const isLive = status.twilioConfigured && status.openaiConfigured;
+  const statusDot = isLive ? '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;margin-right:6px"></span>' : '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444;margin-right:6px"></span>';
+
+  c.innerHTML = \`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <h2 style="font-size:22px;font-weight:800">AI Receptionist</h2>
+      <span style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:\${isLive?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)'};color:\${isLive?'#4ade80':'#f87171'}">\${statusDot}\${isLive?'LIVE':'OFFLINE'}</span>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="renderReceptionist()">↻ Refresh</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+    <div class="stat-card"><div class="stat-label">Total Calls</div><div class="stat-value">\${calls.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Bookings Created</div><div class="stat-value">\${calls.filter(c=>c.bookingId).length}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Duration</div><div class="stat-value">\${calls.length ? Math.round(calls.reduce((s,c)=>s+(c.durationSeconds||0),0)/calls.length) + 's' : '—'}</div></div>
+    <div class="stat-card"><div class="stat-label">Phone Number</div><div class="stat-value" style="font-size:14px">\${status.phoneNumber||'—'}</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">📋 Call Log (Last 50)</div></div>
+    \${calls.length === 0 ? '<p style="color:var(--muted);text-align:center;padding:40px">No calls yet</p>' : calls.map(call => {
+      const ts = call.startedAt ? new Date(call.startedAt) : null;
+      const ago = ts ? timeAgo(ts) : '—';
+      const dur = call.durationSeconds ? call.durationSeconds + 's' : '—';
+      const hasBooking = !!call.bookingId;
+      const outcome = call.outcome || 'no_booking';
+      const outcomeColor = hasBooking ? '#4ade80' : outcome==='error'?'#f87171':'#94a3b8';
+      const outcomeLabel = hasBooking ? '✅ Booked' : outcome==='error'?'❌ Error':'— No Booking';
+      const phone = call.callerNumber || '—';
+      const transcript = (call.transcript||[]).map(t=>\`<div style="margin-bottom:8px"><span style="color:\${t.role==='assistant'?'#38bdf8':'var(--text)'};font-weight:600;font-size:11px">\${t.role==='assistant'?'AI Receptionist':'Caller'}:</span> <span style="font-size:13px;color:var(--text)">\${t.content||''}</span></div>\`).join('');
+      return \`<details style="border-bottom:1px solid var(--border);padding:14px 0" \${calls.indexOf(call)===0?'open':''}>
+        <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📞</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">\${phone}</div>
+            <div style="font-size:12px;color:var(--muted)">\${ago} · \${dur}</div>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:\${outcomeColor}">\${outcomeLabel}</span>
+          \${hasBooking ? \`<button onclick="event.stopPropagation();viewJobFromCall('\${call.bookingId}')" class="btn btn-secondary btn-sm" style="font-size:11px">View Job →</button>\` : ''}
+        </summary>
+        <div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:8px">
+          \${transcript || '<p style="color:var(--muted);font-size:13px">No transcript</p>'}
+          \${call.recordingUrl ? \`<div style="margin-top:10px"><audio controls src="\${call.recordingUrl}" style="width:100%;height:36px"></audio></div>\` : ''}
+          \${hasBooking ? \`<div style="margin-top:10px"><button onclick="viewJobFromCall('\${call.bookingId}')" class="btn btn-primary btn-sm">📅 View Job in Schedule</button></div>\` : ''}
+        </div>
+      </details>\`;
+    }).join('')}
+  </div>\`;
+}
+async function viewJobFromCall(bookingId) {
+  try {
+    const r = await fetch('/api/booking/job/' + bookingId);
+    const d = await r.json();
+    if (d.success && d.job) {
+      // Navigate to dispatch and open job
+      dispatchDate = new Date(d.job.date + 'T12:00:00');
+      dispatchLocation = d.job.location || 'crestview';
+      await showSection('dispatch');
+      setTimeout(() => openJobModal(d.job), 600);
+    } else { alert('Job not found'); }
+  } catch(e) { alert('Error loading job'); }
+}
+
+// ── AI Coach ──────────────────────────────────────────────────────────────────
+let aiCoachLocation = 'all';
+let aiCoachPeriod = 'this_week';
+async function renderAiCoach() {
+  const c = document.getElementById('content');
+  c.innerHTML = \`
+  <div style="margin-bottom:24px">
+    <h2 style="font-size:22px;font-weight:800;margin-bottom:4px">🧠 AI Business Coach</h2>
+    <p style="color:var(--muted);font-size:14px">Get AI-powered insights and recommendations based on your real performance data.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><div class="card-title">Analysis Settings</div></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Location</label>
+        <select id="coach-location" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">
+          <option value="all" \${aiCoachLocation==='all'?'selected':''}>All Locations</option>
+          <option value="crestview" \${aiCoachLocation==='crestview'?'selected':''}>Crestview</option>
+          <option value="niceville" \${aiCoachLocation==='niceville'?'selected':''}>Niceville</option>
+          <option value="fwb" \${aiCoachLocation==='fwb'?'selected':''}>Fort Walton Beach</option>
+          <option value="destin" \${aiCoachLocation==='destin'?'selected':''}>Destin</option>
+          <option value="pensacola" \${aiCoachLocation==='pensacola'?'selected':''}>Pensacola</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Period</label>
+        <select id="coach-period" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">
+          <option value="this_week" \${aiCoachPeriod==='this_week'?'selected':''}>This Week</option>
+          <option value="last_30_days" \${aiCoachPeriod==='last_30_days'?'selected':''}>Last 30 Days</option>
+          <option value="all_time" \${aiCoachPeriod==='all_time'?'selected':''}>All Time</option>
+        </select>
+      </div>
+      <div style="margin-top:18px">
+        <button class="btn btn-primary" onclick="runAiCoach()">🧠 Get AI Insights</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="coach-results">
+    <div style="text-align:center;padding:60px;color:var(--muted)">
+      <div style="font-size:48px;margin-bottom:12px">🧠</div>
+      <div style="font-size:16px;font-weight:600">Ready to analyze your business</div>
+      <div style="font-size:13px;margin-top:6px">Select a location and period, then click Get AI Insights</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="card-header"><div class="card-title">📅 Quick Book</div></div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Paste or type a booking request in plain English and the AI will extract the details.</p>
+    <textarea id="quickbook-text" placeholder="e.g. Book John Smith for a full detail on his black SUV tomorrow at 8am in Destin, 123 Main St" style="width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;resize:vertical;min-height:80px"></textarea>
+    <button class="btn btn-primary" style="margin-top:10px" onclick="runQuickBook()">⚡ Parse & Create Job</button>
+    <div id="quickbook-result" style="margin-top:12px"></div>
+  </div>\`;
+}
+async function runAiCoach() {
+  aiCoachLocation = document.getElementById('coach-location').value;
+  aiCoachPeriod = document.getElementById('coach-period').value;
+  const res = document.getElementById('coach-results');
+  res.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:12px;color:var(--muted)">Analyzing your business data...</div></div>';
+  try {
+    const data = await trpcMutate('ai.businessCoach', {location: aiCoachLocation, period: aiCoachPeriod});
+    const insights = data?.insights || [];
+    const score = data?.overallScore;
+    res.innerHTML = \`
+      \${score !== undefined ? \`<div class="stat-card" style="margin-bottom:16px;text-align:center"><div class="stat-label">Business Health Score</div><div class="stat-value" style="font-size:48px;color:\${score>=80?'#4ade80':score>=60?'#fbbf24':'#f87171'}">\${score}</div><div class="stat-sub">/100</div></div>\` : ''}
+      \${insights.map(ins => \`<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <span style="font-size:24px">\${ins.emoji||'💡'}</span>
+          <div><div style="font-weight:700;font-size:15px;margin-bottom:4px">\${ins.title||''}</div><div style="color:var(--muted);font-size:13px;line-height:1.5">\${ins.body||ins.message||''}</div></div>
+        </div>
+      </div>\`).join('')}
+      \${!insights.length && data?.message ? \`<div class="card"><p style="color:var(--text);font-size:14px;line-height:1.7">\${data.message}</p></div>\` : ''}\`;
+  } catch(e) { res.innerHTML = '<div class="card"><p style="color:var(--error)">Error loading insights: ' + e.message + '</p></div>'; }
+}
+async function runQuickBook() {
+  const text = document.getElementById('quickbook-text').value.trim();
+  if (!text) return;
+  const res = document.getElementById('quickbook-result');
+  res.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await trpcMutate('ai.parseBooking', {text});
+    if (data) {
+      res.innerHTML = \`<div class="card" style="background:rgba(34,197,94,.08);border-color:#22c55e">
+        <div style="font-weight:700;margin-bottom:8px;color:#4ade80">✅ Booking Parsed</div>
+        <div style="font-size:13px;color:var(--text)">\${Object.entries(data).filter(([k,v])=>v).map(([k,v])=>\`<div><strong>\${k}:</strong> \${v}</div>\`).join('')}</div>
+      </div>\`;
+    }
+  } catch(e) { res.innerHTML = '<div style="color:var(--error);font-size:13px">Error: ' + e.message + '</div>'; }
+}
+
+// ── Sales Callbacks ────────────────────────────────────────────────────────────
+async function renderCallbacks() {
+  const c = document.getElementById('content');
+  let callbacks = [], reps = [];
+  try { callbacks = await trpcQuery('salesCallback.listAll') || []; } catch(e) {}
+  try { reps = await trpcQuery('salesCallback.listSalesReps') || []; } catch(e) {}
+
+  const total = callbacks.length;
+  const scheduled = callbacks.filter(c=>c.status==='scheduled').length;
+  const completed = callbacks.filter(c=>c.status==='completed').length;
+  const missed = callbacks.filter(c=>c.status==='missed').length;
+  const rate = total ? Math.round(completed/total*100) : 0;
+
+  c.innerHTML = \`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <h2 style="font-size:22px;font-weight:800">Sales Callbacks</h2>
+    <button class="btn btn-secondary btn-sm" onclick="renderCallbacks()">↻ Refresh</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">\${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value" style="color:#38bdf8">\${scheduled}</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" style="color:#4ade80">\${completed}</div></div>
+    <div class="stat-card"><div class="stat-label">Completion Rate</div><div class="stat-value">\${rate}%</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">All Callbacks</div>
+      <div style="display:flex;gap:8px">
+        <select id="cb-status-filter" onchange="filterCallbacks()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px">
+          <option value="all">All Status</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="completed">Completed</option>
+          <option value="missed">Missed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select id="cb-rep-filter" onchange="filterCallbacks()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px">
+          <option value="all">All Reps</option>
+          \${reps.map(r=>\`<option value="\${r.employeeId}">\${r.fullName}</option>\`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="callbacks-table">
+        <thead><tr><th>Prospect</th><th>Phone</th><th>Assigned Rep</th><th>Scheduled</th><th>Status</th><th>Outcome</th><th>Actions</th></tr></thead>
+        <tbody id="callbacks-tbody">\${renderCallbackRows(callbacks)}</tbody>
+      </table>
+    </div>
+  </div>\`;
+  window._callbacksData = callbacks;
+  window._callbacksReps = reps;
+}
+function renderCallbackRows(list) {
+  if (!list.length) return '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No callbacks found</td></tr>';
+  return list.map(cb => {
+    const name = [cb.prospectFirstName, cb.prospectLastName].filter(Boolean).join(' ') || '—';
+    const phone = cb.prospectPhone || '—';
+    const rep = cb.assignedToName || cb.assignedTo || '—';
+    const sched = cb.scheduledAt ? new Date(cb.scheduledAt).toLocaleString() : '—';
+    const statusColors = {scheduled:'#38bdf8',completed:'#4ade80',missed:'#f87171',cancelled:'#94a3b8',rescheduled:'#fbbf24'};
+    const sc = statusColors[cb.status] || '#94a3b8';
+    return \`<tr>
+      <td style="font-weight:600">\${name}</td>
+      <td>\${phone}</td>
+      <td>\${rep}</td>
+      <td style="font-size:12px">\${sched}</td>
+      <td><span style="color:\${sc};font-weight:600;font-size:12px">\${cb.status||'—'}</span></td>
+      <td style="font-size:12px;color:var(--muted)">\${cb.outcome||'—'}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="openCallbackDetail('\${cb.callbackId}')">Detail</button></td>
+    </tr>\`;
+  }).join('');
+}
+function filterCallbacks() {
+  const sf = document.getElementById('cb-status-filter')?.value || 'all';
+  const rf = document.getElementById('cb-rep-filter')?.value || 'all';
+  let list = window._callbacksData || [];
+  if (sf !== 'all') list = list.filter(c=>c.status===sf);
+  if (rf !== 'all') list = list.filter(c=>c.assignedTo===rf);
+  const tbody = document.getElementById('callbacks-tbody');
+  if (tbody) tbody.innerHTML = renderCallbackRows(list);
+}
+async function openCallbackDetail(callbackId) {
+  let cb;
+  try { cb = await trpcQuery('salesCallback.getById', {callbackId}); } catch(e) { return; }
+  if (!cb) return;
+  const name = [cb.prospectFirstName, cb.prospectLastName].filter(Boolean).join(' ');
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:95vw;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:18px;font-weight:700">\${name}</h3>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;gap:10px;font-size:13px">
+      <div><span style="color:var(--muted)">Phone:</span> <strong>\${cb.prospectPhone||'—'}</strong></div>
+      <div><span style="color:var(--muted)">Email:</span> \${cb.prospectEmail||'—'}</div>
+      <div><span style="color:var(--muted)">Assigned Rep:</span> \${cb.assignedToName||cb.assignedTo||'—'}</div>
+      <div><span style="color:var(--muted)">Scheduled:</span> \${cb.scheduledAt ? new Date(cb.scheduledAt).toLocaleString() : '—'}</div>
+      <div><span style="color:var(--muted)">Status:</span> <strong>\${cb.status||'—'}</strong></div>
+      <div><span style="color:var(--muted)">Outcome:</span> \${cb.outcome||'—'}</div>
+      <div><span style="color:var(--muted)">Notes:</span> \${cb.notes||'—'}</div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-success btn-sm" onclick="updateCbStatus('\${callbackId}','completed',this)">✅ Mark Completed</button>
+      <button class="btn btn-secondary btn-sm" onclick="updateCbStatus('\${callbackId}','missed',this)">❌ Mark Missed</button>
+      <button class="btn btn-secondary btn-sm" onclick="updateCbStatus('\${callbackId}','cancelled',this)">🚫 Cancel</button>
+    </div>
+  </div>\`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+}
+async function updateCbStatus(callbackId, status, btn) {
+  btn.disabled = true;
+  try {
+    await trpcMutate('salesCallback.updateStatus', {callbackId, status, completedAt: status==='completed' ? new Date().toISOString() : undefined});
+    btn.closest('[style*=fixed]').remove();
+    renderCallbacks();
+  } catch(e) { btn.disabled = false; alert('Error: ' + e.message); }
+}
+
+// ── Door Hangers ───────────────────────────────────────────────────────────────
+async function renderDoorHangers() {
+  const c = document.getElementById('content');
+  let stats = {}, entries = [], goals = {};
+  const today = new Date().toISOString().split('T')[0];
+  try { stats = await trpcQuery('doorHanger.getStats', {dateFrom: today, dateTo: today}) || {}; } catch(e) {}
+  try { entries = await trpcQuery('doorHanger.getAllEntries', {dateFrom: today, dateTo: today}) || []; } catch(e) {}
+  try { goals = await trpcQuery('doorHanger.getGoals') || {}; } catch(e) {}
+
+  const types = [
+    {key:'door_hangers', label:'Door Hangers', emoji:'🚪', goalKey:'dailyDoorHangerGoal'},
+    {key:'business_cards', label:'Business Cards', emoji:'💳', goalKey:'dailyBusinessCardGoal'},
+    {key:'yard_signs', label:'Yard Signs', emoji:'🪧', goalKey:'dailyYardSignGoal'},
+    {key:'table_toppers', label:'Table Toppers', emoji:'📋', goalKey:'dailyTableTopperGoal'},
+  ];
+
+  c.innerHTML = \`
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <h2 style="font-size:22px;font-weight:800">Door Hangers & Outreach</h2>
+    <div style="display:flex;gap:8px">
+      <input type="date" id="dh-date" value="\${today}" onchange="loadDhForDate(this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+      <button class="btn btn-secondary btn-sm" onclick="renderDoorHangers()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+    \${types.map(t => {
+      const count = (stats[t.key] || 0);
+      const goal = goals[t.goalKey] || 0;
+      const pct = goal > 0 ? Math.min(100, Math.round(count/goal*100)) : 0;
+      return \`<div class="stat-card">
+        <div class="stat-label">\${t.emoji} \${t.label}</div>
+        <div class="stat-value">\${count}<span style="font-size:14px;color:var(--muted)"> / \${goal}</span></div>
+        <div style="margin-top:8px;height:4px;background:var(--surface2);border-radius:2px"><div style="height:4px;background:\${pct>=100?'#4ade80':'#0a7ea4'};border-radius:2px;width:\${pct}%"></div></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">\${pct}% of daily goal</div>
+      </div>\`;
+    }).join('')}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Today's Entries</div>
+      <button class="btn btn-secondary btn-sm" onclick="openDhGoalsModal(\${JSON.stringify(goals).replace(/"/g,'&quot;')})">⚙️ Edit Goals</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Team Member</th><th>Type</th><th>Qty</th><th>Address</th><th>City</th><th>Notes</th><th>Actions</th></tr></thead>
+        <tbody>\${entries.length ? entries.map(e => \`<tr>
+          <td style="font-weight:600">\${e.fullName||e.employeeId||'—'}</td>
+          <td>\${e.outreachType?.replace(/_/g,' ')||'—'}</td>
+          <td style="font-weight:700">\${e.quantityDistributed||0}</td>
+          <td style="font-size:12px">\${e.address||'—'}</td>
+          <td>\${e.city||'—'}</td>
+          <td style="font-size:12px;color:var(--muted)">\${e.notes||'—'}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteDhEntry('\${e.entryId}')">Delete</button></td>
+        </tr>\`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No entries today</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>\`;
+}
+async function loadDhForDate(date) {
+  const c = document.getElementById('content');
+  let stats = {}, entries = [], goals = {};
+  try { stats = await trpcQuery('doorHanger.getStats', {dateFrom: date, dateTo: date}) || {}; } catch(e) {}
+  try { entries = await trpcQuery('doorHanger.getAllEntries', {dateFrom: date, dateTo: date}) || []; } catch(e) {}
+  try { goals = await trpcQuery('doorHanger.getGoals') || {}; } catch(e) {}
+  // Re-render with new data
+  renderDoorHangers();
+}
+async function deleteDhEntry(entryId) {
+  if (!confirm('Delete this entry?')) return;
+  try {
+    await trpcMutate('doorHanger.deleteEntry', {entryId});
+    renderDoorHangers();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+function openDhGoalsModal(goals) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;max-width:95vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="font-size:18px;font-weight:700">Edit Daily Goals</h3>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;gap:12px">
+      <div><label style="font-size:12px;color:var(--muted)">Door Hangers</label><input type="number" id="goal-dh" value="\${goals.dailyDoorHangerGoal||50}" style="width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:4px"></div>
+      <div><label style="font-size:12px;color:var(--muted)">Business Cards</label><input type="number" id="goal-bc" value="\${goals.dailyBusinessCardGoal||20}" style="width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:4px"></div>
+      <div><label style="font-size:12px;color:var(--muted)">Yard Signs</label><input type="number" id="goal-ys" value="\${goals.dailyYardSignGoal||10}" style="width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:4px"></div>
+      <div><label style="font-size:12px;color:var(--muted)">Table Toppers</label><input type="number" id="goal-tt" value="\${goals.dailyTableTopperGoal||5}" style="width:100%;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:4px"></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDhGoals(this)">Save Goals</button>
+    </div>
+  </div>\`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+}
+async function saveDhGoals(btn) {
+  btn.disabled = true;
+  try {
+    await trpcMutate('doorHanger.updateGoals', {
+      dailyDoorHangerGoal: parseInt(document.getElementById('goal-dh').value)||50,
+      dailyBusinessCardGoal: parseInt(document.getElementById('goal-bc').value)||20,
+      dailyYardSignGoal: parseInt(document.getElementById('goal-ys').value)||10,
+      dailyTableTopperGoal: parseInt(document.getElementById('goal-tt').value)||5,
+      updatedBy: currentEmployee?.employeeId || 'admin',
+    });
+    btn.closest('[style*=fixed]').remove();
+    renderDoorHangers();
+  } catch(e) { btn.disabled = false; alert('Error: ' + e.message); }
+}
+
+// ── Finance ──────────────────────────────────────────────────────────────
+async function renderFinance() {
+  const c = document.getElementById('content');
+  let summary = {}, expenses = [], transactions = [];
+  const today = fmtDate(new Date());
+  const monthStart = today.slice(0,7) + '-01';
+  try { summary = await trpcQuery('finance.getSummary', {dateFrom: monthStart, dateTo: today}) || {}; } catch(e) {}
+  try { expenses = await trpcQuery('finance.getTransactions', {type: 'expense', dateFrom: monthStart, dateTo: today, limit: 50}) || []; } catch(e) {}
+  try { transactions = await trpcQuery('finance.getTransactions', {dateFrom: monthStart, dateTo: today, limit: 50}) || []; } catch(e) {}
+  const fmt = v => '$' + parseFloat(v||0).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+  c.innerHTML = \`
+  <div style="max-width:1100px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div class="section-title" style="margin:0">Finance</div>
+      <button class="btn btn-primary" onclick="openAddExpenseModal()">+ Add Expense</button>
+    </div>
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">Revenue (MTD)</div><div class="stat-value" style="color:var(--success)">\${fmt(summary.totalRevenue)}</div></div>
+      <div class="stat-card"><div class="stat-label">Expenses (MTD)</div><div class="stat-value" style="color:var(--error)">\${fmt(summary.totalExpenses)}</div></div>
+      <div class="stat-card"><div class="stat-label">Net Profit</div><div class="stat-value" style="color:\${(summary.netProfit||0)>=0?'var(--success)':'var(--error)'}">\${fmt(summary.netProfit)}</div></div>
+      <div class="stat-card"><div class="stat-label">Jobs This Month</div><div class="stat-value">\${summary.jobCount||0}</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Recent Expenses</div></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th></th></tr></thead>
+          <tbody>\${expenses.length ? expenses.map(e => \`<tr>
+            <td>\${e.date||'—'}</td>
+            <td><span class="pill" style="background:rgba(10,126,164,.2);color:#38bdf8">\${e.category||'—'}</span></td>
+            <td>\${e.description||'—'}</td>
+            <td style="font-weight:700;color:var(--error)">\${fmt(e.amount)}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteExpense('\${e.expenseId}')">Delete</button></td>
+          </tr>\`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">No expenses this month</td></tr>'}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Recent Transactions</div></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Date</th><th>Customer</th><th>Service</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>\${transactions.length ? transactions.map(t => \`<tr>
+            <td>\${t.date||'—'}</td>
+            <td>\${t.customerName||'—'}</td>
+            <td>\${t.serviceType||'—'}</td>
+            <td style="font-weight:700;color:var(--success)">\${fmt(t.totalPrice)}</td>
+            <td><span class="pill pill-\${t.status}">\${t.status||'—'}</span></td>
+          </tr>\`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">No transactions found</td></tr>'}
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>\`;
+}
+function openAddExpenseModal() {
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.innerHTML = \`<div class="modal"><div class="modal-header"><div class="modal-title">Add Expense</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+  <div class="modal-body">
+    <div class="form-group"><label class="form-label">Date</label><input type="date" id="exp-date" class="form-input" value="\${fmtDate(new Date())}"></div>
+    <div class="form-group"><label class="form-label">Category</label><select id="exp-cat" class="form-input"><option>supplies</option><option>fuel</option><option>maintenance</option><option>marketing</option><option>payroll</option><option>utilities</option><option>other</option></select></div>
+    <div class="form-group"><label class="form-label">Description</label><input type="text" id="exp-desc" class="form-input" placeholder="e.g. Car wash soap"></div>
+    <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="exp-amt" class="form-input" placeholder="0.00" step="0.01"></div>
+    <div class="form-group"><label class="form-label">Notes</label><textarea id="exp-notes" class="form-input" rows="2" placeholder="Optional notes"></textarea></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="saveExpense(this)">Save Expense</button></div>
+  </div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+}
+async function saveExpense(btn) {
+  btn.disabled = true;
+  try {
+    await trpcMutate('finance.createTransaction', {
+      type: 'expense',
+      categoryId: document.getElementById('exp-cat').value,
+      categoryName: document.getElementById('exp-cat').value,
+      amount: String(parseFloat(document.getElementById('exp-amt').value)||0),
+      date: document.getElementById('exp-date').value,
+      location: 'admin',
+      notes: document.getElementById('exp-desc').value + (document.getElementById('exp-notes').value ? ' - ' + document.getElementById('exp-notes').value : ''),
+      performedBy: currentEmployee?.employeeId||'admin',
+    });
+    btn.closest('.modal-overlay').remove();
+    renderFinance();
+  } catch(e) { btn.disabled=false; alert('Error: '+e.message); }
+}
+async function deleteExpense(id) {
+  if(!confirm('Delete this expense?')) return;
+  try { await trpcMutate('finance.deleteTransaction', {txId:id}); renderFinance(); } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────
+async function renderInventory() {
+  const c = document.getElementById('content');
+  let items = [];
+  try { items = await trpcQuery('inventory.getStockWithDetails') || []; } catch(e) {}
+  c.innerHTML = \`
+  <div style="max-width:900px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div class="section-title" style="margin:0">Inventory</div>
+      <button class="btn btn-primary" onclick="openAddInventoryModal()">+ Add Item</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table><thead><tr><th>Item</th><th>Category</th><th>Qty</th><th>Unit</th><th>Low Stock Alert</th><th>Last Updated</th><th></th></tr></thead>
+        <tbody id="inv-tbody">\${items.length ? items.map(i => \`<tr>
+          <td><div style="font-weight:600">\${i.itemName||'—'}</div><div style="font-size:11px;color:var(--muted)">\${i.sku||''}</div></td>
+          <td>\${i.category||'—'}</td>
+          <td><span style="font-weight:700;color:\${(i.quantity||0)<=(i.lowStockThreshold||5)?'var(--error)':'var(--success)'}">\${i.quantity||0}</span></td>
+          <td>\${i.unit||'—'}</td>
+          <td>\${i.lowStockThreshold||5}</td>
+          <td style="color:var(--muted);font-size:12px">\${i.updatedAt?new Date(i.updatedAt).toLocaleDateString():'—'}</td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="openAdjustInventoryModal('\${i.itemId}','\${(i.itemName||'').replace(/'/g,"&apos;")}',\${i.quantity||0})">Adjust</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteInventoryItem('\${i.itemId}')">Delete</button>
+          </td>
+        </tr>\`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No inventory items yet</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>
+  </div>\`;
+}
+function openAddInventoryModal() {
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.innerHTML = \`<div class="modal"><div class="modal-header"><div class="modal-title">Add Inventory Item</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+  <div class="modal-body">
+    <div class="form-row"><div class="form-group"><label class="form-label">Item Name</label><input type="text" id="inv-name" class="form-input" placeholder="e.g. Car Wash Soap"></div><div class="form-group"><label class="form-label">SKU / Code</label><input type="text" id="inv-sku" class="form-input" placeholder="Optional"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Category</label><select id="inv-cat" class="form-input"><option>chemicals</option><option>equipment</option><option>supplies</option><option>uniforms</option><option>other</option></select></div><div class="form-group"><label class="form-label">Unit</label><input type="text" id="inv-unit" class="form-input" placeholder="e.g. gallons, units"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Initial Quantity</label><input type="number" id="inv-qty" class="form-input" placeholder="0"></div><div class="form-group"><label class="form-label">Low Stock Alert At</label><input type="number" id="inv-low" class="form-input" placeholder="5"></div></div>
+    <div class="form-group"><label class="form-label">Notes</label><textarea id="inv-notes" class="form-input" rows="2" placeholder="Optional"></textarea></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="saveInventoryItem(this)">Add Item</button></div>
+  </div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+}
+function openAdjustInventoryModal(itemId, name, currentQty) {
+  // Store itemName for use in save
+  window._adjItemName = name;
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.innerHTML = \`<div class="modal"><div class="modal-header"><div class="modal-title">Adjust: \${name}</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+  <div class="modal-body">
+    <div style="text-align:center;margin-bottom:16px"><div style="font-size:32px;font-weight:800;color:var(--text)">\${currentQty}</div><div style="color:var(--muted);font-size:13px">Current Quantity</div></div>
+    <div class="form-group"><label class="form-label">Adjustment (+/-)</label><input type="number" id="adj-qty" class="form-input" placeholder="e.g. -5 or +10"></div>
+    <div class="form-group"><label class="form-label">Reason</label><input type="text" id="adj-reason" class="form-input" placeholder="e.g. Used on jobs, Restocked"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="saveInventoryAdjust('\${itemId}',window._adjItemName||'\${name}',\${currentQty},this)">Save</button></div>
+  </div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+}
+async function saveInventoryItem(btn) {
+  btn.disabled = true;
+  try {
+    // First create the item with a default category ID, then we'll use getItems to display
+    const itemName = document.getElementById('inv-name').value;
+    const minThreshold = parseInt(document.getElementById('inv-low').value)||5;
+    // Get or use a default category
+    let cats = [];
+    try { cats = await trpcQuery('inventory.getCategories') || []; } catch(e) {}
+    const catId = cats[0]?.categoryId || 'default';
+    await trpcMutate('inventory.createItem', { categoryId: catId, name: itemName, minThreshold });
+    btn.closest('.modal-overlay').remove();
+    renderInventory();
+  } catch(e) { btn.disabled=false; alert('Error: '+e.message); }
+}
+async function saveInventoryAdjust(itemId, itemName, currentQty, btn) {
+  btn.disabled = true;
+  const adj = parseInt(document.getElementById('adj-qty').value)||0;
+  const reason = document.getElementById('adj-reason').value || 'Manual adjustment';
+  try {
+    const procedure = adj >= 0 ? 'inventory.add' : 'inventory.remove';
+    await trpcMutate(procedure, {
+      itemId,
+      itemName: itemName || 'Unknown',
+      locationType: 'warehouse',
+      locationId: 'warehouse',
+      locationName: 'Warehouse',
+      quantity: Math.abs(adj),
+      performedBy: currentEmployee?.employeeId||'admin',
+      note: reason,
+    });
+    btn.closest('.modal-overlay').remove();
+    renderInventory();
+  } catch(e) { btn.disabled=false; alert('Error: '+e.message); }
+}
+async function deleteInventoryItem(id) {
+  if(!confirm('Delete this item?')) return;
+  try { await trpcMutate('inventory.deleteItem', {itemId:id}); renderInventory(); } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── Bonus & Quiz (Challenges) ────────────────────────────────────────────
+async function renderBonus() {
+  const c = document.getElementById('content');
+  let challenges = [], quizQuestions = [];
+  try { challenges = await trpcQuery('challenge.getAll') || []; } catch(e) {}
+  try { quizQuestions = await trpcQuery('quiz.getAll') || []; } catch(e) {}
+  const fmt = v => '$' + parseFloat(v||0).toFixed(2);
+  c.innerHTML = \`
+  <div style="max-width:1000px">
+    <div class="section-title" style="margin-bottom:20px">Bonus & Quiz</div>
+    <div class="grid-2" style="margin-bottom:24px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">🏆 Challenges</div><button class="btn btn-primary btn-sm" onclick="openAddChallengeModal()">+ New Challenge</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Title</th><th>Prize</th><th>Status</th><th>Expires</th><th></th></tr></thead>
+          <tbody>\${challenges.length ? challenges.map(b => \`<tr>
+            <td style="font-weight:600">\${b.title||'—'}</td>
+            <td>\${b.prizeEmoji||''} \${b.prizeName||'—'}</td>
+            <td><span class="pill pill-\${b.isActive==='yes'?'active':'inactive'}">\${b.isActive==='yes'?'Active':'Inactive'}</span></td>
+            <td style="font-size:12px;color:var(--muted)">\${b.expiresAt||'No expiry'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteChallenge('\${b.challengeId}')">Delete</button></td>
+          </tr>\`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">No challenges yet</td></tr>'}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">📝 Quiz Questions</div></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Question</th><th>Challenge</th><th>Answer</th><th></th></tr></thead>
+          <tbody>\${quizQuestions.length ? quizQuestions.map(q => \`<tr>
+            <td style="font-weight:600;font-size:13px">\${q.questionText||'—'}</td>
+            <td style="font-size:12px;color:var(--muted)">\${q.challengeId||'—'}</td>
+            <td style="font-size:12px;color:var(--success)">\${q.correctAnswer||'—'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteQuizQuestion('\${q.questionId}')">Delete</button></td>
+          </tr>\`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:30px">No quiz questions yet</td></tr>'}
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>\`;
+}
+function openAddChallengeModal() {
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.innerHTML = \`<div class="modal"><div class="modal-header"><div class="modal-title">Create Challenge</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+  <div class="modal-body">
+    <div class="form-group"><label class="form-label">Challenge Title</label><input type="text" id="chal-title" class="form-input" placeholder="e.g. April Safety Challenge"></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Prize Name</label><input type="text" id="chal-prize" class="form-input" placeholder="e.g. $50 Bonus"></div><div class="form-group"><label class="form-label">Prize Emoji</label><input type="text" id="chal-emoji" class="form-input" placeholder="🏆"></div></div>
+    <div class="form-group"><label class="form-label">Expires At (optional)</label><input type="date" id="chal-exp" class="form-input"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="saveChallenge(this)">Create</button></div>
+  </div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+}
+async function saveChallenge(btn) {
+  btn.disabled = true;
+  try {
+    await trpcMutate('challenge.create', {
+      challengeId: 'chal_' + Date.now(),
+      title: document.getElementById('chal-title').value,
+      prizeName: document.getElementById('chal-prize').value || undefined,
+      prizeEmoji: document.getElementById('chal-emoji').value || undefined,
+      isActive: 'yes',
+      expiresAt: document.getElementById('chal-exp').value || undefined,
+    });
+    btn.closest('.modal-overlay').remove();
+    renderBonus();
+  } catch(e) { btn.disabled=false; alert('Error: '+e.message); }
+}
+async function deleteChallenge(id) {
+  if(!confirm('Delete this challenge?')) return;
+  try { await trpcMutate('challenge.delete', {challengeId:id}); renderBonus(); } catch(e) { alert('Error: '+e.message); }
+}
+async function deleteQuizQuestion(id) {
+  if(!confirm('Delete this quiz question?')) return;
+  try { await trpcMutate('quiz.delete', {questionId:id}); renderBonus(); } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── Fleet & Vans ──────────────────────────────────────────────────────────
+async function renderFleet() {
+  const c = document.getElementById('content');
+  let vans = [], alerts = [];
+  try { vans = await trpcQuery('fleet.listVans') || []; } catch(e) {}
+  try { alerts = await trpcQuery('fleet.listAlerts', {}) || []; } catch(e) {}
+  const statusColor = s => ({active:'var(--success)',parked:'var(--muted)',maintenance:'var(--warning)',out_of_service:'var(--error)'}[s]||'var(--muted)');
+  const fuelBar = pct => \`<div style="width:80px;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="width:\${Math.min(100,pct||0)}%;height:100%;background:\${pct>30?'var(--success)':pct>15?'var(--warning)':'var(--error)'};border-radius:4px"></div></div>\`;
+  c.innerHTML = \`
+  <div style="max-width:1100px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div class="section-title" style="margin:0">Fleet & Vans</div>
+      <button class="btn btn-primary" onclick="openAddVanModal()">+ Add Van</button>
+    </div>
+    <div class="grid-4" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">Total Vans</div><div class="stat-value">\${vans.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--success)">\${vans.filter(v=>v.status==='active').length}</div></div>
+      <div class="stat-card"><div class="stat-label">Maintenance</div><div class="stat-value" style="color:var(--warning)">\${vans.filter(v=>v.status==='maintenance').length}</div></div>
+      <div class="stat-card"><div class="stat-label">Open Alerts</div><div class="stat-value" style="color:var(--error)">\${alerts.filter(a=>!a.isRead).length}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">Vans</div></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Van</th><th>Year/Make/Model</th><th>City</th><th>Status</th><th>Fuel</th><th>Odometer</th><th>Next Service</th><th></th></tr></thead>
+        <tbody>\${vans.length ? vans.map(v => \`<tr>
+          <td style="font-weight:700">\${v.vanName||v.vanId}</td>
+          <td style="color:var(--muted);font-size:12px">\${[v.year,v.make,v.model].filter(Boolean).join(' ')||'—'}</td>
+          <td>\${v.city||'—'}</td>
+          <td><span style="color:\${statusColor(v.status)};font-weight:600">\${v.status||'—'}</span></td>
+          <td>\${fuelBar(v.fuelPercent)} <span style="font-size:11px;color:var(--muted)">\${v.fuelPercent||0}%</span></td>
+          <td style="color:var(--muted);font-size:12px">\${v.currentOdometer?v.currentOdometer.toLocaleString()+' mi':'—'}</td>
+          <td style="font-size:12px;color:\${v.nextServiceDate&&new Date(v.nextServiceDate)<new Date()?'var(--error)':'var(--muted)'}">\${v.nextServiceDate||'—'}</td>
+          <td><button class="btn btn-secondary btn-sm" onclick="openVanDetailModal('\${v.vanId}')">Details</button></td>
+        </tr>\`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">No vans added yet</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Fleet Alerts</div></div>
+      <div id="fleet-alerts-list">\${alerts.length ? alerts.map(a => \`<div class="alert-item" style="margin-bottom:8px">
+        <div class="alert-icon">\${a.severity==='critical'?'🔴':a.severity==='warning'?'🟡':'🔵'}</div>
+        <div class="alert-body"><div class="alert-title">\${a.vanName||a.vanId} — \${a.alertType?.replace(/_/g,' ')}</div><div style="font-size:12px;color:var(--muted)">\${a.message||''}</div></div>
+        \${!a.isRead?\`<button class="btn btn-secondary btn-sm" onclick="markFleetAlertRead('\${a.alertId}')">Mark Read</button>\`:''}
+      </div>\`).join('') : '<div style="text-align:center;color:var(--muted);padding:30px">No fleet alerts</div>'}
+      </div>
+    </div>
+  </div>\`;
+}
+function openAddVanModal() {
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.innerHTML = \`<div class="modal"><div class="modal-header"><div class="modal-title">Add Van</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
+  <div class="modal-body">
+    <div class="form-row"><div class="form-group"><label class="form-label">Van Name</label><input type="text" id="van-name" class="form-input" placeholder="e.g. DU 6"></div><div class="form-group"><label class="form-label">City</label><select id="van-city" class="form-input"><option>Destin</option><option>FWB</option><option>Niceville</option><option>Crestview</option><option>Pensacola</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Year</label><input type="number" id="van-year" class="form-input" placeholder="2022"></div><div class="form-group"><label class="form-label">Make</label><input type="text" id="van-make" class="form-input" placeholder="Ram"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Model</label><input type="text" id="van-model" class="form-input" placeholder="ProMaster City"></div><div class="form-group"><label class="form-label">License Plate</label><input type="text" id="van-plate" class="form-input" placeholder="ABC-1234"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">VIN</label><input type="text" id="van-vin" class="form-input" placeholder="Optional"></div><div class="form-group"><label class="form-label">Current Odometer (mi)</label><input type="number" id="van-odo" class="form-input" placeholder="0"></div></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button><button class="btn btn-primary" onclick="saveVan(this)">Add Van</button></div>
+  </div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+}
+async function saveVan(btn) {
+  btn.disabled = true;
+  try {
+    await trpcMutate('fleet.createVan', {
+      name: document.getElementById('van-name').value,
+      city: document.getElementById('van-city').value,
+      year: parseInt(document.getElementById('van-year').value)||undefined,
+      make: document.getElementById('van-make').value,
+      model: document.getElementById('van-model').value,
+      plate: document.getElementById('van-plate').value,
+      vin: document.getElementById('van-vin').value,
+      odometer: parseInt(document.getElementById('van-odo').value)||0,
+    });
+    btn.closest('.modal-overlay').remove();
+    renderFleet();
+  } catch(e) { btn.disabled=false; alert('Error: '+e.message); }
+}
+async function openVanDetailModal(vanId) {
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.style.zIndex = '9999';
+  m.innerHTML = \`<div class="modal" style="max-width:700px"><div class="modal-header"><div class="modal-title">Van Details</div><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div><div class="modal-body" id="van-detail-body"><div style="text-align:center;padding:40px"><div class="spinner"></div></div></div></div>\`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if(e.target===m) m.remove(); });
+  let van={}, maintenance=[], fuel=[], trips=[];
+  try { van = await trpcQuery('fleet.getVan', {id: vanId}) || {}; } catch(e) {}
+  try { maintenance = await trpcQuery('fleet.listMaintenance', {vanId}) || []; } catch(e) {}
+  try { fuel = await trpcQuery('fleet.listFuelLogs', {vanId}) || []; } catch(e) {}
+  try { trips = await trpcQuery('fleet.listTrips', {vanId}) || []; } catch(e) {}
+  const fmt = v => '$'+parseFloat(v||0).toFixed(2);
+  document.getElementById('van-detail-body').innerHTML = \`
+    <div style="margin-bottom:16px"><div style="font-size:18px;font-weight:800">\${van.vanName||vanId}</div><div style="color:var(--muted);font-size:13px">\${[van.year,van.make,van.model].filter(Boolean).join(' ')||'—'} &bull; \${van.city||'—'} &bull; \${van.licensePlate||'—'}</div></div>
+    <div class="grid-3" style="margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">Fuel</div><div class="stat-value">\${van.fuelPercent||0}%</div></div>
+      <div class="stat-card"><div class="stat-label">Odometer</div><div class="stat-value" style="font-size:18px">\${van.currentOdometer?van.currentOdometer.toLocaleString():0} mi</div></div>
+      <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" style="font-size:18px;text-transform:capitalize">\${van.status||'—'}</div></div>
+    </div>
+    <div style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:8px">Maintenance History (\${maintenance.length})</div>
+      \${maintenance.length ? \`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Cost</th><th>Notes</th></tr></thead><tbody>\${maintenance.map(r=>\`<tr><td>\${r.serviceDate||'—'}</td><td>\${r.serviceType||'—'}</td><td>\${fmt(r.cost)}</td><td style="color:var(--muted);font-size:12px">\${r.notes||'—'}</td></tr>\`).join('')}</tbody></table></div>\` : '<div style="color:var(--muted);font-size:13px">No maintenance records</div>'}
+    </div>
+    <div style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:8px">Fuel Log (\${fuel.length})</div>
+      \${fuel.length ? \`<div class="table-wrap"><table><thead><tr><th>Date</th><th>Gallons</th><th>Cost</th><th>Odometer</th></tr></thead><tbody>\${fuel.map(r=>\`<tr><td>\${r.fillDate||'—'}</td><td>\${r.gallons||0}</td><td>\${fmt(r.totalCost)}</td><td>\${r.odometer?r.odometer.toLocaleString():0} mi</td></tr>\`).join('')}</tbody></table></div>\` : '<div style="color:var(--muted);font-size:13px">No fuel records</div>'}
+    </div>
+    <div><div style="font-weight:700;margin-bottom:8px">Recent Trips (\${trips.length})</div>
+      \${trips.length ? \`<div class="table-wrap"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Miles</th></tr></thead><tbody>\${trips.map(r=>\`<tr><td>\${r.tripDate||'—'}</td><td style="font-size:12px">\${r.startAddress||'—'}</td><td style="font-size:12px">\${r.endAddress||'—'}</td><td>\${r.distanceMiles||0}</td></tr>\`).join('')}</tbody></table></div>\` : '<div style="color:var(--muted);font-size:13px">No trip records</div>'}
+    </div>\`;
+}
+async function markFleetAlertRead(alertId) {
+  try { await trpcMutate('fleet.markAlertRead', {id: alertId}); renderFleet(); } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── Team Archive ──────────────────────────────────────────────────────────
+async function renderArchive() {
+  const c = document.getElementById('content');
+  let deactivated = [];
+  try { deactivated = await trpcQuery('employees.listDeactivated') || []; } catch(e) {}
+  c.innerHTML = \`
+  <div style="max-width:900px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div class="section-title" style="margin:0">Team Archive</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px">\${deactivated.length} inactive team member\${deactivated.length!==1?'s':''}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table><thead><tr><th>Name</th><th>Role</th><th>City</th><th>Phone</th><th>Deactivated</th><th></th></tr></thead>
+        <tbody>\${deactivated.length ? deactivated.map(m => \`<tr>
+          <td><div style="font-weight:600">\${m.fullName||'—'}</div><div style="font-size:11px;color:var(--muted)">\${m.employeeId}</div></td>
+          <td><span class="pill pill-\${m.role}">\${m.role||'—'}</span></td>
+          <td>\${m.city||'—'}</td>
+          <td>\${m.phone||'—'}</td>
+          <td style="color:var(--muted);font-size:12px">\${m.updatedAt?new Date(m.updatedAt).toLocaleDateString():'—'}</td>
+          <td><button class="btn btn-success btn-sm" onclick="reactivateMember('\${m.employeeId}','\${(m.fullName||'').replace(/'/g,"&apos;")}')">Reactivate</button></td>
+        </tr>\`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No archived team members</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>
+  </div>\`;
+}
+async function reactivateMember(employeeId, name) {
+  if(!confirm(\`Reactivate \${name}? They will be added back to their city calendar.\`)) return;
+  try {
+    await trpcMutate('employees.reactivate', {employeeId});
+    renderArchive();
+    showToast(\`\${name} has been reactivated\`);
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── Team Chat ─────────────────────────────────────────────────────────────
+let chatPollInterval = null;
+let lastChatMsgId = null;
+async function renderChat() {
+  const c = document.getElementById('content');
+  if(chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval=null; }
+  c.innerHTML = \`
+  <div style="max-width:800px;height:calc(100vh - 120px);display:flex;flex-direction:column">
+    <div class="section-title" style="margin-bottom:16px">Team Chat</div>
+    <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div id="chat-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px"><div style="text-align:center;color:var(--muted);padding:20px"><div class="spinner"></div></div></div>
+      <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px">
+        <input type="text" id="chat-input" class="form-input" placeholder="Type a message..." style="flex:1" onkeydown="if(event.key==='Enter')sendChatMsg()">
+        <button class="btn btn-primary" onclick="sendChatMsg()">Send</button>
+      </div>
+    </div>
+  </div>\`;
+  await loadChatMessages();
+  chatPollInterval = setInterval(loadChatMessages, 5000);
+  // Stop polling when section changes
+  const origShow = window._origShowSection || showSection;
+  if(!window._chatCleanupSet) {
+    window._chatCleanupSet = true;
+    const orig = showSection;
+    window.showSection = function(name) {
+      if(chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval=null; }
+      orig(name);
+    };
+  }
+}
+async function loadChatMessages() {
+  const box = document.getElementById('chat-messages');
+  if(!box) return;
+  let msgs = [];
+  try { msgs = await trpcQuery('chat.getMessages', {limit:50}) || []; } catch(e) { return; }
+  if(!msgs.length) { box.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px">No messages yet. Start the conversation!</div>'; return; }
+  const atBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 40;
+  box.innerHTML = msgs.map(m => {
+    const isMe = m.senderId === currentEmployee?.employeeId;
+    return \`<div style="display:flex;flex-direction:column;align-items:\${isMe?'flex-end':'flex-start'}">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">\${isMe?'You':m.senderName||'Team'} &bull; \${m.createdAt?new Date(m.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):''}</div>
+      <div style="max-width:70%;background:\${isMe?'var(--primary)':'var(--surface2)'};color:\${isMe?'#fff':'var(--text)'};padding:10px 14px;border-radius:\${isMe?'14px 14px 4px 14px':'14px 14px 14px 4px'};font-size:14px;line-height:1.4">\${m.message||''}</div>
+    </div>\`;
+  }).join('');
+  if(atBottom) box.scrollTop = box.scrollHeight;
+}
+async function sendChatMsg() {
+  const input = document.getElementById('chat-input');
+  const msg = input?.value?.trim();
+  if(!msg) return;
+  input.value = '';
+  try {
+    await trpcMutate('chat.sendMessage', {employeeId: currentEmployee?.employeeId||'admin', fullName: currentEmployee?.fullName||'Admin', messageText: msg, channel: 'general'});
+    await loadChatMessages();
+  } catch(e) { alert('Error: '+e.message); }
+}
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--success);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.3)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// Close modals on overlay click
+document.getElementById('job-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeJobModal(); });
+document.getElementById('team-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeTeamModal(); });
+
+// ── Auto-login from session ────────────────────────────────────────────────
+(function() {
+  const saved = sessionStorage.getItem('tlw_admin');
+  if (saved) { try { currentEmployee = JSON.parse(saved); launchApp(); } catch(e) {} }
+})();
+</script>
+</body>
+</html>
+`;

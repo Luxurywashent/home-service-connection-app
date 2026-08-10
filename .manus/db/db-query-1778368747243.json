@@ -1,0 +1,9 @@
+{
+  "query": "SELECT notification_id, employee_id, notification_type, title, message, status FROM notifications WHERE (title IS NULL OR title = '' OR title = ' ') ORDER BY created_at DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT notification_id, employee_id, notification_type, title, message, status FROM notifications WHERE (title IS NULL OR title = '' OR title = ' ') ORDER BY created_at DESC LIMIT 10;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 264
+}

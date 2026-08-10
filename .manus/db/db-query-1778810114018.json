@@ -1,0 +1,319 @@
+{
+  "query": "SHOW TABLES",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SHOW TABLES",
+  "rows": [
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "__drizzle_migrations"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "ai_knowledge_entries"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "bank_statements"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "bank_transactions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "break_records"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "call_logs"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "challenges"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "clock_in_out_records"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "community_comments"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "community_post_likes"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "community_posts"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "company_meetings"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_addresses"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_attachments"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_bookings"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_payment_methods"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_sessions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customer_vehicles"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "customers"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "daily_performance"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "detailer_locations"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "detailer_points"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "do_not_service_list"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "door_hanger_earnings"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "door_hanger_entries"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "door_hanger_goals"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "email_logs"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "employee_progression"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "employee_van_assignments"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "employees"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "eod_checklist_items"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "eod_checklists"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "estimates"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_assets"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_categories"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_cities"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_equity"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_liabilities"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_transactions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "finance_vendors"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "fleet_alerts"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "fleet_fuel_logs"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "fleet_maintenance"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "fleet_trips"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "fleet_vans"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "geofence_events"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "geofence_zones"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "interactive_step_overrides"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_categories"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_items"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_locations"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_stock"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_transactions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "inventory_vans"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investment_payments"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investments"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investor_audit_log"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investor_documents"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investor_sessions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investor_support_requests"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investor_updates"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "investors"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "late_arrival_history"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "morning_meeting_config"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "notification_read_log"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "notifications"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "online_bookings"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "phone_lines"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "point_violations"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "points_ledger"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "price_book_services"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "promotions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "quiz_questions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "receptionist_call_logs"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "redemptions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "referral_codes"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "referrals"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "repair_equipment"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "repair_orders"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "reward_tiers"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "sales_callbacks"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "sales_performance"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "schedule_jobs"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "service_location_detailers"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "service_locations"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "site_inspection_items"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "site_inspections"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "sms_messages"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "subsidiary_cities"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "team_chat_messages"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "time_off_requests"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "tracking_tokens"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "training_modules"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "training_quiz_attempts"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "training_quiz_questions"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "training_steps"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "training_tools"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "user_training_progress"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "users"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "van_checklist_items"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "van_checklists"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "vip_contracts"
+    },
+    {
+      "Tables_in_n2wVeYQgKmefAVwyN2KSSe": "vip_visits"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_n2wVeYQgKmefAVwyN2KSSe\n__drizzle_migrations\nai_knowledge_entries\nbank_statements\nbank_transactions\nbreak_records\ncall_logs\nchallenges\nclock_in_out_records\ncommunity_comments\ncommunity_post_likes\ncommunity_posts\ncompany_meetings\ncustomer_addresses\ncustomer_attachments\ncustomer_bookings\ncustomer_payment_methods\ncustomer_sessions\ncustomer_vehicles\ncustomers\ndaily_performance\ndetailer_locations\ndetailer_points\ndo_not_service_list\ndoor_hanger_earnings\ndoor_hanger_entries\ndoor_hanger_goals\nemail_logs\nemployee_progression\nemployee_van_assignments\nemployees\neod_checklist_items\neod_checklists\nestimates\nfinance_assets\nfinance_categories\nfinance_cities\nfinance_equity\nfinance_liabilities\nfinance_transactions\nfinance_vendors\nfleet_alerts\nfleet_fuel_logs\nfleet_maintenance\nfleet_trips\nfleet_vans\ngeofence_events\ngeofence_zones\ninteractive_step_overrides\ninventory_categories\ninventory_items\ninventory_locations\ninventory_stock\ninventory_transactions\ninventory_vans\ninvestment_payments\ninvestments\ninvestor_audit_log\ninvestor_documents\ninvestor_sessions\ninvestor_support_requests\ninvestor_updates\ninvestors\nlate_arrival_history\nmorning_meeting_config\nnotification_read_log\nnotifications\nonline_bookings\nphone_lines\npoint_violations\npoints_ledger\nprice_book_services\npromotions\nquiz_questions\nreceptionist_call_logs\nredemptions\nreferral_codes\nreferrals\nrepair_equipment\nrepair_orders\nreward_tiers\nsales_callbacks\nsales_performance\nschedule_jobs\nservice_location_detailers\nservice_locations\nsite_inspection_items\nsite_inspections\nsms_messages\nsubsidiary_cities\nteam_chat_messages\ntime_off_requests\ntracking_tokens\ntraining_modules\ntraining_quiz_attempts\ntraining_quiz_questions\ntraining_steps\ntraining_tools\nuser_training_progress\nusers\nvan_checklist_items\nvan_checklists\nvip_contracts\nvip_visits\n",
+  "stderr": "",
+  "execution_time_ms": 263
+}

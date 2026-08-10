@@ -1,0 +1,1 @@
+ALTER TABLE `schedule_jobs` MODIFY COLUMN `source` enum('manual','online','portal_app','vip_credit') NOT NULL DEFAULT 'manual';

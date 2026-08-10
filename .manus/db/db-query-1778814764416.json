@@ -1,0 +1,30 @@
+{
+  "query": "SELECT job_id, customer_name, assigned_to, time_slot, start_hour, end_hour, status, service_description FROM schedule_jobs WHERE location = 'crestview' AND date = '2026-05-15' ORDER BY assigned_to;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3425mj3rtrFc8hn.root --database n2wVeYQgKmefAVwyN2KSSe --execute SELECT job_id, customer_name, assigned_to, time_slot, start_hour, end_hour, status, service_description FROM schedule_jobs WHERE location = 'crestview' AND date = '2026-05-15' ORDER BY assigned_to;",
+  "rows": [
+    {
+      "job_id": "PHONE_1778769844930_LE9ZTS",
+      "customer_name": "Adrienne Miller",
+      "assigned_to": "ELIJAH",
+      "time_slot": "8:00am - 11:00am",
+      "start_hour": "8",
+      "end_hour": "11",
+      "status": "confirmed",
+      "service_description": "Full Detail"
+    },
+    {
+      "job_id": "online_BK_1778814685233_CB2VB4",
+      "customer_name": "Adrian miller",
+      "assigned_to": "NICK",
+      "time_slot": "1:00pm - 5:00pm",
+      "start_hour": "13",
+      "end_hour": "17",
+      "status": "confirmed",
+      "service_description": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "job_id\tcustomer_name\tassigned_to\ttime_slot\tstart_hour\tend_hour\tstatus\tservice_description\nPHONE_1778769844930_LE9ZTS\tAdrienne Miller\tELIJAH\t8:00am - 11:00am\t8\t11\tconfirmed\tFull Detail\nonline_BK_1778814685233_CB2VB4\tAdrian miller\tNICK\t1:00pm - 5:00pm\t13\t17\tconfirmed\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 268
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `interactive_step_overrides` ADD `video_url_iso` text;

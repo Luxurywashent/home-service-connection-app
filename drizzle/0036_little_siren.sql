@@ -1,0 +1,1 @@
+ALTER TABLE `estimates` MODIFY COLUMN `estimate_number` int;

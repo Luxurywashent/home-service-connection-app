@@ -1,0 +1,1 @@
+ALTER TABLE `community_posts` ADD `media_urls` text;

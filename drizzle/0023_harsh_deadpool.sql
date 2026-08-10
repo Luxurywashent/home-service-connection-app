@@ -1,0 +1,1 @@
+ALTER TABLE `detailer_locations` ADD `customer_address` varchar(512);
