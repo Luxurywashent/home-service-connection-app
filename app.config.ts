@@ -6,7 +6,7 @@ import type { ExpoConfig } from "expo/config";
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
 // Bundle ID can only contain letters, numbers, and dots
 // Android requires each dot-separated segment to start with a letter
-const rawBundleId = "space.manus.team.luxury.wash.t20260331174054";
+const rawBundleId = "com.homeserviceconnection.mobile";
 const bundleId =
   rawBundleId
     .replace(/[-_]/g, ".") // Replace hyphens/underscores with dots
@@ -21,15 +21,13 @@ const bundleId =
       return /^[a-zA-Z]/.test(segment) ? segment : "x" + segment;
     })
     .join(".") || "space.manus.app";
-// Extract timestamp from bundle ID and prefix with "manus" for deep link scheme
-// e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
-const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
-const schemeFromBundleId = `manus${timestamp}`;
+// Use a Home Service Connection-specific scheme instead of the copied app scheme.
+const schemeFromBundleId = "homeserviceconnection";
 
 const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "Home Service Connection",
-  appSlug: "team-luxury-wash",
+  appSlug: "home-service-connection",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
   logoUrl: "/manus-storage/hearthline-crm-icon_9e1dc1f0.png",
@@ -41,31 +39,23 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.26.0",
+  version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
-  runtimeVersion: "1.24.0",
+  runtimeVersion: "1.0.0",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
-    buildNumber: "110",
+    buildNumber: "1",
     bundleIdentifier: env.iosBundleId,
     config: {
       googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
     },
     "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSBluetoothAlwaysUsageDescription": "$(PRODUCT_NAME) uses Bluetooth for nearby payment terminal connectivity.",
-        "NSBluetoothPeripheralUsageDescription": "$(PRODUCT_NAME) uses Bluetooth for nearby payment terminal connectivity."
+        "ITSAppUsesNonExemptEncryption": false
       },
-    // entitlements: {
-    //   "com.apple.developer.proximity-reader.payment.acceptance": true,
-    // },
-    // NOTE: Tap to Pay entitlement temporarily disabled.
-    // Re-enable once provisioning profile is regenerated on developer.apple.com
-    // to include com.apple.developer.proximity-reader.payment.acceptance.
   },
   android: {
     config: {
@@ -168,23 +158,13 @@ const config: ExpoConfig = {
         },
       },
     ],
-    // NOTE: @stripe/stripe-terminal-react-native plugin intentionally excluded.
-    // The beta SDK (0.0.1-beta.30) injects TerminalApplicationDelegate.onCreate() into
-    // Android's MainApplication.kt which crashes the app on launch on Android.
-    // Tap to Pay is iOS-only — the module is loaded dynamically at runtime only on iOS
-    // in components/tap-to-pay-checkout.tsx. No plugin needed for iOS-only native modules
-    // when using dynamic require() guards.
   ],
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
   },
   extra: {
-    projectId: "adfde9c0-02c1-4a12-8e86-e75b79a4edcf",
     googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
-    eas: {
-      projectId: "adfde9c0-02c1-4a12-8e86-e75b79a4edcf",
-    },
   },
 };
 

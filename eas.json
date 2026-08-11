@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -12,26 +12,13 @@
       "distribution": "internal",
       "credentialsSource": "remote"
     },
-    "production": {
+    "testflight": {
       "autoIncrement": true,
       "node": "22.13.0",
       "credentialsSource": "remote",
       "env": {
-        "EAS_BUILD_NO_EXPO_GO_WARNING": "true",
-        "EXPO_PUBLIC_API_BASE_URL": "https://luxwashapp-n2wveyqg.manus.space",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCyHAADT6snES3tVLDwz5NGT2mJq9U0Djs",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_OMLuyAywkJGP1UdNixgrxAGm"
-      }
-    }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "adrian@luxurywashonwheels.com",
-        "ascAppId": "6744534068",
-        "ascApiKeyPath": "./AuthKey_MRHZU6Q2UU.p8",
-        "ascApiKeyId": "MRHZU6Q2UU",
-        "ascApiKeyIssuerId": "139af145-6ef6-4920-88fe-b718d239dbb9"
+        "EXPO_PUBLIC_API_BASE_URL": "https://luxwashapp-eysenspg.manus.space",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCyHAADT6snES3tVLDwz5NGT2mJq9U0Djs"
       }
     }
   }

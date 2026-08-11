@@ -3102,3 +3102,7 @@
 - [x] Disconnect Stripe and Stripe Terminal native integrations from this independent copy without affecting the original project or Stripe account.
 - [ ] Revalidate Expo Go compatibility after Stripe removal and document all disabled payment functionality.
 - [ ] Hold TestFlight submission until a native validation route and its prerequisites are confirmed.
+- [x] Prepare a distinct Home Service Connection iOS/TestFlight identity without submitting or publishing the build.
+- [ ] Verify App Store Connect and Expo build prerequisites for a separate internal TestFlight validation path.
+- [x] Prepare a distinct Home Service Connection iOS/TestFlight identity without submitting or publishing the build.
+- [ ] Verify App Store Connect and Expo build prerequisites for a separate internal TestFlight validation path.
