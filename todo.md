@@ -3106,3 +3106,5 @@
 - [ ] Verify App Store Connect and Expo build prerequisites for a separate internal TestFlight validation path.
 - [x] Prepare a distinct Home Service Connection iOS/TestFlight identity without submitting or publishing the build.
 - [ ] Verify App Store Connect and Expo build prerequisites for a separate internal TestFlight validation path.
+- [x] Replace the copied Luxury Wash On Wheels login identity with Home Service Connection before native build validation.
+- [x] Verify the active login source displays Home Service Connection; any Luxury Wash On Wheels preview is stale cached output.
