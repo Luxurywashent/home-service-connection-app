@@ -104,6 +104,8 @@ function NotificationRouter() {
   const { employee } = useEmployeeAuth();
   const router = useRouter();
   useEffect(() => {
+    if (Platform.OS === "web") return;
+
     const isSales = employee?.role === 'sales' || employee?.role === 'door_hanger_rep';
     const isAdmin = employee?.role === 'admin';
     const isOps = employee?.role === 'operations_manager';
