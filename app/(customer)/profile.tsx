@@ -1050,8 +1050,7 @@ export default function CustomerProfileScreen() {
                       const code = referralCodeQuery.data?.code;
                       if (!code) return;
                       Share.share({
-                        message: `Get 10% off your first Luxury Wash On Wheels detail! Download the app and use my referral code ${code} at checkout for 10% off: https://apps.apple.com/app/luxury-wash-on-wheels/id6768833519`,
-                        url: `https://apps.apple.com/app/luxury-wash-on-wheels/id6768833519`,
+                        message: `Get 10% off your first Home Service Connection booking! Use my referral code ${code} at checkout for 10% off.`,
                       });
                     }}
                     activeOpacity={0.85}

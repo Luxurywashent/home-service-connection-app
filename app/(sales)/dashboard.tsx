@@ -266,7 +266,7 @@ function InlinePhotoLogger({ onClose }: { onClose: () => void }) {
       if (status !== "granted") {
         Alert.alert(
           "Camera Permission Required",
-          "Please allow camera access in Settings → Luxury Wash On Wheels → Camera.",
+          "Please allow camera access in Settings → Home Service Connection → Camera.",
           [
             { text: "Cancel", style: "cancel" },
             { text: "Open Settings", onPress: () => Linking.openSettings() },

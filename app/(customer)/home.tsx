@@ -83,7 +83,7 @@ const HOW_IT_WORKS = [
 ];
 
 // Package descriptions — informational, no prices
-// Photos: real customer vehicles from the Luxury Wash On Wheels fleet
+// Service-media references retained from the copied project
 const PACKAGES = [
   {
     id: "luxury_detail",
@@ -92,7 +92,7 @@ const PACKAGES = [
     description:
       "Our flagship service. Every inch of your vehicle treated to perfection — paint correction, full interior, and ceramic protection.",
     image: {
-      // White Maserati GranTurismo with Luxury Wash van behind it
+      // Service vehicle photo
       uri: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663471903126/XqsSZAMHNmenFqvg.jpeg",
     },
     duration: "3–4 hrs",
@@ -689,7 +689,7 @@ export default function CustomerHomeScreen() {
         {/* ── Why Choose Us ───────────────────────────────────────── */}
         <View style={styles.whySection}>
           <View style={styles.sectionAccent} />
-          <Text style={styles.sectionTitle}>Why Luxury Wash?</Text>
+          <Text style={styles.sectionTitle}>Why Home Service Connection?</Text>
 
           {[
             {

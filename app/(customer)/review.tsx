@@ -48,7 +48,7 @@ function getReviewUrl(city?: string): string {
 }
 
 // ─── Review copy text ─────────────────────────────────────────────────────────
-const REVIEW_COPY = `I had an amazing experience with Luxury Wash On Wheels! My car looks absolutely incredible — the attention to detail was outstanding. The team was professional, on time, and went above and beyond. Highly recommend to anyone looking for a premium mobile detailing service!`;
+const REVIEW_COPY = `I had an amazing experience with Home Service Connection! The team was professional, on time, and made it easy to find the help I needed. Highly recommend!`;
 
 export default function CustomerReviewScreen() {
   const router = useRouter();
@@ -211,7 +211,7 @@ export default function CustomerReviewScreen() {
         <View style={styles.thankYouCard}>
           <Text style={styles.thankYouText}>
             Thank you for choosing{"\n"}
-            <Text style={styles.thankYouBrand}>Luxury Wash On Wheels</Text>
+            <Text style={styles.thankYouBrand}>Home Service Connection</Text>
           </Text>
           <Text style={styles.thankYouSub}>
             Your review helps us grow and serve more customers in your community. 🙏

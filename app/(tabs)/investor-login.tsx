@@ -55,7 +55,7 @@ export default function InvestorLoginScreen() {
             </View>
             <Text style={[styles.title, { color: colors.foreground }]}>Investor Portal</Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Luxury Wash On Wheels
+              Home Service Connection
             </Text>
           </View>
 

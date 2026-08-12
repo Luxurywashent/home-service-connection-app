@@ -32,9 +32,9 @@ const SALES_TRAINING: TrainingModule[] = [
     lessons: [
       {
         id: "intro-1",
-        title: "The Luxury Wash Sales Approach",
+        title: "The Home Service Connection Sales Approach",
         duration: "5 min",
-        content: `Welcome to Luxury Wash On Wheels Sales Training!
+        content: `Welcome to Home Service Connection Sales Training!
 
 Our sales approach is built on three pillars:
 
@@ -172,13 +172,13 @@ Research shows that leads contacted within 1 hour are 7x more likely to convert 
 • Never let a lead go more than 48 hours without contact
 
 **What to say on a callback:**
-"Hi [Name], this is [Your Name] from Luxury Wash On Wheels! I'm following up on your interest in getting your [vehicle] detailed. I wanted to reach out while we still have availability this week — do you have 2 minutes?"
+"Hi [Name], this is [Your Name] from Home Service Connection! I'm following up on your home service request. Do you have 2 minutes?"
 
 **If they don't answer:**
 Leave a voicemail AND send a text. Text message follow-ups have a 98% open rate.
 
 **Text template:**
-"Hi [Name]! This is [Name] from Luxury Wash On Wheels. I tried calling — we have a few openings this week for your [vehicle]. Reply here or call me back at [number]. 🚗✨"`,
+"Hi [Name]! This is [Name] from Home Service Connection. I tried calling — we have a few openings this week. Reply here or call me back at [number]."`,
       },
       {
         id: "callback-2",

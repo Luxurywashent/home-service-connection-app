@@ -391,7 +391,7 @@ export default function AdminReceptionistScreen() {
     // Simulate 2-second ring then answer
     await new Promise<void>((res) => setTimeout(res, 2000));
     setCallState("active");
-    const greeting = "Thank you for calling Luxury Wash On Wheels! This is Lexi, your AI assistant. How can I help you today?";
+    const greeting = "Thank you for calling Home Service Connection! This is Lexi, your AI assistant. How can I help you today?";
     const aiGreeting: TestMessage = { role: "assistant", content: greeting, timestamp: new Date() };
     setTestMessages([aiGreeting]);
     setTestHistory([{ role: "assistant", content: greeting }]);

@@ -14,8 +14,8 @@ import { getApiBaseUrl } from "@/constants/oauth";
 import Svg, { Path } from "react-native-svg";
 import { Modal } from "react-native";
 
-// Luxury Wash Icon Component
-function LuxuryWashIcon({ size = 24 }: { size?: number }) {
+// Home Service Connection Icon Component
+function HomeServiceConnectionIcon({ size = 24 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -39,11 +39,11 @@ function timeAgo(dateStr: string) {
 // Static demo messages shown blurred in the background for guests
 const DEMO_MESSAGES = [
   { id: 1, isOut: false, body: "Hi! I wanted to ask about the premium detail package.", time: "2d ago" },
-  { id: 2, isOut: true, name: "Luxury Wash", body: "Of course! Our premium package includes a full interior & exterior detail, ceramic coating prep, and tire shine. Would you like to book?", time: "2d ago" },
+  { id: 2, isOut: true, name: "Home Service Connection", body: "Of course! We can help connect you with the right home service. Would you like to book?", time: "2d ago" },
   { id: 3, isOut: false, body: "Yes, I'd love to! Can I get a Saturday appointment?", time: "2d ago" },
-  { id: 4, isOut: true, name: "Luxury Wash", body: "Absolutely! We have availability this Saturday at 10am or 2pm. Which works best for you?", time: "1d ago" },
+  { id: 4, isOut: true, name: "Home Service Connection", body: "Absolutely! We have availability this Saturday at 10am or 2pm. Which works best for you?", time: "1d ago" },
   { id: 5, isOut: false, body: "10am works perfectly, thank you!", time: "1d ago" },
-  { id: 6, isOut: true, name: "Luxury Wash", body: "Great! You're all set for Saturday at 10am. We'll send a reminder the night before. 🚗✨", time: "1d ago" },
+  { id: 6, isOut: true, name: "Home Service Connection", body: "Great! You're all set for Saturday at 10am. We'll send a reminder the night before.", time: "1d ago" },
   { id: 7, isOut: false, body: "Amazing, can't wait!", time: "23h ago" },
 ];
 
@@ -134,7 +134,7 @@ export default function CustomerMessagesScreen() {
         {/* Header */}
         <View style={[styles.header, { backgroundColor: "#FFFFFF", borderBottomColor: "#E5E7EB" }]}>
           <View style={[styles.avatarSmall, { backgroundColor: "#0a7ea422" }]}>
-            <LuxuryWashIcon size={24} />
+            <HomeServiceConnectionIcon size={24} />
           </View>
           <View style={{ marginLeft: 10 }}>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>Home Service Connection</Text>
@@ -156,7 +156,7 @@ export default function CustomerMessagesScreen() {
               >
                 {!msg.isOut && (
                   <View style={[styles.avatarTiny, { backgroundColor: "#0a7ea422" }]}>
-                    <LuxuryWashIcon size={16} />
+                    <HomeServiceConnectionIcon size={16} />
                   </View>
                 )}
                 <View

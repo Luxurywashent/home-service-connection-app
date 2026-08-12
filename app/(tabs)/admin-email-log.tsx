@@ -67,7 +67,7 @@ export default function AdminEmailLogScreen() {
       {/* Header */}
       <View className="px-5 pt-4 pb-3 border-b border-[#1E3A5F]">
         <Text className="text-white text-2xl font-bold">Email Log</Text>
-        <Text className="text-[#6B7280] text-sm mt-0.5">All outgoing emails from Luxury Wash On Wheels</Text>
+        <Text className="text-[#6B7280] text-sm mt-0.5">All outgoing emails from Home Service Connection</Text>
       </View>
 
       {/* Search */}

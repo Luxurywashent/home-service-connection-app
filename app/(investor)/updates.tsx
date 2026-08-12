@@ -34,7 +34,7 @@ export default function InvestorUpdatesScreen() {
 
         <Text style={[styles.title, { color: colors.foreground }]}>📢 Investor Updates</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
-          Latest news and updates from Luxury Wash On Wheels.
+          Latest news and updates from Home Service Connection.
         </Text>
 
         {updates.isLoading ? (

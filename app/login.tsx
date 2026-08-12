@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Text, View, TextInput, TouchableOpacity, ActivityIndicator,
+  Text, View, Image, TextInput, TouchableOpacity, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Alert, Modal
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -10,7 +10,6 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useCustomerAuth } from "@/lib/customer-context";
 import { trpc } from "@/lib/trpc";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -25,7 +24,6 @@ export default function LoginScreen() {
   const { login: employeeLogin } = useEmployeeAuth();
   const { loginCustomer } = useCustomerAuth();
 
-  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -169,15 +167,6 @@ export default function LoginScreen() {
           </View>
         </View>
       </Modal>
-      {/* Back button pinned at top of safe area — outside the centered scroll so it's always reachable */}
-      <TouchableOpacity
-        onPress={() => router.replace("/")}
-        style={[styles.backBtn, { marginTop: insets.top + 8 }]}
-        activeOpacity={0.7}
-      >
-        <MaterialIcons name="arrow-back" size={20} color="#6B7280" />
-        <Text style={styles.backText}>Back</Text>
-      </TouchableOpacity>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} keyboardShouldPersistTaps="handled">
           <View style={styles.container}>
@@ -185,7 +174,7 @@ export default function LoginScreen() {
             {/* Logo */}
             <View style={styles.logoSection}>
               <View style={styles.logoBox}>
-                <Text style={styles.logoText}>HSC</Text>
+                <Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
               </View>
               <Text style={styles.appName}>Home Service Connection</Text>
               <Text style={styles.appSubtitle}>Home service operations</Text>
@@ -308,11 +297,9 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 28 },
-  backBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14, alignSelf: "flex-start" },
-  backText: { fontSize: 14, color: "#94A3B8" },
   logoSection: { alignItems: "center", paddingVertical: 32 },
   logoBox: { width: 80, height: 80, borderRadius: 22, backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  logoText: { fontSize: 30, fontWeight: "900", color: "#52D3B8" },
+  logoImage: { width: 66, height: 66 },
   appName: { fontSize: 24, fontWeight: "800", color: "#F6F8FC", textAlign: "center" },
   appSubtitle: { fontSize: 14, color: "#94A3B8", marginTop: 4 },
   form: { gap: 16 },

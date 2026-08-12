@@ -153,16 +153,16 @@ function JobDetailModal({
     const phone = job.customerPhone?.replace(/\D/g, "");
     if (!phone) return Alert.alert("No phone", "This job has no customer phone number.");
     const msg = encodeURIComponent(
-      `Hi ${job.customerName?.split(" ")[0] ?? "there"}, this is Luxury Wash On Wheels. We wanted to follow up regarding your recent detail on ${formatDate(job.date)}. Your balance due is ${formatMoney(job.balanceDue)}. Please give us a call or text at 850-517-7874 to settle your balance. Thank you!`
+      `Hi ${job.customerName?.split(" ")[0] ?? "there"}, this is Home Service Connection. We wanted to follow up regarding your recent service on ${formatDate(job.date)}. Your balance due is ${formatMoney(job.balanceDue)}. Please contact us to settle your balance. Thank you!`
     );
     Linking.openURL(`sms:${phone}?body=${msg}`);
   };
 
   const emailCustomer = () => {
     if (!job.customerEmail) return Alert.alert("No email", "This job has no customer email.");
-    const subject = encodeURIComponent("Balance Due — Luxury Wash On Wheels");
+    const subject = encodeURIComponent("Balance Due — Home Service Connection");
     const body = encodeURIComponent(
-      `Hi ${job.customerName?.split(" ")[0] ?? "there"},\n\nThank you for choosing Luxury Wash On Wheels! We noticed there is an outstanding balance of ${formatMoney(job.balanceDue)} for your detail on ${formatDate(job.date)}.\n\nPlease reach out to us at 850-517-7874 to arrange payment at your earliest convenience.\n\nThank you,\nLuxury Wash On Wheels`
+      `Hi ${job.customerName?.split(" ")[0] ?? "there"},\n\nThank you for choosing Home Service Connection! We noticed there is an outstanding balance of ${formatMoney(job.balanceDue)} for your service on ${formatDate(job.date)}.\n\nPlease reach out to arrange payment at your earliest convenience.\n\nThank you,\nHome Service Connection`
     );
     Linking.openURL(`mailto:${job.customerEmail}?subject=${subject}&body=${body}`);
   };

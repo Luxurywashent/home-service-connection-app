@@ -3110,3 +3110,6 @@
 - [x] Verify the active login source displays Home Service Connection; any Luxury Wash On Wheels preview is stale cached output.
 - [x] Create and verify a new administrator profile for Adrian Miller at adrian@detailertoceo.com in this independent copy.
 - [x] Create and verify a new administrator profile for Adrian Miller at adrian@detailertoceo.com in this independent copy.
+- [x] Restore direct routing to the Home Service Connection login screen after the sandbox reset.
+- [x] Restore the Home Service Connection logo and remove remaining user-facing Luxury Wash On Wheels wording.
+- [x] Restore the web-safe native-map compatibility shim and verify the preview loads from current source.

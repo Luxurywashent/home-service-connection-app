@@ -48,7 +48,7 @@ export default function InvestorAdminHomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Investor Admin</Text>
-          <Text style={styles.headerSub}>Luxury Wash On Wheels</Text>
+          <Text style={styles.headerSub}>Home Service Connection</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
           <MaterialIcons name="logout" size={20} color="#7C3AED" />
