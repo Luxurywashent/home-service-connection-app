@@ -3114,3 +3114,5 @@
 - [x] Restore the Home Service Connection logo and remove remaining user-facing Luxury Wash On Wheels wording.
 - [x] Restore the web-safe native-map compatibility shim and verify the preview loads from current source.
 - [x] Archive the copied static web export so it cannot shadow current Home Service Connection Expo Router routes.
+- [x] Remove the Continue as Guest option from the Home Service Connection login screen.
+- [x] Remove the Continue as Guest option from the Home Service Connection login screen.

@@ -263,29 +263,6 @@ export default function LoginScreen() {
                 <Text style={styles.signUpLink}>Create an account</Text>
               </TouchableOpacity>
               </View>
-              {/* Continue as Guest — skip login and go straight to booking */}
-              <View style={{ marginTop: 8, alignItems: "center" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-                  <Text style={{ fontSize: 12, color: "#9CA3AF", fontWeight: "500" }}>or</Text>
-                  <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-                </View>
-               <TouchableOpacity
-                 onPress={() => {
-                   try {
-                      // Must use replace (not push) from a fullScreenModal to navigate into the customer stack
-                      router.replace("/(customer)/book/vehicle" as any);
-                   } catch (e) {
-                     console.error("Navigation error:", e);
-                   }
-                 }}
-                  activeOpacity={0.75}
-                  style={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: 100, borderWidth: 1.5, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", gap: 6 }}
-                >
-                  <MaterialIcons name="person-outline" size={18} color="#6B7280" />
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#374151" }}>Continue as Guest</Text>
-                </TouchableOpacity>
-              </View>
               {/* Investor Portal link — hidden until program is finalized */}
             </View>
           </View>
