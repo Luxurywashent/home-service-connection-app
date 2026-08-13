@@ -18,6 +18,7 @@
       "credentialsSource": "remote",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://luxwashapp-eysenspg.manus.space",
+        "EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://jobwash-veysiubh.manus.space",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCyHAADT6snES3tVLDwz5NGT2mJq9U0Djs"
       }
     }

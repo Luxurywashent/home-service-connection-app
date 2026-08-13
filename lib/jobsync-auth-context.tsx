@@ -1,29 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { Platform } from "react-native";
 
-import { trpc } from "@/lib/trpc";
+import {
+  getJobSyncMobileSession,
+  loginJobSyncMobile,
+  type JobSyncNativeSession,
+} from "@/lib/jobsync-mobile-api";
 export { getNativeEmployeeSession } from "@/lib/jobsync-role-map";
-
-export type JobSyncPortalKind = "company" | "platform";
-export type JobSyncNativeSession = {
-  token: string;
-  portal: JobSyncPortalKind;
-  user: {
-    id: number;
-    name: string;
-    email: string | null;
-    role: "owner" | "dispatcher" | "technician" | "developer" | "sales" | "customer_support" | "operations";
-    memberId?: string;
-  };
-  company?: {
-    id: number;
-    name: string;
-    slug: string;
-    logoUrl: string | null;
-    primaryColor: string | null;
-    accentColor: string | null;
-  };
-};
+export type { JobSyncNativeSession, JobSyncPortalKind } from "@/lib/jobsync-mobile-api";
 
 type JobSyncAuthContextValue = {
   session: JobSyncNativeSession | null;
@@ -33,7 +19,27 @@ type JobSyncAuthContextValue = {
   logout: () => Promise<void>;
 };
 
-const STORAGE_KEY = "hsc_jobsync_native_session";
+const TOKEN_STORAGE_KEY = "hsc_jobsync_mobile_bearer_v1";
+const LEGACY_STORAGE_KEY = "hsc_jobsync_native_session";
+
+async function readStoredToken() {
+  if (Platform.OS === "web") return AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+  return SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
+}
+
+async function storeToken(token: string) {
+  if (Platform.OS === "web") return AsyncStorage.setItem(TOKEN_STORAGE_KEY, token);
+  return SecureStore.setItemAsync(TOKEN_STORAGE_KEY, token, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+}
+
+async function clearStoredToken() {
+  if (Platform.OS === "web") await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+  else await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+  await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
 const JobSyncAuthContext = createContext<JobSyncAuthContextValue>({
   session: null,
   isLoading: true,
@@ -45,55 +51,54 @@ const JobSyncAuthContext = createContext<JobSyncAuthContextValue>({
 export function JobSyncAuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<JobSyncNativeSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const companyLogin = trpc.jobsyncAuth.companyLogin.useMutation();
-  const platformLogin = trpc.jobsyncAuth.platformLogin.useMutation();
-  const sessionQuery = trpc.jobsyncAuth.me.useQuery(
-    { token: session?.token ?? "" },
-    { enabled: Boolean(session?.token), retry: false },
-  );
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => {
-        if (stored) setSession(JSON.parse(stored) as JobSyncNativeSession);
-      })
-      .catch(() => {})
-      .finally(() => setIsLoading(false));
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        let token = await readStoredToken();
+        if (!token) {
+          const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy) as Partial<JobSyncNativeSession>;
+            token = typeof parsed.token === "string" ? parsed.token : null;
+            if (token) await storeToken(token);
+          }
+        }
+        if (!token) return;
+        const restored = await getJobSyncMobileSession(token);
+        if (!cancelled) setSession(restored);
+      } catch {
+        await clearStoredToken().catch(() => {});
+        if (!cancelled) setSession(null);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    restore();
+    return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    if (!session?.token || sessionQuery.isLoading) return;
-    if (sessionQuery.data) {
-      const verified = sessionQuery.data as JobSyncNativeSession;
-      setSession(verified);
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(verified)).catch(() => {});
-      return;
-    }
-    if (sessionQuery.isError) {
-      setSession(null);
-      AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
-    }
-  }, [session?.token, sessionQuery.data, sessionQuery.isError, sessionQuery.isLoading]);
 
   const save = useCallback(async (nextSession: JobSyncNativeSession) => {
     setSession(nextSession);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+    await storeToken(nextSession.token);
+    await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
     return nextSession;
   }, []);
 
   const loginCompany = useCallback(async (input: { email: string; password: string }) => {
-    const result = await companyLogin.mutateAsync(input);
-    return save(result as JobSyncNativeSession);
-  }, [companyLogin, save]);
+    const result = await loginJobSyncMobile({ accountType: "company", ...input });
+    return save(result);
+  }, [save]);
 
   const loginPlatform = useCallback(async (input: { email: string; password: string }) => {
-    const result = await platformLogin.mutateAsync(input);
-    return save(result as JobSyncNativeSession);
-  }, [platformLogin, save]);
+    const result = await loginJobSyncMobile({ accountType: "platform_admin", ...input });
+    return save(result);
+  }, [save]);
 
   const logout = useCallback(async () => {
     setSession(null);
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await clearStoredToken();
   }, []);
 
   return (

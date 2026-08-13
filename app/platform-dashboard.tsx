@@ -1,18 +1,27 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useEffect } from "react";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 export default function PlatformDashboard() {
   const router = useRouter();
-  const { session, logout } = useJobSyncAuth();
+  const { session, isLoading, logout } = useJobSyncAuth();
+
+  useEffect(() => {
+    if (!isLoading && session?.portal !== "platform") router.replace(session ? "/" : "/login");
+  }, [isLoading, router, session]);
 
   const handleSignOut = async () => {
     await logout();
     router.replace("/login");
   };
+
+  if (isLoading || session?.portal !== "platform") {
+    return <ScreenContainer className="items-center justify-center"><ActivityIndicator color="#4D8DFF" /></ScreenContainer>;
+  }
 
   return (
     <ScreenContainer className="p-6" edges={["top", "bottom", "left", "right"]}>
@@ -24,10 +33,10 @@ export default function PlatformDashboard() {
         </View>
       </View>
       <View style={styles.card}>
-        <Text style={styles.welcome}>Welcome, {session?.user.name || "Platform administrator"}</Text>
+        <Text style={styles.welcome}>Welcome, {session.user.name || "Platform administrator"}</Text>
         <Text style={styles.body}>You are signed in to Home Service Connection with your JobSync platform-admin account.</Text>
-        <View style={styles.detailRow}><Text style={styles.detailLabel}>Platform role</Text><Text style={styles.detailValue}>{session?.user.role?.replaceAll("_", " ") || "platform admin"}</Text></View>
-        <View style={styles.detailRow}><Text style={styles.detailLabel}>Administrator ID</Text><Text style={styles.detailValue}>{session?.user.memberId || "—"}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.detailLabel}>Platform role</Text><Text style={styles.detailValue}>{session.user.role.replaceAll("_", " ") || "platform admin"}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.detailLabel}>Administrator ID</Text><Text style={styles.detailValue}>{session.user.memberId || "—"}</Text></View>
       </View>
       <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>This is a native app session. Your JobSync password and remote session cookie are not stored on this device.</Text></View>
       <Pressable accessibilityRole="button" onPress={handleSignOut} style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}><Text style={styles.signOutText}>Sign out</Text></Pressable>

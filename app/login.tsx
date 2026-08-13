@@ -29,6 +29,10 @@ export default function LoginScreen() {
       setError("Enter your email and password.");
       return;
     }
+    if (password.length < 8) {
+      setError("Enter the same password you use on the web app. JobSync passwords are at least 8 characters.");
+      return;
+    }
     setError("");
     setLoading(true);
     try {

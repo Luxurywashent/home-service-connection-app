@@ -1,12 +1,11 @@
 import { Tabs, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform, View, Text, StyleSheet } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { getNativeEmployeeSession, useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { trpc } from "@/lib/trpc";
 import { startGeofencing, stopGeofencing } from "@/lib/geofence-task";
@@ -48,32 +47,43 @@ const adminStyles = StyleSheet.create({
 
 export default function TabLayout() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const { employee, isAuthenticated, isAdmin, isOpsManager, isDoorHangerRep, isSalesRep, loading, login: establishNativeRole } = useEmployeeAuth();
+  const { employee, isAuthenticated, isAdmin, isOpsManager, loading, login: establishNativeRole } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const router = useRouter();
+  const employeeId = employee?.employeeId;
+  const employeeName = employee?.fullName ?? "";
+  const nativeJobSyncEmployee = useMemo(
+    () => jobSyncSession ? getNativeEmployeeSession(jobSyncSession) : null,
+    [jobSyncSession],
+  );
+  const hasMatchingCompanySession = Boolean(
+    nativeJobSyncEmployee &&
+    employee?.sessionSource === "jobsync" &&
+    employee.employeeId === nativeJobSyncEmployee.employeeId &&
+    employee.companyId === nativeJobSyncEmployee.companyId,
+  );
 
   useEffect(() => {
-    const nativeEmployee = jobSyncSession ? getNativeEmployeeSession(jobSyncSession) : null;
-    if (!nativeEmployee || employee?.employeeId === nativeEmployee.employeeId) return;
-    establishNativeRole(nativeEmployee, true).catch(() => {});
-  }, [employee?.employeeId, establishNativeRole, jobSyncSession]);
+    if (!nativeJobSyncEmployee || hasMatchingCompanySession) return;
+    establishNativeRole(nativeJobSyncEmployee, true).catch(() => {});
+  }, [establishNativeRole, hasMatchingCompanySession, nativeJobSyncEmployee]);
 
   useEffect(() => {
-    if (!loading && !jobSyncLoading && !isAuthenticated && !jobSyncSession) {
-      router.replace("/login");
+    if (loading || jobSyncLoading) return;
+    if (jobSyncSession?.portal === "platform") {
+      router.replace("/platform-dashboard");
+      return;
     }
-  }, [loading, isAuthenticated, jobSyncLoading, jobSyncSession, router]);
+    if (!nativeJobSyncEmployee) router.replace("/login");
+  }, [jobSyncLoading, jobSyncSession?.portal, loading, nativeJobSyncEmployee, router]);
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {
     enabled: !!employee && !isAdmin && Platform.OS !== "web",
     staleTime: 5 * 60 * 1000,
   });
-  const logEventMut = trpc.geofence.logEvent.useMutation();
-
   useEffect(() => {
-    if (!employee || isAdmin || Platform.OS === "web") return;
+    if (!employeeId || isAdmin || Platform.OS === "web") return;
     const zones = (zonesQuery.data ?? []) as any[];
     const activeZones = zones.filter((z: any) => z.isActive === 1 && z.latitude && z.longitude);
     if (activeZones.length === 0) return;
@@ -85,13 +95,13 @@ export default function TabLayout() {
         longitude: z.longitude,
         radiusMeters: z.radiusMeters ?? 402,
       })),
-      employee.employeeId,
-      employee.fullName ?? "",
+      employeeId,
+      employeeName,
     );
     return () => { stopGeofencing(); };
-  }, [employee?.employeeId, isAdmin, zonesQuery.data]);
+  }, [employeeId, employeeName, isAdmin, zonesQuery.data]);
 
-  if (loading || jobSyncLoading || !isAuthenticated) return null;
+  if (loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

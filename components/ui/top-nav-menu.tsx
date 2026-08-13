@@ -168,10 +168,11 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     setIsOpen(false);
     try {
       await logoutMutation.mutateAsync();
-      await Promise.all([logout(), logoutJobSync()]);
-      router.replace("/login");
     } catch (e) {
-      console.error("Logout failed:", e);
+      console.warn("Legacy API logout failed; clearing device sessions anyway.", e);
+    } finally {
+      await Promise.allSettled([logout(), logoutJobSync()]);
+      router.replace("/login");
     }
   };
 

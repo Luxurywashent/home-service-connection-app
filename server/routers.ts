@@ -1,6 +1,5 @@
 import { z } from "zod";
 import Stripe from "stripe";
-import { TRPCError } from "@trpc/server";
 import { triggerGhlSms } from "./_core/index";
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -15,7 +14,6 @@ import * as customerDb from "./customerDb";
 import { findOrCreateManualCustomer } from "./customerDb";
 import * as fleetDb from "./fleetDb";
 import * as investorDb from "./investorDb";
-import * as jobSyncAuth from "./jobsyncAuth";
 import { storagePut, storageGet } from "./storage";
 import { sendEmail, buildNotificationEmail, buildBookingConfirmationEmail, buildAdminBookingAlertEmail, buildAdminBookingChangeEmail, buildOnTheWayEmail, buildLateArrivalEmail, buildInspectionReportEmail, buildReviewRequestEmail, getReviewLinkForCity, buildTipRequestEmail, buildPaymentReceiptEmail } from "./email";
 import { ENV } from "./_core/env";
@@ -32,26 +30,6 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
-  }),
-
-  jobsyncAuth: router({
-    companyLogin: publicProcedure
-      .input(z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(8).max(128) }))
-      .mutation(async ({ input }) => {
-        const session = await jobSyncAuth.loginJobSyncCompany(input);
-        if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Company email or password." });
-        return session;
-      }),
-    platformLogin: publicProcedure
-      .input(z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(8).max(128) }))
-      .mutation(async ({ input }) => {
-        const session = await jobSyncAuth.loginJobSyncPlatform(input);
-        if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid platform-admin email or password." });
-        return session;
-      }),
-    me: publicProcedure
-      .input(z.object({ token: z.string().min(1).max(4096) }))
-      .query(({ input }) => jobSyncAuth.verifyJobSyncNativeSession(input.token)),
   }),
 
   employee: router({
