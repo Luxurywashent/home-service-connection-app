@@ -3116,3 +3116,11 @@
 - [x] Archive the copied static web export so it cannot shadow current Home Service Connection Expo Router routes.
 - [x] Remove the Continue as Guest option from the Home Service Connection login screen.
 - [x] Remove the Continue as Guest option from the Home Service Connection login screen.
+- [ ] Verify Home Service Connection TestFlight prerequisites and prepare the user-controlled release checklist.
+- [ ] Retrieve and provide the current Home Service Connection Expo development link.
+- [ ] Link the local Home Service Connection configuration to its newly created Expo/EAS project before the first iOS build.
+- [ ] Retrieve or establish the Expo/EAS project association without requiring a manually copied Project ID.
+- [ ] Use the managed Publish flow for the TestFlight build without exposing an EAS token or running a local build.
+- [ ] Keep TestFlight credentials in the managed Expo/Apple flow and rotate the EAS token that was shared in chat.
+- [x] Lower the Home Service Connection logo and login form to improve the sign-in screen’s vertical spacing.
+- [ ] Record and verify the completed App Store Connect connection for Home Service Connection.

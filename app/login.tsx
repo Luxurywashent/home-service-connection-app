@@ -168,7 +168,7 @@ export default function LoginScreen() {
         </View>
       </Modal>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.container}>
 
             {/* Logo */}
@@ -273,6 +273,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  scrollContent: { flexGrow: 1, justifyContent: "center", paddingTop: 72, paddingBottom: 24 },
   container: { flex: 1, paddingHorizontal: 28 },
   logoSection: { alignItems: "center", paddingVertical: 32 },
   logoBox: { width: 80, height: 80, borderRadius: 22, backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", justifyContent: "center", alignItems: "center", marginBottom: 16 },
