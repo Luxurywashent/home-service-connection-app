@@ -9,6 +9,13 @@
 - [x] Route Company and Platform Admin credentials through a secure backend exchange that does not expose JobSync session cookies to the mobile client.
 - [ ] Validate a live JobSync Company account and Platform Admin account through the native mobile app on a device.
 - [x] Remove Company ID from native JobSync login; use email and password only for automatic Company resolution.
+- [x] Audit why existing JobSync credentials fail in the native app and verify the actual deployed authentication contract.
+- [x] Map JobSync Company Owner/Admin, Operations Manager, and Detailer roles to native Home Service Connection routes.
+- [ ] Add company-scoped native route guards so one Company's users cannot enter another Company's workspace.
+- [ ] Validate a Company Owner/Admin, Operations Manager, and Detailer with real JobSync credentials before declaring the app transition complete.
+- [ ] Verify or create the actual JobSync platform owner, Company owner, and Company member records required for live credential testing.
+- [x] Bridge the JobSync-native session into the existing native role guard so authenticated users do not return to the login screen.
+- [ ] Replace copied local dashboard queries with Company-scoped JobSync data access before enabling the transitioned Company workspace.
 
 - [x] Theme configuration (blue/black brand colors, performance colors)
 - [x] Database schema (Employees, Daily_Performance, Notifications, Time_Off_Requests, Notification_Read_Log)

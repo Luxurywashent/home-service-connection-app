@@ -14,6 +14,11 @@ export interface EmployeeSession {
   phoneNumber: string | null;
   hourlyRate: number | null;
   upsellBonusPct: number | null;
+  /** Present only for Company-scoped sessions authenticated through JobSync. */
+  companyId?: number | null;
+  companyName?: string | null;
+  jobSyncMemberId?: string | null;
+  sessionSource?: "local" | "jobsync";
 }
 
 interface AuthContextType {

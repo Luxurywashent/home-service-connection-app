@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import { trpc } from "@/lib/trpc";
+export { getNativeEmployeeSession } from "@/lib/jobsync-role-map";
 
 export type JobSyncPortalKind = "company" | "platform";
 export type JobSyncNativeSession = {

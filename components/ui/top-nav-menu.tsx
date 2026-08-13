@@ -7,6 +7,7 @@ import { useState } from "react";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
 import { HeaderClockStatus } from "@/components/header-clock-status";
@@ -123,6 +124,7 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { logout, isAdmin, isOpsManager, isSalesRep, employee: currentEmployee } = useEmployeeAuth();
+  const { logout: logoutJobSync } = useJobSyncAuth();
   const [isOpen, setIsOpen] = useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
 
@@ -166,7 +168,7 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     setIsOpen(false);
     try {
       await logoutMutation.mutateAsync();
-      logout();
+      await Promise.all([logout(), logoutJobSync()]);
       router.replace("/login");
     } catch (e) {
       console.error("Logout failed:", e);

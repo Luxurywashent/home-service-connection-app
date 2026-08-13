@@ -5,12 +5,12 @@ import { MaterialIcons } from "@expo/vector-icons";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useEmployeeAuth } from "@/lib/auth-context";
-import { useJobSyncAuth, type JobSyncPortalKind } from "@/lib/jobsync-auth-context";
+import { getNativeEmployeeSession, useJobSyncAuth, type JobSyncPortalKind } from "@/lib/jobsync-auth-context";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { loginCompany, loginPlatform } = useJobSyncAuth();
-  const { logout: logoutLegacyEmployee } = useEmployeeAuth();
+  const { login: establishNativeRole, logout: logoutLegacyEmployee } = useEmployeeAuth();
   const [portal, setPortal] = useState<JobSyncPortalKind>("company");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,8 +39,15 @@ export default function LoginScreen() {
       await logoutLegacyEmployee();
       if (session.portal === "platform") {
         router.replace("/platform-dashboard");
-      } else if (session.user.role === "technician") {
+        return;
+      }
+      const nativeEmployee = getNativeEmployeeSession(session);
+      if (!nativeEmployee) throw new Error("This Company role is not supported in the native app.");
+      await establishNativeRole(nativeEmployee, true);
+      if (nativeEmployee.role === "detailer") {
         router.replace("/(tabs)");
+      } else if (nativeEmployee.role === "operations_manager") {
+        router.replace("/(tabs)/ops-dashboard");
       } else {
         router.replace("/(tabs)/admin-dashboard");
       }
@@ -80,7 +87,7 @@ export default function LoginScreen() {
               <Pressable accessibilityRole="button" disabled={loading} onPress={handleLogin} style={({ pressed }) => [styles.signInButton, (pressed || loading) && styles.signInButtonPressed]}>{loading ? <Text style={styles.signInText}>Verifying securely…</Text> : <><Text style={styles.signInText}>Sign in to the app</Text><MaterialIcons color="#FFFFFF" name="arrow-forward" size={19} /></>}</Pressable>
             </View>
             <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>Your password is verified by JobSync. The app creates its own native session and does not open the website.</Text></View>
-            <Text style={styles.helpText}>{companyPortal ? "Use the same email and password you already use in JobSync. We identify your Company workspace automatically." : "Platform Admin credentials are separate from Company credentials."}</Text>
+            <Text style={styles.helpText}>{companyPortal ? "Company Owner/Admin, Operations Manager, and Detailer access is assigned automatically from your JobSync Company role." : "Platform Admin credentials are separate from Company credentials."}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

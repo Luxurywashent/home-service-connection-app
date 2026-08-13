@@ -5,6 +5,7 @@ import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform, View, Text, StyleSheet } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { getNativeEmployeeSession, useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useEffect } from "react";
 import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { trpc } from "@/lib/trpc";
@@ -48,14 +49,21 @@ const adminStyles = StyleSheet.create({
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { employee, isAuthenticated, isAdmin, isOpsManager, isDoorHangerRep, isSalesRep, loading } = useEmployeeAuth();
+  const { employee, isAuthenticated, isAdmin, isOpsManager, isDoorHangerRep, isSalesRep, loading, login: establishNativeRole } = useEmployeeAuth();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
+    const nativeEmployee = jobSyncSession ? getNativeEmployeeSession(jobSyncSession) : null;
+    if (!nativeEmployee || employee?.employeeId === nativeEmployee.employeeId) return;
+    establishNativeRole(nativeEmployee, true).catch(() => {});
+  }, [employee?.employeeId, establishNativeRole, jobSyncSession]);
+
+  useEffect(() => {
+    if (!loading && !jobSyncLoading && !isAuthenticated && !jobSyncSession) {
       router.replace("/login");
     }
-  }, [loading, isAuthenticated]);
+  }, [loading, isAuthenticated, jobSyncLoading, jobSyncSession, router]);
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {
@@ -83,7 +91,7 @@ export default function TabLayout() {
     return () => { stopGeofencing(); };
   }, [employee?.employeeId, isAdmin, zonesQuery.data]);
 
-  if (loading || !isAuthenticated) return null;
+  if (loading || jobSyncLoading || !isAuthenticated) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
