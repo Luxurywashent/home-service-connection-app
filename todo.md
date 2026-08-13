@@ -5,6 +5,9 @@
 - [x] Inspect the uploaded JobSync project and document its platform-admin and company-ID authentication model.
 - [x] Connect Home Service Connection authentication to the same JobSync company credentials and company context.
 - [x] Add separate Platform Admin and Company Sign In portal choices to the mobile login experience.
+- [x] Replace the embedded JobSync web portals with native login forms and native Home Service Connection sessions.
+- [x] Route Company and Platform Admin credentials through a secure backend exchange that does not expose JobSync session cookies to the mobile client.
+- [ ] Validate a live JobSync Company account and Platform Admin account through the native mobile app on a device.
 
 - [x] Theme configuration (blue/black brand colors, performance colors)
 - [x] Database schema (Employees, Daily_Performance, Notifications, Time_Off_Requests, Notification_Read_Log)

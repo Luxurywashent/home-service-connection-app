@@ -22,6 +22,7 @@ import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-run
 import { AuthProvider } from "@/lib/auth-context";
 import { CustomerProvider } from "@/lib/customer-context";
 import { InvestorAuthProvider } from "@/lib/investor-auth";
+import { JobSyncAuthProvider } from "@/lib/jobsync-auth-context";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform as RNPlatform } from "react-native";
@@ -353,6 +354,7 @@ export default function RootLayout() {
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AuthProvider>
+          <JobSyncAuthProvider>
           <InvestorAuthProvider>
           <CustomerProvider>
             <NotificationRouter />
@@ -362,6 +364,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="(customer)" options={{ presentation: "card", gestureEnabled: false }} />
               <Stack.Screen name="login" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
+              <Stack.Screen name="platform-dashboard" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
               <Stack.Screen name="investor-pitch" options={{ presentation: "fullScreenModal" }} />
               <Stack.Screen name="investor-login" options={{ presentation: "fullScreenModal" }} />
               <Stack.Screen name="investor-inquiry" options={{ presentation: "fullScreenModal" }} />
@@ -372,6 +375,7 @@ export default function RootLayout() {
             </Stack>
           </CustomerProvider>
           </InvestorAuthProvider>
+          </JobSyncAuthProvider>
           </AuthProvider>
           <StatusBar style="auto" />
         </QueryClientProvider>

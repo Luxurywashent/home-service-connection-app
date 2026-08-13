@@ -16420,6 +16420,7 @@ function registerStorageProxy(app) {
 // server/routers.ts
 import { z as z3 } from "zod";
 import Stripe from "stripe";
+import { TRPCError as TRPCError3 } from "@trpc/server";
 
 // server/_core/systemRouter.ts
 init_notification();
@@ -18289,6 +18290,116 @@ async function updateInvestorInquiryStatus(inquiryId, data) {
   }
 }
 
+// server/jobsyncAuth.ts
+import { SignJWT as SignJWT2, jwtVerify as jwtVerify2 } from "jose";
+var JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
+var NATIVE_SESSION_DURATION_SECONDS = 60 * 60 * 12;
+function nativeSessionSecret() {
+  return new TextEncoder().encode(process.env.JWT_SECRET || "home-service-connection-native-session");
+}
+function trpcBody(input) {
+  return JSON.stringify({ 0: { json: input } });
+}
+function getTrpcJson(payload) {
+  const first = Array.isArray(payload) ? payload[0] : null;
+  if (!first || typeof first !== "object") return null;
+  const record = first;
+  if (record.error) return null;
+  return record.result?.data?.json ?? null;
+}
+function getSessionCookie(response, cookieName) {
+  const raw = response.headers.get("set-cookie") || "";
+  const match = raw.match(new RegExp(`(?:^|,\\s*)${cookieName}=([^;]+)`));
+  return match ? `${cookieName}=${match[1]}` : null;
+}
+async function runMutation(procedure, input, cookieName) {
+  const response = await fetch(`${JOBSYNC_BASE_URL}/api/trpc/${procedure}?batch=1`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: trpcBody(input)
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !getTrpcJson(payload)) return null;
+  const cookie = getSessionCookie(response, cookieName);
+  return cookie ? { data: getTrpcJson(payload), cookie } : null;
+}
+async function runQuery(procedure, cookie) {
+  const input = encodeURIComponent(JSON.stringify({ 0: { json: null } }));
+  const response = await fetch(`${JOBSYNC_BASE_URL}/api/trpc/${procedure}?batch=1&input=${input}`, {
+    headers: { Accept: "application/json", Cookie: cookie }
+  });
+  const payload = await response.json().catch(() => null);
+  return response.ok ? getTrpcJson(payload) : null;
+}
+async function mintNativeSession(payload) {
+  const token = await new SignJWT2({
+    kind: "jobsync_native",
+    portal: payload.portal,
+    user: payload.user,
+    company: payload.company
+  }).setProtectedHeader({ alg: "HS256" }).setSubject(String(payload.user.id)).setIssuedAt().setExpirationTime(`${NATIVE_SESSION_DURATION_SECONDS}s`).sign(nativeSessionSecret());
+  return { ...payload, token };
+}
+async function loginJobSyncCompany(input) {
+  const login = await runMutation(
+    "auth.emailLogin",
+    { email: input.email.trim().toLowerCase(), password: input.password },
+    "hsc_company_session"
+  );
+  if (!login) return null;
+  const workspace = await runQuery("auth.workspace", login.cookie);
+  if (!workspace?.user?.id || !workspace.company?.id || String(workspace.company.id) !== input.companyId.trim()) return null;
+  if (!workspace.user.role || !["owner", "dispatcher", "technician"].includes(workspace.user.role)) return null;
+  return mintNativeSession({
+    portal: "company",
+    user: {
+      id: workspace.user.id,
+      name: workspace.user.name || "Company member",
+      email: workspace.user.email ?? null,
+      role: workspace.user.role,
+      memberId: workspace.user.memberId
+    },
+    company: {
+      id: workspace.company.id,
+      name: workspace.company.name || "Company workspace",
+      slug: workspace.company.slug || "",
+      logoUrl: workspace.company.logoUrl ?? null,
+      primaryColor: workspace.company.primaryColor ?? null,
+      accentColor: workspace.company.accentColor ?? null
+    }
+  });
+}
+async function loginJobSyncPlatform(input) {
+  const login = await runMutation(
+    "platformOwnerAuth.emailLogin",
+    { email: input.email.trim().toLowerCase(), password: input.password },
+    "fs_platform_owner"
+  );
+  if (!login) return null;
+  const owner = await runQuery("platformOwnerAuth.me", login.cookie);
+  if (!owner?.ownerId || !owner.platformRole) return null;
+  return mintNativeSession({
+    portal: "platform",
+    user: {
+      id: owner.ownerId,
+      name: owner.displayName || "Platform administrator",
+      email: input.email.trim().toLowerCase(),
+      role: owner.platformRole,
+      memberId: owner.identifier
+    }
+  });
+}
+async function verifyJobSyncNativeSession(token) {
+  try {
+    const { payload } = await jwtVerify2(token, nativeSessionSecret());
+    const session = payload;
+    if (session.kind !== "jobsync_native" || session.portal !== "company" && session.portal !== "platform" || !session.user?.id) return null;
+    return { ...session, token };
+  } catch {
+    return null;
+  }
+}
+
 // server/routers.ts
 init_storage();
 init_email();
@@ -18304,6 +18415,19 @@ var appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true };
     })
+  }),
+  jobsyncAuth: router({
+    companyLogin: publicProcedure.input(z3.object({ companyId: z3.string().trim().min(1).max(32), email: z3.string().trim().toLowerCase().email(), password: z3.string().min(8).max(128) })).mutation(async ({ input }) => {
+      const session = await loginJobSyncCompany(input);
+      if (!session) throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid Company ID, email, or password." });
+      return session;
+    }),
+    platformLogin: publicProcedure.input(z3.object({ email: z3.string().trim().toLowerCase().email(), password: z3.string().min(8).max(128) })).mutation(async ({ input }) => {
+      const session = await loginJobSyncPlatform(input);
+      if (!session) throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid platform-admin email or password." });
+      return session;
+    }),
+    me: publicProcedure.input(z3.object({ token: z3.string().min(1).max(4096) })).query(({ input }) => verifyJobSyncNativeSession(input.token))
   }),
   employee: router({
     login: publicProcedure.input(z3.object({ identifier: z3.string().min(1), pin: z3.string().min(4).max(6) })).mutation(async ({ input }) => {
