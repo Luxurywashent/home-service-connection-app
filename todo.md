@@ -1,5 +1,11 @@
 # Project TODO
 
+## JobSync Platform Integration
+
+- [x] Inspect the uploaded JobSync project and document its platform-admin and company-ID authentication model.
+- [x] Connect Home Service Connection authentication to the same JobSync company credentials and company context.
+- [x] Add separate Platform Admin and Company Sign In portal choices to the mobile login experience.
+
 - [x] Theme configuration (blue/black brand colors, performance colors)
 - [x] Database schema (Employees, Daily_Performance, Notifications, Time_Off_Requests, Notification_Read_Log)
 - [x] API routes for all CRUD operations
@@ -3128,6 +3134,8 @@
 - [x] Verify the live deployed administrator login response after the compatibility release and correct any remaining mismatch.
 - [ ] Verify Adrian Miller’s administrator sign-in through the deployed client flow and correct any client-side mismatch.
 - [ ] Audit the deployed authentication flow end-to-end and add a reliable administrator account provisioning path if required.
+- [ ] Confirm whether the Home Service Connection project database is shared with the deployed web app backend.
 - [x] Route numeric administrator PIN logins directly to the verified employee endpoint and make customer lookup compatible with the deployed schema.
+- [ ] Add a dedicated Employee ID and PIN sign-in path for administrator access and verify Adrian Miller’s credentials through it.
 - [x] Prevent employee session storage failures from blocking a successful administrator login redirect.
 - [ ] Record and verify the completed App Store Connect connection for Home Service Connection.

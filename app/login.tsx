@@ -1,298 +1,110 @@
-import { useState } from "react";
-import {
-  Text, View, Image, TextInput, TouchableOpacity, ActivityIndicator,
-  KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Alert, Modal
-} from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ScreenContainer } from "@/components/screen-container";
-import { useColors } from "@/hooks/use-colors";
-import { useEmployeeAuth } from "@/lib/auth-context";
-import { useCustomerAuth } from "@/lib/customer-context";
-import { trpc } from "@/lib/trpc";
 import { MaterialIcons } from "@expo/vector-icons";
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
+import { ScreenContainer } from "@/components/screen-container";
+import type { JobSyncPortal } from "@/lib/jobsync-portal";
+
+const portalOptions: {
+  portal: JobSyncPortal;
+  icon: "business" | "admin-panel-settings";
+  title: string;
+  description: string;
+  note: string;
+}[] = [
+  {
+    portal: "company",
+    icon: "business",
+    title: "Company Sign In",
+    description: "Open your private Company workspace.",
+    note: "Use the same JobSync email and password already assigned to your Company account.",
+  },
+  {
+    portal: "platform",
+    icon: "admin-panel-settings",
+    title: "Platform Admin",
+    description: "Manage Companies, plans, and platform operations.",
+    note: "Use separate platform-owner credentials. Company credentials do not grant platform access.",
+  },
+];
 
 export default function LoginScreen() {
-  const colors = useColors();
   const router = useRouter();
-  const { login: employeeLogin } = useEmployeeAuth();
-  const { loginCustomer } = useCustomerAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const customerLoginMutation = trpc.customer.login.useMutation();
-  const employeeLoginMutation = trpc.employee.login.useMutation();
-
-  // Forgot Password
-  const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSent, setForgotSent] = useState(false);
-  const [forgotLoading, setForgotLoading] = useState(false);
-  const forgotPasswordMutation = trpc.customer.forgotPassword.useMutation({
-    onSuccess: () => { setForgotLoading(false); setForgotSent(true); },
-    onError: (e) => { setForgotLoading(false); Alert.alert("Error", e.message); },
-  });
-  const handleForgotPassword = () => {
-    if (!forgotEmail.trim()) { Alert.alert("Required", "Please enter your email address."); return; }
-    setForgotLoading(true);
-    forgotPasswordMutation.mutate({ email: forgotEmail.trim().toLowerCase() });
-  };
-
-  const completeEmployeeLogin = async (employee: any) => {
-    await employeeLogin(employee, true);
-    const greeting = getGreeting();
-    alert(`${greeting}, ${employee.fullName}! Welcome to Home Service Connection.`);
-    if (employee.role === "door_hanger_rep" || employee.role === "sales") {
-      router.replace("/(sales)/dashboard");
-    } else if (employee.role === "operations_manager") {
-      router.replace("/(tabs)/ops-dashboard");
-    } else if (employee.role === "admin" || employee.role === "office") {
-      router.replace("/(tabs)/admin-dashboard");
-    } else {
-      router.replace("/(tabs)");
-    }
-  };
-
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter your email and password");
-      return;
-    }
-    setError("");
-    setLoading(true);
-    try {
-      const identifier = email.trim();
-      const looksLikeEmployeePin = /^\d{4,6}$/.test(password);
-
-      // Employee credentials use a numeric PIN. Try this verified path first so
-      // an unrelated customer lookup cannot mask a successful administrator login.
-      if (looksLikeEmployeePin) {
-        const employeeResult = await employeeLoginMutation.mutateAsync({ identifier, pin: password });
-        if (employeeResult.success && employeeResult.employee) {
-          await completeEmployeeLogin(employeeResult.employee);
-          return;
-        }
-      }
-
-      // First try customer login
-      const customerResult = await customerLoginMutation.mutateAsync({
-        email: identifier.toLowerCase(),
-        password,
-      });
-
-      if (customerResult.success && customerResult.token && customerResult.customer) {
-        await loginCustomer(customerResult.token, customerResult.customer);
-        router.replace("/(customer)/home" as any);
-        return;
-      }
-
-      // If customer login fails, try employee login
-      const employeeResult = await employeeLoginMutation.mutateAsync({
-        identifier,
-        pin: password,
-      });
-
-      if (employeeResult.success && employeeResult.employee) {
-        await completeEmployeeLogin(employeeResult.employee);
-        return;
-      }
-
-      setError("Invalid email or password. Please try again.");
-    } catch (e: any) {
-      // If customer login throws, still try employee login
-      try {
-        const employeeResult = await employeeLoginMutation.mutateAsync({
-          identifier: email.trim(),
-          pin: password,
-        });
-        if (employeeResult.success && employeeResult.employee) {
-          await completeEmployeeLogin(employeeResult.employee);
-          return;
-        }
-      } catch {
-        // both failed
-      }
-      setError("Invalid email or password. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  const openPortal = (portal: JobSyncPortal) => {
+    router.push({ pathname: "/portal" as any, params: { portal } });
   };
 
   return (
     <ScreenContainer edges={["bottom", "left", "right"]} containerClassName="bg-background">
-      {/* Forgot Password Modal */}
-      <Modal visible={showForgotModal} transparent animationType="fade" onRequestClose={() => setShowForgotModal(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}>
-          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 380 }}>
-            {forgotSent ? (
-              <>
-                <Text style={{ fontSize: 24, textAlign: "center", marginBottom: 12 }}>📧</Text>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 8 }}>Check Your Email</Text>
-                <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 }}>
-                  If an account exists for {forgotEmail}, we've sent a link to set your password. Check your inbox (and spam folder).
-                </Text>
-                <TouchableOpacity onPress={() => setShowForgotModal(false)} style={{ backgroundColor: "#0a7ea4", borderRadius: 10, paddingVertical: 13, alignItems: "center" }} activeOpacity={0.85}>
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Done</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>Reset Password</Text>
-                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 16, lineHeight: 20 }}>Enter your email and we'll send you a link to set a new password.</Text>
-                <TextInput
-                  value={forgotEmail}
-                  onChangeText={setForgotEmail}
-                  placeholder="your@email.com"
-                  placeholderTextColor="#9CA3AF"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  style={{ borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#111827", marginBottom: 16 }}
-                />
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <TouchableOpacity onPress={() => setShowForgotModal(false)} style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingVertical: 13, alignItems: "center" }} activeOpacity={0.75}>
-                    <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 15 }}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleForgotPassword} disabled={forgotLoading} style={{ flex: 1, backgroundColor: "#0a7ea4", borderRadius: 10, paddingVertical: 13, alignItems: "center", opacity: forgotLoading ? 0.7 : 1 }} activeOpacity={0.85}>
-                    {forgotLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Send Link</Text>}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+      <ScrollView contentContainerStyle={styles.scrollContent} contentInsetAdjustmentBehavior="automatic">
+        <View style={styles.container}>
+          <View style={styles.logoSection}>
+            <View style={styles.logoBox}>
+              <Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.appName}>Home Service Connection</Text>
+            <Text style={styles.appSubtitle}>Choose the workspace you need to access</Text>
           </View>
+
+          <View style={styles.portalStack}>
+            {portalOptions.map((option) => (
+              <Pressable
+                key={option.portal}
+                accessibilityRole="button"
+                accessibilityHint={`Open the ${option.title} portal`}
+                onPress={() => openPortal(option.portal)}
+                style={({ pressed }) => [styles.portalCard, pressed && styles.portalCardPressed]}
+              >
+                <View style={styles.portalIcon}>
+                  <MaterialIcons color="#7DB1FF" name={option.icon} size={26} />
+                </View>
+                <View style={styles.portalCopy}>
+                  <Text style={styles.portalTitle}>{option.title}</Text>
+                  <Text style={styles.portalDescription}>{option.description}</Text>
+                </View>
+                <MaterialIcons color="#8FA3C1" name="chevron-right" size={25} />
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.integrationNotice}>
+            <MaterialIcons color="#52D3B8" name="verified-user" size={19} />
+            <View style={styles.integrationCopy}>
+              <Text style={styles.integrationTitle}>Connected to your JobSync platform</Text>
+              <Text style={styles.integrationText}>
+                Your login and Company context stay with the JobSync system. Company membership determines the correct workspace automatically.
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.helpText}>
+            Company sign-in uses your existing JobSync credentials. If you need access, contact your platform administrator to confirm your Company account.
+          </Text>
         </View>
-      </Modal>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.container}>
-
-            {/* Logo */}
-            <View style={styles.logoSection}>
-              <View style={styles.logoBox}>
-                <Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
-              </View>
-              <Text style={styles.appName}>Home Service Connection</Text>
-              <Text style={styles.appSubtitle}>Home service operations</Text>
-            </View>
-
-            {/* Form */}
-            <View style={styles.form}>
-              <View>
-                <Text style={styles.fieldLabel}>Email</Text>
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter your email"
-                  placeholderTextColor="#9CA3AF"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  returnKeyType="next"
-                  style={styles.input}
-                />
-              </View>
-
-              <View>
-                <Text style={styles.fieldLabel}>Password</Text>
-                <View style={{ position: "relative" }}>
-                  <TextInput
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Enter your password"
-                    placeholderTextColor="#9CA3AF"
-                    secureTextEntry={!showPassword}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                    style={[styles.input, { paddingRight: 48 }]}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeBtn}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons
-                      name={showPassword ? "visibility-off" : "visibility"}
-                      size={20}
-                      color="#9CA3AF"
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {error ? (
-                <View style={styles.errorBox}>
-                  <MaterialIcons name="error-outline" size={16} color="#EF4444" />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity
-                onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.85}
-                style={[styles.signInBtn, loading && { opacity: 0.7 }]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.signInBtnText}>Sign In</Text>
-                )}
-              </TouchableOpacity>
-
-              {/* Forgot password link */}
-              <TouchableOpacity
-                onPress={() => { setForgotEmail(email); setForgotSent(false); setShowForgotModal(true); }}
-                style={{ alignSelf: "flex-end", marginBottom: 4, marginTop: -4 }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ fontSize: 13, color: "#4D8DFF", fontWeight: "600" }}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              {/* New customer link */}
-              <View style={styles.signUpRow}>
-                <Text style={styles.signUpRowText}>New customer?</Text>
-                              <TouchableOpacity
-                onPress={() => router.push("/signup" as any)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.signUpLink}>Create an account</Text>
-              </TouchableOpacity>
-              </View>
-              {/* Investor Portal link — hidden until program is finalized */}
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { flexGrow: 1, justifyContent: "center", paddingTop: 72, paddingBottom: 24 },
-  container: { flex: 1, paddingHorizontal: 28 },
-  logoSection: { alignItems: "center", paddingVertical: 32 },
-  logoBox: { width: 80, height: 80, borderRadius: 22, backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", justifyContent: "center", alignItems: "center", marginBottom: 16 },
-  logoImage: { width: 66, height: 66 },
-  appName: { fontSize: 24, fontWeight: "800", color: "#F6F8FC", textAlign: "center" },
-  appSubtitle: { fontSize: 14, color: "#94A3B8", marginTop: 4 },
-  form: { gap: 16 },
-  fieldLabel: { fontSize: 13, fontWeight: "700", color: "#C9D5E8", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { backgroundColor: "#102038", borderWidth: 1, borderColor: "#243754", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: "#F6F8FC" },
-  eyeBtn: { position: "absolute", right: 14, top: 0, bottom: 0, justifyContent: "center" },
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 },
-  errorText: { fontSize: 14, color: "#EF4444", flex: 1 },
-  signInBtn: { backgroundColor: "#4D8DFF", borderRadius: 100, paddingVertical: 16, alignItems: "center", marginTop: 4 },
-  signInBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-  signUpRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 4, paddingTop: 4 },
-  signUpRowText: { fontSize: 14, color: "#94A3B8" },
-  signUpLink: { fontSize: 14, fontWeight: "700", color: "#52D3B8" },
+  scrollContent: { flexGrow: 1, justifyContent: "center", paddingBottom: 28, paddingTop: 56 },
+  container: { flex: 1, maxWidth: 480, paddingHorizontal: 24, width: "100%", alignSelf: "center" },
+  logoSection: { alignItems: "center", marginBottom: 30 },
+  logoBox: { alignItems: "center", backgroundColor: "#102038", borderColor: "#243754", borderRadius: 24, borderWidth: 1, height: 88, justifyContent: "center", marginBottom: 16, width: 88 },
+  logoImage: { height: 72, width: 72 },
+  appName: { color: "#F6F8FC", fontSize: 25, fontWeight: "800", textAlign: "center" },
+  appSubtitle: { color: "#94A3B8", fontSize: 15, marginTop: 7, textAlign: "center" },
+  portalStack: { gap: 12 },
+  portalCard: { alignItems: "center", backgroundColor: "#102038", borderColor: "#243754", borderRadius: 18, borderWidth: 1, flexDirection: "row", minHeight: 112, padding: 16 },
+  portalCardPressed: { backgroundColor: "#14294B", borderColor: "#4D8DFF", opacity: 0.96, transform: [{ scale: 0.985 }] },
+  portalIcon: { alignItems: "center", backgroundColor: "#17345E", borderRadius: 15, height: 54, justifyContent: "center", marginRight: 14, width: 54 },
+  portalCopy: { flex: 1, paddingRight: 8 },
+  portalTitle: { color: "#F6F8FC", fontSize: 17, fontWeight: "800" },
+  portalDescription: { color: "#B2C1D6", fontSize: 13, lineHeight: 19, marginTop: 4 },
+  integrationNotice: { alignItems: "flex-start", backgroundColor: "#0E2730", borderColor: "#1F4E55", borderRadius: 14, borderWidth: 1, flexDirection: "row", marginTop: 24, padding: 15 },
+  integrationCopy: { flex: 1, marginLeft: 11 },
+  integrationTitle: { color: "#D5F7EE", fontSize: 13, fontWeight: "800", marginBottom: 4 },
+  integrationText: { color: "#A9C8C1", fontSize: 12.5, lineHeight: 18 },
+  helpText: { color: "#8FA3C1", fontSize: 12.5, lineHeight: 19, marginHorizontal: 12, marginTop: 20, textAlign: "center" },
 });
