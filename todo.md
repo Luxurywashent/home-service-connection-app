@@ -2,6 +2,11 @@
 
 ## JobSync Platform Integration
 
+- [x] Increase the signed-in Company-name text size in the shared header while preserving a one-line long-name fallback.
+- [ ] Retrieve authenticated Company team members from the JobSync API so web-created members appear in the mobile schedule.
+- [ ] Add a bearer-protected JobSync `GET /api/mobile/v1/company/team` endpoint that returns only the authenticated Company’s active members.
+- [ ] Validate that a newly created JobSync web team member appears in the correct Company mobile schedule lane.
+
 - [x] Show the authenticated JobSync Company name in signed-in app headers instead of the generic Home Service Connection label.
 - [x] Preserve generic Home Service Connection branding on unauthenticated login screens and when no Company context exists.
 

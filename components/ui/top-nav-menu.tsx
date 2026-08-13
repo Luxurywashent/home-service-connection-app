@@ -199,9 +199,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
         {/* Row 1: Logo | Page Title | Clock + Menu */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingBottom: 10 }}>
           {/* Logo */}
-          <View style={{ minWidth: 52 }}>
+          <View style={{ minWidth: 128, maxWidth: 148 }}>
             <Text style={{ fontSize: 17, fontWeight: "900", color: "#52D3B8" }}>HSC</Text>
-            <Text style={{ fontSize: 9, fontWeight: "700", color: "#94A3B8", marginTop: 1 }} numberOfLines={1}>
+            <Text style={{ fontSize: 12, fontWeight: "800", color: "#C7D5EA", marginTop: 2 }} numberOfLines={1}>
               {signedInCompanyName}
             </Text>
           </View>
