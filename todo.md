@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Show the authenticated JobSync Company name in signed-in app headers instead of the generic Home Service Connection label.
+- [x] Preserve generic Home Service Connection branding on unauthenticated login screens and when no Company context exists.
+
 - [x] Remove hard-coded schedule team members and off-shift placeholders; show only authenticated Company members returned by live data.
 - [x] Remove the single-city selector from the schedule header.
 - [x] Validate the schedule empty-team state and single-city header behavior through source-boundary, test, lint, build, and preview checks.

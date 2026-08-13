@@ -124,9 +124,12 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { logout, isAdmin, isOpsManager, isSalesRep, employee: currentEmployee } = useEmployeeAuth();
-  const { logout: logoutJobSync } = useJobSyncAuth();
+  const { logout: logoutJobSync, session: jobSyncSession } = useJobSyncAuth();
   const [isOpen, setIsOpen] = useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
+  const signedInCompanyName = jobSyncSession?.portal === "company"
+    ? (jobSyncSession.company?.name ?? "Home Service Connection")
+    : "Home Service Connection";
 
   const allItems = isOpsManager ? OPS_MANAGER_ITEMS : isAdmin ? ADMIN_ALL_ITEMS : isSalesRep ? SALES_ITEMS : DETAILER_ITEMS;
   const { data: chatUnread } = trpc.chat.getUnreadCount.useQuery(
@@ -198,8 +201,8 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
           {/* Logo */}
           <View style={{ minWidth: 52 }}>
             <Text style={{ fontSize: 17, fontWeight: "900", color: "#52D3B8" }}>HSC</Text>
-            <Text style={{ fontSize: 9, fontWeight: "700", color: "#94A3B8", marginTop: 1 }}>
-              Home Service Connection
+            <Text style={{ fontSize: 9, fontWeight: "700", color: "#94A3B8", marginTop: 1 }} numberOfLines={1}>
+              {signedInCompanyName}
             </Text>
           </View>
 
