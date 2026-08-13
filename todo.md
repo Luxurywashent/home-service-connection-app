@@ -2,6 +2,11 @@
 
 ## JobSync Platform Integration
 
+- [x] Replace the Team Members screen’s copied local employee query with the authenticated JobSync Company roster.
+- [ ] Verify Team Members count, cards, and role filters match the Company calendar roster.
+
+- [ ] Diagnose why the latest checkpoint is not appearing in the published Home Service Connection deployment.
+
 - [x] Increase the signed-in Company-name text size in the shared header while preserving a one-line long-name fallback.
 - [x] Retrieve authenticated Company team members from the JobSync API so web-created members appear in the mobile schedule.
 - [x] Confirm the bearer-protected JobSync `GET /api/mobile/v1/company/team-members` endpoint returns only the authenticated Company’s active members.

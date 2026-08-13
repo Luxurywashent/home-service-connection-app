@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyMembers, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
 
 function getWeekRange() {
   const now = new Date();
@@ -32,6 +34,15 @@ function roleLabel(role: string) {
   }
 }
 
+function nativeRoleForJobSyncMember(role: string) {
+  switch (role.toLowerCase()) {
+    case "owner": return "admin";
+    case "dispatcher": return "operations_manager";
+    case "technician": return "detailer";
+    default: return role;
+  }
+}
+
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return "-";
   const d = new Date(dateStr + "T12:00:00");
@@ -40,6 +51,8 @@ function formatDate(dateStr: string | null | undefined) {
 
 export default function AdminEmployeesScreen() {
   const colors = useColors();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
   const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const [selectedArchivedEmp, setSelectedArchivedEmp] = useState<any>(null);
@@ -48,6 +61,8 @@ export default function AdminEmployeesScreen() {
   const [editData, setEditData] = useState<any>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [companyMembers, setCompanyMembers] = useState<JobSyncCompanyMember[]>([]);
+  const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const { start, end } = useMemo(() => getWeekRange(), []);
 
   const utils = trpc.useUtils();
@@ -176,6 +191,26 @@ export default function AdminEmployeesScreen() {
 
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
+  useEffect(() => {
+    if (!isJobSyncCompany) return;
+    const token = jobSyncSession?.token;
+    const companyId = jobSyncSession?.company?.id;
+    if (!token || !companyId) return;
+    let cancelled = false;
+    setCompanyMembersLoading(true);
+    getJobSyncCompanyMembers(token, companyId)
+      .then((roster) => {
+        if (!cancelled) setCompanyMembers(roster.members);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyMembersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id]);
+
   const empWithPerf = useMemo(() => {
     if (!employees) return [];
     return employees.map((emp) => {
@@ -187,6 +222,22 @@ export default function AdminEmployeesScreen() {
       return { ...emp, avgEff, totalRevenue, daysWorked: records.length };
     });
   }, [employees, weekPerf]);
+
+  const companyRosterEmployees = useMemo(() => companyMembers.map((member) => ({
+    employeeId: `jobsync-${member.id}`,
+    fullName: member.name,
+    role: nativeRoleForJobSyncMember(member.role),
+    city: jobSyncSession?.company?.name ?? "Company workspace",
+    avgEff: 0,
+    totalRevenue: 0,
+    daysWorked: 0,
+    isJobSyncMember: true,
+  })), [companyMembers, jobSyncSession?.company?.name]);
+
+  const activeEmployees = isJobSyncCompany ? companyRosterEmployees : empWithPerf;
+  const activeEmployeesLoading = isJobSyncCompany ? companyMembersLoading : isLoading;
+  const archivedEmployees = isJobSyncCompany ? [] : (deactivatedEmployees ?? []);
+  const visibleEmployees = roleFilter === "all" ? activeEmployees : activeEmployees.filter((employee: any) => employee.role === roleFilter);
 
   const detailEmpPerf = trpc.performance.getHistory.useQuery(
     { employeeId: selectedEmp?.employeeId ?? "", limit: 14 },
@@ -304,11 +355,11 @@ export default function AdminEmployeesScreen() {
           <Text style={{ fontSize: 24, fontWeight: "800", color: colors.foreground }}>Team Members</Text>
           <Text style={{ fontSize: 13, color: colors.muted }}>
             {activeTab === "active"
-              ? `${employees?.length ?? 0} active`
-              : `${deactivatedEmployees?.length ?? 0} archived`}
+              ? `${activeEmployees.length} active`
+              : `${archivedEmployees.length} archived`}
           </Text>
         </View>
-        {activeTab === "active" && (
+        {activeTab === "active" && !isJobSyncCompany && (
           <TouchableOpacity
             onPress={() => setShowAddModal(true)}
             activeOpacity={0.7}
@@ -338,7 +389,7 @@ export default function AdminEmployeesScreen() {
               fontSize: 14, fontWeight: "700", lineHeight: 18,
               color: activeTab === tab ? "#FFF" : colors.muted,
             }}>
-              {tab === "active" ? "Active" : `Archive${(deactivatedEmployees?.length ?? 0) > 0 ? ` (${deactivatedEmployees!.length})` : ""}`}
+              {tab === "active" ? "Active" : `Archive${archivedEmployees.length > 0 ? ` (${archivedEmployees.length})` : ""}`}
             </Text>
           </TouchableOpacity>
         ))}
@@ -346,14 +397,14 @@ export default function AdminEmployeesScreen() {
 
       {/* Active Team Members Tab */}
       {activeTab === "active" && (
-        isLoading ? (
+        activeEmployeesLoading ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
         ) : (
           <FlatList
           windowSize={5}
           maxToRenderPerBatch={8}
           initialNumToRender={10}
-            data={roleFilter === "all" ? empWithPerf : empWithPerf.filter((e: any) => e.role === roleFilter)}
+            data={visibleEmployees}
             keyExtractor={(item) => item.employeeId}
             showsVerticalScrollIndicator={false}
             style={{ flex: 1 }}
@@ -385,7 +436,8 @@ export default function AdminEmployeesScreen() {
             }
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => { setSelectedEmp(item); setEditMode(false); }}
+                disabled={isJobSyncCompany}
+                onPress={() => { if (!isJobSyncCompany) { setSelectedEmp(item); setEditMode(false); } }}
                 activeOpacity={0.7}
                 style={{
                   backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,
@@ -431,7 +483,7 @@ export default function AdminEmployeesScreen() {
       {activeTab === "archive" && (
         archiveLoading ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
-        ) : (deactivatedEmployees ?? []).length === 0 ? (
+        ) : archivedEmployees.length === 0 ? (
           <View style={{ alignItems: "center", marginTop: 60, gap: 8 }}>
             <Text style={{ fontSize: 40 }}>📦</Text>
             <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground }}>No Archived Members</Text>
@@ -444,7 +496,7 @@ export default function AdminEmployeesScreen() {
           windowSize={5}
           maxToRenderPerBatch={8}
           initialNumToRender={10}
-            data={deactivatedEmployees}
+            data={archivedEmployees}
             keyExtractor={(item) => item.employeeId}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 40 }}
@@ -646,7 +698,7 @@ export default function AdminEmployeesScreen() {
                       </View>
                       {editData.role === "detailer" && editData.city && editData.city !== selectedEmp.city && (
                         <Text style={{ fontSize: 11, color: colors.warning, marginTop: 6 }}>
-                          ⚠️ Changing city will move this detailer's upcoming jobs to Unassigned.
+                          ⚠️ Changing city will move this detailer&apos;s upcoming jobs to Unassigned.
                         </Text>
                       )}
                     </View>
