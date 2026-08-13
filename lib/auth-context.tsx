@@ -60,9 +60,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (emp: EmployeeSession, rememberMe: boolean) => {
     setEmployee(emp);
     if (rememberMe) {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(emp));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(emp)).catch(() => {});
     } else {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
     }
   }, []);
 
