@@ -2,6 +2,11 @@
 
 ## JobSync Platform Integration
 
+- [x] Restore Team Member profile editing through the authoritative JobSync Company API.
+- [x] Add and publish a bearer-protected JobSync member-update endpoint for authorized Company Owner and Operations Manager edits.
+- [x] Verify the published JobSync member-update endpoint contract and connect mobile saves to it.
+- [ ] Verify mobile profile edits refresh the same Company roster shown on web and schedule.
+
 - [x] Replace the Team Members screen’s copied local employee query with the authenticated JobSync Company roster.
 - [ ] Verify Team Members count, cards, and role filters match the Company calendar roster.
 

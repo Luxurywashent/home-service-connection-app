@@ -35,6 +35,16 @@ export type JobSyncCompanyRoster = {
   members: JobSyncCompanyMember[];
 };
 
+export type JobSyncCompanyMemberUpdateInput = {
+  firstName: string;
+  lastName: string;
+  role: JobSyncCompanyRole;
+  email?: string;
+  phone?: string;
+  city?: string;
+  availability?: "available" | "busy" | "off_duty";
+};
+
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
@@ -146,6 +156,18 @@ export function createJobSyncMobileLoginPayload(input: { accountType: JobSyncAcc
 
 export function createJobSyncBearerHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
+  return {
+    firstName: input.firstName.trim(),
+    lastName: input.lastName.trim(),
+    role: input.role,
+    ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
+    ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+    ...(input.city?.trim() ? { city: input.city.trim() } : {}),
+    ...(input.availability ? { availability: input.availability } : {}),
+  };
 }
 
 function normalizeCompanyRole(value: string | null): JobSyncCompanyRole | null {
@@ -261,6 +283,21 @@ export async function getJobSyncCompanyMembers(token: string, expectedCompanyId:
   const roster = normalizeJobSyncCompanyRoster(payload, expectedCompanyId);
   if (!roster) throw new Error("JobSync returned an invalid Company team roster.");
   return roster;
+}
+
+export async function updateJobSyncCompanyMember(
+  token: string,
+  memberId: number,
+  input: JobSyncCompanyMemberUpdateInput,
+) {
+  if (!Number.isInteger(memberId) || memberId <= 0) {
+    throw new Error("JobSync returned an invalid Team Member identifier.");
+  }
+  return requestJson(`${COMPANY_TEAM_MEMBERS_PATH}/${memberId}`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(createJobSyncCompanyMemberUpdatePayload(input)),
+  });
 }
 
 export async function loginJobSyncMobile(input: { accountType: JobSyncAccountType; email: string; password: string }) {

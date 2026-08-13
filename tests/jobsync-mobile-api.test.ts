@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createJobSyncBearerHeaders,
+  createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
   extractJobSyncMobileToken,
   normalizeJobSyncCompanyRoster,
@@ -20,6 +21,26 @@ describe("JobSync mobile API contract", () => {
 
   it("sends restored sessions with an Authorization bearer header", () => {
     expect(createJobSyncBearerHeaders("mobile-token")).toEqual({ Authorization: "Bearer mobile-token" });
+  });
+
+  it("normalizes an authorized Company member update payload", () => {
+    expect(createJobSyncCompanyMemberUpdatePayload({
+      firstName: " Alex ",
+      lastName: " Smith ",
+      email: " ALEX@EXAMPLE.COM ",
+      phone: " 555-0100 ",
+      city: " Niceville ",
+      role: "technician",
+      availability: "available",
+    })).toEqual({
+      firstName: "Alex",
+      lastName: "Smith",
+      email: "alex@example.com",
+      phone: "555-0100",
+      city: "Niceville",
+      role: "technician",
+      availability: "available",
+    });
   });
 
   it("extracts a bearer token from supported login response envelopes", () => {

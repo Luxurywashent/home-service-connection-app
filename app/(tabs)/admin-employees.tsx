@@ -4,7 +4,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyMembers, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
 
 function getWeekRange() {
   const now = new Date();
@@ -40,6 +40,14 @@ function nativeRoleForJobSyncMember(role: string) {
     case "dispatcher": return "operations_manager";
     case "technician": return "detailer";
     default: return role;
+  }
+}
+
+function jobSyncRoleForNativeMember(role: string): "owner" | "dispatcher" | "technician" {
+  switch (role) {
+    case "admin": return "owner";
+    case "operations_manager": return "dispatcher";
+    default: return "technician";
   }
 }
 
@@ -225,6 +233,7 @@ export default function AdminEmployeesScreen() {
 
   const companyRosterEmployees = useMemo(() => companyMembers.map((member) => ({
     employeeId: `jobsync-${member.id}`,
+    jobSyncMemberId: member.id,
     fullName: member.name,
     role: nativeRoleForJobSyncMember(member.role),
     city: jobSyncSession?.company?.name ?? "Company workspace",
@@ -266,7 +275,7 @@ export default function AdminEmployeesScreen() {
       fullName: selectedEmp.fullName,
       email: selectedEmp.email ?? "",
       phoneNumber: selectedEmp.phoneNumber ?? "",
-      city: selectedEmp.city ?? "",
+      city: isJobSyncCompany ? "" : selectedEmp.city ?? "",
       role: selectedEmp.role,
       pin: "",
       hourlyRate: selectedEmp.hourlyRate != null ? String(selectedEmp.hourlyRate) : "17.00",
@@ -282,10 +291,40 @@ export default function AdminEmployeesScreen() {
 
   const handleSaveEdit = async () => {
     if (!editData.fullName?.trim()) { setEditError("Name is required"); return; }
+    const nameParts = editData.fullName.trim().split(/\s+/);
+    if (isJobSyncCompany && nameParts.length < 2) { setEditError("Enter both a first and last name."); return; }
     if (editData.pin && editData.pin.length < 4) { setEditError("PIN must be at least 4 digits"); return; }
     setEditSaving(true);
     setEditError("");
     try {
+      if (isJobSyncCompany && selectedEmp?.isJobSyncMember) {
+        const token = jobSyncSession?.token;
+        const companyId = jobSyncSession?.company?.id;
+        const memberId = Number(selectedEmp.jobSyncMemberId);
+        if (!token || !companyId || !Number.isInteger(memberId)) {
+          throw new Error("Your JobSync Company session is unavailable. Please sign in again.");
+        }
+        await updateJobSyncCompanyMember(token, memberId, {
+          firstName: nameParts[0],
+          lastName: nameParts.slice(1).join(" "),
+          role: jobSyncRoleForNativeMember(editData.role),
+          email: editData.email,
+          phone: editData.phoneNumber,
+          city: editData.city,
+        });
+        const roster = await getJobSyncCompanyMembers(token, companyId);
+        setCompanyMembers(roster.members);
+        const refreshedMember = roster.members.find((member) => member.id === memberId);
+        if (refreshedMember) {
+          setSelectedEmp({
+            ...selectedEmp,
+            fullName: refreshedMember.name,
+            role: nativeRoleForJobSyncMember(refreshedMember.role),
+          });
+        }
+        setEditMode(false);
+        return;
+      }
       const hourlyRateNum = parseFloat(editData.hourlyRate);
       const upsellBonusPctNum = parseFloat(editData.upsellBonusPct);
       const shiftStartHourNum = typeof editData.shiftStartHour === "number" ? editData.shiftStartHour : 8.0;
@@ -331,8 +370,8 @@ export default function AdminEmployeesScreen() {
       utils.employee.listDetailers.invalidate();
       setSelectedEmp({ ...selectedEmp, ...editData, pin: editData.pin || selectedEmp.pin });
       setEditMode(false);
-    } catch {
-      setEditError("Failed to save changes. Please try again.");
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Failed to save changes. Please try again.");
     } finally {
       setEditSaving(false);
     }
@@ -436,8 +475,7 @@ export default function AdminEmployeesScreen() {
             }
             renderItem={({ item }) => (
               <TouchableOpacity
-                disabled={isJobSyncCompany}
-                onPress={() => { if (!isJobSyncCompany) { setSelectedEmp(item); setEditMode(false); } }}
+                onPress={() => { setSelectedEmp(item); setEditMode(false); }}
                 activeOpacity={0.7}
                 style={{
                   backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,
@@ -667,7 +705,7 @@ export default function AdminEmployeesScreen() {
                     {editMode ? editData.fullName : selectedEmp.fullName}
                   </Text>
                   <Text style={{ fontSize: 14, color: colors.muted }}>
-                    {roleLabel(editMode ? editData.role : selectedEmp.role)} · {editMode ? editData.city : selectedEmp.city}
+                    {roleLabel(editMode ? editData.role : selectedEmp.role)} · {isJobSyncCompany ? "Synced with JobSync" : (editMode ? editData.city : selectedEmp.city)}
                   </Text>
                 </View>
 
@@ -677,35 +715,46 @@ export default function AdminEmployeesScreen() {
                     <EditField label="Full Name" value={editData.fullName} onChangeText={(t: string) => setEditData({ ...editData, fullName: t })} colors={colors} />
                     <EditField label="Email" value={editData.email} onChangeText={(t: string) => setEditData({ ...editData, email: t })} colors={colors} keyboardType="email-address" autoCapitalize="none" />
                     <EditField label="Phone" value={editData.phoneNumber} onChangeText={(t: string) => setEditData({ ...editData, phoneNumber: t })} colors={colors} keyboardType="phone-pad" />
-                    {/* City dropdown — for detailers this also moves their jobs to Unassigned */}
-                    <View style={{ marginBottom: 16 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>City</Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                        {CITY_OPTIONS.map((c) => (
-                          <TouchableOpacity
-                            key={c}
-                            onPress={() => setEditData({ ...editData, city: c })}
-                            activeOpacity={0.7}
-                            style={{
-                              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                              backgroundColor: editData.city === c ? colors.primary : colors.surface,
-                              borderWidth: 1, borderColor: editData.city === c ? colors.primary : colors.border,
-                            }}
-                          >
-                            <Text style={{ fontSize: 13, fontWeight: "600", color: editData.city === c ? "#FFF" : colors.foreground }}>{c}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                      {editData.role === "detailer" && editData.city && editData.city !== selectedEmp.city && (
-                        <Text style={{ fontSize: 11, color: colors.warning, marginTop: 6 }}>
-                          ⚠️ Changing city will move this detailer&apos;s upcoming jobs to Unassigned.
+                    {isJobSyncCompany ? (
+                      <View style={{ marginBottom: 16 }}>
+                        <EditField label="City" value={editData.city} onChangeText={(t: string) => setEditData({ ...editData, city: t })} colors={colors} />
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: -8 }}>
+                          Leave optional profile fields blank when they do not need to change.
                         </Text>
-                      )}
-                    </View>
-                    <EditField label="New PIN (leave blank to keep)" value={editData.pin} onChangeText={(t: string) => setEditData({ ...editData, pin: t.replace(/[^0-9]/g, "").substring(0, 6) })} colors={colors} keyboardType="number-pad" secureTextEntry placeholder="Leave blank to keep current" />
+                      </View>
+                    ) : (
+                      <>
+                        {/* City dropdown — for detailers this also moves their jobs to Unassigned */}
+                        <View style={{ marginBottom: 16 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>City</Text>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                            {CITY_OPTIONS.map((c) => (
+                              <TouchableOpacity
+                                key={c}
+                                onPress={() => setEditData({ ...editData, city: c })}
+                                activeOpacity={0.7}
+                                style={{
+                                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                                  backgroundColor: editData.city === c ? colors.primary : colors.surface,
+                                  borderWidth: 1, borderColor: editData.city === c ? colors.primary : colors.border,
+                                }}
+                              >
+                                <Text style={{ fontSize: 13, fontWeight: "600", color: editData.city === c ? "#FFF" : colors.foreground }}>{c}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          {editData.role === "detailer" && editData.city && editData.city !== selectedEmp.city && (
+                            <Text style={{ fontSize: 11, color: colors.warning, marginTop: 6 }}>
+                              ⚠️ Changing city will move this detailer&apos;s upcoming jobs to Unassigned.
+                            </Text>
+                          )}
+                        </View>
+                        <EditField label="New PIN (leave blank to keep)" value={editData.pin} onChangeText={(t: string) => setEditData({ ...editData, pin: t.replace(/[^0-9]/g, "").substring(0, 6) })} colors={colors} keyboardType="number-pad" secureTextEntry placeholder="Leave blank to keep current" />
+                      </>
+                    )}
 
                     {/* Pay Rates */}
-                    <View style={{ marginBottom: 20 }}>
+                    {!isJobSyncCompany && (<View style={{ marginBottom: 20 }}>
                       <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>💰 Pay Rates</Text>
                       <View style={{ flexDirection: "row", gap: 12 }}>
                         <View style={{ flex: 1 }}>
@@ -734,12 +783,12 @@ export default function AdminEmployeesScreen() {
                         </View>
                       </View>
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>These rates apply to payroll, projected paycheck, and upsell bonus calculations.</Text>
-                    </View>
+                    </View>)}
 
                     <View style={{ marginBottom: 20 }}>
                       <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Role</Text>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                        {roles.map((r) => (
+                        {(isJobSyncCompany ? roles.filter((role) => ["detailer", "admin", "operations_manager"].includes(role.value)) : roles).map((r) => (
                           <TouchableOpacity
                             key={r.value}
                             onPress={() => setEditData({ ...editData, role: r.value })}
@@ -757,7 +806,7 @@ export default function AdminEmployeesScreen() {
                     </View>
 
                     {/* Custom Work Days — only shown for detailers */}
-                    {editData.role === "detailer" && (
+                    {!isJobSyncCompany && editData.role === "detailer" && (
                       <View style={{ marginBottom: 20 }}>
                         <Text style={{ fontSize: 13, fontWeight: "600", color: colors.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Work Days</Text>
                         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
@@ -845,7 +894,7 @@ export default function AdminEmployeesScreen() {
                     </View>
 
                     {/* Pay Rates Card */}
-                    <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
+                    {!isJobSyncCompany && (<View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
                       <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>💰 Pay Rates</Text>
                       <View style={{ flexDirection: "row", gap: 12 }}>
                         <View style={{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 12, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
@@ -858,7 +907,7 @@ export default function AdminEmployeesScreen() {
                         </View>
                       </View>
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8, textAlign: "center" }}>Tap Edit to change rates · Syncs with payroll &amp; projected paycheck</Text>
-                    </View>
+                    </View>)}
 
                     <View style={{ gap: 8, marginBottom: 16 }}>
                       {selectedEmp.role === "detailer" && (
@@ -878,7 +927,7 @@ export default function AdminEmployeesScreen() {
                     )}
 
                     {/* Reset PIN */}
-                    <View style={{ marginBottom: 24, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+                    {!isJobSyncCompany && (<View style={{ marginBottom: 24, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
                       <TouchableOpacity
                         onPress={() => { setShowPinReset(!showPinReset); setNewPin(""); setConfirmPin(""); setPinError(""); setPinSuccess(false); }}
                         activeOpacity={0.7}
@@ -935,10 +984,10 @@ export default function AdminEmployeesScreen() {
                           )}
                         </View>
                       )}
-                    </View>
+                    </View>)}
 
                     {/* Deactivate Button */}
-                    <TouchableOpacity
+                    {!isJobSyncCompany && (<TouchableOpacity
                       onPress={handleShowDeactivateConfirm}
                       disabled={deactivateLoading}
                       activeOpacity={0.8}
@@ -954,10 +1003,10 @@ export default function AdminEmployeesScreen() {
                       ) : (
                         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.error }}>Deactivate Team Member</Text>
                       )}
-                    </TouchableOpacity>
+                    </TouchableOpacity>)}
 
                     {/* Performance History */}
-                    {selectedEmp.role === "detailer" && (
+                    {!isJobSyncCompany && selectedEmp.role === "detailer" && (
                       <>
                         <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Recent Performance</Text>
                         {detailEmpPerf.isLoading ? (
