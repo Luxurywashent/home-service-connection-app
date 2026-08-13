@@ -4,6 +4,7 @@ import {
   createJobSyncBearerHeaders,
   createJobSyncMobileLoginPayload,
   extractJobSyncMobileToken,
+  normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
 } from "../lib/jobsync-mobile-api";
 
@@ -65,5 +66,19 @@ describe("JobSync mobile API contract", () => {
 
   it("rejects profiles without a valid identity or Company boundary", () => {
     expect(normalizeJobSyncMobileSession({ accountType: "company", user: { role: "owner" } }, "bad-token")).toBeNull();
+  });
+
+  it("normalizes active Company members and rejects a mismatched Company boundary", () => {
+    const roster = normalizeJobSyncCompanyRoster({
+      company: { id: 9, name: "Casey Services" },
+      members: [
+        { id: 41, name: "Alex Technician", role: "technician", isActive: true },
+        { id: 42, name: "Inactive Member", role: "technician", isActive: false },
+      ],
+    }, 9);
+
+    expect(roster?.company.name).toBe("Casey Services");
+    expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true }]);
+    expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
   });
 });

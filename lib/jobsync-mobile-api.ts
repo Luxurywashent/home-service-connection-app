@@ -23,9 +23,22 @@ export type JobSyncNativeSession = {
   };
 };
 
+export type JobSyncCompanyMember = {
+  id: number;
+  name: string;
+  role: string;
+  isActive: boolean;
+};
+
+export type JobSyncCompanyRoster = {
+  company: { id: number; name: string };
+  members: JobSyncCompanyMember[];
+};
+
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
+const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -56,6 +69,10 @@ function firstNumber(...values: unknown[]) {
     if (Number.isInteger(parsed) && parsed > 0) return parsed;
   }
   return null;
+}
+
+function isActiveMember(value: unknown) {
+  return value !== false && value !== 0 && value !== "0" && value !== "false";
 }
 
 function errorMessage(payload: unknown, fallback: string) {
@@ -207,6 +224,43 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("JobSync returned an unsupported mobile session profile.");
   return session;
+}
+
+export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyId: number): JobSyncCompanyRoster | null {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const company = firstRecord(data.company, root?.company);
+  const companyId = firstNumber(company?.id, company?.companyId, data.companyId, root?.companyId);
+  if (!company || companyId !== expectedCompanyId) return null;
+
+  const rawMembers = Array.isArray(data.members) ? data.members : Array.isArray(root?.members) ? root.members : [];
+  const members = rawMembers.flatMap((value) => {
+    const member = asRecord(value);
+    const id = firstNumber(member?.id, member?.userId, member?.memberId);
+    const name = firstString(member?.name, member?.displayName, member?.fullName, [member?.firstName, member?.lastName].filter(Boolean).join(" "));
+    if (!member || !id || !name || !isActiveMember(member.isActive ?? member.is_active)) return [];
+    return [{
+      id,
+      name,
+      role: firstString(member.role, member.memberRole) ?? "team_member",
+      isActive: true,
+    }];
+  });
+
+  return {
+    company: { id: companyId, name: firstString(company.name, company.companyName) ?? "Company workspace" },
+    members,
+  };
+}
+
+export async function getJobSyncCompanyMembers(token: string, expectedCompanyId: number) {
+  const payload = await requestJson(COMPANY_TEAM_MEMBERS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  const roster = normalizeJobSyncCompanyRoster(payload, expectedCompanyId);
+  if (!roster) throw new Error("JobSync returned an invalid Company team roster.");
+  return roster;
 }
 
 export async function loginJobSyncMobile(input: { accountType: JobSyncAccountType; email: string; password: string }) {

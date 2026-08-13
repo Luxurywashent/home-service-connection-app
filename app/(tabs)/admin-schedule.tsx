@@ -39,6 +39,7 @@ import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
+import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
@@ -1601,14 +1602,35 @@ export default function AdminScheduleScreen() {
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
   }, [currentEmployee?.employeeId]);
 
-  // Never hydrate the Company calendar from the legacy global location endpoint.
-  // The authenticated JobSync Company is the roster source of truth. Until a
-  // Company roster endpoint is connected, an empty Company stays empty.
+  // Never hydrate a JobSync Company calendar from the legacy global location
+  // endpoint. Its authenticated bearer roster is the single source of truth.
   useEffect(() => {
     if (!isJobSyncCompany) return;
-    setDynamicDetailers({ [selectedCity]: [] });
-    setDetailersLoaded({ [selectedCity]: true });
-  }, [isJobSyncCompany, selectedCity]);
+    const token = jobSyncSession?.token;
+    const companyId = jobSyncSession?.company?.id;
+    if (!token || !companyId) return;
+    let cancelled = false;
+
+    setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: false }));
+    getJobSyncCompanyMembers(token, companyId)
+      .then((roster) => {
+        if (cancelled) return;
+        const teamLanes: DetailerEntry[] = roster.members.map((member, index) => ({
+          employeeId: `jobsync-${member.id}`,
+          name: member.name,
+          color: DETAILER_COLORS[index % DETAILER_COLORS.length],
+        }));
+        setDynamicDetailers({ [selectedCity]: teamLanes });
+      })
+      .catch(() => {
+        if (!cancelled) setDynamicDetailers({ [selectedCity]: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: true }));
+      });
+
+    return () => { cancelled = true; };
+  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id, selectedCity, syncKey]);
 
   // Sync all jobs (manual + online) from server DB when city changes or manual refresh
   useEffect(() => {
