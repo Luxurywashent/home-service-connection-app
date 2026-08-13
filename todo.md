@@ -2,6 +2,12 @@
 
 ## JobSync Platform Integration
 
+- [x] Remove hard-coded schedule team members and off-shift placeholders; show only authenticated Company members returned by live data.
+- [x] Remove the single-city selector from the schedule header.
+- [x] Validate the schedule empty-team state and single-city header behavior through source-boundary, test, lint, build, and preview checks.
+- [ ] Validate the actual-team schedule state with authenticated Company roster data.
+- [ ] Connect the schedule roster and jobs to Company-scoped JobSync data before enabling calendar assignments for a staffed Company.
+
 - [x] Add the shared mobile-authentication API to the authoritative JobSync web project.
 - [x] Discover and document the deployed JobSync mobile-auth endpoint paths, payloads, tokens, and role response.
 - [x] Point native Company and Platform Admin login directly at the shared JobSync mobile-auth API.

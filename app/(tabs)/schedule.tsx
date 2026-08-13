@@ -38,6 +38,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -1646,9 +1647,8 @@ function AdminDispatchBoard({
   // Filter jobs for this day
   const dayJobs = jobs.filter((j) => j.dayIndex === dayIndex && j.weekOffset === weekOffset);
 
-  // Determine which detailers have jobs or are in the detailer list
-  // Always show all detailers passed in (from listDetailers filtered by location)
-  const columns = detailers.length > 0 ? detailers : [{ employeeId: "__unassigned", fullName: "Unassigned" }];
+  // Only real members passed from the active Company receive schedule columns.
+  const columns = detailers;
   const numCols = columns.length;
 
   // Column width: fill screen if 1 col, else fixed 200px so user can scroll horizontally
@@ -1674,7 +1674,6 @@ function AdminDispatchBoard({
 
   // Get jobs for a specific detailer column
   const getColJobs = (detailerId: string, colIndex: number) => {
-    if (detailerId === "__unassigned") return dayJobs;
     return dayJobs.filter((j) => {
       if (!j.detailerName) return colIndex === 0; // unassigned jobs show in first column only
       // Match by employeeId (new) or by name string (legacy)
@@ -1688,6 +1687,17 @@ function AdminDispatchBoard({
       return false;
     });
   };
+
+  if (detailers.length === 0) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
+        <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800", textAlign: "center" }}>No team members yet</Text>
+        <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, textAlign: "center" }}>
+          Add a team member to this Company before assigning work on the calendar.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }} {...swipePanResponder.panHandlers}>
@@ -1795,7 +1805,7 @@ function AdminDispatchBoard({
                         onLongPress={() => {
                           if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                           const endHour = HOURS[Math.min(idx + 2, HOURS.length - 1)];
-                          onCreateJob(hour, endHour, det.employeeId === "__unassigned" ? undefined : det.employeeId);
+                          onCreateJob(hour, endHour, det.employeeId);
                         }}
                       />
                     ))}
@@ -2263,6 +2273,8 @@ function PrivateNotesCard({
 export default function ScheduleScreen() {
   const colors = useColors();
   const { employee, loading: authLoading } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
   const highlightJobHandledRef = useRef<string | null>(null);
   const utils = trpc.useUtils();
@@ -2707,6 +2719,10 @@ export default function ScheduleScreen() {
 
   // Sync server jobs (both manual + online) for the selected location into local state
   const syncServerJobs = async (location: LocationSlug, emp = employee) => {
+    if (isJobSyncCompany) {
+      setJobs([]);
+      return;
+    }
     try {
       const today = new Date();
       // No lookback limit — fetch all historical and future jobs
@@ -3924,7 +3940,7 @@ export default function ScheduleScreen() {
   // Dot indicators for week strip
   const myJobSlug = employee?.city ? cityToSlug(employee.city) : "crestview";
   const isAdminRole = employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office";
-  const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole, staleTime: 300000 });
+  const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole && !isJobSyncCompany, staleTime: 300000 });
   // Price book for New Job form
   const { data: pbData } = trpc.pricebook.list.useQuery(undefined, { staleTime: 60_000 });
   const allJobPackages: PackageDef[] = pbData && pbData.length > 0
@@ -3997,7 +4013,7 @@ export default function ScheduleScreen() {
         </View>
 
         {/* Location Selector — only shown for admins; detailers see their own city label */}
-        {employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office" ? (
+        {(employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office") && !isJobSyncCompany ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}

@@ -1,9 +1,8 @@
 /**
  * Admin Schedule Screen
- * - City dropdown to switch between Crestview, Niceville, Destin, Fort Walton Beach
- * - For cities with 2 detailers (Crestview, Niceville): dual-lane timeline showing both schedules side-by-side
- * - For single-detailer cities (Destin, FWB): single-lane timeline
- * - Read-only view of all jobs across all locations
+ * - Company-scoped schedule board
+ * - Team lanes are rendered only from authenticated Company data
+ * - Empty Companies receive an explicit empty-team state instead of placeholder lanes
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
@@ -29,6 +28,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS, withTiming } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -1272,6 +1272,8 @@ export default function AdminScheduleScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
     prefillFirst?: string;
@@ -1438,7 +1440,6 @@ export default function AdminScheduleScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
   const [selectedCity, setSelectedCity] = useState<CitySlug>("crestview");
-  const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [screenWidth, setScreenWidth] = useState(375);
 
   // Add Job state
@@ -1600,38 +1601,22 @@ export default function AdminScheduleScreen() {
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
   }, [currentEmployee?.employeeId]);
 
-  // Pre-fetch ALL cities' detailers in parallel on mount — city switching is instant, no spinner
+  // Never hydrate the Company calendar from the legacy global location endpoint.
+  // The authenticated JobSync Company is the roster source of truth. Until a
+  // Company roster endpoint is connected, an empty Company stays empty.
   useEffect(() => {
-    const fetchAllCities = async () => {
-      await Promise.allSettled(
-        CITY_LIST.map(async (city) => {
-          try {
-            const res = await fetch(`${APP_API_BASE}/api/booking/detailers?location=${city.slug}`);
-            if (!res.ok) return;
-            const data = await res.json();
-            if (Array.isArray(data.detailers)) {
-              const entries: DetailerEntry[] = data.detailers.map((d: { employeeId: string; fullName: string; shift?: string }, idx: number) => ({
-                employeeId: d.employeeId,
-                name: d.fullName.split(" ")[0],
-                color: DETAILER_COLORS[idx % DETAILER_COLORS.length],
-                shift: d.shift === 'shift2' ? 'second' : 'first',
-              }));
-              setDynamicDetailers((prev) => ({ ...prev, [city.slug]: entries }));
-            }
-          } catch {
-            // silently ignore per-city errors
-          } finally {
-            setDetailersLoaded((prev) => ({ ...prev, [city.slug]: true }));
-          }
-        })
-      );
-    };
-    fetchAllCities();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount — all cities loaded upfront
+    if (!isJobSyncCompany) return;
+    setDynamicDetailers({ [selectedCity]: [] });
+    setDetailersLoaded({ [selectedCity]: true });
+  }, [isJobSyncCompany, selectedCity]);
 
   // Sync all jobs (manual + online) from server DB when city changes or manual refresh
   useEffect(() => {
+    if (isJobSyncCompany) {
+      setJobs([]);
+      setIsSyncing(false);
+      return;
+    }
     const syncServerJobs = async () => {
       setIsSyncing(true);
       try {
@@ -1755,7 +1740,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [selectedCity, syncKey]);
+  }, [isJobSyncCompany, selectedCity, syncKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
@@ -2325,9 +2310,12 @@ export default function AdminScheduleScreen() {
   // Build runtime cityConfig from dynamic detailers (falls back to static if not yet loaded)
   const cityConfig: CityConfig = {
     slug: selectedCity,
-    label: CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity,
+    label: isJobSyncCompany
+      ? (jobSyncSession?.company?.name ?? "Company schedule")
+      : (CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity),
     detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [],
   };
+  const currentScheduleLabel = cityConfig.label;
 
   // Filter jobs for the selected city and day, deduplicating by id (server data wins)
   const dayJobs = (() => {
@@ -2398,8 +2386,6 @@ export default function AdminScheduleScreen() {
       }
     });
 
-  const currentCityLabel = cityConfig.label;
-
   return (
     <ScreenContainer
       edges={["left", "right"]}
@@ -2426,6 +2412,7 @@ export default function AdminScheduleScreen() {
 
           {/* Add Blocker Button */}
           <TouchableOpacity
+            disabled={cityConfig.detailers.length === 0}
             onPress={() => {
               setBlockerDate(localDateStr(getWeekDates(weekOffset)[selectedDay]));
               setBlockerDetailer(cityConfig.detailers[0]?.name ?? "");
@@ -2436,39 +2423,20 @@ export default function AdminScheduleScreen() {
               setShowBlockerDatePicker(false);
               setShowBlockerModal(true);
             }}
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#ef4444", justifyContent: "center", alignItems: "center" }}
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#ef4444", justifyContent: "center", alignItems: "center", opacity: cityConfig.detailers.length === 0 ? 0.35 : 1 }}
           >
             <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>🚫</Text>
           </TouchableOpacity>
 
           {/* Add Job Button */}
           <TouchableOpacity
+            disabled={cityConfig.detailers.length === 0}
             onPress={openAdd}
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" }}
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center", opacity: cityConfig.detailers.length === 0 ? 0.35 : 1 }}
           >
             <Text style={{ color: "#FFF", fontSize: 22, fontWeight: "300", lineHeight: 28 }}>+</Text>
           </TouchableOpacity>
 
-          {/* City Dropdown Button */}
-          <TouchableOpacity
-            onPress={() => setShowCityDropdown(true)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              backgroundColor: colors.primary + "18",
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: colors.primary + "40",
-            }}
-          >
-            <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>
-              📍 {currentCityLabel}
-            </Text>
-            <Text style={{ color: colors.primary, fontSize: 10 }}>▼</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -2551,7 +2519,7 @@ export default function AdminScheduleScreen() {
       {/* Day Blockers — shown above timeline */}
       {(() => {
         const dayStr = localDateStr(selectedDate);
-        const currentCityLabel = CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity;
+        const currentCityLabel = currentScheduleLabel;
         const dayBlockers = blockers.filter((b) => {
           // Normalize date: strip time component in case DB returns a datetime string
           const bDate = b.date ? b.date.slice(0, 10) : "";
@@ -2584,60 +2552,29 @@ export default function AdminScheduleScreen() {
         );
       })()}
 
-      {/* Timeline — always visible so admin can drag-to-add even on empty days */}
-      <DualLaneTimeline
-        jobs={dayJobs}
-        cityConfig={cityConfig}
-        screenWidth={screenWidth}
-        onJobPress={(job) => { setSelectedJob(job); setAdminEditingTime(false); setAdminEditingPackage(false); setAdminEditingDiscount(false); setAdminEditingTax(false); setAdminEditingDeposit(false); setAdminEditingPrice(false); setShowCustomerHistory(false); }}
-        onMoveAndReassign={handleMoveAdminJob}
-        onResize={handleResizeAdminJob}
-        isAdmin={true}
-        gesturesEnabled={!selectedJob && !showCheckout}
-        selectedDayOfWeek={selectedDate.getDay()}
-        onRefresh={forceSync}
-        refreshing={isSyncing}
-      />
-
-      {/* City Dropdown Modal */}
-      <Modal visible={showCityDropdown} transparent animationType="fade">
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-start", alignItems: "flex-end", paddingTop: 100, paddingRight: 16 }}
-          onPress={() => setShowCityDropdown(false)}
-          activeOpacity={1}
-        >
-          <View style={{ backgroundColor: colors.surface, borderRadius: 14, overflow: "hidden", minWidth: 200, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 12, elevation: 8 }}>
-            {CITY_LIST.map((city) => (
-              <TouchableOpacity
-                key={city.slug}
-                onPress={() => { setSelectedCity(city.slug); setShowCityDropdown(false); }}
-                style={{
-                  paddingHorizontal: 18,
-                  paddingVertical: 14,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border,
-                  backgroundColor: selectedCity === city.slug ? colors.primary + "15" : "transparent",
-                }}
-              >
-                <View>
-                  <Text style={{ color: selectedCity === city.slug ? colors.primary : colors.foreground, fontWeight: selectedCity === city.slug ? "700" : "500", fontSize: 15 }}>
-                    {city.label}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>
-                    {(dynamicDetailers[city.slug] ?? FALLBACK_DETAILERS[city.slug] ?? []).map((d) => d.name).join(" · ")}
-                  </Text>
-                </View>
-                {selectedCity === city.slug && (
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* A Company without members must never inherit another Company's schedule lanes. */}
+      {cityConfig.detailers.length === 0 ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingBottom: 72 }}>
+          <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800", textAlign: "center" }}>No team members yet</Text>
+          <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, textAlign: "center" }}>
+            Add team members to this Company before assigning jobs or creating time off.
+          </Text>
+        </View>
+      ) : (
+        <DualLaneTimeline
+          jobs={dayJobs}
+          cityConfig={cityConfig}
+          screenWidth={screenWidth}
+          onJobPress={(job) => { setSelectedJob(job); setAdminEditingTime(false); setAdminEditingPackage(false); setAdminEditingDiscount(false); setAdminEditingTax(false); setAdminEditingDeposit(false); setAdminEditingPrice(false); setShowCustomerHistory(false); }}
+          onMoveAndReassign={handleMoveAdminJob}
+          onResize={handleResizeAdminJob}
+          isAdmin={true}
+          gesturesEnabled={!selectedJob && !showCheckout}
+          selectedDayOfWeek={selectedDate.getDay()}
+          onRefresh={forceSync}
+          refreshing={isSyncing}
+        />
+      )}
 
       {/* Job Detail Modal */}
       <Modal visible={!!selectedJob} animationType="slide" transparent={false}>
@@ -4900,7 +4837,7 @@ export default function AdminScheduleScreen() {
                     style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}
                     activeOpacity={0.7}
                   >
-                    <Text style={{ fontSize: 12, color: colors.primary }}>📅 {currentCityLabel} · {addJobDate || formatFullDate(selectedDate)}</Text>
+                    <Text style={{ fontSize: 12, color: colors.primary }}>📅 {currentScheduleLabel} · {addJobDate || formatFullDate(selectedDate)}</Text>
                     <Text style={{ fontSize: 10, color: colors.primary }}>{showAddDatePicker ? "▲" : "▼"}</Text>
                   </TouchableOpacity>
                 </View>
