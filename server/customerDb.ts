@@ -95,7 +95,14 @@ export async function createCustomer(data: {
 export async function verifyCustomerPassword(email: string, password: string) {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select().from(customers).where(eq(customers.email, email.toLowerCase())).limit(1);
+  const rows = await db.select({
+    customerId: customers.customerId,
+    firstName: customers.firstName,
+    lastName: customers.lastName,
+    email: customers.email,
+    phone: customers.phone,
+    passwordHash: customers.passwordHash,
+  }).from(customers).where(eq(customers.email, email.toLowerCase())).limit(1);
   const customer = rows[0];
   if (!customer) return null;
   if (customer.passwordHash !== hashPassword(password)) return null;

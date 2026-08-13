@@ -48,6 +48,21 @@ export default function LoginScreen() {
     forgotPasswordMutation.mutate({ email: forgotEmail.trim().toLowerCase() });
   };
 
+  const completeEmployeeLogin = async (employee: any) => {
+    await employeeLogin(employee, true);
+    const greeting = getGreeting();
+    alert(`${greeting}, ${employee.fullName}! Welcome to Home Service Connection.`);
+    if (employee.role === "door_hanger_rep" || employee.role === "sales") {
+      router.replace("/(sales)/dashboard");
+    } else if (employee.role === "operations_manager") {
+      router.replace("/(tabs)/ops-dashboard");
+    } else if (employee.role === "admin" || employee.role === "office") {
+      router.replace("/(tabs)/admin-dashboard");
+    } else {
+      router.replace("/(tabs)");
+    }
+  };
+
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password");
@@ -56,9 +71,22 @@ export default function LoginScreen() {
     setError("");
     setLoading(true);
     try {
+      const identifier = email.trim();
+      const looksLikeEmployeePin = /^\d{4,6}$/.test(password);
+
+      // Employee credentials use a numeric PIN. Try this verified path first so
+      // an unrelated customer lookup cannot mask a successful administrator login.
+      if (looksLikeEmployeePin) {
+        const employeeResult = await employeeLoginMutation.mutateAsync({ identifier, pin: password });
+        if (employeeResult.success && employeeResult.employee) {
+          await completeEmployeeLogin(employeeResult.employee);
+          return;
+        }
+      }
+
       // First try customer login
       const customerResult = await customerLoginMutation.mutateAsync({
-        email: email.trim().toLowerCase(),
+        email: identifier.toLowerCase(),
         password,
       });
 
@@ -70,24 +98,12 @@ export default function LoginScreen() {
 
       // If customer login fails, try employee login
       const employeeResult = await employeeLoginMutation.mutateAsync({
-        identifier: email.trim(),
+        identifier,
         pin: password,
       });
 
       if (employeeResult.success && employeeResult.employee) {
-        await employeeLogin(employeeResult.employee as any, true);
-        const greeting = getGreeting();
-        alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Home Service Connection.`);
-        const role = employeeResult.employee.role;
-        if (role === "door_hanger_rep" || role === "sales") {
-          router.replace("/(sales)/dashboard");
-        } else if (role === "operations_manager") {
-          router.replace("/(tabs)/ops-dashboard");
-        } else if (role === "admin" || role === "office") {
-          router.replace("/(tabs)/admin-dashboard");
-        } else {
-          router.replace("/(tabs)");
-        }
+        await completeEmployeeLogin(employeeResult.employee);
         return;
       }
 
@@ -100,19 +116,7 @@ export default function LoginScreen() {
           pin: password,
         });
         if (employeeResult.success && employeeResult.employee) {
-          await employeeLogin(employeeResult.employee as any, true);
-          const greeting = getGreeting();
-          alert(`${greeting}, ${employeeResult.employee.fullName}! Welcome to Home Service Connection.`);
-          const role = employeeResult.employee.role;
-          if (role === "door_hanger_rep" || role === "sales") {
-            router.replace("/(sales)/dashboard");
-          } else if (role === "operations_manager") {
-            router.replace("/(tabs)/ops-dashboard");
-          } else if (role === "admin" || role === "office") {
-            router.replace("/(tabs)/admin-dashboard");
-          } else {
-            router.replace("/(tabs)");
-          }
+          await completeEmployeeLogin(employeeResult.employee);
           return;
         }
       } catch {

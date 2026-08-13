@@ -3127,5 +3127,7 @@
 - [x] Restore deployed administrator login by making the employee authentication query compatible with the active production schema.
 - [x] Verify the live deployed administrator login response after the compatibility release and correct any remaining mismatch.
 - [ ] Verify Adrian Miller’s administrator sign-in through the deployed client flow and correct any client-side mismatch.
+- [ ] Audit the deployed authentication flow end-to-end and add a reliable administrator account provisioning path if required.
+- [x] Route numeric administrator PIN logins directly to the verified employee endpoint and make customer lookup compatible with the deployed schema.
 - [x] Prevent employee session storage failures from blocking a successful administrator login redirect.
 - [ ] Record and verify the completed App Store Connect connection for Home Service Connection.

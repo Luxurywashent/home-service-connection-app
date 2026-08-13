@@ -11413,7 +11413,14 @@ async function createCustomer(data) {
 async function verifyCustomerPassword(email, password) {
   const db = await getDb3();
   if (!db) return null;
-  const rows = await db.select().from(customers).where(eq6(customers.email, email.toLowerCase())).limit(1);
+  const rows = await db.select({
+    customerId: customers.customerId,
+    firstName: customers.firstName,
+    lastName: customers.lastName,
+    email: customers.email,
+    phone: customers.phone,
+    passwordHash: customers.passwordHash
+  }).from(customers).where(eq6(customers.email, email.toLowerCase())).limit(1);
   const customer = rows[0];
   if (!customer) return null;
   if (customer.passwordHash !== hashPassword(password)) return null;
@@ -22964,7 +22971,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
       const customer = await verifyCustomerPassword(input.email, input.password);
       if (!customer) return { success: false, message: "Invalid email or password." };
       const token = await createCustomerSession(customer.customerId);
-      return { success: true, token, customer: { customerId: customer.customerId, firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone, profilePhotoUrl: customer.profilePhotoUrl ?? null } };
+      return { success: true, token, customer: { customerId: customer.customerId, firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone, profilePhotoUrl: null } };
     }),
     me: publicProcedure.input(z3.object({ token: z3.string() })).query(async ({ input }) => {
       const session = await getCustomerSession(input.token);

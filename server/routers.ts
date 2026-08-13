@@ -5485,7 +5485,7 @@ export const appRouter = router({
         const customer = await customerDb.verifyCustomerPassword(input.email, input.password);
         if (!customer) return { success: false as const, message: "Invalid email or password." };
         const token = await customerDb.createCustomerSession(customer.customerId);
-        return { success: true as const, token, customer: { customerId: customer.customerId, firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone, profilePhotoUrl: customer.profilePhotoUrl ?? null } };
+        return { success: true as const, token, customer: { customerId: customer.customerId, firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone, profilePhotoUrl: null } };
       }),
 
     me: publicProcedure
