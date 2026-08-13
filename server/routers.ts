@@ -44,8 +44,8 @@ export const appRouter = router({
             employeeId: employee.employeeId, fullName: employee.fullName, email: employee.email,
             role: employee.role, city: employee.city, hireDate: employee.hireDate,
             profilePhotoUrl: employee.profilePhotoUrl, phoneNumber: employee.phoneNumber,
-            hourlyRate: employee.hourlyRate !== null && employee.hourlyRate !== undefined ? Number(employee.hourlyRate) : null,
-            upsellBonusPct: employee.upsellBonusPct !== null && employee.upsellBonusPct !== undefined ? Number(employee.upsellBonusPct) : null,
+            hourlyRate: null,
+            upsellBonusPct: null,
           },
         };
       }),

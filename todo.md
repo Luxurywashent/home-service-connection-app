@@ -3123,4 +3123,6 @@
 - [ ] Use the managed Publish flow for the TestFlight build without exposing an EAS token or running a local build.
 - [ ] Keep TestFlight credentials in the managed Expo/Apple flow and rotate the EAS token that was shared in chat.
 - [x] Lower the Home Service Connection logo and login form to improve the sign-in screen’s vertical spacing.
+- [ ] Repair Adrian Miller’s administrator sign-in by aligning the active API target and account record.
+- [x] Restore deployed administrator login by making the employee authentication query compatible with the active production schema.
 - [ ] Record and verify the completed App Store Connect connection for Home Service Connection.

@@ -158,11 +158,21 @@ export async function getUserByOpenId(openId: string) {
 export async function getEmployeeByLogin(identifier: string, pin: string) {
   const db = await getDb();
   if (!db) return null;
-  let result = await db.select().from(employees)
+  const loginFields = {
+    employeeId: employees.employeeId,
+    fullName: employees.fullName,
+    email: employees.email,
+    role: employees.role,
+    city: employees.city,
+    hireDate: employees.hireDate,
+    profilePhotoUrl: employees.profilePhotoUrl,
+    phoneNumber: employees.phoneNumber,
+  };
+  let result = await db.select(loginFields).from(employees)
     .where(and(eq(employees.employeeId, identifier), eq(employees.pin, pin), eq(employees.activeStatus, "active")))
     .limit(1);
   if (result.length === 0) {
-    result = await db.select().from(employees)
+    result = await db.select(loginFields).from(employees)
       .where(and(eq(employees.email, identifier), eq(employees.pin, pin), eq(employees.activeStatus, "active")))
       .limit(1);
   }

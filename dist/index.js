@@ -17,6 +17,7 @@ var __export = (target, all) => {
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
+  abandonedCarts: () => abandonedCarts,
   addressPhotos: () => addressPhotos,
   aiKnowledgeEntries: () => aiKnowledgeEntries,
   bankStatements: () => bankStatements,
@@ -30,6 +31,7 @@ __export(schema_exports, {
   communityPostLikes: () => communityPostLikes,
   communityPosts: () => communityPosts,
   companyMeetings: () => companyMeetings,
+  customerActivitySessions: () => customerActivitySessions,
   customerAddresses: () => customerAddresses,
   customerAttachments: () => customerAttachments,
   customerBookings: () => customerBookings,
@@ -88,6 +90,10 @@ __export(schema_exports, {
   jobEvents: () => jobEvents,
   jobMessages: () => jobMessages,
   lateArrivalHistory: () => lateArrivalHistory,
+  loanContracts: () => loanContracts,
+  loanPaymentReminders: () => loanPaymentReminders,
+  loanPaymentSchedules: () => loanPaymentSchedules,
+  loanPayments: () => loanPayments,
   maintenanceRecords: () => maintenanceRecords,
   meetingAttendance: () => meetingAttendance,
   moduleTools: () => moduleTools,
@@ -139,8 +145,8 @@ __export(schema_exports, {
   vanChecklists: () => vanChecklists,
   warrantyDocs: () => warrantyDocs
 });
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, double, tinyint, boolean, datetime, json } from "drizzle-orm/mysql-core";
-var users, employees, dailyPerformance, notifications, timeOffRequests, notificationReadLog, challenges, quizQuestions, employeeProgression, doorHangerEntries, doorHangerGoals, trainingModules, trainingTools, trainingSteps, userTrainingProgress, teamChatMessages, scheduleBlockers, clockInOutRecords, breakRecords, onlineBookings, salesCallbacks, scheduleJobs, detailerLocations, trackingTokens, morningMeetingConfig, salesPerformance, doorHangerEarnings, customerAttachments, estimates, receptionistCallLogs, communityPosts, communityComments, communityPostLikes, inventoryCategories, inventoryItems, inventoryStock, inventoryLocations, inventoryVans, inventoryTransactions, financeCategories, financeTransactions, financeAssets, financeLiabilities, financeEquity, financeVendors, financeCities, bankStatements, bankTransactions, customers, customerVehicles, customerAddresses, addressPhotos, customerBookings, customerSessions, repairEquipment, repairOrders, employeeVanAssignments, investors, investorSessions, investments, investmentPayments, investorDocuments, investorUpdates, investorSupportRequests, investorAuditLog, investorInquiries, aiKnowledgeEntries, customerPaymentMethods, doNotServiceList, phoneLines, smsMessages, callLogs, detailerPoints, pointViolations, lateArrivalHistory, trainingQuizQuestions, trainingQuizAttempts, geofenceZones, geofenceEvents, eodChecklists, eodChecklistItems, emailLogs, siteInspections, siteInspectionItems, vanChecklists, vanChecklistItems, vanChecklistCustomItems, serviceLocations, serviceLocationDetailers, promotions, interactiveStepOverrides, companyMeetings, referralCodes, referrals, pointsLedger, rewardTiers, redemptions, priceBookServices, geocodeCache, meetingAttendance, employeeDaysOff, expenseSubmissions, interactiveModules, portalMessages, interactiveModuleFolders, moduleTools, interactiveModuleSteps, emailQueue, maintenanceRecords, warrantyDocs, standaloneInvoices, invoiceLineItems, chatLastSeen, jobEvents, jobEventSeen, qcRecords, opsDailyChecklist, tipRequests, jobMessages, packageImages, refundRecords;
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, double, tinyint, boolean, datetime, json, date, index } from "drizzle-orm/mysql-core";
+var users, employees, dailyPerformance, notifications, timeOffRequests, notificationReadLog, challenges, quizQuestions, employeeProgression, doorHangerEntries, doorHangerGoals, trainingModules, trainingTools, trainingSteps, userTrainingProgress, teamChatMessages, scheduleBlockers, clockInOutRecords, breakRecords, onlineBookings, salesCallbacks, scheduleJobs, detailerLocations, trackingTokens, morningMeetingConfig, salesPerformance, doorHangerEarnings, customerAttachments, estimates, receptionistCallLogs, communityPosts, communityComments, communityPostLikes, inventoryCategories, inventoryItems, inventoryStock, inventoryLocations, inventoryVans, inventoryTransactions, financeCategories, financeTransactions, financeAssets, financeLiabilities, financeEquity, financeVendors, financeCities, bankStatements, bankTransactions, customers, customerVehicles, customerAddresses, addressPhotos, customerBookings, customerSessions, repairEquipment, repairOrders, employeeVanAssignments, investors, investorSessions, investments, investmentPayments, investorDocuments, investorUpdates, investorSupportRequests, investorAuditLog, investorInquiries, aiKnowledgeEntries, customerPaymentMethods, doNotServiceList, phoneLines, smsMessages, callLogs, detailerPoints, pointViolations, lateArrivalHistory, trainingQuizQuestions, trainingQuizAttempts, geofenceZones, geofenceEvents, eodChecklists, eodChecklistItems, emailLogs, siteInspections, siteInspectionItems, vanChecklists, vanChecklistItems, vanChecklistCustomItems, serviceLocations, serviceLocationDetailers, promotions, interactiveStepOverrides, companyMeetings, referralCodes, referrals, pointsLedger, rewardTiers, redemptions, priceBookServices, geocodeCache, meetingAttendance, employeeDaysOff, expenseSubmissions, interactiveModules, portalMessages, interactiveModuleFolders, moduleTools, interactiveModuleSteps, emailQueue, maintenanceRecords, warrantyDocs, standaloneInvoices, invoiceLineItems, chatLastSeen, jobEvents, jobEventSeen, qcRecords, opsDailyChecklist, tipRequests, jobMessages, packageImages, refundRecords, customerActivitySessions, abandonedCarts, loanContracts, loanPaymentSchedules, loanPayments, loanPaymentReminders;
 var init_schema = __esm({
   "drizzle/schema.ts"() {
     "use strict";
@@ -171,7 +177,10 @@ var init_schema = __esm({
       showOnBookingForm: tinyint("show_on_booking_form").default(1).notNull(),
       // 1 = visible to customers on booking form
       shift: mysqlEnum("shift", ["shift1", "shift2"]).default("shift1").notNull(),
-      // shift1 = Mon-Thu, shift2 = Fri-Sun
+      // shift1 = Mon-Thu, shift2 = Fri-Sun (legacy — superseded by customWorkDays when set)
+      // Comma-separated JS day numbers: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+      // When non-null, this overrides shift for availability. e.g. "1,2,3,4,5" = Mon–Fri
+      customWorkDays: varchar("custom_work_days", { length: 32 }),
       shiftStartHour: decimal("shift_start_hour", { precision: 4, scale: 1 }).default("8.0"),
       // e.g. 8.0 = 8:00 AM, 8.5 = 8:30 AM
       shiftEndHour: decimal("shift_end_hour", { precision: 4, scale: 1 }).default("17.0"),
@@ -548,6 +557,8 @@ var init_schema = __esm({
       serviceDescription: text("service_description"),
       selectedAddons: text("selected_addons"),
       // JSON array string
+      addonQtys: text("addon_qtys"),
+      // JSON object: addonId -> quantity for primary vehicle
       customPrice: decimal("custom_price", { precision: 10, scale: 2 }),
       // per-booking price override (admin only)
       totalPrice: decimal("total_price", { precision: 10, scale: 2 }),
@@ -564,7 +575,7 @@ var init_schema = __esm({
       // Status
       status: mysqlEnum("status", ["pending", "confirmed", "in_progress", "completed", "cancelled"]).default("confirmed").notNull(),
       // Source: "manual" = created in app, "online" = came from booking form (mirrored)
-      source: mysqlEnum("source", ["manual", "online"]).default("manual").notNull(),
+      source: mysqlEnum("source", ["manual", "online", "portal_app", "vip_credit"]).default("manual").notNull(),
       onlineBookingId: varchar("online_booking_id", { length: 64 }),
       // ref to online_bookings.booking_id if source=online
       // Notes
@@ -1017,8 +1028,12 @@ var init_schema = __esm({
       year: varchar("year", { length: 8 }).notNull(),
       make: varchar("make", { length: 64 }).notNull(),
       model: varchar("model", { length: 128 }).notNull(),
-      vehicleType: mysqlEnum("vehicle_type", ["sedan", "suv", "large_suv_van", "truck"]).notNull(),
+      vehicleType: mysqlEnum("vehicle_type", ["sedan", "suv", "large_suv_van", "truck", "rv"]).notNull(),
       color: varchar("color", { length: 64 }),
+      rvClass: varchar("rv_class", { length: 64 }),
+      // Class A, Class B, Class C, Fifth Wheel, Bumper Pull Trailer
+      rvLengthFt: int("rv_length_ft"),
+      // Length in feet for pricing tier
       isDefault: tinyint("is_default").default(0).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
@@ -1052,7 +1067,7 @@ var init_schema = __esm({
       bookingRef: varchar("booking_ref", { length: 64 }).notNull().unique(),
       customerId: varchar("customer_id", { length: 64 }).notNull(),
       vehicleId: varchar("vehicle_id", { length: 64 }).notNull(),
-      vehicleType: mysqlEnum("vehicle_type", ["sedan", "suv", "large_suv_van", "truck"]).notNull(),
+      vehicleType: mysqlEnum("vehicle_type", ["sedan", "suv", "large_suv_van", "truck", "rv"]).notNull(),
       vehicleLabel: varchar("vehicle_label", { length: 255 }),
       packageId: varchar("package_id", { length: 64 }).notNull(),
       packageName: varchar("package_name", { length: 128 }).notNull(),
@@ -1432,7 +1447,7 @@ var init_schema = __esm({
       id: int("id").autoincrement().primaryKey(),
       itemId: varchar("item_id", { length: 64 }).notNull().unique(),
       checklistId: varchar("checklist_id", { length: 64 }).notNull(),
-      stepKey: mysqlEnum("step_key", ["trash_removed", "chemicals_stocked", "towels_stocked"]).notNull(),
+      stepKey: mysqlEnum("step_key", ["back_photo", "driver_side_photo", "passenger_side_photo", "driver_area", "box_photo", "chemicals_stocked", "towels_stocked"]).notNull(),
       photoUrl: text("photo_url"),
       completedAt: datetime("completed_at")
     });
@@ -1646,6 +1661,8 @@ var init_schema = __esm({
       // JSON array of feature strings
       vehiclePrices: text("vehicle_prices").notNull(),
       // JSON: { sedan, suv, xl_suv_van, truck }
+      imageUrl: text("image_url_pb"),
+      // S3 URL for the service photo shown on booking form
       isActive: mysqlEnum("is_active_pb", ["yes", "no"]).default("yes").notNull(),
       sortOrder: int("sort_order_pb").default(0).notNull(),
       createdAt: timestamp("created_at_pb").defaultNow().notNull(),
@@ -1721,6 +1738,8 @@ var init_schema = __esm({
       direction: varchar("direction", { length: 10 }).notNull(),
       // "inbound" | "outbound"
       body: text("body").notNull(),
+      imageUrl: text("image_url"),
+      // optional image attachment URL
       sentByEmployeeId: varchar("sent_by_employee_id", { length: 50 }),
       // null for customer-sent
       sentByName: varchar("sent_by_name", { length: 100 }),
@@ -1978,10 +1997,118 @@ var init_schema = __esm({
       status: varchar("status", { length: 32 }).notNull().default("succeeded"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
+    customerActivitySessions = mysqlTable("customer_activity_sessions", {
+      id: int("id").autoincrement().primaryKey(),
+      sessionId: varchar("session_id", { length: 64 }).notNull().unique(),
+      customerId: varchar("customer_id", { length: 64 }).notNull(),
+      source: mysqlEnum("source", ["portal_app", "website"]).default("portal_app").notNull(),
+      startedAt: timestamp("started_at").defaultNow().notNull(),
+      endedAt: timestamp("ended_at"),
+      durationSeconds: int("duration_seconds"),
+      // null until session ends
+      lastScreen: varchar("last_screen", { length: 128 }),
+      devicePlatform: varchar("device_platform", { length: 32 }),
+      // "ios" | "android" | "web"
+      appVersion: varchar("app_version", { length: 32 })
+    });
+    abandonedCarts = mysqlTable("abandoned_carts", {
+      id: int("id").autoincrement().primaryKey(),
+      cartId: varchar("cart_id", { length: 64 }).notNull().unique(),
+      customerId: varchar("customer_id", { length: 64 }),
+      // null for anonymous website visitors
+      source: mysqlEnum("source", ["portal_app", "website"]).notNull(),
+      packageId: varchar("package_id", { length: 64 }),
+      packageName: varchar("package_name", { length: 128 }),
+      vehicleType: varchar("vehicle_type", { length: 32 }),
+      selectedDate: varchar("selected_date", { length: 16 }),
+      estimatedTotal: decimal("estimated_total", { precision: 10, scale: 2 }),
+      stepReached: varchar("step_reached", { length: 64 }),
+      // e.g. "date_selection", "payment", "confirmation"
+      city: varchar("city", { length: 128 }),
+      customerEmail: varchar("customer_email", { length: 320 }),
+      customerName: varchar("customer_name", { length: 255 }),
+      completedAt: timestamp("completed_at"),
+      // set when booking is completed (not abandoned)
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
+    });
+    loanContracts = mysqlTable("loan_contracts", {
+      id: int("id").autoincrement().primaryKey(),
+      loanId: varchar("loan_id", { length: 64 }).notNull().unique(),
+      borrowerName: varchar("borrower_name", { length: 255 }).notNull(),
+      borrowerEmail: varchar("borrower_email", { length: 255 }).notNull(),
+      borrowerPhone: varchar("borrower_phone", { length: 20 }),
+      principalAmount: decimal("principal_amount", { precision: 12, scale: 2 }).notNull(),
+      totalRepaymentAmount: decimal("total_repayment_amount", { precision: 12, scale: 2 }).notNull(),
+      numberOfPayments: int("number_of_payments").notNull(),
+      paymentFrequency: mysqlEnum("payment_frequency", ["weekly", "biweekly", "monthly"]).notNull(),
+      paymentDayOfWeek: int("payment_day_of_week"),
+      paymentDayOfMonth: varchar("payment_day_of_month", { length: 50 }),
+      startDate: date("start_date").notNull(),
+      status: mysqlEnum("status_lc", ["draft", "pending_signature", "active", "completed", "cancelled"]).default("draft").notNull(),
+      contractUrl: text("contract_url"),
+      signedContractUrl: text("signed_contract_url"),
+      contractSignedAt: datetime("contract_signed_at"),
+      signatureDate: datetime("signature_date"),
+      createdAt: timestamp("created_at_lc").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at_lc").defaultNow().onUpdateNow().notNull()
+    }, (table) => ({
+      borrowerEmailIdx: index("borrower_email_idx").on(table.borrowerEmail),
+      statusIdx: index("status_lc_idx").on(table.status),
+      startDateIdx: index("start_date_idx").on(table.startDate)
+    }));
+    loanPaymentSchedules = mysqlTable("loan_payment_schedules", {
+      id: int("id").autoincrement().primaryKey(),
+      scheduleId: varchar("schedule_id", { length: 64 }).notNull().unique(),
+      loanId: varchar("loan_id_lps", { length: 64 }).notNull(),
+      paymentNumber: int("payment_number").notNull(),
+      dueDate: date("due_date").notNull(),
+      amountDue: decimal("amount_due", { precision: 12, scale: 2 }).notNull(),
+      status: mysqlEnum("status_lps", ["scheduled", "pending", "completed", "missed", "delayed"]).default("scheduled").notNull(),
+      reminderSentAt: datetime("reminder_sent_at"),
+      createdAt: timestamp("created_at_lps").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at_lps").defaultNow().onUpdateNow().notNull()
+    }, (table) => ({
+      loanIdIdx: index("loan_id_lps_idx").on(table.loanId),
+      dueDateIdx: index("due_date_idx").on(table.dueDate),
+      statusIdx: index("status_lps_idx").on(table.status)
+    }));
+    loanPayments = mysqlTable("loan_payments", {
+      id: int("id").autoincrement().primaryKey(),
+      paymentId: varchar("payment_id", { length: 64 }).notNull().unique(),
+      loanId: varchar("loan_id_lp", { length: 64 }).notNull(),
+      scheduleId: varchar("schedule_id_lp", { length: 64 }),
+      paymentNumber: int("payment_number_lp").notNull(),
+      amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull(),
+      paidDate: date("paid_date").notNull(),
+      paymentMethod: varchar("payment_method", { length: 50 }),
+      notes: text("notes_lp"),
+      recordedBy: varchar("recorded_by", { length: 255 }),
+      createdAt: timestamp("created_at_lp").defaultNow().notNull()
+    }, (table) => ({
+      loanIdIdx: index("loan_id_lp_idx").on(table.loanId),
+      paidDateIdx: index("paid_date_idx").on(table.paidDate)
+    }));
+    loanPaymentReminders = mysqlTable("loan_payment_reminders", {
+      id: int("id").autoincrement().primaryKey(),
+      reminderId: varchar("reminder_id", { length: 64 }).notNull().unique(),
+      loanId: varchar("loan_id_lpr", { length: 64 }).notNull(),
+      scheduleId: varchar("schedule_id_lpr", { length: 64 }).notNull(),
+      reminderType: mysqlEnum("reminder_type", ["payment_due", "payment_overdue", "contract_pending"]).notNull(),
+      sentAt: datetime("sent_at").notNull(),
+      createdAt: timestamp("created_at_lpr").defaultNow().notNull()
+    }, (table) => ({
+      loanIdIdx: index("loan_id_lpr_idx").on(table.loanId),
+      scheduleIdIdx: index("schedule_id_lpr_idx").on(table.scheduleId)
+    }));
   }
 });
 
 // server/_core/env.ts
+var env_exports = {};
+__export(env_exports, {
+  ENV: () => ENV
+});
 var ENV;
 var init_env = __esm({
   "server/_core/env.ts"() {
@@ -2854,6 +2981,7 @@ __export(financeDb_exports, {
   getByLocation: () => getByLocation,
   getExpensesForEmployee: () => getExpensesForEmployee,
   getMissingReceipts: () => getMissingReceipts,
+  getPendingExpenseSummary: () => getPendingExpenseSummary,
   getSummary: () => getSummary,
   getTransactions: () => getTransactions,
   reviewExpense: () => reviewExpense,
@@ -3308,6 +3436,38 @@ async function getAllExpenseSubmissions(status, cityName) {
   if (cityName) filtered = filtered.filter((r) => (r.employeeCity ?? "").toLowerCase() === cityName.toLowerCase());
   return filtered;
 }
+async function getPendingExpenseSummary(cityId) {
+  const db = await getDb();
+  if (!db) return { totalPending: 0, pendingCount: 0, byCity: [] };
+  const rows = await db.select({
+    amount: expenseSubmissions.amount,
+    cityId: expenseSubmissions.cityId,
+    employeeCity: employees.city
+  }).from(expenseSubmissions).leftJoin(employees, eq(expenseSubmissions.employeeId, employees.employeeId)).where(eq(expenseSubmissions.status, "pending"));
+  let filtered = rows;
+  if (cityId) {
+    const cityRows = await db.select({ name: financeCities.name, slug: financeCities.slug }).from(financeCities).where(eq(financeCities.cityId, cityId)).limit(1);
+    const cityName = cityRows[0]?.name ?? "";
+    const citySlug = cityRows[0]?.slug ?? "";
+    filtered = rows.filter((r) => {
+      if (r.cityId === cityId) return true;
+      const empCity = (r.employeeCity ?? "").toLowerCase();
+      return empCity === cityName.toLowerCase() || empCity === citySlug.toLowerCase();
+    });
+  }
+  const totalPending = filtered.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+  const pendingCount = filtered.length;
+  const byCityMap = {};
+  for (const r of filtered) {
+    const resolvedCityName = r.employeeCity ?? "Unknown Location";
+    if (!byCityMap[resolvedCityName]) byCityMap[resolvedCityName] = { total: 0, count: 0 };
+    byCityMap[resolvedCityName].total += parseFloat(r.amount ?? "0");
+    byCityMap[resolvedCityName].count += 1;
+  }
+  const byCity = Object.entries(byCityMap).map(([cityName, d]) => ({ cityName, ...d }));
+  byCity.sort((a, b) => b.total - a.total);
+  return { totalPending, pendingCount, byCity };
+}
 async function reviewExpense(expenseId, data) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -3336,11 +3496,25 @@ async function reviewExpense(expenseId, data) {
         const cat = fallbackCats[0];
         if (cat) {
           let cityName = "";
-          if (exp.cityId) {
-            const cityRows = await db.select({ name: financeCities.name }).from(financeCities).where(eq(financeCities.cityId, exp.cityId)).limit(1);
+          let resolvedCityId = exp.cityId ?? null;
+          if (resolvedCityId) {
+            const cityRows = await db.select({ name: financeCities.name }).from(financeCities).where(eq(financeCities.cityId, resolvedCityId)).limit(1);
             cityName = cityRows[0]?.name ?? "";
           }
-          const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+          if (!cityName && exp.employeeId) {
+            const empRows = await db.select({ city: employees.city }).from(employees).where(eq(employees.employeeId, exp.employeeId)).limit(1);
+            const empCity = empRows[0]?.city ?? "";
+            if (empCity) {
+              const cityRows = await db.select({ cityId: financeCities.cityId, name: financeCities.name }).from(financeCities).where(like(financeCities.name, `%${empCity}%`)).limit(1);
+              if (cityRows[0]) {
+                cityName = cityRows[0].name;
+                resolvedCityId = cityRows[0].cityId;
+              } else {
+                cityName = empCity;
+              }
+            }
+          }
+          const expenseDate = exp.submittedAt instanceof Date ? exp.submittedAt.toISOString().slice(0, 10) : String(exp.submittedAt ?? "").slice(0, 10) || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
           const txId = genId("FTX");
           await db.insert(financeTransactions).values({
             txId,
@@ -3348,12 +3522,12 @@ async function reviewExpense(expenseId, data) {
             categoryId: cat.categoryId,
             categoryName: cat.name,
             amount: exp.amount,
-            date: today,
+            date: expenseDate,
             location: cityName,
-            cityId: exp.cityId ?? null,
+            cityId: resolvedCityId,
             jobId: exp.jobId ?? null,
             van: null,
-            notes: `${exp.fullName}: ${exp.note ?? exp.category} (Expense #${expenseId})`,
+            notes: `${exp.fullName}: ${exp.note ?? exp.category} (Team Expense #${expenseId})`,
             receiptUrl: exp.receiptUrl ?? null,
             receiptUploadedAt: exp.receiptUrl ? /* @__PURE__ */ new Date() : null,
             hasReceipt: exp.receiptUrl ? "yes" : "no",
@@ -4105,6 +4279,7 @@ __export(db_exports, {
   getAllPerformanceByDate: () => getAllPerformanceByDate,
   getAllPerformanceDateRange: () => getAllPerformanceDateRange,
   getAllProgressionSummary: () => getAllProgressionSummary,
+  getAllQuizAttemptsForEmployee: () => getAllQuizAttemptsForEmployee,
   getAllQuizQuestions: () => getAllQuizQuestions,
   getAllRewardTiers: () => getAllRewardTiers,
   getAllSalesCallbacks: () => getAllSalesCallbacks,
@@ -4219,6 +4394,7 @@ __export(db_exports, {
   getUpcomingDaysOff: () => getUpcomingDaysOff,
   getUserByOpenId: () => getUserByOpenId,
   getUserTrainingProgress: () => getUserTrainingProgress,
+  getViolationsByDateRange: () => getViolationsByDateRange,
   getViolationsForEmployee: () => getViolationsForEmployee,
   getWeeklyClockLogs: () => getWeeklyClockLogs,
   getWeeklyDoorHangerEarnings: () => getWeeklyDoorHangerEarnings,
@@ -4230,6 +4406,7 @@ __export(db_exports, {
   isOnDoNotServiceList: () => isOnDoNotServiceList,
   issueViolation: () => issueViolation,
   likeCommunityPost: () => likeCommunityPost,
+  listAllPriceBookServices: () => listAllPriceBookServices,
   listCommunityComments: () => listCommunityComments,
   listCommunityPosts: () => listCommunityPosts,
   listEodChecklistsByDate: () => listEodChecklistsByDate,
@@ -4285,6 +4462,7 @@ __export(db_exports, {
   syncPerformanceFromJobs: () => syncPerformanceFromJobs,
   todayCST: () => todayCST,
   toggleGeofenceZone: () => toggleGeofenceZone,
+  togglePriceBookServiceActive: () => togglePriceBookServiceActive,
   unassignJob: () => unassignJob,
   updateAbandonedCartVehicle: () => updateAbandonedCartVehicle,
   updateAiKnowledgeEntry: () => updateAiKnowledgeEntry,
@@ -4319,6 +4497,7 @@ __export(db_exports, {
   upsertMorningMeetingConfig: () => upsertMorningMeetingConfig,
   upsertPerformance: () => upsertPerformance,
   upsertPriceBookService: () => upsertPriceBookService,
+  upsertPriceBookServiceImage: () => upsertPriceBookServiceImage,
   upsertSalesPerformance: () => upsertSalesPerformance,
   upsertScheduleJob: () => upsertScheduleJob,
   upsertUser: () => upsertUser,
@@ -4344,13 +4523,23 @@ function todayCST() {
 }
 function getPool() {
   if (!_pool) {
-    _pool = mysql.createPool({
+    const pool = mysql.createPool({
       uri: process.env.DATABASE_URL,
       connectionLimit: 10,
       waitForConnections: true,
       enableKeepAlive: true,
       keepAliveInitialDelay: 3e4
     });
+    pool.on("connection", (conn) => {
+      conn.on("error", (err) => {
+        if (err.code === "PROTOCOL_CONNECTION_LOST" || err.code === "ECONNRESET" || err.code === "ETIMEDOUT") {
+          console.warn("[Database] Connection lost \u2014 resetting pool for reconnect:", err.code);
+          _db = null;
+          _pool = null;
+        }
+      });
+    });
+    _pool = pool;
   }
   return _pool;
 }
@@ -4401,9 +4590,19 @@ async function getUserByOpenId(openId) {
 async function getEmployeeByLogin(identifier, pin) {
   const db = await getDb();
   if (!db) return null;
-  let result = await db.select().from(employees).where(and2(eq2(employees.employeeId, identifier), eq2(employees.pin, pin), eq2(employees.activeStatus, "active"))).limit(1);
+  const loginFields = {
+    employeeId: employees.employeeId,
+    fullName: employees.fullName,
+    email: employees.email,
+    role: employees.role,
+    city: employees.city,
+    hireDate: employees.hireDate,
+    profilePhotoUrl: employees.profilePhotoUrl,
+    phoneNumber: employees.phoneNumber
+  };
+  let result = await db.select(loginFields).from(employees).where(and2(eq2(employees.employeeId, identifier), eq2(employees.pin, pin), eq2(employees.activeStatus, "active"))).limit(1);
   if (result.length === 0) {
-    result = await db.select().from(employees).where(and2(eq2(employees.email, identifier), eq2(employees.pin, pin), eq2(employees.activeStatus, "active"))).limit(1);
+    result = await db.select(loginFields).from(employees).where(and2(eq2(employees.email, identifier), eq2(employees.pin, pin), eq2(employees.activeStatus, "active"))).limit(1);
   }
   return result.length > 0 ? result[0] : null;
 }
@@ -4443,6 +4642,7 @@ async function updateEmployee(employeeId, data) {
   if (data.shiftStartHour !== void 0) updateSet.shiftStartHour = data.shiftStartHour !== null ? String(data.shiftStartHour) : null;
   if (data.shiftEndHour !== void 0) updateSet.shiftEndHour = data.shiftEndHour !== null ? String(data.shiftEndHour) : null;
   if (data.shift !== void 0) updateSet.shift = data.shift;
+  if (data.customWorkDays !== void 0) updateSet.customWorkDays = data.customWorkDays;
   if (Object.keys(updateSet).length === 0) return;
   await db.update(employees).set(updateSet).where(eq2(employees.employeeId, employeeId));
 }
@@ -4451,10 +4651,10 @@ async function updateEmployeePin(employeeId, newPin) {
   if (!db) throw new Error("Database not available");
   await db.update(employees).set({ pin: newPin }).where(eq2(employees.employeeId, employeeId));
 }
-async function getPerformanceByDate(employeeId, date) {
+async function getPerformanceByDate(employeeId, date2) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailyPerformance).where(and2(eq2(dailyPerformance.employeeId, employeeId), eq2(dailyPerformance.date, date)));
+  return db.select().from(dailyPerformance).where(and2(eq2(dailyPerformance.employeeId, employeeId), eq2(dailyPerformance.date, date2)));
 }
 async function getPerformanceDateRange(employeeId, startDate, endDate) {
   const db = await getDb();
@@ -4465,10 +4665,10 @@ async function getPerformanceDateRange(employeeId, startDate, endDate) {
     lte2(dailyPerformance.date, endDate)
   )).orderBy(dailyPerformance.date);
 }
-async function getAllPerformanceByDate(date) {
+async function getAllPerformanceByDate(date2) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(dailyPerformance).where(eq2(dailyPerformance.date, date));
+  return db.select().from(dailyPerformance).where(eq2(dailyPerformance.date, date2));
 }
 async function getAllPerformanceDateRange(startDate, endDate) {
   const db = await getDb();
@@ -5292,12 +5492,12 @@ async function getTodayBreaks(employeeId) {
   const today = todayCST();
   return await db.select().from(breakRecords).where(and2(eq2(breakRecords.employeeId, employeeId), eq2(breakRecords.date, today))).orderBy(breakRecords.createdAt);
 }
-async function getBreakDeductionHours(employeeId, date) {
+async function getBreakDeductionHours(employeeId, date2) {
   const db = await getDb();
   if (!db) return 0;
   const breaks = await db.select().from(breakRecords).where(and2(
     eq2(breakRecords.employeeId, employeeId),
-    eq2(breakRecords.date, date),
+    eq2(breakRecords.date, date2),
     eq2(breakRecords.status, "taken")
   ));
   let deductionMs = 0;
@@ -5310,16 +5510,16 @@ async function getBreakDeductionHours(employeeId, date) {
   }
   return deductionMs / (1e3 * 60 * 60);
 }
-async function recalcClockRecordForDate(employeeId, date) {
+async function recalcClockRecordForDate(employeeId, date2) {
   const db = await getDb();
   if (!db) return;
   const records = await db.select().from(clockInOutRecords).where(and2(
     eq2(clockInOutRecords.employeeId, employeeId),
-    eq2(clockInOutRecords.date, date),
+    eq2(clockInOutRecords.date, date2),
     eq2(clockInOutRecords.status, "clocked_out")
   ));
   if (records.length === 0) return;
-  const breakDeduction = await getBreakDeductionHours(employeeId, date);
+  const breakDeduction = await getBreakDeductionHours(employeeId, date2);
   const rawHoursPerRecord = records.map((r) => {
     const ci = new Date(r.clockInTime);
     const co = r.clockOutTime ? new Date(r.clockOutTime) : /* @__PURE__ */ new Date();
@@ -5360,23 +5560,23 @@ async function getWeeklyHours(employeeId, startDate, endDate) {
   )).orderBy(clockInOutRecords.date);
   const uniqueDates = [...new Set(logs.map((l) => l.date).filter(Boolean))];
   const breakDeductionByDate = {};
-  for (const date of uniqueDates) {
-    breakDeductionByDate[date] = await getBreakDeductionHours(employeeId, date);
+  for (const date2 of uniqueDates) {
+    breakDeductionByDate[date2] = await getBreakDeductionHours(employeeId, date2);
   }
   const dailyRawMap = {};
   for (const log of logs) {
-    const date = log.date;
-    if (!dailyRawMap[date]) dailyRawMap[date] = 0;
+    const date2 = log.date;
+    if (!dailyRawMap[date2]) dailyRawMap[date2] = 0;
     const ci = new Date(log.clockInTime);
     const co = log.clockOutTime ? new Date(log.clockOutTime) : /* @__PURE__ */ new Date();
-    dailyRawMap[date] += Math.max(0, (co.getTime() - ci.getTime()) / (1e3 * 60 * 60));
+    dailyRawMap[date2] += Math.max(0, (co.getTime() - ci.getTime()) / (1e3 * 60 * 60));
   }
   const dailyNetMap = {};
-  for (const date of Object.keys(dailyRawMap)) {
-    dailyNetMap[date] = Math.max(0, dailyRawMap[date] - (breakDeductionByDate[date] ?? 0));
+  for (const date2 of Object.keys(dailyRawMap)) {
+    dailyNetMap[date2] = Math.max(0, dailyRawMap[date2] - (breakDeductionByDate[date2] ?? 0));
   }
   const totalHours = Object.values(dailyNetMap).reduce((s, h) => s + h, 0);
-  const dailyHours = Object.entries(dailyNetMap).map(([date, hours]) => ({ date, hours }));
+  const dailyHours = Object.entries(dailyNetMap).map(([date2, hours]) => ({ date: date2, hours }));
   return { totalHours, dailyHours };
 }
 async function updateClockInTime(recordId, clockInTime) {
@@ -5512,7 +5712,7 @@ async function createOnlineBooking(data) {
   if (!db) throw new Error("Database not available");
   await db.insert(onlineBookings).values(data);
 }
-async function getBookingsByDateAndLocation(location, date) {
+async function getBookingsByDateAndLocation(location, date2) {
   const db = await getDb();
   if (!db) return [];
   const [webBookings, schedJobs] = await Promise.all([
@@ -5522,7 +5722,7 @@ async function getBookingsByDateAndLocation(location, date) {
       endHour: onlineBookings.endHour
     }).from(onlineBookings).where(and2(
       sql2`LOWER(${onlineBookings.location}) = LOWER(${location})`,
-      eq2(onlineBookings.bookingDate, date),
+      eq2(onlineBookings.bookingDate, date2),
       ne(onlineBookings.status, "cancelled")
     )),
     db.select({
@@ -5531,7 +5731,7 @@ async function getBookingsByDateAndLocation(location, date) {
       endHour: scheduleJobs.endHour
     }).from(scheduleJobs).where(and2(
       sql2`LOWER(${scheduleJobs.location}) = LOWER(${location})`,
-      eq2(scheduleJobs.date, date),
+      eq2(scheduleJobs.date, date2),
       ne(scheduleJobs.status, "cancelled")
     ))
   ]);
@@ -5729,6 +5929,7 @@ async function upsertScheduleJob(data) {
       packageType: data.packageType,
       serviceDescription: data.serviceDescription,
       selectedAddons: data.selectedAddons,
+      addonQtys: data.addonQtys,
       totalPrice: data.totalPrice,
       tips: data.tips,
       upsellTotal: data.upsellTotal,
@@ -5742,7 +5943,9 @@ async function upsertScheduleJob(data) {
       discountCode: data.discountCode,
       discountAmount: data.discountAmount,
       additionalVehicles: data.additionalVehicles,
-      recommendedServices: data.recommendedServices
+      recommendedServices: data.recommendedServices,
+      apptConfirmToken: data.apptConfirmToken,
+      customPrice: data.customPrice
     }
   });
 }
@@ -5799,16 +6002,16 @@ async function getScheduleJobsByLocationAndDateRange(location, startDate, endDat
   ];
   if (assignedTo) {
     const empRow = await db.select({ fullName: employees.fullName }).from(employees).where(eq2(employees.employeeId, assignedTo)).limit(1);
-    const firstName = empRow.length > 0 ? empRow[0].fullName.split(" ")[0].toLowerCase() : assignedTo.replace(/^[A-Z]+_?/, "").toLowerCase() || assignedTo.toLowerCase();
-    const assignedToCondition = or(
-      eq2(scheduleJobs.assignedTo, assignedTo),
-      // Legacy name match: only when assignedTo is non-empty (prevents unassigned jobs from matching)
-      and2(
-        sql2`${scheduleJobs.assignedTo} IS NOT NULL`,
-        sql2`${scheduleJobs.assignedTo} != ''`,
-        sql2`LOWER(${scheduleJobs.assignedTo}) LIKE ${`%${firstName}%`}`
-      )
-    );
+    const exactMatches = [assignedTo];
+    if (empRow.length > 0) {
+      const fullName = empRow[0].fullName;
+      const firstName = fullName.split(" ")[0];
+      if (fullName && !exactMatches.includes(fullName)) exactMatches.push(fullName);
+      if (firstName && !exactMatches.includes(firstName)) exactMatches.push(firstName);
+      if (firstName.toLowerCase() !== firstName && !exactMatches.includes(firstName.toLowerCase())) exactMatches.push(firstName.toLowerCase());
+      if (firstName.toUpperCase() !== firstName && !exactMatches.includes(firstName.toUpperCase())) exactMatches.push(firstName.toUpperCase());
+    }
+    const assignedToCondition = sql2`${scheduleJobs.assignedTo} IN (${sql2.join(exactMatches.map((v) => sql2`${v}`), sql2`, `)})`;
     conditions.push(assignedToCondition);
   }
   const { onlineBookings: onlineBookings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -5831,6 +6034,7 @@ async function getScheduleJobsByLocationAndDateRange(location, startDate, endDat
     packageType: scheduleJobs.packageType,
     serviceDescription: scheduleJobs.serviceDescription,
     selectedAddons: scheduleJobs.selectedAddons,
+    addonQtys: scheduleJobs.addonQtys,
     totalPrice: scheduleJobs.totalPrice,
     tips: scheduleJobs.tips,
     upsellTotal: scheduleJobs.upsellTotal,
@@ -5890,13 +6094,29 @@ async function getScheduleJobsByLocationAndDateRange(location, startDate, endDat
         END
       )`
   }).from(scheduleJobs).leftJoin(onlineBookings2, eq2(scheduleJobs.onlineBookingId, onlineBookings2.bookingId)).where(and2(...conditions)).orderBy(scheduleJobs.date, scheduleJobs.startHour);
-  return rows;
+  return rows.map((row) => {
+    if (!row.additionalVehicles || row.customPrice != null) return row;
+    let extras = [];
+    try {
+      extras = JSON.parse(row.additionalVehicles);
+    } catch {
+      return row;
+    }
+    if (!Array.isArray(extras) || extras.length === 0) return row;
+    const extraTotal = extras.reduce((s, v) => s + (Number(v.price) || 0), 0);
+    if (extraTotal === 0) return row;
+    const storedTotal = parseFloat(String(row.totalPrice ?? 0));
+    if (storedTotal < extraTotal * 0.9) {
+      return { ...row, totalPrice: String(storedTotal + extraTotal) };
+    }
+    return row;
+  });
 }
-async function getLeastLoadedDetailer(location, date, startHour, endHour) {
+async function getLeastLoadedDetailer(location, date2, startHour, endHour) {
   const allDetailers = await getDetailersByLocation(location);
   if (allDetailers.length === 0) return null;
   const shift1Days = /* @__PURE__ */ new Set([1, 2, 3, 4]);
-  const [yyyy, mm, dd] = date.split("-").map(Number);
+  const [yyyy, mm, dd] = date2.split("-").map(Number);
   const dow = new Date(yyyy, mm - 1, dd).getDay();
   const detailers = allDetailers.filter((d) => {
     const shift = d.shift ?? "shift1";
@@ -5907,7 +6127,7 @@ async function getLeastLoadedDetailer(location, date, startHour, endHour) {
   if (pool0.length === 1) return pool0[0].employeeId;
   const db = await getDb();
   if (!db) return pool0[0].employeeId;
-  const dayJobs = await db.select({ assignedTo: scheduleJobs.assignedTo, startHour: scheduleJobs.startHour, endHour: scheduleJobs.endHour }).from(scheduleJobs).where(and2(sql2`LOWER(${scheduleJobs.location}) = LOWER(${location})`, eq2(scheduleJobs.date, date)));
+  const dayJobs = await db.select({ assignedTo: scheduleJobs.assignedTo, startHour: scheduleJobs.startHour, endHour: scheduleJobs.endHour }).from(scheduleJobs).where(and2(sql2`LOWER(${scheduleJobs.location}) = LOWER(${location})`, eq2(scheduleJobs.date, date2)));
   const countMap = {};
   const conflictSet = /* @__PURE__ */ new Set();
   for (const job of dayJobs) {
@@ -5957,6 +6177,7 @@ async function getAllScheduleJobsByDateRange(startDate, endDate) {
     packageType: scheduleJobs.packageType,
     serviceDescription: scheduleJobs.serviceDescription,
     selectedAddons: scheduleJobs.selectedAddons,
+    addonQtys: scheduleJobs.addonQtys,
     totalPrice: scheduleJobs.totalPrice,
     tips: scheduleJobs.tips,
     upsellTotal: scheduleJobs.upsellTotal,
@@ -6077,7 +6298,7 @@ async function getJobsByRecurrenceParent(recurrenceParentId) {
   if (!db) return [];
   return db.select().from(scheduleJobs).where(eq2(scheduleJobs.recurrenceParentId, recurrenceParentId));
 }
-async function syncPerformanceFromJobs(assignedTo, date) {
+async function syncPerformanceFromJobs(assignedTo, date2) {
   const dbConn = await getDb();
   if (!dbConn) return;
   let emp = null;
@@ -6104,13 +6325,13 @@ async function syncPerformanceFromJobs(assignedTo, date) {
       eq2(scheduleJobs.assignedTo, emp.fullName),
       eq2(scheduleJobs.assignedTo, empFirstName)
     ),
-    eq2(scheduleJobs.date, date),
+    eq2(scheduleJobs.date, date2),
     inArray(scheduleJobs.status, ["confirmed", "in_progress", "completed"])
   ));
   if (jobs.length === 0) return;
   const clockRecords = await dbConn.select().from(clockInOutRecords).where(and2(
     eq2(clockInOutRecords.employeeId, emp.employeeId),
-    eq2(clockInOutRecords.date, date),
+    eq2(clockInOutRecords.date, date2),
     eq2(clockInOutRecords.status, "clocked_out")
   ));
   const totalHours = clockRecords.reduce((sum, r) => sum + parseFloat(r.totalHours ?? "0"), 0);
@@ -6129,8 +6350,8 @@ async function syncPerformanceFromJobs(assignedTo, date) {
   const upsellBonus = totalUpsells * 0.4;
   const { nanoid } = await import("nanoid");
   await upsertPerformance({
-    recordId: `PERF_${emp.employeeId}_${date.replace(/-/g, "")}`,
-    date,
+    recordId: `PERF_${emp.employeeId}_${date2.replace(/-/g, "")}`,
+    date: date2,
     employeeId: emp.employeeId,
     fullName: emp.fullName,
     city: emp.city ?? "",
@@ -6161,9 +6382,9 @@ async function resyncPerformanceForDateRange(startDate, endDate) {
     }
   }
   let count = 0;
-  for (const { assignedTo, date } of pairs.values()) {
+  for (const { assignedTo, date: date2 } of pairs.values()) {
     try {
-      await syncPerformanceFromJobs(assignedTo, date);
+      await syncPerformanceFromJobs(assignedTo, date2);
       count++;
     } catch {
     }
@@ -6214,13 +6435,18 @@ async function saveJobPayment(jobId, payment) {
 async function getCompletedJobsForDetailer(assignedTo, startDate, endDate) {
   const db = await getDb();
   if (!db) return [];
-  const namePart = assignedTo.replace(/^DET_/, "").toLowerCase();
+  const empRow = await db.select({ fullName: employees.fullName }).from(employees).where(eq2(employees.employeeId, assignedTo)).limit(1);
+  const exactMatches = [assignedTo];
+  if (empRow.length > 0) {
+    const fullName = empRow[0].fullName;
+    const firstName = fullName.split(" ")[0];
+    if (fullName && !exactMatches.includes(fullName)) exactMatches.push(fullName);
+    if (firstName && !exactMatches.includes(firstName)) exactMatches.push(firstName);
+    if (firstName.toLowerCase() !== firstName && !exactMatches.includes(firstName.toLowerCase())) exactMatches.push(firstName.toLowerCase());
+    if (firstName.toUpperCase() !== firstName && !exactMatches.includes(firstName.toUpperCase())) exactMatches.push(firstName.toUpperCase());
+  }
   return db.select().from(scheduleJobs).where(and2(
-    or(
-      eq2(scheduleJobs.assignedTo, assignedTo),
-      // Case-insensitive match: LOWER(assigned_to) LIKE '%lamont%'
-      sql2`LOWER(${scheduleJobs.assignedTo}) LIKE ${`%${namePart}%`}`
-    ),
+    sql2`${scheduleJobs.assignedTo} IN (${sql2.join(exactMatches.map((v) => sql2`${v}`), sql2`, `)})`,
     inArray(scheduleJobs.status, ["pending", "confirmed", "in_progress", "completed"]),
     gte2(scheduleJobs.date, startDate),
     lte2(scheduleJobs.date, endDate)
@@ -6528,14 +6754,14 @@ async function getSalesPerformance(employeeId) {
     allTime: sum(rows)
   };
 }
-async function getAllSalesPerformance(date) {
+async function getAllSalesPerformance(date2) {
   const db = await getDb();
   if (!db) return [];
-  const targetDate = date ?? todayCST();
+  const targetDate = date2 ?? todayCST();
   return db.select().from(salesPerformance).where(eq2(salesPerformance.date, targetDate)).orderBy(desc2(salesPerformance.revenueScheduled));
 }
-function getWeekStartDate(date) {
-  const d = /* @__PURE__ */ new Date(date + "T00:00:00Z");
+function getWeekStartDate(date2) {
+  const d = /* @__PURE__ */ new Date(date2 + "T00:00:00Z");
   const day = d.getUTCDay();
   const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d.setUTCDate(diff));
@@ -6766,7 +6992,7 @@ async function getUnassignedJobs(city) {
   if (city) conditions.push(eq2(scheduleJobs.location, city));
   return db.select().from(scheduleJobs).where(and2(...conditions)).orderBy(scheduleJobs.date, scheduleJobs.startHour);
 }
-async function getAvailableDetailersForSlot(date, startHour, endHour, city) {
+async function getAvailableDetailersForSlot(date2, startHour, endHour, city) {
   const db = await getDb();
   if (!db) return [];
   const SLOT_SLUG_TO_LABEL = { fwb: "Fort Walton Beach", crestview: "Crestview", niceville: "Niceville", destin: "Destin", pensacola: "Pensacola" };
@@ -6774,7 +7000,7 @@ async function getAvailableDetailersForSlot(date, startHour, endHour, city) {
   const cityLowerSlot = city.toLowerCase().trim();
   const citySlugSlot = SLOT_LABEL_TO_SLUG[cityLowerSlot] ?? cityLowerSlot;
   const cityLabelSlot = SLOT_SLUG_TO_LABEL[citySlugSlot] ?? city;
-  const [yyyy, mm, dd] = date.split("-").map(Number);
+  const [yyyy, mm, dd] = date2.split("-").map(Number);
   const dow = new Date(yyyy, mm - 1, dd).getDay();
   const shift1Days = /* @__PURE__ */ new Set([1, 2, 3, 4]);
   const allDetailers = await db.select().from(employees).where(and2(
@@ -6805,7 +7031,7 @@ async function getAvailableDetailersForSlot(date, startHour, endHour, city) {
     startHour: scheduleJobs.startHour,
     endHour: scheduleJobs.endHour
   }).from(scheduleJobs).where(and2(
-    eq2(scheduleJobs.date, date),
+    eq2(scheduleJobs.date, date2),
     or(
       sql2`LOWER(${scheduleJobs.location}) = LOWER(${citySlugSlot})`,
       sql2`LOWER(${scheduleJobs.location}) = LOWER(${cityLabelSlot})`
@@ -6819,7 +7045,7 @@ async function getAvailableDetailersForSlot(date, startHour, endHour, city) {
     endHour: scheduleBlockers2.endHour,
     allDay: scheduleBlockers2.allDay
   }).from(scheduleBlockers2).where(and2(
-    sql2`DATE(${scheduleBlockers2.date}) = ${date}`,
+    sql2`DATE(${scheduleBlockers2.date}) = ${date2}`,
     or(eq2(scheduleBlockers2.city, cityLabelSlot), eq2(scheduleBlockers2.city, citySlugSlot))
   ));
   return bookableDetailers.filter((detailer) => {
@@ -7235,8 +7461,24 @@ async function getCustomerJobs(phone, email, name, customerId) {
   const deduped = allOnlineAndPortal.filter(
     (b, idx, arr) => arr.findIndex((x) => x.bookingId === b.bookingId) === idx
   );
+  const portalRefs = new Set(
+    portalBookings.map((b) => b.bookingId).filter(Boolean)
+  );
+  const portalDateTimeKeys = new Set(
+    portalBookings.map((b) => `${b.bookingDate ?? ""}|${b.timeSlot ?? ""}|${(b.packageType ?? "").toLowerCase().trim()}`)
+  );
+  const filteredScheduleJobs = matchedJobs.filter((j) => {
+    const jid = j.jobId ?? "";
+    const oid = j.onlineBookingId ?? "";
+    const refFromJobId = jid.startsWith("portal_") ? jid.replace(/^portal_/, "") : null;
+    if (refFromJobId && portalRefs.has(refFromJobId)) return false;
+    if (oid && portalRefs.has(oid)) return false;
+    const key = `${j.date ?? ""}|${j.timeSlot ?? ""}|${(j.packageType ?? j.serviceDescription ?? "").toLowerCase().trim()}`;
+    if (portalDateTimeKeys.has(key)) return false;
+    return true;
+  });
   return {
-    scheduleJobsList: matchedJobs.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")),
+    scheduleJobsList: filteredScheduleJobs.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")),
     onlineBookingsList: deduped.sort(
       (a, b) => (b.bookingDate ?? "").localeCompare(a.bookingDate ?? "")
     )
@@ -7750,6 +7992,13 @@ async function getAllViolationsForWeek(weekStartDate) {
   const week = weekStartDate ?? getCurrentWeekStart();
   return db.select().from(pointViolations).where(eq2(pointViolations.weekStartDate, week)).orderBy(desc2(pointViolations.issuedAt));
 }
+async function getViolationsByDateRange(startDate, endDate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const start = /* @__PURE__ */ new Date(startDate + "T00:00:00.000Z");
+  const end = /* @__PURE__ */ new Date(endDate + "T23:59:59.999Z");
+  return db.select().from(pointViolations).where(and2(gte2(pointViolations.issuedAt, start), lte2(pointViolations.issuedAt, end))).orderBy(desc2(pointViolations.issuedAt));
+}
 async function getWriteUpsForEmployee(employeeId) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -7838,38 +8087,16 @@ async function getAllEmployeesTrainingProgress() {
     moduleKey: interactiveModules2.moduleKey,
     title: interactiveModules2.title
   }).from(interactiveModules2).where(eq2(interactiveModules2.isActive, 1));
-  const LEGACY_TM_IDS = {
-    TM_BEADMAKER: "Bead Maker",
-    TM_BUGREMOVAL: "Bug Removal",
-    TM_DOORJAMBS: "Door Jambs",
-    TM_DRYING: "Drying",
-    TM_ENGINE: "Engine Bay",
-    TM_EXHAUST: "Exhaust Tips",
-    TM_EXTWASH: "Exterior Wash",
-    TM_FLOORMATS: "Floor Mats",
-    TM_INTERIOR: "Interior",
-    TM_PAINTSEALANT: "Paint Sealant",
-    TM_TARSAP: "Tar & Sap",
-    TM_TIRE: "Tire Dressing",
-    TM_WASHPROCESS: "Wash Process",
-    TM_WHEEL: "Wheel Cleaning",
-    TM_WHEELWELL: "Wheel Wells"
-  };
-  const allModuleEntries = [
-    ...activeModules.map((m) => ({ id: m.moduleKey, name: m.title || m.moduleKey })),
-    ...Object.entries(LEGACY_TM_IDS).map(([id, name]) => ({ id, name }))
-  ];
-  const seen = /* @__PURE__ */ new Set();
-  const moduleList = allModuleEntries.filter((m) => {
-    if (seen.has(m.id)) return false;
-    seen.add(m.id);
-    return true;
-  });
+  const moduleList = activeModules.map((m) => ({
+    id: m.moduleKey,
+    name: m.title || m.moduleKey
+  }));
   const totalModules = moduleList.length;
   const validModuleIds = new Set(moduleList.map((m) => m.id));
   const detailers = await db.select().from(employees).where(and2(eq2(employees.role, "detailer"), eq2(employees.activeStatus, "active")));
   const progress = await db.select().from(userTrainingProgress);
   const attempts = await db.select().from(trainingQuizAttempts);
+  const quizMods = await db.select().from(trainingModules);
   return detailers.map((emp) => {
     const empProgress = progress.filter((p) => p.employeeId === emp.employeeId);
     const empAttempts = attempts.filter((a) => a.employeeId === emp.employeeId);
@@ -7877,6 +8104,18 @@ async function getAllEmployeesTrainingProgress() {
       (p) => p.isModuleCompleted === "yes" && validModuleIds.has(p.moduleId)
     ).length;
     const progressPercent = totalModules > 0 ? Math.round(completedModules / totalModules * 100) : 0;
+    const hasReached50 = progressPercent >= 50;
+    const quizScores = quizMods.map((qm) => {
+      const qAttempts = empAttempts.filter((a) => a.moduleId === qm.moduleId);
+      const best = qAttempts.sort((a, b) => b.score - a.score)[0];
+      return {
+        moduleId: qm.moduleId,
+        quizTitle: qm.quizTitle || qm.name || qm.moduleId,
+        bestScore: best ? Math.round(best.score / best.totalQuestions * 100) : null,
+        attempts: qAttempts.length,
+        passed: best ? best.passed === "yes" : false
+      };
+    });
     return {
       employeeId: emp.employeeId,
       fullName: emp.fullName,
@@ -7884,6 +8123,8 @@ async function getAllEmployeesTrainingProgress() {
       completedModules,
       totalModules,
       progressPercent,
+      hasReached50,
+      quizScores,
       moduleProgress: moduleList.map(({ id: moduleId, name: moduleName }) => {
         const prog = empProgress.find((p) => p.moduleId === moduleId);
         const bestAttempt = empAttempts.filter((a) => a.moduleId === moduleId).sort((a, b) => b.score - a.score)[0];
@@ -7897,6 +8138,16 @@ async function getAllEmployeesTrainingProgress() {
         };
       })
     };
+  });
+}
+async function getAllQuizAttemptsForEmployee(employeeId) {
+  const db = await getDb();
+  if (!db) return [];
+  const attempts = await db.select().from(trainingQuizAttempts).where(eq2(trainingQuizAttempts.employeeId, employeeId)).orderBy(desc2(trainingQuizAttempts.attemptedAt));
+  const modules = await db.select().from(trainingModules);
+  return attempts.map((a) => {
+    const mod = modules.find((m) => m.moduleId === a.moduleId);
+    return { ...a, moduleName: mod?.name ?? a.moduleId };
   });
 }
 async function resetEmployeeModuleProgress(employeeId, moduleId) {
@@ -8039,11 +8290,11 @@ async function submitEodChecklist(checklistId) {
   const { eodChecklists: eodChecklists2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
   await db.update(eodChecklists2).set({ status: "submitted", submittedAt: /* @__PURE__ */ new Date() }).where(eq2(eodChecklists2.checklistId, checklistId));
 }
-async function listEodChecklistsByDate(date) {
+async function listEodChecklistsByDate(date2) {
   const db = await getDb();
   if (!db) return [];
   const { eodChecklists: eodChecklists2, eodChecklistItems: eodChecklistItems2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-  const lists = await db.select().from(eodChecklists2).where(eq2(eodChecklists2.date, date));
+  const lists = await db.select().from(eodChecklists2).where(eq2(eodChecklists2.date, date2));
   const result = [];
   for (const cl of lists) {
     const items = await db.select().from(eodChecklistItems2).where(eq2(eodChecklistItems2.checklistId, cl.checklistId));
@@ -8255,8 +8506,8 @@ async function getShiftCoverageForWeek(weekStartDate, city) {
     const result2 = {};
     const [y2, m2, d2] = weekStartDate.split("-").map(Number);
     for (let i = 0; i < 7; i++) {
-      const date = new Date(y2, m2 - 1, d2 + i);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      const date2 = new Date(y2, m2 - 1, d2 + i);
+      const key = `${date2.getFullYear()}-${String(date2.getMonth() + 1).padStart(2, "0")}-${String(date2.getDate()).padStart(2, "0")}`;
       result2[key] = false;
     }
     return result2;
@@ -8274,9 +8525,9 @@ async function getShiftCoverageForWeek(weekStartDate, city) {
   const result = {};
   const [y, m, d] = weekStartDate.split("-").map(Number);
   for (let i = 0; i < 7; i++) {
-    const date = new Date(y, m - 1, d + i);
-    const dow = date.getDay();
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const date2 = new Date(y, m - 1, d + i);
+    const dow = date2.getDay();
+    const key = `${date2.getFullYear()}-${String(date2.getMonth() + 1).padStart(2, "0")}-${String(date2.getDate()).padStart(2, "0")}`;
     if (shift1Days.has(dow)) {
       result[key] = hasShift1;
     } else {
@@ -8493,6 +8744,16 @@ async function listPriceBookServices() {
   if (!db) throw new Error("Database not available");
   return db.select().from(priceBookServices).where(eq2(priceBookServices.isActive, "yes")).orderBy(priceBookServices.sortOrder, priceBookServices.createdAt);
 }
+async function listAllPriceBookServices() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(priceBookServices).orderBy(priceBookServices.sortOrder, priceBookServices.createdAt);
+}
+async function togglePriceBookServiceActive(serviceId, isActive) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(priceBookServices).set({ isActive: isActive ? "yes" : "no" }).where(eq2(priceBookServices.serviceId, serviceId));
+}
 async function upsertPriceBookService(data) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -8503,6 +8764,7 @@ async function upsertPriceBookService(data) {
     description: data.description ?? null,
     features: data.features ? JSON.stringify(data.features) : null,
     vehiclePrices: JSON.stringify(data.vehiclePrices),
+    imageUrl: data.imageUrl ?? null,
     sortOrder: data.sortOrder ?? 0,
     isActive: "yes"
   };
@@ -8512,8 +8774,14 @@ async function upsertPriceBookService(data) {
     description: row.description,
     features: row.features,
     vehiclePrices: row.vehiclePrices,
+    imageUrl: row.imageUrl,
     sortOrder: row.sortOrder
   } });
+}
+async function upsertPriceBookServiceImage(serviceId, imageUrl) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(priceBookServices).set({ imageUrl }).where(eq2(priceBookServices.serviceId, serviceId));
 }
 async function deletePriceBookService(serviceId) {
   const db = await getDb();
@@ -8635,10 +8903,10 @@ async function getCustomerMapLocations() {
   }
   const entries = Array.from(customerMap.values()).filter((e) => e.address);
   const results = [];
-  const crypto5 = await import("crypto");
+  const crypto4 = await import("crypto");
   const entryHashes = entries.map((entry) => ({
     entry,
-    hash: crypto5.createHash("md5").update(entry.address.toLowerCase().trim()).digest("hex")
+    hash: crypto4.createHash("md5").update(entry.address.toLowerCase().trim()).digest("hex")
   }));
   const allHashes = entryHashes.map((e) => e.hash);
   const CHUNK_SIZE = 500;
@@ -8803,10 +9071,20 @@ async function getAbandonedCartsForRecovery() {
   );
   const activePhones = new Set(activeBookings.map((b) => b.phone?.replace(/\D/g, "").slice(-10)).filter(Boolean));
   const activeEmails = new Set(activeBookings.map((b) => b.email?.toLowerCase().trim()).filter(Boolean));
+  const portalActiveBookings = emails.length > 0 ? await db.select({
+    email: customers.email,
+    phone: customers.phone
+  }).from(customerBookings).leftJoin(customers, eq2(customerBookings.customerId, customers.customerId)).where(
+    and2(
+      sql2`${customerBookings.status} IN ('pending','confirmed','en_route','arrived','in_progress','completed')`
+    )
+  ) : [];
+  const portalActiveEmails = new Set(portalActiveBookings.map((b) => b.email?.toLowerCase().trim()).filter(Boolean));
+  const portalActivePhones = new Set(portalActiveBookings.map((b) => b.phone?.replace(/\D/g, "").slice(-10)).filter(Boolean));
   return notYetRecovered.filter((r) => {
     const normPhone2 = r.phone?.replace(/\D/g, "").slice(-10) ?? "";
     const normEmail = r.email?.toLowerCase().trim() ?? "";
-    const alreadyBooked = normPhone2 && activePhones.has(normPhone2) || normEmail && activeEmails.has(normEmail);
+    const alreadyBooked = normPhone2 && (activePhones.has(normPhone2) || portalActivePhones.has(normPhone2)) || normEmail && (activeEmails.has(normEmail) || portalActiveEmails.has(normEmail));
     return !alreadyBooked;
   });
 }
@@ -8919,15 +9197,22 @@ async function resolvePackageNameAsync(packageType) {
     pb_luxury: "Luxury Detail",
     pb_interior: "Interior Detail",
     pb_exterior: "Exterior Detail",
-    pb_vip: "VIP Detail",
+    pb_vip: "VIP",
     pb_express: "Express Detail",
     pb_premium: "Premium Detail",
+    pb_rv_wash: "RV Wash",
+    pb_rv_maintenance: "RV Maintenance",
+    pb_rv_paint_sealant: "RV Paint Sealant",
+    // Dynamic pricebook IDs — add new ones here when created
+    pb_mpn0yohe0qes: "VIP",
+    pb_mpssufsvme94: "Maintenance Program",
+    pb_mpws9prd5cu1: "VIP Renewal",
     interior: "Interior Detail",
     exterior: "Exterior Detail",
     luxury: "Luxury Detail",
     full: "Full Detail",
     basic: "Basic Detail",
-    vip: "VIP Detail",
+    vip: "VIP",
     full_detail: "Full Detail",
     basic_detail: "Basic Detail",
     interior_detail: "Interior Detail",
@@ -9010,7 +9295,7 @@ async function adminDeleteBreak(breakId) {
   if (!db) throw new Error("Database not available");
   await db.delete(breakRecords).where(eq2(breakRecords.breakId, breakId));
 }
-async function getBlockersForDate(citySlugOrLabel, date) {
+async function getBlockersForDate(citySlugOrLabel, date2) {
   const db = await getDb();
   if (!db) return [];
   const CITY_SLUG_TO_LABEL2 = {
@@ -9028,7 +9313,7 @@ async function getBlockersForDate(citySlugOrLabel, date) {
     endHour: scheduleBlockers2.endHour,
     allDay: scheduleBlockers2.allDay
   }).from(scheduleBlockers2).where(and2(
-    sql2`DATE(${scheduleBlockers2.date}) = ${date}`,
+    sql2`DATE(${scheduleBlockers2.date}) = ${date2}`,
     or(
       eq2(scheduleBlockers2.city, normalizedCity),
       eq2(scheduleBlockers2.city, citySlugOrLabel)
@@ -9473,7 +9758,7 @@ async function logEmail(payload) {
 }
 function buildBookingConfirmationEmail(opts) {
   const displayTime = formatTimeSlot(opts.scheduledTime);
-  const subject = `Booking Confirmed \u2014 ${opts.packageName} on ${opts.scheduledDate}`;
+  const subject = opts.isReschedule ? `Appointment Rescheduled \u2014 ${opts.packageName} on ${opts.scheduledDate}` : `Booking Confirmed \u2014 ${opts.packageName} on ${opts.scheduledDate}`;
   let vehicleRows = "";
   if (opts.vehicles && opts.vehicles.length > 0) {
     vehicleRows = opts.vehicles.map(
@@ -9505,16 +9790,16 @@ function buildBookingConfirmationEmail(opts) {
         <!-- Success badge -->
         <tr>
           <td style="padding:24px 28px 0;">
-            <div style="display:inline-flex;align-items:center;gap:6px;background:#DCFCE7;color:#16A34A;font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;">
-              \u2713 &nbsp;Booking Confirmed
+            <div style="display:inline-flex;align-items:center;gap:6px;background:${opts.isReschedule ? "#EFF6FF" : "#DCFCE7"};color:${opts.isReschedule ? "#1D4ED8" : "#16A34A"};font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;">
+              ${opts.isReschedule ? "\u{1F4C5} &nbsp;Appointment Rescheduled" : "\u2713 &nbsp;Booking Confirmed"}
             </div>
           </td>
         </tr>
         <!-- Greeting -->
         <tr>
           <td style="padding:16px 28px 0;">
-            <h2 style="margin:0;color:#111827;font-size:22px;font-weight:700;line-height:1.3;">You're all set, ${opts.customerName.split(" ")[0]}!</h2>
-            <p style="margin:8px 0 0;color:#6B7280;font-size:14px;line-height:1.6;">Your mobile detail has been booked. Here's a summary of your appointment.</p>
+            <h2 style="margin:0;color:#111827;font-size:22px;font-weight:700;line-height:1.3;">${opts.isReschedule ? `Your appointment has been updated, ${opts.customerName.split(" ")[0]}!` : `You're all set, ${opts.customerName.split(" ")[0]}!`}</h2>
+            <p style="margin:8px 0 0;color:#6B7280;font-size:14px;line-height:1.6;">${opts.isReschedule ? "Your appointment has been rescheduled. Here are your updated details." : "Your mobile detail has been booked. Here's a summary of your appointment."}</p>
           </td>
         </tr>
         <!-- Booking details card -->
@@ -9535,6 +9820,15 @@ function buildBookingConfirmationEmail(opts) {
             </table>
           </td>
         </tr>
+        <!-- Confirm button (only shown when confirmUrl is provided) -->
+        ${opts.confirmUrl ? `
+        <tr>
+          <td style="padding:0 28px 20px;text-align:center;">
+            <p style="margin:0 0 16px;color:#374151;font-size:14px;">Please confirm your appointment by clicking the button below:</p>
+            <a href="${opts.confirmUrl}" style="display:inline-block;background:#dc2626;color:#ffffff;font-size:17px;font-weight:800;text-decoration:none;padding:16px 40px;border-radius:50px;letter-spacing:0.3px;box-shadow:0 4px 12px rgba(220,38,38,0.35);">&#x2705; Confirm My Appointment Now</a>
+            <p style="margin:12px 0 0;color:#6b7280;font-size:13px;">Button not working? <a href="${opts.confirmUrl}" style="color:#dc2626;">Click here to confirm</a></p>
+          </td>
+        </tr>` : ""}
         <!-- What to expect -->
         <tr>
           <td style="padding:0 28px 28px;">
@@ -10381,6 +10675,10 @@ function getBaseUrl() {
   return process.env.PUBLIC_URL ?? "https://www.luxurywashonwheels.app";
 }
 async function sendSms(to, body) {
+  if (process.env.SMS_ENABLED !== "true") {
+    console.log("[SMS] Outbound SMS disabled \u2014 A2P campaign pending. Skipping to:", to);
+    return;
+  }
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -11034,6 +11332,7 @@ __export(customerDb_exports, {
   getCustomerPasswordStatus: () => getCustomerPasswordStatus,
   getCustomerSession: () => getCustomerSession,
   getCustomerVehicles: () => getCustomerVehicles,
+  getGuestBookingByEmailAndRef: () => getGuestBookingByEmailAndRef,
   isCustomerDoNotService: () => isCustomerDoNotService,
   savePortalBookingPayment: () => savePortalBookingPayment,
   savePushToken: () => savePushToken,
@@ -11165,6 +11464,8 @@ async function addCustomerVehicle(data) {
     model: data.model,
     vehicleType: data.vehicleType,
     color: data.color ?? null,
+    rvClass: data.rvClass ?? null,
+    rvLengthFt: data.rvLengthFt ?? null,
     isDefault: data.isDefault ? 1 : 0
   });
   const rows = await db.select().from(customerVehicles).where(eq6(customerVehicles.vehicleId, vehicleId)).limit(1);
@@ -11182,6 +11483,8 @@ async function updateCustomerVehicle(vehicleId, customerId, data) {
   if (data.model !== void 0) update.model = data.model;
   if (data.vehicleType !== void 0) update.vehicleType = data.vehicleType;
   if (data.color !== void 0) update.color = data.color;
+  if (data.rvClass !== void 0) update.rvClass = data.rvClass;
+  if (data.rvLengthFt !== void 0) update.rvLengthFt = data.rvLengthFt;
   if (data.isDefault !== void 0) update.isDefault = data.isDefault ? 1 : 0;
   await db.update(customerVehicles).set(update).where(
     and6(eq6(customerVehicles.vehicleId, vehicleId), eq6(customerVehicles.customerId, customerId))
@@ -11550,6 +11853,35 @@ async function consumePasswordResetToken(token) {
   const db = await getDb3();
   if (!db) return;
   await db.delete(customerSessions).where(eq6(customerSessions.sessionToken, `RESET_${token}`));
+}
+async function getGuestBookingByEmailAndRef(_email, bookingRef) {
+  const db = await getDb3();
+  if (!db) return null;
+  const rows = await db.select({
+    bookingRef: customerBookings.bookingRef,
+    customerId: customerBookings.customerId,
+    vehicleLabel: customerBookings.vehicleLabel,
+    vehicleType: customerBookings.vehicleType,
+    packageId: customerBookings.packageId,
+    packageName: customerBookings.packageName,
+    addons: customerBookings.addons,
+    addressLabel: customerBookings.addressLabel,
+    city: customerBookings.city,
+    scheduledDate: customerBookings.scheduledDate,
+    scheduledTime: customerBookings.scheduledTime,
+    subtotal: customerBookings.subtotal,
+    total: customerBookings.total,
+    status: customerBookings.status,
+    notes: customerBookings.notes,
+    createdAt: customerBookings.createdAt,
+    customerFirstName: customers.firstName,
+    customerLastName: customers.lastName,
+    customerEmail: customers.email,
+    customerPhone: customers.phone
+  }).from(customerBookings).leftJoin(customers, eq6(customerBookings.customerId, customers.customerId)).where(
+    eq6(customerBookings.bookingRef, bookingRef)
+  ).limit(1);
+  return rows[0] ?? null;
 }
 var _db2, _pool2;
 var init_customerDb = __esm({
@@ -15116,7 +15448,7 @@ document.getElementById('team-modal').addEventListener('click', e => { if(e.targ
 `;
 
 // server/_core/index.ts
-import mysql7 from "mysql2/promise";
+import mysql6 from "mysql2/promise";
 
 // server/clockMonitor.ts
 init_db();
@@ -15348,6 +15680,10 @@ var CITY_CONFIG = {
   pensacola: { label: "Pensacola", bookingUrl: "https://luxurywashonwheels.com/pensacola/mobile-detailing/" }
 };
 async function sendRecoverySms(params) {
+  if (process.env.SMS_ENABLED !== "true") {
+    console.log("[SMS] Outbound SMS disabled \u2014 A2P campaign pending. Skipping recovery SMS.");
+    return false;
+  }
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -15503,7 +15839,8 @@ async function getUnpaidJobs() {
       totalPrice: sjTbl.totalPrice,
       customPrice: sjTbl.customPrice,
       depositAmount: sjTbl.depositAmount,
-      discountAmount: sjTbl.discountAmount
+      discountAmount: sjTbl.discountAmount,
+      invoiceToken: sjTbl.invoiceToken
     }).from(sjTbl).where(
       and8(
         inArray4(sjTbl.status, ["confirmed", "in_progress", "completed"]),
@@ -15521,7 +15858,8 @@ async function getUnpaidJobs() {
       return {
         jobId: j.jobId,
         customerName: j.customerName,
-        balanceDue
+        balanceDue,
+        invoiceToken: j.invoiceToken ?? null
       };
     });
   } catch (err) {
@@ -15529,27 +15867,36 @@ async function getUnpaidJobs() {
     return [];
   }
 }
-async function findStripePaymentForJob(jobId) {
+async function findStripePaymentForJob(jobId, invoiceToken) {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY ?? process.env.STRIPE_SK ?? "";
     if (!stripeKey) {
       console.warn("[Stripe Reconciliation] Stripe key not configured");
       return null;
     }
-    const query = `metadata['job_id']:'${jobId}' AND status:'succeeded'`;
-    const searchRes = await fetch(
-      `https://api.stripe.com/v1/payment_intents/search?query=${encodeURIComponent(query)}&limit=1`,
-      {
-        headers: { Authorization: `Bearer ${stripeKey}` }
+    const searchStripe = async (query) => {
+      const searchRes = await fetch(
+        `https://api.stripe.com/v1/payment_intents/search?query=${encodeURIComponent(query)}&limit=1`,
+        { headers: { Authorization: `Bearer ${stripeKey}` } }
+      );
+      if (!searchRes.ok) {
+        console.error("[Stripe Reconciliation] Stripe API error:", searchRes.status);
+        if (searchRes.status === 400 || searchRes.status === 401 || searchRes.status === 403) {
+          throw new Error(`Stripe API returned ${searchRes.status} \u2014 aborting reconciliation cycle`);
+        }
+        return null;
       }
-    );
-    if (!searchRes.ok) {
-      console.error("[Stripe Reconciliation] Stripe API error:", searchRes.status);
-      return null;
+      const data = await searchRes.json();
+      const intents = data?.data ?? [];
+      return intents.length > 0 ? intents[0] : null;
+    };
+    const byJobId = await searchStripe(`metadata['job_id']:'${jobId}' AND status:'succeeded'`);
+    if (byJobId) return byJobId;
+    if (invoiceToken) {
+      const byToken = await searchStripe(`metadata['invoice_token']:'${invoiceToken}' AND status:'succeeded'`);
+      if (byToken) return byToken;
     }
-    const data = await searchRes.json();
-    const intents = data?.data ?? [];
-    return intents.length > 0 ? intents[0] : null;
+    return null;
   } catch (err) {
     console.error("[Stripe Reconciliation] Error searching Stripe:", err);
     return null;
@@ -15595,7 +15942,7 @@ async function runReconciliationCycle() {
     let reconciled = 0;
     let failed = 0;
     for (const job of unpaidJobs) {
-      const stripePayment = await findStripePaymentForJob(job.jobId);
+      const stripePayment = await findStripePaymentForJob(job.jobId, job.invoiceToken);
       if (stripePayment) {
         const success = await markJobAsPaid(job.jobId, stripePayment);
         if (success) {
@@ -16245,10 +16592,13 @@ async function invokeLLM(params) {
     outputSchema,
     output_schema,
     responseFormat,
-    response_format
+    response_format,
+    model,
+    thinking,
+    reasoning
   } = params;
   const payload = {
-    model: "gemini-2.5-flash",
+    model: model || "gemini-2.5-flash",
     messages: messages.map(normalizeMessage)
   };
   if (tools && tools.length > 0) {
@@ -16258,10 +16608,12 @@ async function invokeLLM(params) {
   if (normalizedToolChoice) {
     payload.tool_choice = normalizedToolChoice;
   }
-  payload.max_tokens = 32768;
-  payload.thinking = {
-    budget_tokens: 128
-  };
+  payload.max_tokens = params.maxTokens || params.max_tokens || 32768;
+  if (reasoning) {
+    payload.reasoning = reasoning;
+  } else {
+    payload.thinking = thinking || { budget_tokens: 128 };
+  }
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
     response_format,
@@ -16392,7 +16744,7 @@ If a field is not mentioned, set it to null. Return ONLY the JSON object.`
     }
     return parsed;
   }),
-  // ── Business Coach: analyze performance data and return insights ─────────
+  // ── Business Coach: deep performance analysis with per-detailer metrics ─────────
   businessCoach: publicProcedure.input(z2.object({
     location: z2.string().optional(),
     // "all" or a specific city
@@ -16408,73 +16760,235 @@ If a field is not mentioned, set it to null. Return ONLY the JSON object.`
     let fromDate = weekAgo.toISOString().split("T")[0];
     if (input.period === "last_30_days") fromDate = monthAgo.toISOString().split("T")[0];
     if (input.period === "all_time") fromDate = "2020-01-01";
-    const perfRecords = await getAllPerformanceDateRange(fromDate, todayStr);
     const locationLabel = !input.location || input.location === "all" ? "all locations" : input.location;
-    const filteredPerf = !input.location || input.location === "all" ? perfRecords : perfRecords.filter((r) => r.location?.toLowerCase().includes(input.location.toLowerCase()));
-    const totalJobs = filteredPerf.reduce((s, r) => s + (Number(r.jobsCompleted) || 0), 0);
-    const totalRevenue = filteredPerf.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
-    const totalHours = filteredPerf.reduce((s, r) => s + (Number(r.hoursWorked) || 0), 0);
-    const totalUpsells = filteredPerf.reduce((s, r) => s + (Number(r.upsellAmount) || 0), 0);
-    const avgPerJob = totalJobs > 0 ? (totalRevenue / totalJobs).toFixed(2) : "0";
-    const revenuePerHour = totalHours > 0 ? (totalRevenue / totalHours).toFixed(2) : "0";
+    const isAllLocations = !input.location || input.location === "all";
     const allDetailers = await getAllDetailers().catch(() => []);
-    const activeDetailers = !input.location || input.location === "all" ? allDetailers : allDetailers.filter((e) => e.city?.toLowerCase().includes(input.location.toLowerCase()));
+    const activeDetailers = isAllLocations ? allDetailers : allDetailers.filter((e) => e.city?.toLowerCase().includes(input.location.toLowerCase()));
     const activeDetailerCount = activeDetailers.length;
     const schedJobs = await getAllScheduleJobsByDateRange(fromDate, todayStr).catch(() => []);
-    const filteredJobs = !input.location || input.location === "all" ? schedJobs : schedJobs.filter((j) => j.location?.toLowerCase().includes(input.location.toLowerCase()));
-    const schedRevenue = filteredJobs.filter((j) => ["confirmed", "in_progress", "completed"].includes(j.status)).reduce((s, j) => s + Math.max(0, Number(j.totalPrice ?? 0) - Number(j.discountAmount ?? 0)), 0);
-    const schedUpsells = filteredJobs.reduce((s, j) => s + Number(j.upsellTotal ?? 0), 0);
-    const schedJobCount = filteredJobs.filter((j) => ["confirmed", "in_progress", "completed"].includes(j.status)).length;
-    const effectiveJobs = schedJobCount > 0 ? schedJobCount : totalJobs;
-    const effectiveRevenue = schedRevenue > 0 ? schedRevenue : totalRevenue;
-    const effectiveUpsells = schedUpsells > 0 ? schedUpsells : totalUpsells;
+    const filteredJobs = isAllLocations ? schedJobs : schedJobs.filter((j) => j.location?.toLowerCase().includes(input.location.toLowerCase()));
+    const completedJobs = filteredJobs.filter((j) => ["confirmed", "in_progress", "completed"].includes(j.status));
+    const effectiveJobs = completedJobs.length;
+    const effectiveRevenue = completedJobs.reduce((s, j) => s + Math.max(0, Number(j.totalPrice ?? 0) - Number(j.discountAmount ?? 0)), 0);
+    const effectiveUpsells = completedJobs.reduce((s, j) => s + Number(j.upsellTotal ?? 0), 0);
+    const totalTips = completedJobs.reduce((s, j) => s + Number(j.tips ?? 0), 0);
     const effectiveAvgPerJob = effectiveJobs > 0 ? (effectiveRevenue / effectiveJobs).toFixed(2) : "0";
-    const upsellRate = effectiveJobs > 0 ? (effectiveUpsells / effectiveRevenue * 100).toFixed(1) : "0";
-    const prompt = `You are a business coach for Luxury Wash On Wheels, a mobile car detailing company in the Florida Panhandle.
+    const upsellRate = effectiveRevenue > 0 ? (effectiveUpsells / effectiveRevenue * 100).toFixed(1) : "0";
+    const detailerMap = {};
+    for (const d of activeDetailers) {
+      detailerMap[d.fullName.toLowerCase()] = {
+        name: d.fullName,
+        jobs: 0,
+        revenue: 0,
+        upsells: 0,
+        tips: 0,
+        addresses: /* @__PURE__ */ new Set(),
+        dates: /* @__PURE__ */ new Set(),
+        hourlyRate: Number(d.hourlyRate ?? 17)
+      };
+    }
+    for (const j of completedJobs) {
+      const assigned = (j.assignedTo ?? "").toLowerCase();
+      if (detailerMap[assigned]) {
+        detailerMap[assigned].jobs++;
+        detailerMap[assigned].revenue += Math.max(0, Number(j.totalPrice ?? 0) - Number(j.discountAmount ?? 0));
+        detailerMap[assigned].upsells += Number(j.upsellTotal ?? 0);
+        detailerMap[assigned].tips += Number(j.tips ?? 0);
+        if (j.customerAddress) detailerMap[assigned].addresses.add(j.customerAddress);
+        if (j.date) detailerMap[assigned].dates.add(j.date);
+      }
+    }
+    const detailerBreakdown = Object.values(detailerMap).map((d) => ({
+      name: d.name,
+      jobs: d.jobs,
+      revenue: d.revenue,
+      avgPerJob: d.jobs > 0 ? (d.revenue / d.jobs).toFixed(2) : "0",
+      upsells: d.upsells,
+      upsellRate: d.revenue > 0 ? (d.upsells / d.revenue * 100).toFixed(1) : "0",
+      tips: d.tips,
+      uniqueAddresses: d.addresses.size,
+      daysWorked: d.dates.size,
+      avgJobsPerDay: d.dates.size > 0 ? (d.jobs / d.dates.size).toFixed(1) : "0",
+      avgStopsPerDay: d.dates.size > 0 ? (d.addresses.size / d.dates.size).toFixed(1) : "0",
+      hourlyRate: d.hourlyRate
+    }));
+    const jobsByDate = {};
+    const revenueByDate = {};
+    for (const j of completedJobs) {
+      if (j.date) {
+        jobsByDate[j.date] = (jobsByDate[j.date] || 0) + 1;
+        revenueByDate[j.date] = (revenueByDate[j.date] || 0) + Math.max(0, Number(j.totalPrice ?? 0) - Number(j.discountAmount ?? 0));
+      }
+    }
+    const workDays = Object.keys(jobsByDate).length;
+    const avgJobsPerDay = workDays > 0 ? (effectiveJobs / workDays).toFixed(1) : "0";
+    const avgRevenuePerDay = workDays > 0 ? (effectiveRevenue / workDays).toFixed(2) : "0";
+    const peakDay = Object.entries(jobsByDate).sort((a, b) => b[1] - a[1])[0];
+    const slowestDay = Object.entries(jobsByDate).sort((a, b) => a[1] - b[1])[0];
+    const serviceBreakdown = {};
+    for (const j of completedJobs) {
+      const pkg = j.packageType || "Unknown";
+      if (!serviceBreakdown[pkg]) serviceBreakdown[pkg] = { count: 0, revenue: 0 };
+      serviceBreakdown[pkg].count++;
+      serviceBreakdown[pkg].revenue += Math.max(0, Number(j.totalPrice ?? 0) - Number(j.discountAmount ?? 0));
+    }
+    const serviceLines = Object.entries(serviceBreakdown).sort((a, b) => b[1].revenue - a[1].revenue).map(([name, data]) => `${name}: ${data.count} jobs, $${data.revenue.toFixed(0)} revenue, $${data.count > 0 ? (data.revenue / data.count).toFixed(0) : 0} avg`);
+    let totalClockHours = 0;
+    let totalLaborCost = 0;
+    const detailerHours = [];
+    for (const d of activeDetailers) {
+      try {
+        const weeklyData = await getWeeklyHours(d.employeeId, fromDate, todayStr);
+        const hours = Number(weeklyData.totalHours ?? 0);
+        const rate = Number(d.hourlyRate ?? 17);
+        const cost = hours * rate;
+        totalClockHours += hours;
+        totalLaborCost += cost;
+        detailerHours.push({ name: d.fullName, hours, cost });
+      } catch {
+      }
+    }
+    const laborCostRatio = effectiveRevenue > 0 ? (totalLaborCost / effectiveRevenue * 100).toFixed(1) : "0";
+    const revenuePerLaborHour = totalClockHours > 0 ? (effectiveRevenue / totalClockHours).toFixed(2) : "0";
+    const driveTimeNotes = detailerBreakdown.filter((d) => d.jobs > 0).map((d) => `${d.name}: ${d.uniqueAddresses} unique stops over ${d.daysWorked} days (avg ${d.avgStopsPerDay} stops/day)`);
+    const cancelledJobs = filteredJobs.filter((j) => j.status === "cancelled").length;
+    const cancelRate = filteredJobs.length > 0 ? (cancelledJobs / filteredJobs.length * 100).toFixed(1) : "0";
+    const prompt = `You are an elite business operations coach for Luxury Wash On Wheels, a premium mobile car detailing company in the Florida Panhandle (Crestview, Niceville, Destin, Fort Walton Beach, Pensacola). Your job is to provide DEEP, SPECIFIC, ACTIONABLE analysis \u2014 not generic advice. Name specific detailers. Use exact dollar amounts. Identify the #1 bottleneck holding back revenue growth.
 
-Performance data for ${locationLabel} over the selected period:
-- Total jobs completed: ${effectiveJobs}
-- Total revenue: $${effectiveRevenue.toFixed(2)}
-- Average revenue per job: $${effectiveAvgPerJob}
-- Total upsell revenue: $${effectiveUpsells.toFixed(2)}
-- Upsell rate: ${upsellRate}%
-- Total hours worked: ${totalHours.toFixed(1)}h
-- Number of active detailers: ${activeDetailerCount}
+\u2550\u2550\u2550 PERIOD: ${input.period === "this_week" ? "This Week" : input.period === "last_30_days" ? "Last 30 Days" : "All Time"} | LOCATION: ${locationLabel} \u2550\u2550\u2550
 
-Return ONLY a valid JSON object with this exact structure:
+\u2500\u2500 AGGREGATE METRICS \u2500\u2500
+\u2022 Total completed jobs: ${effectiveJobs}
+\u2022 Total revenue: $${effectiveRevenue.toFixed(2)}
+\u2022 Average job ticket: $${effectiveAvgPerJob}
+\u2022 Total upsell revenue: $${effectiveUpsells.toFixed(2)} (${upsellRate}% of revenue)
+\u2022 Total tips collected: $${totalTips.toFixed(2)}
+\u2022 Active detailers: ${activeDetailerCount}
+\u2022 Working days in period: ${workDays}
+\u2022 Average jobs/day: ${avgJobsPerDay}
+\u2022 Average revenue/day: $${avgRevenuePerDay}
+\u2022 Cancellation rate: ${cancelRate}% (${cancelledJobs} cancelled out of ${filteredJobs.length} total)
+${peakDay ? `\u2022 Busiest day: ${peakDay[0]} (${peakDay[1]} jobs)` : ""}
+${slowestDay ? `\u2022 Slowest day: ${slowestDay[0]} (${slowestDay[1]} jobs)` : ""}
+
+\u2500\u2500 PER-DETAILER PERFORMANCE \u2500\u2500
+${detailerBreakdown.filter((d) => d.jobs > 0).map((d) => `\u2022 ${d.name}: ${d.jobs} jobs, $${d.revenue.toFixed(0)} revenue, $${d.avgPerJob} avg ticket, $${d.upsells.toFixed(0)} upsells (${d.upsellRate}%), $${d.tips.toFixed(0)} tips, ${d.daysWorked} days worked, ${d.avgJobsPerDay} jobs/day`).join("\n")}
+${detailerBreakdown.filter((d) => d.jobs === 0).map((d) => `\u2022 ${d.name}: 0 jobs (on payroll but no completed work this period)`).join("\n")}
+
+\u2500\u2500 DRIVE TIME / ROUTE EFFICIENCY \u2500\u2500
+${driveTimeNotes.length > 0 ? driveTimeNotes.join("\n") : "No address data available"}
+(More stops/day = more windshield time = less productive time. Target: 2-3 stops max per detailer per day for full details.)
+
+\u2500\u2500 SERVICE MIX BREAKDOWN \u2500\u2500
+${serviceLines.length > 0 ? serviceLines.join("\n") : "No service data available"}
+(Higher-ticket services like Luxury Detail and Full Detail should be pushed. Basic Details drag down avg ticket.)
+
+\u2500\u2500 PAYROLL & LABOR COST \u2500\u2500
+\u2022 Total clock hours (all detailers): ${totalClockHours.toFixed(1)}h
+\u2022 Total labor cost (wages only): $${totalLaborCost.toFixed(2)}
+\u2022 Labor cost as % of revenue: ${laborCostRatio}%
+\u2022 Revenue per labor hour: $${revenuePerLaborHour}
+${detailerHours.filter((d) => d.hours > 0).map((d) => `\u2022 ${d.name}: ${d.hours.toFixed(1)}h clocked, $${d.cost.toFixed(2)} labor cost`).join("\n")}
+(Target: labor cost should be 25-35% of revenue. Revenue/hour target: $100+/hr.)
+
+\u2500\u2500 UPSELL DEEP DIVE \u2500\u2500
+${detailerBreakdown.filter((d) => d.jobs > 0).map((d) => `\u2022 ${d.name}: $${d.upsells.toFixed(0)} in upsells across ${d.jobs} jobs = $${d.jobs > 0 ? (d.upsells / d.jobs).toFixed(0) : 0}/job avg upsell`).join("\n")}
+(Target: every job should have at least $30-50 in upsells. Rain-X, paint sealant, leather conditioning are easy adds.)
+
+\u2550\u2550\u2550 ANALYSIS REQUIREMENTS \u2550\u2550\u2550
+Return ONLY valid JSON. Provide 6-8 insights minimum. Each insight MUST:
+1. Reference SPECIFIC detailer names and exact dollar amounts from the data above
+2. Calculate the DOLLAR IMPACT of the problem or opportunity (e.g., "If Casey matched Lamont's upsell rate, that's an extra $X/week")
+3. Give ONE specific, immediately actionable recommendation (not vague advice like "improve upsells" \u2014 say exactly what to do)
+
+Categories to cover (at minimum):
+- SCHEDULE DENSITY: Are detailers booked enough? Gaps between jobs? Days with too few jobs?
+- DRIVE TIME: Too many stops spread across town? Geographic clustering opportunities?
+- AVERAGE JOB SIZE: Who's selling premium packages vs basic? Opportunity to upsell to higher tiers?
+- UPSELL PERFORMANCE: Who's crushing it, who's leaving money on the table? Dollar opportunity?
+- PAYROLL EFFICIENCY: Revenue per labor hour, labor cost ratio, anyone overstaffed?
+- REVENUE GROWTH: What's the #1 lever to pull to grow revenue 20% next month?
+
+JSON structure:
 {
-  "score": <number 0-100>,
-  "scoreLabel": <"Excellent" | "Good" | "Needs Attention" | "Critical">,
-  "summary": <2-3 sentence overall summary>,
+  "score": <number 0-100 \u2014 be honest, don't inflate>,
+  "scoreLabel": <"Excellent" (85+) | "Good" (70-84) | "Needs Attention" (50-69) | "Critical" (<50)>,
+  "summary": <3-4 sentence executive summary identifying the single biggest opportunity and biggest risk>,
   "insights": [
     {
-      "category": <"UPSELLS" | "REVENUE" | "SCHEDULING" | "EFFICIENCY" | "DRIVE TIME" | "TEAM">,
+      "category": <"SCHEDULE DENSITY" | "DRIVE TIME" | "AVERAGE JOB SIZE" | "UPSELLS" | "PAYROLL" | "REVENUE" | "TEAM" | "CANCELLATIONS">,
       "emoji": <single emoji>,
       "severity": <"Critical" | "Warning" | "Positive">,
-      "title": <short title>,
-      "detail": <2-3 sentences with specific numbers>,
-      "recommendation": <one concrete action step>
+      "title": <punchy 5-8 word title>,
+      "detail": <3-5 sentences with SPECIFIC numbers, names, and dollar amounts from the data>,
+      "recommendation": <one concrete, specific action with expected dollar impact>
     }
   ]
-}
-Include 3-5 insights. Use real numbers from the data. Be direct and specific.`;
-    const result = await invokeLLM({
-      messages: [
-        { role: "system", content: "You are an expert business coach for mobile detailing companies. Return only valid JSON." },
-        { role: "user", content: prompt }
-      ],
-      responseFormat: { type: "json_object" }
-    });
+}`;
     let structured = null;
+    const sysMsg = "You are an elite mobile detailing business operations analyst. You provide brutally honest, data-driven analysis with specific dollar amounts, named team members, and actionable recommendations. Never give generic advice. Always quantify the opportunity cost. Return ONLY a raw JSON object \u2014 no markdown fences, no backticks, no text before or after the JSON.";
     try {
+      const result = await invokeLLM({
+        model: "gemini-3.1-pro-preview",
+        messages: [
+          { role: "system", content: sysMsg },
+          { role: "user", content: prompt }
+        ],
+        thinking: { budget_tokens: 8192 }
+      });
       const raw = typeof result.choices?.[0]?.message?.content === "string" ? result.choices[0].message.content : JSON.stringify(result.choices?.[0]?.message?.content ?? "");
-      structured = JSON.parse(raw);
-    } catch {
-      structured = { score: 50, scoreLabel: "Needs Attention", summary: "Analysis complete.", insights: [] };
+      console.log("[AI Coach] LLM response length:", raw.length);
+      if (raw.length > 10) {
+        const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+        structured = JSON.parse(cleaned);
+      }
+    } catch (llmErr) {
+      console.error("[AI Coach] Primary LLM call failed:", llmErr.message);
+    }
+    if (!structured || !structured.score) {
+      try {
+        console.log("[AI Coach] Retrying with gemini-3-flash-preview...");
+        const fallbackResult = await invokeLLM({
+          model: "gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: sysMsg },
+            { role: "user", content: prompt }
+          ],
+          thinking: { budget_tokens: 4096 }
+        });
+        const raw2 = typeof fallbackResult.choices?.[0]?.message?.content === "string" ? fallbackResult.choices[0].message.content : JSON.stringify(fallbackResult.choices?.[0]?.message?.content ?? "");
+        console.log("[AI Coach] Fallback response length:", raw2.length);
+        if (raw2.length > 10) {
+          const cleaned2 = raw2.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+          structured = JSON.parse(cleaned2);
+        }
+      } catch (fallbackErr) {
+        console.error("[AI Coach] Fallback LLM also failed:", fallbackErr.message);
+      }
+    }
+    if (!structured || !structured.score) {
+      structured = { score: 50, scoreLabel: "Needs Attention", summary: "Analysis could not be completed. Please try again.", insights: [] };
     }
     return {
       ...structured,
-      stats: { totalJobs: effectiveJobs, totalRevenue: effectiveRevenue, totalHours, totalUpsells: effectiveUpsells, avgPerJob: effectiveAvgPerJob, upsellRate, location: locationLabel, activeDetailerCount }
+      overallScore: structured.score,
+      stats: {
+        totalJobs: effectiveJobs,
+        totalRevenue: effectiveRevenue,
+        totalHours: totalClockHours,
+        totalUpsells: effectiveUpsells,
+        avgPerJob: effectiveAvgPerJob,
+        upsellRate,
+        location: locationLabel,
+        activeDetailerCount,
+        totalTips,
+        totalLaborCost,
+        laborCostRatio,
+        revenuePerLaborHour,
+        cancelRate,
+        workDays,
+        avgJobsPerDay
+      }
     };
   }),
   // ── Route Optimizer: order today's jobs for minimum drive time ───────────
@@ -17187,10 +17701,10 @@ async function addMaintenance(data) {
   if (!db) throw new Error("DB unavailable");
   const id = genId4();
   await db.execute(sql4`
-    INSERT INTO fleet_maintenance (id, van_id, type, description, service_date, odometer_at_service, next_due_date, next_due_odometer, cost, shop_name, notes)
+    INSERT INTO fleet_maintenance (id, van_id, type, description, service_date, odometer_at_service, next_due_date, next_due_odometer, cost, shop_name, notes, proof_image_url)
     VALUES (${id}, ${data.van_id}, ${data.type}, ${data.description ?? null}, ${data.service_date},
             ${data.odometer_at_service ?? null}, ${data.next_due_date ?? null}, ${data.next_due_odometer ?? null},
-            ${data.cost ?? null}, ${data.shop_name ?? null}, ${data.notes ?? null})
+            ${data.cost ?? null}, ${data.shop_name ?? null}, ${data.notes ?? null}, ${data.proof_image_url ?? null})
   `);
   return { id };
 }
@@ -17799,8 +18313,8 @@ var appRouter = router({
           hireDate: employee.hireDate,
           profilePhotoUrl: employee.profilePhotoUrl,
           phoneNumber: employee.phoneNumber,
-          hourlyRate: employee.hourlyRate !== null && employee.hourlyRate !== void 0 ? Number(employee.hourlyRate) : null,
-          upsellBonusPct: employee.upsellBonusPct !== null && employee.upsellBonusPct !== void 0 ? Number(employee.upsellBonusPct) : null
+          hourlyRate: null,
+          upsellBonusPct: null
         }
       };
     }),
@@ -17845,7 +18359,7 @@ var appRouter = router({
       }
       if (input.email) {
         try {
-          const { sendEmail: sendEmail2, buildTeamMemberWelcomeEmail: buildTeamMemberWelcomeEmail2 } = await import("../email.js");
+          const { sendEmail: sendEmail2, buildTeamMemberWelcomeEmail: buildTeamMemberWelcomeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
           const welcomeEmail = buildTeamMemberWelcomeEmail2({
             fullName: input.fullName,
             employeeId: input.employeeId,
@@ -17881,11 +18395,41 @@ var appRouter = router({
       upsellBonusPct: z3.number().min(0).max(100).nullable().optional(),
       shiftStartHour: z3.number().min(0).max(24).nullable().optional(),
       shiftEndHour: z3.number().min(0).max(24).nullable().optional(),
-      shift: z3.enum(["shift1", "shift2"]).optional()
+      shift: z3.enum(["shift1", "shift2"]).optional(),
+      customWorkDays: z3.string().nullable().optional()
+      // comma-separated day numbers: 0=Sun..6=Sat
     })).mutation(async ({ input }) => {
       const { employeeId, ...data } = input;
       await updateEmployee(employeeId, data);
       return { success: true };
+    }),
+    resendWelcomeEmail: publicProcedure.input(z3.object({ employeeId: z3.string() })).mutation(async ({ input }) => {
+      const emp = await getEmployeeById(input.employeeId);
+      if (!emp) return { success: false, error: "Team member not found" };
+      if (!emp.email) return { success: false, error: "No email address on file" };
+      try {
+        const { sendEmail: sendEmail2, buildTeamMemberWelcomeEmail: buildTeamMemberWelcomeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+        const welcomeEmail = buildTeamMemberWelcomeEmail2({
+          fullName: emp.fullName,
+          employeeId: emp.employeeId,
+          pin: emp.pin,
+          role: emp.role,
+          hireDate: emp.hireDate ?? void 0,
+          city: emp.city ?? void 0
+        });
+        await sendEmail2({
+          to: emp.email,
+          subject: welcomeEmail.subject,
+          html: welcomeEmail.html,
+          type: "other",
+          urgent: true,
+          customerName: emp.fullName
+        });
+        return { success: true };
+      } catch (err) {
+        console.error("[employee.resendWelcomeEmail] Error:", err);
+        return { success: false, error: err?.message ?? "Email send failed" };
+      }
     }),
     deactivate: publicProcedure.input(z3.object({ employeeId: z3.string() })).mutation(async ({ input }) => {
       await deactivateEmployee(input.employeeId);
@@ -18698,6 +19242,7 @@ var appRouter = router({
     }),
     getQuizAttempts: publicProcedure.input(z3.object({ employeeId: z3.string(), moduleId: z3.string() })).query(async ({ input }) => getQuizAttemptsForEmployee(input.employeeId, input.moduleId)),
     getBestQuizAttempt: publicProcedure.input(z3.object({ employeeId: z3.string(), moduleId: z3.string() })).query(async ({ input }) => getBestQuizAttempt(input.employeeId, input.moduleId)),
+    getAllQuizAttemptsForEmployee: publicProcedure.input(z3.object({ employeeId: z3.string() })).query(async ({ input }) => getAllQuizAttemptsForEmployee(input.employeeId)),
     // ── Progress Management ─────────────────────────────────────────────────────
     getAllEmployeesProgress: publicProcedure.query(async () => getAllEmployeesTrainingProgress()),
     markScrollComplete: publicProcedure.input(z3.object({ employeeId: z3.string(), moduleId: z3.string() })).mutation(async ({ input }) => {
@@ -19509,6 +20054,42 @@ var appRouter = router({
         employeeId: r.employeeId ?? "",
         totalHours: Number(r.totalHours ?? 0)
       })).filter((r) => r.employeeId);
+    }),
+    getTeamDashboard: publicProcedure.input(z3.object({ startDate: z3.string(), endDate: z3.string() })).query(async ({ input }) => {
+      const { getDb: getDb7 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { clockInOutRecords: clockInOutRecords2, breakRecords: breakRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const dbConn = await getDb7();
+      if (!dbConn) return { members: [] };
+      const { and: and8, gte: gte4, lte: lte4, eq: eq9, sql: sql6 } = await import("drizzle-orm");
+      const hoursRows = await dbConn.select({
+        employeeId: clockInOutRecords2.employeeId,
+        fullName: clockInOutRecords2.fullName,
+        totalHours: sql6`COALESCE(SUM(${clockInOutRecords2.totalHours}), 0)`
+      }).from(clockInOutRecords2).where(
+        and8(
+          gte4(clockInOutRecords2.date, input.startDate),
+          lte4(clockInOutRecords2.date, input.endDate),
+          eq9(clockInOutRecords2.status, "clocked_out")
+        )
+      ).groupBy(clockInOutRecords2.employeeId, clockInOutRecords2.fullName);
+      const breakRows = await dbConn.select({
+        employeeId: breakRecords2.employeeId,
+        totalBreakMinutes: sql6`COALESCE(SUM(${breakRecords2.durationMinutes}), 0)`
+      }).from(breakRecords2).where(
+        and8(
+          gte4(breakRecords2.date, input.startDate),
+          lte4(breakRecords2.date, input.endDate),
+          eq9(breakRecords2.status, "taken")
+        )
+      ).groupBy(breakRecords2.employeeId);
+      const breakMap = new Map(breakRows.map((r) => [r.employeeId ?? "", Number(r.totalBreakMinutes ?? 0)]));
+      const members = hoursRows.filter((r) => r.employeeId).map((r) => ({
+        employeeId: r.employeeId ?? "",
+        fullName: r.fullName ?? "",
+        totalHours: Number(r.totalHours ?? 0),
+        breakMinutes: breakMap.get(r.employeeId ?? "") ?? 0
+      })).sort((a, b) => b.totalHours - a.totalHours);
+      return { members };
     })
   }),
   stripe: router({
@@ -20058,8 +20639,8 @@ If you cannot read a field clearly, return an empty string for that field. Never
               matchConds.push(eqOb(obTable.email, input.customerEmail.toLowerCase()));
             }
             if (matchConds.length > 0) {
-              const abandonedCarts = await drizzleDbOb.select({ bookingId: obTable.bookingId }).from(obTable).where(andOb(eqOb(obTable.status, "abandoned"), orOb(...matchConds))).limit(10);
-              for (const cart of abandonedCarts) {
+              const abandonedCarts2 = await drizzleDbOb.select({ bookingId: obTable.bookingId }).from(obTable).where(andOb(eqOb(obTable.status, "abandoned"), orOb(...matchConds))).limit(10);
+              for (const cart of abandonedCarts2) {
                 await drizzleDbOb.update(obTable).set({ status: "confirmed" }).where(eqOb(obTable.bookingId, cart.bookingId));
                 console.log(`[jobs.upsert] Auto-promoted abandoned cart ${cart.bookingId} to confirmed`);
               }
@@ -20085,24 +20666,32 @@ If you cannot read a field clearly, return an empty string for that field. Never
         } catch {
         }
       }
-      if (input.notifyCustomer !== false && input.customerEmail) {
+      const notifyEmail = input.customerEmail || existingJob?.customerEmail || void 0;
+      const notifyName = input.customerName || existingJob?.customerName || void 0;
+      const notifyAddress = input.customerAddress || existingJob?.customerAddress || void 0;
+      const notifyPackageType = input.packageType || existingJob?.packageType || void 0;
+      const notifyTotalPrice = input.totalPrice ?? (existingJob?.totalPrice ? parseFloat(existingJob.totalPrice) : void 0);
+      const notifyStartHour = input.startHour ?? (existingJob?.startHour ? parseInt(existingJob.startHour) : void 0);
+      const notifyEndHour = input.endHour ?? (existingJob?.endHour ? parseInt(existingJob.endHour) : void 0);
+      const notifyDate = input.date || existingJob?.date || void 0;
+      if (input.notifyCustomer === true && notifyEmail) {
         try {
-          const customerName = input.customerName || "Valued Customer";
+          const customerName = notifyName || "Valued Customer";
           const fmtHour = (h) => {
             const period = h >= 12 ? "PM" : "AM";
             const hr = h > 12 ? h - 12 : h === 0 ? 12 : h;
             return `${hr}:00 ${period}`;
           };
-          const scheduledTime = input.startHour !== void 0 && input.endHour !== void 0 ? `${fmtHour(input.startHour)} \u2013 ${fmtHour(input.endHour)}` : input.timeSlot ?? "TBD";
+          const scheduledTime = notifyStartHour !== void 0 && notifyEndHour !== void 0 ? `${fmtHour(notifyStartHour)} \u2013 ${fmtHour(notifyEndHour)}` : input.timeSlot ?? existingJob?.timeSlot ?? "TBD";
           const scheduledDate = (() => {
             try {
-              const d = /* @__PURE__ */ new Date(input.date + "T12:00:00");
+              const d = /* @__PURE__ */ new Date((notifyDate ?? input.date) + "T12:00:00");
               return d.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
             } catch {
-              return input.date;
+              return notifyDate ?? input.date;
             }
           })();
-          const packageName = await resolvePackageNameAsync(input.packageType) || input.serviceDescription || "Detail Service";
+          const packageName = await resolvePackageNameAsync(notifyPackageType) || input.serviceDescription || existingJob?.serviceDescription || "Detail Service";
           let addons;
           if (input.selectedAddons) {
             try {
@@ -20129,8 +20718,9 @@ If you cannot read a field clearly, return an empty string for that field. Never
             } catch {
             }
           }
-          const basePrice = input.totalPrice ?? 0;
+          const basePrice = notifyTotalPrice ?? 0;
           const discAmt = input.discountAmount ?? 0;
+          const isRescheduleEmail = !isNewJob;
           const { subject, html } = buildBookingConfirmationEmail({
             customerName,
             bookingRef: input.jobId,
@@ -20139,23 +20729,24 @@ If you cannot read a field clearly, return an empty string for that field. Never
             vehicles: emailVehicles,
             scheduledDate,
             scheduledTime,
-            addressLabel: input.customerAddress || void 0,
+            addressLabel: notifyAddress || void 0,
             addons,
             total: discAmt > 0 ? Math.max(0, basePrice - discAmt) : basePrice,
             originalTotal: discAmt > 0 ? basePrice : void 0,
             discountAmount: discAmt > 0 ? discAmt : void 0,
             discountCode: input.discountCode || void 0,
-            notes: input.notes || void 0
+            notes: input.notes || existingJob?.notes || void 0,
+            isReschedule: isRescheduleEmail
           });
           await sendEmail({
-            to: input.customerEmail,
+            to: notifyEmail,
             subject,
             html,
             type: "booking_confirmation",
             customerName,
             bookingRef: input.jobId
           });
-          console.log(`[jobs.upsert] Confirmation email sent to ${input.customerEmail}`);
+          console.log(`[jobs.upsert] ${isRescheduleEmail ? "Reschedule" : "Confirmation"} email sent to ${notifyEmail}`);
         } catch (emailErr) {
           console.error("[jobs.upsert] Failed to send confirmation email:", emailErr);
         }
@@ -20782,19 +21373,6 @@ If you cannot read a field clearly, return an empty string for that field. Never
         paymentReferenceNote: input.referenceNote ?? "Manually marked paid by admin"
       });
       try {
-        const { scheduleJobs: scheduleJobs2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const { sql: drizzleSql } = await import("drizzle-orm");
-        const drizzleDb = await getDb();
-        if (drizzleDb) {
-          const numericId = parseInt(input.jobId, 10);
-          if (!isNaN(numericId)) {
-            await drizzleDb.execute(drizzleSql`UPDATE schedule_jobs SET status = 'completed' WHERE id = ${numericId}`);
-          }
-        }
-      } catch (e) {
-        console.warn("[markPaid] status update failed:", e);
-      }
-      try {
         const jobRow = await getScheduleJobById(input.jobId);
         const customerEmail = jobRow?.customerEmail;
         if (jobRow && customerEmail) {
@@ -20828,6 +21406,49 @@ If you cannot read a field clearly, return an empty string for that field. Never
       } catch (receiptErr) {
         console.warn("[markPaid] Customer receipt email failed:", receiptErr);
       }
+      return { success: true };
+    }),
+    /** Manually send a payment receipt email to the customer for a job */
+    sendReceipt: publicProcedure.input(z3.object({ jobId: z3.string() })).mutation(async ({ input }) => {
+      const jobRow = await getScheduleJobById(input.jobId);
+      if (!jobRow) throw new Error("Job not found");
+      const customerEmail = jobRow?.customerEmail;
+      if (!customerEmail) throw new Error("No customer email on file for this job");
+      const serviceTitle = await resolvePackageNameAsync(jobRow.packageType);
+      const payment = jobRow.payment;
+      const total = payment ? parseFloat(payment.paymentTotal ?? "0") : 0;
+      const tip = payment ? parseFloat(payment.paymentTip ?? "0") : 0;
+      const subtotal = total - tip;
+      const method = payment?.paymentMethod ?? "other";
+      const paidAt = payment?.paymentPaidAt ? new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      }).format(new Date(payment.paymentPaidAt)) : new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      }).format(/* @__PURE__ */ new Date());
+      const { subject, html } = buildPaymentReceiptEmail({
+        customerName: jobRow.customerName ?? "Valued Customer",
+        jobId: input.jobId,
+        serviceDate: jobRow.date ?? "",
+        packageName: serviceTitle,
+        vehicleInfo: [jobRow.vehicleType, jobRow.vehicleColor].filter(Boolean).join(" ") || "Vehicle",
+        serviceAddress: jobRow.location ?? "",
+        paymentMethod: method,
+        subtotal,
+        tip,
+        total,
+        paidAt,
+        detailerName: jobRow.assignedTo ?? void 0
+      });
+      await sendEmail({ to: customerEmail, subject, html, type: "other", urgent: true, customerName: jobRow.customerName ?? "" });
       return { success: true };
     }),
     /** Reassign a job to a different detailer */
@@ -21194,9 +21815,11 @@ If you cannot read a field clearly, return an empty string for that field. Never
         price: input.price ?? 0
       };
       const updated = [...existing, newVehicle];
-      const basePrice = Number(job.price) || 0;
-      const addedPrice = updated.reduce((sum, v) => sum + (Number(v.price) || 0), 0);
-      const newTotal = basePrice + addedPrice;
+      const existingExtrasTotal = existing.reduce((sum, v) => sum + (Number(v.price) || 0), 0);
+      const currentTotal = Number(job.customPrice ?? job.totalPrice) || 0;
+      const primaryVehiclePrice = currentTotal - existingExtrasTotal;
+      const newVehiclePrice = Number(input.price) || 0;
+      const newTotal = primaryVehiclePrice + existingExtrasTotal + newVehiclePrice;
       await drizzleDb.update(scheduleJobs2).set({
         additionalVehicles: JSON.stringify(updated),
         totalPrice: String(newTotal)
@@ -21223,9 +21846,9 @@ If you cannot read a field clearly, return an empty string for that field. Never
         existing = [];
       }
       const updated = existing.filter((_, i) => i !== input.vehicleIndex);
-      const basePrice = Number(job.price) || 0;
+      const currentTotal = Number(job.customPrice ?? job.totalPrice ?? job.price) || 0;
       const removedPrice = Number(existing[input.vehicleIndex]?.price) || 0;
-      const newTotal = Math.max(0, basePrice - removedPrice);
+      const newTotal = Math.max(0, currentTotal - removedPrice);
       await drizzleDb.update(scheduleJobs2).set({
         additionalVehicles: JSON.stringify(updated),
         totalPrice: String(newTotal)
@@ -21256,6 +21879,54 @@ If you cannot read a field clearly, return an empty string for that field. Never
       const updated = existing.map((v, i) => i === input.vehicleIndex ? { ...v, packageId: input.packageId } : v);
       await drizzleDb.update(scheduleJobs2).set({ additionalVehicles: JSON.stringify(updated) }).where(eq9(scheduleJobs2.jobId, input.jobId));
       return { success: true, additionalVehicles: updated };
+    }),
+    /**
+     * Update addons for a vehicle on an existing job.
+     * vehicleIndex = -1 means the primary vehicle; 0+ means additionalVehicles[vehicleIndex].
+     * Also recalculates totalPrice by diffing the old addon total vs new addon total.
+     */
+    updateJobAddons: publicProcedure.input(z3.object({
+      jobId: z3.string(),
+      vehicleIndex: z3.number(),
+      // -1 for primary, 0+ for additional
+      addonIds: z3.array(z3.string()),
+      addonQtys: z3.record(z3.string(), z3.number()),
+      addonPriceDelta: z3.number()
+      // new addon total minus old addon total
+    })).mutation(async ({ input }) => {
+      const drizzleDb = await getDb();
+      if (!drizzleDb) throw new Error("DB unavailable");
+      const { scheduleJobs: scheduleJobs2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { eq: eq9 } = await import("drizzle-orm");
+      const rows = await drizzleDb.select().from(scheduleJobs2).where(eq9(scheduleJobs2.jobId, input.jobId)).limit(1);
+      if (!rows.length) throw new Error("Job not found");
+      const job = rows[0];
+      const currentTotal = Number(job.customPrice ?? job.totalPrice ?? 0);
+      const newTotal = Math.max(0, currentTotal + input.addonPriceDelta);
+      if (input.vehicleIndex === -1) {
+        await drizzleDb.update(scheduleJobs2).set({
+          selectedAddons: JSON.stringify(input.addonIds),
+          addonQtys: JSON.stringify(input.addonQtys),
+          totalPrice: String(newTotal)
+        }).where(eq9(scheduleJobs2.jobId, input.jobId));
+        return { success: true, newTotal, addonIds: input.addonIds, addonQtys: input.addonQtys };
+      } else {
+        let existing = [];
+        try {
+          existing = job.additionalVehicles ? JSON.parse(job.additionalVehicles) : [];
+        } catch {
+          existing = [];
+        }
+        if (input.vehicleIndex < 0 || input.vehicleIndex >= existing.length) throw new Error("Vehicle index out of range");
+        const updated = existing.map(
+          (v, i) => i === input.vehicleIndex ? { ...v, addonIds: input.addonIds, addonQtys: input.addonQtys } : v
+        );
+        await drizzleDb.update(scheduleJobs2).set({
+          additionalVehicles: JSON.stringify(updated),
+          totalPrice: String(newTotal)
+        }).where(eq9(scheduleJobs2.jobId, input.jobId));
+        return { success: true, newTotal, additionalVehicles: updated };
+      }
     }),
     /** Get all unpaid completed/confirmed jobs — for admin follow-up */
     getUnpaid: publicProcedure.input(z3.object({
@@ -21313,7 +21984,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
     /** Reconcile a job against Stripe — if a succeeded PaymentIntent exists for this job, mark it paid automatically */
     reconcileFromStripe: publicProcedure.input(z3.object({ jobId: z3.string() })).mutation(async ({ input }) => {
       try {
-        const { ENV: ENV2 } = await import("../_core/env");
+        const { ENV: ENV2 } = await Promise.resolve().then(() => (init_env(), env_exports));
         const stripeKey = ENV2.stripeSecretKey;
         console.log("[reconcileFromStripe] jobId:", input.jobId, "stripeKey exists:", !!stripeKey, "stripeKey starts with:", stripeKey?.substring(0, 10));
         if (!stripeKey) {
@@ -21341,14 +22012,6 @@ If you cannot read a field clearly, return an empty string for that field. Never
           paymentSignatureUrl: void 0,
           paymentReferenceNote: `Auto-reconciled from Stripe (${intent.id})`
         });
-        const numericId = parseInt(input.jobId, 10);
-        if (!isNaN(numericId)) {
-          const { sql: drizzleSql } = await import("drizzle-orm");
-          const drizzleDb = await getDb();
-          if (drizzleDb) {
-            await drizzleDb.execute(drizzleSql`UPDATE schedule_jobs SET status = 'completed' WHERE id = ${numericId}`);
-          }
-        }
         return { success: true, paymentIntentId: intent.id, total: amountTotal };
       } catch (e) {
         console.error("[reconcileFromStripe] error:", e);
@@ -21580,8 +22243,8 @@ If you cannot read a field clearly, return an empty string for that field. Never
           weatherCode: c.weather_code,
           isDay: c.is_day === 1
         },
-        daily: d.time.map((date, i) => ({
-          date,
+        daily: d.time.map((date2, i) => ({
+          date: date2,
           maxTemp: Math.round(d.temperature_2m_max[i]),
           minTemp: Math.round(d.temperature_2m_min[i]),
           weatherCode: d.weather_code[i],
@@ -21922,7 +22585,38 @@ If you cannot read a field clearly, return an empty string for that field. Never
       authorId: z3.string(),
       authorName: z3.string(),
       body: z3.string()
-    })).mutation(async ({ input }) => createCommunityComment(input)),
+    })).mutation(async ({ input }) => {
+      await createCommunityComment(input);
+      try {
+        const { employees: empTable, communityPosts: communityPosts2, communityComments: communityComments2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq9, inArray: inArray4 } = await import("drizzle-orm");
+        const drizzleDb = await getDb();
+        if (drizzleDb) {
+          const posts = await drizzleDb.select({ authorId: communityPosts2.authorId, title: communityPosts2.title }).from(communityPosts2).where(eq9(communityPosts2.postId, input.postId)).limit(1);
+          const postAuthorId = posts[0]?.authorId ?? null;
+          const postTitle = posts[0]?.title ?? "a post";
+          const priorComments = await drizzleDb.select({ authorId: communityComments2.authorId }).from(communityComments2).where(eq9(communityComments2.postId, input.postId));
+          const priorCommenterIds = [...new Set(priorComments.map((c) => c.authorId))];
+          const recipientIds = [...new Set([postAuthorId, ...priorCommenterIds].filter((id) => !!id && id !== input.authorId))];
+          if (recipientIds.length > 0) {
+            const recipients = await drizzleDb.select({ pushToken: empTable.pushToken, employeeId: empTable.employeeId }).from(empTable).where(inArray4(empTable.employeeId, recipientIds));
+            const tokens = recipients.map((r) => r.pushToken).filter((t2) => !!t2 && (t2.startsWith("ExponentPushToken[") || t2.startsWith("ExpoPushToken[")));
+            if (tokens.length > 0) {
+              const preview = input.body.slice(0, 80);
+              const pushPayloads = tokens.map((to) => ({ to, title: `\u{1F4AC} ${input.authorName} commented`, body: `On "${postTitle}": ${preview}`, sound: "default", data: { screen: "team-chat", channel: "community", tab: "community", postId: input.postId, senderId: input.authorId, senderName: input.authorName } }));
+              await fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(pushPayloads)
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[push] community comment push failed:", e);
+      }
+      return { success: true };
+    }),
     deleteComment: publicProcedure.input(z3.object({ commentId: z3.string(), postId: z3.string() })).mutation(async ({ input }) => deleteCommunityComment(input.commentId, input.postId))
   }),
   inventory: router({
@@ -22121,6 +22815,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
     getByLocation: publicProcedure.input(z3.object({ dateFrom: z3.string(), dateTo: z3.string() })).query(async ({ input }) => getByLocation(input.dateFrom, input.dateTo)),
     getByCategory: publicProcedure.input(z3.object({ dateFrom: z3.string(), dateTo: z3.string(), type: z3.enum(["income", "expense"]).optional(), cityId: z3.string().optional() })).query(async ({ input }) => getByCategory(input.dateFrom, input.dateTo, input.type, input.cityId)),
     getMissingReceipts: publicProcedure.input((val) => val).query(({ input }) => getMissingReceipts(input?.cityId)),
+    getPendingExpenseSummary: publicProcedure.input(z3.object({ cityId: z3.string().optional() })).query(({ input }) => getPendingExpenseSummary(input.cityId)),
     // Balance Sheet
     getBalanceSheet: publicProcedure.query(() => getBalanceSheet()),
     // Assets
@@ -22207,7 +22902,41 @@ If you cannot read a field clearly, return an empty string for that field. Never
       status: z3.enum(["approved", "rejected"]),
       adminNote: z3.string().optional(),
       reviewedBy: z3.string()
-    })).mutation(({ input }) => reviewExpense(input.expenseId, input))
+    })).mutation(({ input }) => reviewExpense(input.expenseId, input)),
+    getFlexPassRequests: publicProcedure.input(z3.object({ status: z3.enum(["pending", "confirmed", "declined"]).optional() })).query(async ({ input }) => {
+      const conn = await (await import("mysql2/promise")).default.createConnection(process.env.DATABASE_URL);
+      try {
+        let where = "WHERE 1=1";
+        const params = [];
+        if (input.status) {
+          where += " AND status = ?";
+          params.push(input.status);
+        }
+        const [rows] = await conn.execute(
+          `SELECT id, contract_id, contract_number, customer_name, customer_email, requested_date, requested_time, city, notes, status, admin_note, created_at FROM flex_pass_requests ${where} ORDER BY created_at DESC LIMIT 200`,
+          params
+        );
+        return { requests: rows };
+      } finally {
+        await conn.end();
+      }
+    }),
+    reviewFlexPassRequest: publicProcedure.input(z3.object({
+      requestId: z3.number(),
+      status: z3.enum(["confirmed", "declined"]),
+      adminNote: z3.string().optional()
+    })).mutation(async ({ input }) => {
+      const conn = await (await import("mysql2/promise")).default.createConnection(process.env.DATABASE_URL);
+      try {
+        await conn.execute(
+          `UPDATE flex_pass_requests SET status = ?, admin_note = ?, updated_at = NOW() WHERE id = ?`,
+          [input.status, input.adminNote ?? null, input.requestId]
+        );
+        return { success: true };
+      } finally {
+        await conn.end();
+      }
+    })
   }),
   customer: router({
     signup: publicProcedure.input(z3.object({
@@ -22333,8 +23062,10 @@ If you cannot read a field clearly, return an empty string for that field. Never
       year: z3.string(),
       make: z3.string(),
       model: z3.string(),
-      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck"]),
+      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck", "rv"]),
       color: z3.string().optional(),
+      rvClass: z3.string().optional(),
+      rvLengthFt: z3.number().int().positive().optional(),
       isDefault: z3.boolean().optional()
     })).mutation(async ({ input }) => {
       const session = await getCustomerSession(input.token);
@@ -22347,8 +23078,10 @@ If you cannot read a field clearly, return an empty string for that field. Never
       year: z3.string().optional(),
       make: z3.string().optional(),
       model: z3.string().optional(),
-      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck"]).optional(),
+      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck", "rv"]).optional(),
       color: z3.string().optional(),
+      rvClass: z3.string().optional(),
+      rvLengthFt: z3.number().int().positive().optional(),
       isDefault: z3.boolean().optional()
     })).mutation(async ({ input }) => {
       const session = await getCustomerSession(input.token);
@@ -22412,7 +23145,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
     createBooking: publicProcedure.input(z3.object({
       token: z3.string(),
       vehicleId: z3.string(),
-      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck"]),
+      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck", "rv"]),
       vehicleLabel: z3.string().optional(),
       packageId: z3.string(),
       packageName: z3.string(),
@@ -22488,6 +23221,10 @@ If you cannot read a field clearly, return an empty string for that field. Never
           console.error("[Booking] Failed to auto-save address:", addrErr);
         }
       }
+      const { randomBytes: _rbOuter } = await import("crypto");
+      const confirmToken = _rbOuter(24).toString("hex");
+      const baseUrl = process.env.APP_URL ?? "https://luxurywashonwheels.app";
+      const confirmUrl = `${baseUrl}/api/confirm/${confirmToken}`;
       try {
         const customerName = customer ? `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim() : "Portal Customer";
         const parseHour = (t2) => {
@@ -22536,10 +23273,11 @@ If you cannot read a field clearly, return an empty string for that field. Never
           discountCode: data.discountCode,
           discountAmount: data.discountAmount != null ? String(data.discountAmount) : "0",
           status: "pending",
-          source: "online",
+          source: "portal_app",
           onlineBookingId: booking.bookingRef,
           notes: data.notes ?? "",
-          assignedTo: assignedDetailer?.employeeId ?? void 0
+          assignedTo: assignedDetailer?.employeeId ?? void 0,
+          apptConfirmToken: confirmToken
         });
         if (assignedDetailer) {
           try {
@@ -22618,7 +23356,8 @@ If you cannot read a field clearly, return an empty string for that field. Never
             addressLabel: data.addressLabel,
             addons: data.addons,
             total: data.total,
-            notes: data.notes
+            notes: data.notes,
+            confirmUrl
           });
           await sendEmail({
             to: customer.email,
@@ -22680,8 +23419,8 @@ If you cannot read a field clearly, return an empty string for that field. Never
               matchConditions.push(eq8(obTable.email, customer.email.toLowerCase()));
             }
             if (matchConditions.length > 0) {
-              const abandonedCarts = await drizzleDb2.select({ bookingId: obTable.bookingId }).from(obTable).where(and7(eq8(obTable.status, "abandoned"), or3(...matchConditions))).limit(10);
-              for (const cart of abandonedCarts) {
+              const abandonedCarts2 = await drizzleDb2.select({ bookingId: obTable.bookingId }).from(obTable).where(and7(eq8(obTable.status, "abandoned"), or3(...matchConditions))).limit(10);
+              for (const cart of abandonedCarts2) {
                 await drizzleDb2.update(obTable).set({ status: "confirmed" }).where(eq8(obTable.bookingId, cart.bookingId));
                 console.log(`[Booking] Auto-promoted abandoned cart ${cart.bookingId} to confirmed`);
               }
@@ -22910,6 +23649,23 @@ If you cannot read a field clearly, return an empty string for that field. Never
       if (!session) return null;
       return getCustomerBookingByRef(input.bookingRef, session.customerId);
     }),
+    // Guest: lookup booking by email and reference number (no auth required)
+    lookupGuestBooking: publicProcedure.input(z3.object({ email: z3.string().email(), bookingRef: z3.string() })).query(async ({ input }) => {
+      const booking = await getGuestBookingByEmailAndRef(input.email, input.bookingRef);
+      if (!booking) return null;
+      return {
+        bookingRef: booking.bookingRef,
+        vehicleLabel: booking.vehicleLabel,
+        packageName: booking.packageName,
+        scheduledDate: booking.scheduledDate,
+        scheduledTime: booking.scheduledTime,
+        city: booking.city,
+        addressLabel: booking.addressLabel,
+        total: booking.total,
+        status: booking.status,
+        createdAt: booking.createdAt
+      };
+    }),
     // Staff-facing: list all customer portal bookings for a city/date range (no auth token needed — staff only)
     listByLocation: publicProcedure.input(z3.object({
       location: z3.string(),
@@ -23108,7 +23864,15 @@ If you cannot read a field clearly, return an empty string for that field. Never
       const scheduleRows = scheduleConditions.length > 0 ? await drizzleDb.select().from(scheduleJobs2).where(or4(...scheduleConditions)) : [];
       const activeScheduleRows = scheduleRows.filter((j) => {
         const status = (j.status ?? "").toLowerCase();
-        return status !== "cancelled" && status !== "deleted";
+        if (status === "cancelled" || status === "deleted") return false;
+        const svcDesc = (j.serviceDescription ?? "").toLowerCase();
+        const pkgType = (j.packageType ?? "").toLowerCase();
+        const src = (j.source ?? "").toLowerCase();
+        if (svcDesc.includes("vip program interest") || svcDesc.includes("vip landing")) return false;
+        if (pkgType.includes("vip_interest") || pkgType.includes("vip-interest")) return false;
+        if (src === "vip-landing" || src === "vip_landing") return false;
+        if (!j.date) return false;
+        return true;
       });
       const resolvePackageLabel = (packageType, fallback) => {
         if (!packageType) return fallback ?? "Detail Service";
@@ -23118,15 +23882,22 @@ If you cannot read a field clearly, return an empty string for that field. Never
           pb_luxury: "Luxury Detail",
           pb_interior: "Interior Detail",
           pb_exterior: "Exterior Detail",
-          pb_vip: "VIP Detail",
+          pb_vip: "VIP",
           pb_express: "Express Detail",
           pb_premium: "Premium Detail",
+          pb_rv_wash: "RV Wash",
+          pb_rv_maintenance: "RV Maintenance",
+          pb_rv_paint_sealant: "RV Paint Sealant",
+          // Dynamic pricebook IDs — add new ones here when created
+          pb_mpn0yohe0qes: "VIP",
+          pb_mpssufsvme94: "Maintenance Program",
+          pb_mpws9prd5cu1: "VIP Renewal",
           interior: "Interior Detail",
           exterior: "Exterior Detail",
           luxury: "Luxury Detail",
           full: "Full Detail",
           basic: "Basic Detail",
-          vip: "VIP Detail",
+          vip: "VIP",
           full_detail: "Full Detail",
           basic_detail: "Basic Detail",
           interior_detail: "Interior Detail",
@@ -23140,10 +23911,11 @@ If you cannot read a field clearly, return an empty string for that field. Never
       const scheduleJobsList = activeScheduleRows.map((j) => ({
         id: j.id ? String(j.id) : `sj_${j.date}_${j.customerName}`,
         jobId: j.jobId ?? null,
-        source: "schedule",
+        onlineBookingId: j.onlineBookingId ?? null,
+        source: j.source === "vip_credit" ? "vip_credit" : "schedule",
         date: j.date ?? "",
         time: j.timeSlot ?? "",
-        packageName: resolvePackageLabel(j.packageType, j.serviceDescription),
+        packageName: j.source === "vip_credit" ? resolvePackageLabel(j.packageType, j.serviceDescription) + " \u2014 VIP Credit" : resolvePackageLabel(j.packageType, j.serviceDescription),
         vehicleLabel: [j.vehicleYear, j.vehicleMake, j.vehicleModel].filter(Boolean).join(" ") || j.vehicleType || "",
         vehicleType: j.vehicleType ?? "",
         addons: (() => {
@@ -23171,6 +23943,12 @@ If you cannot read a field clearly, return an empty string for that field. Never
         const status = (b.status ?? "").toLowerCase();
         if (status === "abandoned" || status === "closed") return false;
         if ((b.bookingId ?? "").startsWith("ABANDONED-")) return false;
+        if ((b.bookingId ?? "").startsWith("LEAD_")) return false;
+        const pkgType = (b.packageType ?? "").toLowerCase();
+        if (pkgType.includes("vip program interest") || pkgType.includes("vip interest") || pkgType.includes("vip landing")) return false;
+        if (pkgType.includes("maintenance interest") || pkgType.includes("maintenance program interest")) return false;
+        const bookingDate = (b.bookingDate ?? "").toLowerCase();
+        if (bookingDate === "tbd" || bookingDate === "") return false;
         return true;
       });
       const onlineJobsList = activeOnlineRows.map((b) => ({
@@ -23195,11 +23973,32 @@ If you cannot read a field clearly, return an empty string for that field. Never
         notes: "",
         createdAt: b.createdAt ? new Date(b.createdAt).toISOString() : ""
       }));
-      const seen = new Set(portalJobs.map((j) => `${j.date}_${j.total}`));
+      const portalRefs = new Set(
+        portalJobs.map((j) => j.bookingRef).filter(Boolean)
+      );
+      const activePortalJobs = portalJobs.filter((j) => j.status !== "cancelled" && j.status !== "abandoned" && j.status !== "closed");
+      const portalDateTimeKeys = new Set(
+        activePortalJobs.map((j) => `${j.date}|${j.time}|${(j.packageName ?? "").toLowerCase().trim()}`)
+      );
+      const isScheduleDupe = (j) => {
+        if (j.source === "schedule" && j.jobId?.startsWith("vip-credit-")) return false;
+        const jid = j.jobId ?? "";
+        const oid = j.onlineBookingId ?? "";
+        const refFromJobId = jid.startsWith("portal_") ? jid.replace(/^portal_/, "") : null;
+        if (refFromJobId && portalRefs.has(refFromJobId)) return true;
+        if (oid && portalRefs.has(oid)) return true;
+        const key = `${j.date}|${j.time}|${(j.packageName ?? "").toLowerCase().trim()}`;
+        return portalDateTimeKeys.has(key);
+      };
+      const isOnlineDupe = (j) => {
+        if (j.id && portalRefs.has(j.id)) return true;
+        const key = `${j.date}|${j.time}|${(j.packageName ?? "").toLowerCase().trim()}`;
+        return portalDateTimeKeys.has(key);
+      };
       const deduped = [
         ...portalJobs,
-        ...scheduleJobsList.filter((j) => !seen.has(`${j.date}_${j.total}`)),
-        ...onlineJobsList.filter((j) => !seen.has(`${j.date}_${j.total}`))
+        ...scheduleJobsList.filter((j) => !isScheduleDupe(j)),
+        ...onlineJobsList.filter((j) => !isOnlineDupe(j))
       ];
       return deduped.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
     }),
@@ -23323,7 +24122,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
       return { success: true, url };
     }),
     /** Send a message to the admin team from the customer portal */
-    sendMessage: publicProcedure.input(z3.object({ token: z3.string(), body: z3.string().min(1).max(2e3) })).mutation(async ({ input }) => {
+    sendMessage: publicProcedure.input(z3.object({ token: z3.string(), body: z3.string().min(1).max(2e3), imageUrl: z3.string().optional() })).mutation(async ({ input }) => {
       const session = await getCustomerSession(input.token);
       if (!session) throw new Error("Unauthorized");
       const drizzleDb = await getDb();
@@ -23333,6 +24132,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
         customerId: session.customerId,
         direction: "inbound",
         body: input.body.trim(),
+        imageUrl: input.imageUrl ?? null,
         isRead: 0
       });
       const customer = await getCustomerById(session.customerId);
@@ -23394,6 +24194,7 @@ If you cannot read a field clearly, return an empty string for that field. Never
         id: r.id,
         direction: r.direction,
         body: r.body,
+        imageUrl: r.imageUrl ?? null,
         sentByName: r.sentByName ?? null,
         isRead: r.isRead === 1,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt)
@@ -23595,6 +24396,191 @@ If you cannot read a field clearly, return an empty string for that field. Never
         console.error("[renewalInterest] push failed", e);
       }
       return { success: true };
+    }),
+    /** Create a booking for a guest (unauthenticated) customer */
+    createGuestBooking: publicProcedure.input(z3.object({
+      // Guest contact info
+      firstName: z3.string().min(1),
+      lastName: z3.string().min(1),
+      email: z3.string().email(),
+      phone: z3.string().min(7),
+      // Booking details
+      vehicleYear: z3.string(),
+      vehicleMake: z3.string(),
+      vehicleModel: z3.string(),
+      vehicleType: z3.enum(["sedan", "suv", "large_suv_van", "truck", "rv"]),
+      vehicleColor: z3.string().optional(),
+      vehicleLabel: z3.string(),
+      packageId: z3.string(),
+      packageName: z3.string(),
+      addons: z3.array(z3.string()).optional(),
+      addressLabel: z3.string().optional(),
+      city: z3.string().optional(),
+      scheduledDate: z3.string(),
+      scheduledTime: z3.string(),
+      subtotal: z3.number(),
+      total: z3.number(),
+      discountCode: z3.string().optional(),
+      discountAmount: z3.number().optional(),
+      notes: z3.string().optional()
+    })).mutation(async ({ input }) => {
+      const customerName = `${input.firstName} ${input.lastName}`.trim();
+      const customerId = await findOrCreateManualCustomer({
+        customerName,
+        customerEmail: input.email,
+        customerPhone: input.phone
+      });
+      if (!customerId) throw new Error("Could not create customer record. Please try again.");
+      const vehicle = await addCustomerVehicle({
+        customerId,
+        year: input.vehicleYear,
+        make: input.vehicleMake,
+        model: input.vehicleModel,
+        vehicleType: input.vehicleType,
+        color: input.vehicleColor,
+        isDefault: true
+      });
+      const booking = await createCustomerBooking({
+        customerId,
+        vehicleId: vehicle.vehicleId,
+        vehicleType: input.vehicleType,
+        vehicleLabel: input.vehicleLabel,
+        packageId: input.packageId,
+        packageName: input.packageName,
+        addons: input.addons,
+        addressLabel: input.addressLabel,
+        city: input.city,
+        scheduledDate: input.scheduledDate,
+        scheduledTime: input.scheduledTime,
+        subtotal: input.subtotal,
+        total: input.total,
+        discountCode: input.discountCode,
+        discountAmount: input.discountAmount,
+        notes: input.notes
+      });
+      try {
+        const parseHour = (t2) => {
+          const m = t2.match(/(\d+)(?::(\d+))?\s*(AM|PM)/i);
+          if (!m) return 8;
+          let h = parseInt(m[1], 10);
+          const mins = m[2] ? parseInt(m[2], 10) : 0;
+          const ampm = m[3].toUpperCase();
+          if (ampm === "PM" && h !== 12) h += 12;
+          if (ampm === "AM" && h === 12) h = 0;
+          return h + (mins >= 30 ? 0.5 : 0);
+        };
+        const parts = input.scheduledTime.split(/[\u2013\-]/).map((s) => s.trim());
+        const startHour = parseHour(parts[0] ?? input.scheduledTime);
+        const endHour = parts[1] ? parseHour(parts[1]) : Math.min(startHour + 3, 17);
+        const city = input.city ?? "";
+        const availableDetailers = city ? await getAvailableDetailersForSlot(input.scheduledDate, startHour, endHour, city) : [];
+        const assignedDetailer = availableDetailers[0] ?? null;
+        await upsertScheduleJob({
+          jobId: `portal_${booking.bookingRef}`,
+          location: city || "Unknown",
+          date: input.scheduledDate,
+          timeSlot: input.scheduledTime,
+          startHour: String(startHour),
+          endHour: String(endHour),
+          customerId,
+          customerName,
+          customerPhone: input.phone,
+          customerEmail: input.email,
+          customerAddress: input.addressLabel ?? "",
+          vehicleType: input.vehicleType,
+          vehicleYear: input.vehicleYear,
+          vehicleMake: input.vehicleMake,
+          vehicleModel: input.vehicleModel,
+          vehicleColor: input.vehicleColor ?? "",
+          packageType: input.packageId,
+          serviceDescription: input.packageName,
+          selectedAddons: JSON.stringify(input.addons ?? []),
+          totalPrice: String(input.total),
+          discountCode: input.discountCode,
+          discountAmount: input.discountAmount != null ? String(input.discountAmount) : "0",
+          status: "pending",
+          source: "portal_app",
+          onlineBookingId: booking.bookingRef,
+          notes: input.notes ?? "",
+          assignedTo: assignedDetailer?.employeeId ?? void 0,
+          leadSource: "Online Booking (Guest)"
+        });
+      } catch (schedErr) {
+        console.error("[GuestBooking] Failed to mirror to schedule_jobs:", schedErr);
+      }
+      try {
+        const { subject, html } = buildBookingConfirmationEmail({
+          customerName,
+          bookingRef: booking.bookingRef,
+          packageName: input.packageName,
+          vehicleLabel: input.vehicleLabel,
+          scheduledDate: input.scheduledDate,
+          scheduledTime: input.scheduledTime,
+          addressLabel: input.addressLabel,
+          addons: input.addons,
+          total: input.total,
+          notes: input.notes
+        });
+        await sendEmail({
+          to: input.email,
+          subject,
+          html,
+          type: "booking_confirmation",
+          customerName,
+          bookingRef: booking.bookingRef
+        });
+      } catch (emailErr) {
+        console.error("[GuestBooking] Failed to send confirmation email:", emailErr);
+      }
+      try {
+        const admins = await getAdminEmployees();
+        for (const admin of admins) {
+          await createNotification({
+            notificationId: `GUEST_BOOKING_${booking.bookingRef}_${admin.employeeId}`,
+            employeeId: admin.employeeId,
+            fullName: admin.fullName,
+            notificationType: "ai_booking",
+            title: `New Guest Booking: ${customerName}`,
+            message: `${customerName} (guest) booked ${input.packageName} on ${input.scheduledDate} at ${input.scheduledTime} in ${input.city ?? "Unknown"}. Ref: ${booking.bookingRef}`,
+            createdBy: "Customer Portal (Guest)",
+            status: "unread",
+            requiresAcknowledgment: "no"
+          });
+        }
+        if (ENV.gmailUser) {
+          const alertEmail = buildAdminBookingAlertEmail({
+            customerName,
+            customerEmail: input.email,
+            bookingRef: booking.bookingRef,
+            packageName: input.packageName,
+            vehicleLabel: input.vehicleLabel,
+            scheduledDate: input.scheduledDate,
+            scheduledTime: input.scheduledTime,
+            city: input.city ?? "",
+            addressLabel: input.addressLabel,
+            total: input.total
+          });
+          await sendEmail({ to: ENV.gmailUser, subject: alertEmail.subject, html: alertEmail.html, type: "other", urgent: true, customerName, bookingRef: booking.bookingRef });
+        }
+      } catch (alertErr) {
+        console.error("[GuestBooking] Failed to send admin alert:", alertErr);
+      }
+      try {
+        await createAbandonedCart({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          location: input.city ?? "Unknown",
+          vehicleType: input.vehicleType,
+          packageName: input.packageName,
+          bookingDate: input.scheduledDate,
+          totalPrice: String(input.total)
+        });
+      } catch (cartErr) {
+        console.error("[GuestBooking] Failed to create abandoned cart record:", cartErr);
+      }
+      return { bookingRef: booking.bookingRef };
     })
   }),
   maintenance: router({
@@ -23768,8 +24754,16 @@ If you cannot read a field clearly, return an empty string for that field. Never
       next_due_odometer: z3.number().optional(),
       cost: z3.number().optional(),
       shop_name: z3.string().optional(),
-      notes: z3.string().optional()
+      notes: z3.string().optional(),
+      proof_image_url: z3.string().optional()
     })).mutation(async ({ input }) => addMaintenance(input)),
+    uploadMaintenanceProof: publicProcedure.input(z3.object({ base64: z3.string(), mimeType: z3.string().default("image/jpeg") })).mutation(async ({ input }) => {
+      const buf = Buffer.from(input.base64, "base64");
+      const ext = input.mimeType.includes("png") ? "png" : "jpg";
+      const key = `fleet-maintenance/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { url } = await storagePut(key, buf, input.mimeType);
+      return { url };
+    }),
     deleteMaintenance: publicProcedure.input(z3.object({ id: z3.string() })).mutation(async ({ input }) => {
       await deleteMaintenance(input.id);
       return { success: true };
@@ -24168,9 +25162,36 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
       location: z3.string(),
       vehicleType: z3.string().optional(),
       packageName: z3.string().optional(),
-      bookingDate: z3.string().optional()
+      bookingDate: z3.string().optional(),
+      source: z3.enum(["portal_app", "website"]).default("website"),
+      customerId: z3.string().optional(),
+      estimatedTotal: z3.number().optional()
     })).mutation(async ({ input }) => {
       const bookingId = await createAbandonedCart(input);
+      try {
+        const conn = await getConnection();
+        const cartId = `cart_${bookingId ?? Date.now()}`;
+        await conn.execute(
+          `INSERT INTO abandoned_carts (cart_id, customer_id, source, package_name, vehicle_type, city, customer_email, customer_name, estimated_total, step_reached)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE step_reached = VALUES(step_reached), updated_at = NOW()`,
+          [
+            cartId,
+            input.customerId ?? null,
+            input.source,
+            input.packageName ?? null,
+            input.vehicleType ?? null,
+            input.location ?? null,
+            input.email ?? null,
+            `${input.firstName} ${input.lastName}`.trim(),
+            input.estimatedTotal ?? null,
+            "package_selection"
+          ]
+        );
+        await conn.end();
+      } catch (e) {
+        console.error("[abandonCart] analytics insert failed:", e);
+      }
       return { success: true, bookingId };
     }),
     promoteAbandonedCart: publicProcedure.input(z3.object({
@@ -24357,8 +25378,8 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     generateTipLink: publicProcedure.input((val) => val).mutation(async ({ input }) => {
       const conn = await getConnection();
       try {
-        const crypto5 = await import("crypto");
-        const token = crypto5.randomBytes(32).toString("hex");
+        const crypto4 = await import("crypto");
+        const token = crypto4.randomBytes(32).toString("hex");
         const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1e3);
         await conn.execute(
           `INSERT INTO tip_requests (token, job_id, customer_name, customer_email, detailer_name, service_title, service_total, stripe_customer_id, stripe_payment_method_id, card_last4, card_brand, status, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
@@ -24678,6 +25699,8 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     getViolations: publicProcedure.input(z3.object({ employeeId: z3.string(), weekStartDate: z3.string().optional() })).query(async ({ input }) => getViolationsForEmployee(input.employeeId, input.weekStartDate)),
     /** Get all violations for a week (admin view) */
     getAllViolations: publicProcedure.input(z3.object({ weekStartDate: z3.string().optional() })).query(async ({ input }) => getAllViolationsForWeek(input.weekStartDate)),
+    /** Get all violations within a date range (for period filter) */
+    getViolationsByDateRange: publicProcedure.input(z3.object({ startDate: z3.string(), endDate: z3.string() })).query(async ({ input }) => getViolationsByDateRange(input.startDate, input.endDate)),
     /** Manual point adjustment (admin override) */
     adjustPoints: publicProcedure.input(z3.object({
       employeeId: z3.string(),
@@ -25656,7 +26679,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
   }),
   // ─── Reporting Router ────────────────────────────────────────────────────────
   pricebook: router({
-    /** List all active price book services */
+    /** List all active price book services (for customer portal) */
     list: publicProcedure.query(async () => {
       const services = await listPriceBookServices();
       return services.map((s) => ({
@@ -25666,8 +26689,29 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         description: s.description ?? "",
         features: s.features ? JSON.parse(s.features) : [],
         vehiclePrices: JSON.parse(s.vehiclePrices),
+        imageUrl: s.imageUrl ?? null,
         sortOrder: s.sortOrder
       }));
+    }),
+    /** List ALL price book services including inactive (for admin) */
+    listAll: publicProcedure.query(async () => {
+      const services = await listAllPriceBookServices();
+      return services.map((s) => ({
+        serviceId: s.serviceId,
+        name: s.name,
+        emoji: s.emoji,
+        description: s.description ?? "",
+        features: s.features ? JSON.parse(s.features) : [],
+        vehiclePrices: JSON.parse(s.vehiclePrices),
+        imageUrl: s.imageUrl ?? null,
+        sortOrder: s.sortOrder,
+        isActive: s.isActive === "yes"
+      }));
+    }),
+    /** Toggle a service active/inactive */
+    toggleActive: publicProcedure.input(z3.object({ serviceId: z3.string(), isActive: z3.boolean() })).mutation(async ({ input }) => {
+      await togglePriceBookServiceActive(input.serviceId, input.isActive);
+      return { success: true };
     }),
     /** Create or update a price book service */
     upsert: publicProcedure.input(z3.object({
@@ -25685,10 +26729,24 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         rv_30_39: z3.number().min(0).optional(),
         rv_40_plus: z3.number().min(0).optional()
       }),
-      sortOrder: z3.number().optional()
+      sortOrder: z3.number().optional(),
+      imageUrl: z3.string().optional()
     })).mutation(async ({ input }) => {
       await upsertPriceBookService(input);
       return { success: true };
+    }),
+    /** Upload a service photo from device (base64) to S3 and update the price book entry */
+    uploadServiceImage: publicProcedure.input(z3.object({
+      serviceId: z3.string().min(1),
+      base64: z3.string(),
+      mimeType: z3.string().default("image/jpeg")
+    })).mutation(async ({ input }) => {
+      const buffer = Buffer.from(input.base64, "base64");
+      const ext = input.mimeType === "image/png" ? "png" : "webp";
+      const key = `pricebook-images/${input.serviceId}-${Date.now()}.${ext}`;
+      const { url } = await storagePut(key, buffer, input.mimeType);
+      await upsertPriceBookServiceImage(input.serviceId, url);
+      return { success: true, url };
     }),
     /** Soft-delete a price book service */
     delete: publicProcedure.input(z3.object({ serviceId: z3.string() })).mutation(async ({ input }) => {
@@ -25743,9 +26801,50 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     })).query(async ({ input }) => {
       const jobs = await getAllScheduleJobsByDateRange(input.startDate, input.endDate);
       const filtered = (input.location ? jobs.filter((j) => j.location === input.location) : jobs).filter((j) => j.status !== "cancelled");
+      const PKG_NAME = {
+        pb_basic: "Basic Detail",
+        pb_full: "Full Detail",
+        pb_luxury: "Luxury Detail",
+        pb_interior: "Interior Detail",
+        pb_exterior: "Exterior Detail",
+        pb_vip: "VIP Detail",
+        pb_express: "Express Detail",
+        pb_premium: "Premium Detail",
+        interior: "Interior Detail",
+        exterior: "Exterior Detail",
+        luxury: "Luxury Detail",
+        full: "Full Detail",
+        basic: "Basic Detail",
+        vip: "VIP Detail",
+        full_detail: "Full Detail",
+        basic_detail: "Basic Detail",
+        interior_detail: "Interior Detail",
+        exterior_detail: "Exterior Detail",
+        luxury_detail: "Luxury Detail",
+        premium_detail: "Premium Detail",
+        roadtrip: "Road Trip Refresh",
+        vacint: "Vacation Interior Clean",
+        vacfull: "Full Vacation Detail"
+      };
+      let pbServiceNames = {};
+      try {
+        const pbList = await listPriceBookServices();
+        for (const row of pbList) {
+          if (row.serviceId && row.name) pbServiceNames[row.serviceId] = row.name;
+        }
+      } catch {
+      }
+      const resolvePkg = (raw) => {
+        if (!raw) return "Unknown";
+        const key = raw.toLowerCase().replace(/[^a-z0-9_]/g, "");
+        if (PKG_NAME[key]) return PKG_NAME[key];
+        if (pbServiceNames[raw]) return pbServiceNames[raw];
+        if (raw.startsWith("pb_") && pbServiceNames[raw]) return pbServiceNames[raw];
+        return raw;
+      };
       const map = {};
       for (const j of filtered) {
-        const pkg = j.packageType ?? "Unknown";
+        const pkg = resolvePkg(j.packageType);
         if (!map[pkg]) map[pkg] = { count: 0, revenue: 0, hours: 0, hoursCount: 0 };
         map[pkg].count++;
         map[pkg].revenue += Math.max(0, parseFloat(j.totalPrice ?? "0") - parseFloat(j.discountAmount ?? "0"));
@@ -25818,6 +26917,24 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     })).query(async ({ input }) => {
       const jobs = await getAllScheduleJobsByDateRange(input.startDate, input.endDate);
       const filtered = (input.location ? jobs.filter((j) => j.location === input.location) : jobs).filter((j) => j.status !== "cancelled");
+      const driveAllEmployees = await getAllActiveEmployees();
+      const driveNameMap = {};
+      for (const emp of driveAllEmployees) {
+        const displayName = emp.fullName.split(" ")[0];
+        const empIdLower = emp.employeeId.toLowerCase();
+        driveNameMap[emp.employeeId] = displayName;
+        const stripped = emp.employeeId.replace(/^DET_?/i, "").toLowerCase();
+        if (stripped) driveNameMap[stripped] = displayName;
+        driveNameMap[emp.fullName] = displayName;
+        driveNameMap[emp.fullName.split(" ")[0]] = displayName;
+        driveNameMap[emp.fullName.split(" ")[0].toLowerCase()] = displayName;
+        driveNameMap[emp.fullName.toLowerCase()] = displayName;
+        driveNameMap[empIdLower] = displayName;
+      }
+      const normDriveName = (raw) => {
+        if (!raw) return "Unassigned";
+        return driveNameMap[raw] ?? driveNameMap[raw.toLowerCase()] ?? raw;
+      };
       const byDetailer = {};
       const byLocation = {};
       const byDay = {};
@@ -25828,7 +26945,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         if (driveMins < 0 || driveMins > 300) continue;
         totalMins += driveMins;
         totalCount++;
-        const det = j.assignedTo ?? "Unassigned";
+        const det = normDriveName(j.assignedTo);
         if (!byDetailer[det]) byDetailer[det] = { totalMins: 0, count: 0 };
         byDetailer[det].totalMins += driveMins;
         byDetailer[det].count++;
@@ -25855,8 +26972,8 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
           jobCount: s.count,
           avgDriveMinutes: +(s.totalMins / s.count).toFixed(1)
         })).sort((a, b) => b.avgDriveMinutes - a.avgDriveMinutes),
-        byDay: Object.entries(byDay).map(([date, s]) => ({
-          date,
+        byDay: Object.entries(byDay).map(([date2, s]) => ({
+          date: date2,
           jobCount: s.count,
           avgDriveMinutes: +(s.totalMins / s.count).toFixed(1)
         })).sort((a, b) => a.date.localeCompare(b.date))
@@ -25903,7 +27020,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         map[j.date].revenue += Math.max(0, parseFloat(j.totalPrice ?? "0") - parseFloat(j.discountAmount ?? "0"));
         map[j.date].jobs++;
       }
-      return Object.entries(map).map(([date, s]) => ({ date, revenue: +s.revenue.toFixed(2), jobs: s.jobs })).sort((a, b) => a.date.localeCompare(b.date));
+      return Object.entries(map).map(([date2, s]) => ({ date: date2, revenue: +s.revenue.toFixed(2), jobs: s.jobs })).sort((a, b) => a.date.localeCompare(b.date));
     }),
     /**
      * Booked Revenue — queries by job CREATION date (createdAt), not service date.
@@ -25946,6 +27063,46 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         ne2(sj.status, "cancelled")
       ));
       const filtered = input.location ? rows.filter((r) => r.location === input.location) : rows;
+      const BREV_PKG_NAME = {
+        pb_basic: "Basic Detail",
+        pb_full: "Full Detail",
+        pb_luxury: "Luxury Detail",
+        pb_interior: "Interior Detail",
+        pb_exterior: "Exterior Detail",
+        pb_vip: "VIP Detail",
+        pb_express: "Express Detail",
+        pb_premium: "Premium Detail",
+        interior: "Interior Detail",
+        exterior: "Exterior Detail",
+        luxury: "Luxury Detail",
+        full: "Full Detail",
+        basic: "Basic Detail",
+        vip: "VIP Detail",
+        full_detail: "Full Detail",
+        basic_detail: "Basic Detail",
+        interior_detail: "Interior Detail",
+        exterior_detail: "Exterior Detail",
+        luxury_detail: "Luxury Detail",
+        premium_detail: "Premium Detail",
+        roadtrip: "Road Trip Refresh",
+        vacint: "Vacation Interior Clean",
+        vacfull: "Full Vacation Detail"
+      };
+      let bRevPbNames = {};
+      try {
+        const pbList2 = await listPriceBookServices();
+        for (const row of pbList2) {
+          if (row.serviceId && row.name) bRevPbNames[row.serviceId] = row.name;
+        }
+      } catch {
+      }
+      const resolvePkgRev = (raw) => {
+        if (!raw) return "Unknown";
+        const key = raw.toLowerCase().replace(/[^a-z0-9_]/g, "");
+        if (BREV_PKG_NAME[key]) return BREV_PKG_NAME[key];
+        if (bRevPbNames[raw]) return bRevPbNames[raw];
+        return raw;
+      };
       let totalRevenue = 0;
       const byBooker = {};
       const byCity = {};
@@ -25962,7 +27119,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         if (!byCity[city]) byCity[city] = { jobs: 0, revenue: 0 };
         byCity[city].jobs++;
         byCity[city].revenue += rev;
-        const pkg = r.packageType ?? "Unknown";
+        const pkg = resolvePkgRev(r.packageType);
         if (!byPackage[pkg]) byPackage[pkg] = { jobs: 0, revenue: 0 };
         byPackage[pkg].jobs++;
         byPackage[pkg].revenue += rev;
@@ -25981,7 +27138,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         byBooker: Object.entries(byBooker).map(([name, s]) => ({ name, jobs: s.jobs, revenue: +s.revenue.toFixed(2) })).sort((a, b) => b.revenue - a.revenue),
         byCity: Object.entries(byCity).map(([city, s]) => ({ city, jobs: s.jobs, revenue: +s.revenue.toFixed(2) })).sort((a, b) => b.revenue - a.revenue),
         byPackage: Object.entries(byPackage).map(([pkg, s]) => ({ pkg, jobs: s.jobs, revenue: +s.revenue.toFixed(2) })).sort((a, b) => b.revenue - a.revenue),
-        byDay: Object.entries(byDay).map(([date, s]) => ({ date, jobs: s.jobs, revenue: +s.revenue.toFixed(2) })).sort((a, b) => a.date.localeCompare(b.date))
+        byDay: Object.entries(byDay).map(([date2, s]) => ({ date: date2, jobs: s.jobs, revenue: +s.revenue.toFixed(2) })).sort((a, b) => a.date.localeCompare(b.date))
       };
     })
   }),
@@ -26043,6 +27200,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         id: r.id,
         direction: r.direction,
         body: r.body,
+        imageUrl: r.imageUrl ?? null,
         sentByName: r.sentByName ?? null,
         isRead: r.isRead === 1,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt)
@@ -26052,6 +27210,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     reply: publicProcedure.input(z3.object({
       customerId: z3.string(),
       body: z3.string().min(1).max(2e3),
+      imageUrl: z3.string().optional(),
       employeeId: z3.string().optional(),
       employeeName: z3.string().optional()
     })).mutation(async ({ input }) => {
@@ -26063,6 +27222,7 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
         customerId: input.customerId,
         direction: "outbound",
         body: input.body.trim(),
+        imageUrl: input.imageUrl ?? null,
         sentByEmployeeId: input.employeeId ?? null,
         sentByName: input.employeeName ?? "Team",
         isRead: 0
@@ -26097,6 +27257,72 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
       const { sql: sql6 } = await import("drizzle-orm");
       const result = await drizzleDb.select({ count: sql6`COUNT(*)` }).from(portalMessages2).where(sql6`${portalMessages2.isRead} = 0 AND ${portalMessages2.direction} = 'inbound'`);
       return { count: Number(result[0]?.count ?? 0) };
+    }),
+    /** Portal analytics: registered users, bookings, revenue, recent signups */
+    getStats: publicProcedure.query(async () => {
+      const conn = await getConnection();
+      try {
+        const [userRows] = await conn.execute(`
+            SELECT COUNT(*) AS totalUsers,
+              SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS newLast30Days,
+              SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS newLast7Days
+            FROM customers
+          `);
+        const users2 = userRows[0] ?? {};
+        const [bookingRows] = await conn.execute(`
+            SELECT
+              COUNT(*) AS totalBookings,
+              SUM(CASE WHEN status != 'cancelled' THEN 1 ELSE 0 END) AS activeBookings,
+              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completedBookings,
+              SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelledBookings,
+              SUM(CASE WHEN status != 'cancelled' THEN COALESCE(total, 0) ELSE 0 END) AS totalRevenue,
+              SUM(CASE WHEN status = 'completed' THEN COALESCE(payment_total, total, 0) ELSE 0 END) AS collectedRevenue,
+              SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND status != 'cancelled' THEN 1 ELSE 0 END) AS bookingsLast30Days,
+              SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND status != 'cancelled' THEN COALESCE(total, 0) ELSE 0 END) AS revenueLast30Days
+            FROM customer_bookings
+          `);
+        const bookings = bookingRows[0] ?? {};
+        const [recentRows] = await conn.execute(`
+            SELECT first_name, last_name, email, city, created_at
+            FROM customers
+            ORDER BY created_at DESC
+            LIMIT 10
+          `);
+        const [cityRows] = await conn.execute(`
+            SELECT city, COUNT(*) AS bookingCount, SUM(COALESCE(total, 0)) AS revenue
+            FROM customer_bookings
+            WHERE status != 'cancelled' AND city IS NOT NULL AND city != ''
+            GROUP BY city
+            ORDER BY bookingCount DESC
+            LIMIT 5
+          `);
+        return {
+          registeredUsers: Number(users2.totalUsers ?? 0),
+          newUsersLast30Days: Number(users2.newLast30Days ?? 0),
+          newUsersLast7Days: Number(users2.newLast7Days ?? 0),
+          totalBookings: Number(bookings.totalBookings ?? 0),
+          activeBookings: Number(bookings.activeBookings ?? 0),
+          completedBookings: Number(bookings.completedBookings ?? 0),
+          cancelledBookings: Number(bookings.cancelledBookings ?? 0),
+          totalRevenue: parseFloat(bookings.totalRevenue ?? "0"),
+          collectedRevenue: parseFloat(bookings.collectedRevenue ?? "0"),
+          bookingsLast30Days: Number(bookings.bookingsLast30Days ?? 0),
+          revenueLast30Days: parseFloat(bookings.revenueLast30Days ?? "0"),
+          recentSignups: recentRows.map((r) => ({
+            name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
+            email: r.email ?? "",
+            city: r.city ?? "",
+            joinedAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)
+          })),
+          topCities: cityRows.map((r) => ({
+            city: r.city,
+            bookingCount: Number(r.bookingCount),
+            revenue: parseFloat(r.revenue ?? "0")
+          }))
+        };
+      } finally {
+        await conn.end();
+      }
     })
   }),
   scheduleBlockers: router({
@@ -26214,10 +27440,10 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
       if (inv.status === "paid") throw new Error("Invoice already paid");
       const drizzleDb = await getDb();
       if (!drizzleDb) throw new Error("DB unavailable");
-      const crypto5 = await import("crypto");
+      const crypto4 = await import("crypto");
       let token = inv.paymentToken;
       if (!token) {
-        token = crypto5.randomBytes(32).toString("hex");
+        token = crypto4.randomBytes(32).toString("hex");
         const { standaloneInvoices: siTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         await drizzleDb.update(siTable).set({ paymentToken: token }).where(eq8(siTable.invoiceId, input.invoiceId));
       }
@@ -26258,6 +27484,27 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
     }),
     delete: publicProcedure.input(z3.object({ invoiceId: z3.string() })).mutation(async ({ input }) => {
       await deleteStandaloneInvoice(input.invoiceId);
+      return { success: true };
+    }),
+    /** Send a payment receipt email to the customer for a paid/partial invoice */
+    sendReceipt: publicProcedure.input(z3.object({ invoiceId: z3.string() })).mutation(async ({ input }) => {
+      const inv = await getStandaloneInvoiceById(input.invoiceId);
+      if (!inv) throw new Error("Invoice not found");
+      const email = inv.customerEmail;
+      if (!email) throw new Error("No customer email on file for this invoice");
+      const businessName = "Luxury Wash On Wheels";
+      const firstName = inv.customerName.split(" ")[0] ?? "Customer";
+      const totalAmount = parseFloat(inv.totalAmount);
+      const amountPaid = parseFloat(inv.amountPaid ?? "0");
+      const balanceDue = Math.max(0, totalAmount - amountPaid);
+      const isPaidInFull = balanceDue === 0;
+      const linesSummary = inv.lineItems.map(
+        (li) => `<tr><td style="color:#888;font-size:13px;padding:4px 0">${li.description}</td><td style="color:#111;font-size:13px;text-align:right">$${parseFloat(li.lineTotal).toFixed(2)}</td></tr>`
+      ).join("");
+      const subject = isPaidInFull ? `\u2705 Payment Receipt \u2014 ${businessName} Invoice ${inv.invoiceNumber}` : `\u{1F9FE} Partial Payment Receipt \u2014 ${businessName} Invoice ${inv.invoiceNumber}`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;margin:0;padding:20px"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)"><div style="background:#16a34a;padding:28px 32px;text-align:center"><h1 style="color:#fff;margin:0;font-size:22px;font-weight:700">\u2705 Payment ${isPaidInFull ? "Received" : "Partial"}</h1><p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:14px">${businessName} \xB7 Invoice ${inv.invoiceNumber}</p></div><div style="padding:28px 32px"><p style="color:#333;font-size:16px;margin:0 0 20px">Hi ${firstName},</p><p style="color:#555;font-size:15px;margin:0 0 24px;line-height:1.5">Thank you for your payment! Here is your receipt.</p><div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px"><table style="width:100%;border-collapse:collapse">${linesSummary}<tr><td colspan="2" style="border-top:1px solid #e5e7eb;padding-top:12px"></td></tr><tr><td style="color:#888;font-size:14px;padding:4px 0">Invoice Total</td><td style="color:#111;font-size:14px;text-align:right">$${totalAmount.toFixed(2)}</td></tr><tr><td style="color:#16a34a;font-size:16px;font-weight:700;padding:4px 0">Amount Paid</td><td style="color:#16a34a;font-size:18px;font-weight:800;text-align:right">$${amountPaid.toFixed(2)}</td></tr>${balanceDue > 0 ? `<tr><td style="color:#ef4444;font-size:14px;padding:4px 0">Balance Due</td><td style="color:#ef4444;font-size:14px;font-weight:700;text-align:right">$${balanceDue.toFixed(2)}</td></tr>` : ""}</table></div><p style="color:#888;font-size:12px;text-align:center;margin:0">Questions? Call us at 850-517-7874.</p></div><div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center"><p style="color:#aaa;font-size:12px;margin:0">${businessName} \xB7 Serving NW Florida</p></div></div></body></html>`;
+      const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+      await sendEmail2({ to: email, subject, html, type: "other", urgent: true, customerName: inv.customerName });
       return { success: true };
     })
   }),
@@ -26481,6 +27728,251 @@ Ready to book your next detail? Reply BOOK or call 850-517-7874!`;
       }
       return { success: true, packageId: input.packageId, url };
     })
+  }),
+  // ─── Customer Activity Tracking ─────────────────────────────────────────────
+  customerActivity: router({
+    /** Called when customer opens the app — creates a new session record */
+    startSession: publicProcedure.input(z3.object({
+      customerId: z3.string(),
+      source: z3.enum(["portal_app", "website"]).default("portal_app"),
+      devicePlatform: z3.string().optional(),
+      appVersion: z3.string().optional()
+    })).mutation(async ({ input }) => {
+      const conn = await getConnection();
+      try {
+        const sessionId = `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await conn.execute(
+          `INSERT INTO customer_activity_sessions (session_id, customer_id, source, device_platform, app_version) VALUES (?, ?, ?, ?, ?)`,
+          [sessionId, input.customerId, input.source, input.devicePlatform ?? null, input.appVersion ?? null]
+        );
+        return { sessionId };
+      } finally {
+        await conn.end();
+      }
+    }),
+    /** Called when customer leaves the app — updates session with duration */
+    endSession: publicProcedure.input(z3.object({
+      sessionId: z3.string(),
+      durationSeconds: z3.number().int().min(0),
+      lastScreen: z3.string().optional()
+    })).mutation(async ({ input }) => {
+      const conn = await getConnection();
+      try {
+        await conn.execute(
+          `UPDATE customer_activity_sessions SET ended_at = NOW(), duration_seconds = ?, last_screen = ? WHERE session_id = ?`,
+          [input.durationSeconds, input.lastScreen ?? null, input.sessionId]
+        );
+        return { success: true };
+      } finally {
+        await conn.end();
+      }
+    }),
+    /** Admin: get activity stats for all customers */
+    getActivityStats: publicProcedure.query(async () => {
+      const conn = await getConnection();
+      try {
+        const [overallRows] = await conn.execute(`
+            SELECT
+              COUNT(DISTINCT customer_id) AS activeUsers,
+              COUNT(*) AS totalSessions,
+              AVG(duration_seconds) AS avgSessionSeconds,
+              SUM(duration_seconds) AS totalSessionSeconds,
+              COUNT(DISTINCT CASE WHEN started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN customer_id END) AS activeUsersLast7Days,
+              COUNT(DISTINCT CASE WHEN started_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN customer_id END) AS activeUsersLast30Days,
+              COUNT(CASE WHEN started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS sessionsLast7Days,
+              COUNT(CASE WHEN started_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) AS sessionsLast30Days
+            FROM customer_activity_sessions
+          `);
+        const overall = overallRows[0] ?? {};
+        const [customerRows] = await conn.execute(`
+            SELECT
+              cas.customer_id,
+              c.first_name, c.last_name, c.email,
+              COUNT(*) AS sessionCount,
+              SUM(cas.duration_seconds) AS totalSeconds,
+              AVG(cas.duration_seconds) AS avgSeconds,
+              MAX(cas.started_at) AS lastSeenAt,
+              MIN(cas.started_at) AS firstSeenAt,
+              DATEDIFF(NOW(), c.created_at) AS daysSinceSignup
+            FROM customer_activity_sessions cas
+            LEFT JOIN customers c ON c.customer_id = cas.customer_id
+            GROUP BY cas.customer_id, c.first_name, c.last_name, c.email
+            ORDER BY lastSeenAt DESC
+            LIMIT 20
+          `);
+        const [platformRows] = await conn.execute(`
+            SELECT device_platform, COUNT(*) AS sessionCount
+            FROM customer_activity_sessions
+            WHERE device_platform IS NOT NULL
+            GROUP BY device_platform
+            ORDER BY sessionCount DESC
+          `);
+        return {
+          activeUsers: Number(overall.activeUsers ?? 0),
+          totalSessions: Number(overall.totalSessions ?? 0),
+          avgSessionMinutes: overall.avgSessionSeconds ? +(Number(overall.avgSessionSeconds) / 60).toFixed(1) : 0,
+          totalSessionHours: overall.totalSessionSeconds ? +(Number(overall.totalSessionSeconds) / 3600).toFixed(1) : 0,
+          activeUsersLast7Days: Number(overall.activeUsersLast7Days ?? 0),
+          activeUsersLast30Days: Number(overall.activeUsersLast30Days ?? 0),
+          sessionsLast7Days: Number(overall.sessionsLast7Days ?? 0),
+          sessionsLast30Days: Number(overall.sessionsLast30Days ?? 0),
+          topCustomers: customerRows.map((r) => ({
+            customerId: r.customer_id,
+            name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || r.email,
+            email: r.email ?? "",
+            sessionCount: Number(r.sessionCount),
+            totalMinutes: r.totalSeconds ? +(Number(r.totalSeconds) / 60).toFixed(1) : 0,
+            avgMinutes: r.avgSeconds ? +(Number(r.avgSeconds) / 60).toFixed(1) : 0,
+            lastSeenAt: r.lastSeenAt instanceof Date ? r.lastSeenAt.toISOString() : String(r.lastSeenAt ?? ""),
+            daysSinceSignup: Number(r.daysSinceSignup ?? 0)
+          })),
+          platforms: platformRows.map((r) => ({
+            platform: r.device_platform,
+            sessionCount: Number(r.sessionCount)
+          }))
+        };
+      } finally {
+        await conn.end();
+      }
+    })
+  }),
+  // ─── Abandoned Cart Tracking ─────────────────────────────────────────────────
+  abandonedCarts: router({
+    /** Record or update a cart — called when customer starts checkout */
+    upsert: publicProcedure.input(z3.object({
+      cartId: z3.string(),
+      customerId: z3.string().optional(),
+      source: z3.enum(["portal_app", "website"]),
+      packageId: z3.string().optional(),
+      packageName: z3.string().optional(),
+      vehicleType: z3.string().optional(),
+      selectedDate: z3.string().optional(),
+      estimatedTotal: z3.number().optional(),
+      stepReached: z3.string().optional(),
+      city: z3.string().optional(),
+      customerEmail: z3.string().optional(),
+      customerName: z3.string().optional()
+    })).mutation(async ({ input }) => {
+      const conn = await getConnection();
+      try {
+        await conn.execute(
+          `INSERT INTO abandoned_carts (cart_id, customer_id, source, package_id, package_name, vehicle_type, selected_date, estimated_total, step_reached, city, customer_email, customer_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               step_reached = VALUES(step_reached),
+               selected_date = VALUES(selected_date),
+               estimated_total = VALUES(estimated_total),
+               updated_at = NOW()`,
+          [
+            input.cartId,
+            input.customerId ?? null,
+            input.source,
+            input.packageId ?? null,
+            input.packageName ?? null,
+            input.vehicleType ?? null,
+            input.selectedDate ?? null,
+            input.estimatedTotal ?? null,
+            input.stepReached ?? null,
+            input.city ?? null,
+            input.customerEmail ?? null,
+            input.customerName ?? null
+          ]
+        );
+        return { success: true };
+      } finally {
+        await conn.end();
+      }
+    }),
+    /** Mark a cart as completed (booking was made) */
+    complete: publicProcedure.input(z3.object({ cartId: z3.string() })).mutation(async ({ input }) => {
+      const conn = await getConnection();
+      try {
+        await conn.execute(
+          `UPDATE abandoned_carts SET completed_at = NOW() WHERE cart_id = ?`,
+          [input.cartId]
+        );
+        return { success: true };
+      } finally {
+        await conn.end();
+      }
+    }),
+    /** Admin: get abandoned cart analytics */
+    getStats: publicProcedure.query(async () => {
+      const conn = await getConnection();
+      try {
+        const [overallRows] = await conn.execute(`
+            SELECT
+              source,
+              COUNT(*) AS total,
+              SUM(CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END) AS abandoned,
+              SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS completed,
+              AVG(CASE WHEN completed_at IS NULL THEN estimated_total END) AS avgAbandonedValue,
+              SUM(CASE WHEN completed_at IS NULL THEN estimated_total ELSE 0 END) AS totalAbandonedValue,
+              COUNT(CASE WHEN completed_at IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS abandonedLast7Days,
+              COUNT(CASE WHEN completed_at IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) AS abandonedLast30Days
+            FROM abandoned_carts
+            GROUP BY source
+          `);
+        const [stepRows] = await conn.execute(`
+            SELECT step_reached, source, COUNT(*) AS count
+            FROM abandoned_carts
+            WHERE completed_at IS NULL AND step_reached IS NOT NULL
+            GROUP BY step_reached, source
+            ORDER BY count DESC
+          `);
+        const [packageRows] = await conn.execute(`
+            SELECT package_name, source, COUNT(*) AS count
+            FROM abandoned_carts
+            WHERE completed_at IS NULL AND package_name IS NOT NULL
+            GROUP BY package_name, source
+            ORDER BY count DESC
+            LIMIT 10
+          `);
+        const [recentRows] = await conn.execute(`
+            SELECT cart_id, customer_name, customer_email, source, package_name, step_reached, estimated_total, city, created_at
+            FROM abandoned_carts
+            WHERE completed_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT 20
+          `);
+        return {
+          bySource: overallRows.map((r) => ({
+            source: r.source,
+            total: Number(r.total),
+            abandoned: Number(r.abandoned),
+            completed: Number(r.completed),
+            conversionRate: r.total > 0 ? +(Number(r.completed) / Number(r.total) * 100).toFixed(1) : 0,
+            avgAbandonedValue: parseFloat(r.avgAbandonedValue ?? "0"),
+            totalAbandonedValue: parseFloat(r.totalAbandonedValue ?? "0"),
+            abandonedLast7Days: Number(r.abandonedLast7Days),
+            abandonedLast30Days: Number(r.abandonedLast30Days)
+          })),
+          dropOffByStep: stepRows.map((r) => ({
+            step: r.step_reached,
+            source: r.source,
+            count: Number(r.count)
+          })),
+          abandonedByPackage: packageRows.map((r) => ({
+            packageName: r.package_name,
+            source: r.source,
+            count: Number(r.count)
+          })),
+          recentAbandoned: recentRows.map((r) => ({
+            cartId: r.cart_id,
+            customerName: r.customer_name ?? "Anonymous",
+            customerEmail: r.customer_email ?? "",
+            source: r.source,
+            packageName: r.package_name ?? "",
+            stepReached: r.step_reached ?? "",
+            estimatedTotal: parseFloat(r.estimated_total ?? "0"),
+            city: r.city ?? "",
+            createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at ?? "")
+          }))
+        };
+      } finally {
+        await conn.end();
+      }
+    })
   })
 });
 
@@ -26653,12 +28145,12 @@ function normalizeCitySlug(city) {
   return c.replace(/\s+/g, "_");
 }
 var ALL_SLOTS = ["8:00am - 11:00am", "11:00am - 2:00pm", "2:00pm - 5:00pm"];
-async function checkAvailability(date, city) {
+async function checkAvailability(date2, city) {
   try {
     const slug = normalizeCitySlug(city);
     const [capacity, bookings] = await Promise.all([
       getLocationCapacity(slug),
-      getBookingsByDateAndLocation(slug, date)
+      getBookingsByDateAndLocation(slug, date2)
     ]);
     const maxCap = typeof capacity === "number" ? capacity : 1;
     const slots = ALL_SLOTS.map((slot) => ({
@@ -26668,13 +28160,13 @@ async function checkAvailability(date, city) {
     const available = slots.filter((s) => s.available > 0);
     if (available.length === 0) {
       return {
-        text: `FULLY BOOKED in ${city} on ${date}. Do NOT offer any time slots \u2014 tell the caller we are fully booked and offer another date.`,
+        text: `FULLY BOOKED in ${city} on ${date2}. Do NOT offer any time slots \u2014 tell the caller we are fully booked and offer another date.`,
         availableSlots: []
       };
     }
     const slotList = available.map((s) => s.label).join(", ");
     return {
-      text: `AVAILABLE SLOTS in ${city} on ${date}: ${slotList}. ONLY offer these exact slots. Do NOT offer any other times.`,
+      text: `AVAILABLE SLOTS in ${city} on ${date2}: ${slotList}. ONLY offer these exact slots. Do NOT offer any other times.`,
       availableSlots: available.map((s) => s.label)
     };
   } catch (e) {
@@ -27095,9 +28587,9 @@ function createReceptionistRouter() {
         }
       }
       const city = session.bookingData.city;
-      const date = session.bookingData.date;
-      if (city && date) {
-        const avail = await checkAvailability(date, city);
+      const date2 = session.bookingData.date;
+      if (city && date2) {
+        const avail = await checkAvailability(date2, city);
         session.availableSlots = avail.availableSlots;
         const filtered = session.messages.filter(
           (m) => !(m.role === "system" && m.content.startsWith("[SCHEDULE]"))
@@ -27106,7 +28598,7 @@ function createReceptionistRouter() {
         session.messages.push(...filtered);
         session.messages.push({
           role: "system",
-          content: `[SCHEDULE for ${city} on ${date}] ${avail.text}`
+          content: `[SCHEDULE for ${city} on ${date2}] ${avail.text}`
         });
       }
       const chosenSlot = session.bookingData.time;
@@ -27625,6 +29117,10 @@ function generateToken2() {
   return crypto3.randomBytes(32).toString("hex");
 }
 async function sendSms2(to, body) {
+  if (process.env.SMS_ENABLED !== "true") {
+    console.log("[SMS] Outbound SMS disabled \u2014 A2P campaign pending. Skipping to:", to);
+    return;
+  }
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -27651,7 +29147,7 @@ async function sendSms2(to, body) {
   }
 }
 function buildInvoiceEmail(params) {
-  const { firstName, serviceTitle, vehicleLabel, date, totalDue, paymentUrl, businessName } = params;
+  const { firstName, serviceTitle, vehicleLabel, date: date2, totalDue, paymentUrl, businessName } = params;
   const subject = `Your Invoice from ${businessName} \u2014 $${totalDue.toFixed(2)} Due`;
   const html = `
 <!DOCTYPE html>
@@ -27687,7 +29183,7 @@ function buildInvoiceEmail(params) {
           </tr>
           <tr>
             <td style="color: #888; font-size: 13px; padding: 4px 0;">Date</td>
-            <td style="color: #111; font-size: 13px; text-align: right;">${date}</td>
+            <td style="color: #111; font-size: 13px; text-align: right;">${date2}</td>
           </tr>
           <tr>
             <td colspan="2" style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 8px;"></td>
@@ -27718,7 +29214,7 @@ function buildInvoiceEmail(params) {
   return { subject, html };
 }
 function buildPaymentPage(params) {
-  const { firstName, lastName, serviceTitle, vehicleLabel, date, totalDue, token, isPaid, stripePublishableKey, businessName } = params;
+  const { firstName, lastName, serviceTitle, vehicleLabel, date: date2, totalDue, token, isPaid, stripePublishableKey, businessName } = params;
   if (isPaid) {
     return `<!DOCTYPE html>
 <html>
@@ -27807,7 +29303,7 @@ function buildPaymentPage(params) {
       <div style="margin-top: 16px;">
         <div class="row"><span class="label">Service</span><span class="value">${serviceTitle}</span></div>
         <div class="row"><span class="label">Vehicle</span><span class="value">${vehicleLabel}</span></div>
-        <div class="row"><span class="label">Date</span><span class="value">${date}</span></div>
+        <div class="row"><span class="label">Date</span><span class="value">${date2}</span></div>
         <div class="row total-row"><span class="total-label">Amount Due</span><span class="total-value">$${totalDue.toFixed(2)}</span></div>
       </div>
     </div>
@@ -28184,6 +29680,54 @@ function createInvoiceRouter() {
         [paymentIntentId ?? null, paymentIntentId ?? null, totalWithTip, invoiceTotal, tipAmount, tipAmount, token]
       );
       try {
+        const [custRows] = await conn.execute(
+          `SELECT customer_name, customer_email, package_type, total_price, upsell_total, tax_amount, discount_amount, deposit_amount, date, assigned_to, location, vehicle_type, vehicle_color
+           FROM schedule_jobs WHERE invoice_token = ? LIMIT 1`,
+          [token]
+        );
+        if (custRows.length > 0) {
+          const cj = custRows[0];
+          const custEmail = cj.customer_email;
+          if (custEmail) {
+            const cBase = parseFloat(cj.total_price ?? "0");
+            const cUpsells = parseFloat(cj.upsell_total ?? "0");
+            const cTax = parseFloat(cj.tax_amount ?? "0");
+            const cDiscount = parseFloat(cj.discount_amount ?? "0");
+            const cDeposit = parseFloat(cj.deposit_amount ?? "0");
+            const cTotal = Math.max(0, cBase + cUpsells + cTax - cDiscount - cDeposit);
+            const cTotalWithTip = Math.round((cTotal + tipAmount) * 100) / 100;
+            const serviceTitle = await resolvePackageNameAsync(cj.package_type);
+            const paidAtFormatted = new Intl.DateTimeFormat("en-US", {
+              timeZone: "America/Chicago",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true
+            }).format(/* @__PURE__ */ new Date());
+            const { buildPaymentReceiptEmail: buildPaymentReceiptEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const { subject: rSubject, html: rHtml } = buildPaymentReceiptEmail2({
+              customerName: cj.customer_name ?? "Valued Customer",
+              jobId: "",
+              serviceDate: cj.date ?? "",
+              packageName: serviceTitle,
+              vehicleInfo: [cj.vehicle_type, cj.vehicle_color].filter(Boolean).join(" ") || "Vehicle",
+              serviceAddress: cj.location ?? "",
+              paymentMethod: "card",
+              subtotal: cTotal,
+              tip: tipAmount,
+              total: cTotalWithTip,
+              paidAt: paidAtFormatted,
+              detailerName: cj.assigned_to ?? void 0
+            });
+            await sendEmail({ to: custEmail, subject: rSubject, html: rHtml, type: "other", urgent: true, customerName: cj.customer_name ?? "" });
+          }
+        }
+      } catch (custReceiptErr) {
+        console.warn("[Invoice] Customer receipt email failed:", custReceiptErr);
+      }
+      try {
         const [jobRows] = await conn.execute(
           `SELECT customer_name, package_type, total_price, upsell_total, tax_amount, discount_amount, deposit_amount, date, assigned_to
            FROM schedule_jobs WHERE invoice_token = ? LIMIT 1`,
@@ -28234,6 +29778,67 @@ function createInvoiceRouter() {
       await conn.end();
     }
   });
+  router2.post("/stripe-webhook", async (req, res) => {
+    try {
+      const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const event = payload;
+      if (event?.type !== "payment_intent.succeeded") {
+        return res.json({ received: true, skipped: true });
+      }
+      const pi = event?.data?.object;
+      if (!pi) return res.status(400).json({ error: "No payment intent in event" });
+      const invoiceToken = pi?.metadata?.invoice_token;
+      const jobId = pi?.metadata?.job_id;
+      if (!invoiceToken && !jobId) {
+        return res.json({ received: true, skipped: true });
+      }
+      const conn = await getConnection2();
+      try {
+        const whereClause = invoiceToken ? "invoice_token = ?" : "job_id = ?";
+        const whereParam = invoiceToken ?? jobId;
+        const [checkRows] = await conn.execute(
+          `SELECT job_id, payment_paid_at, invoice_paid_at FROM schedule_jobs WHERE ${whereClause} LIMIT 1`,
+          [whereParam]
+        );
+        const existingJob = checkRows[0];
+        if (!existingJob) {
+          console.log(`[Invoice Webhook] No job found for invoice_token=${invoiceToken} job_id=${jobId}`);
+          return res.json({ received: true, skipped: true });
+        }
+        if (existingJob.payment_paid_at || existingJob.invoice_paid_at) {
+          console.log(`[Invoice Webhook] Job ${existingJob.job_id} already marked paid \u2014 skipping`);
+          return res.json({ received: true, alreadyPaid: true });
+        }
+        const amountTotal = Math.round(pi.amount ?? 0) / 100;
+        const tipAmount = pi.metadata?.tip_amount ? parseFloat(pi.metadata.tip_amount) : 0;
+        const amountSubtotal = Math.max(0, amountTotal - tipAmount);
+        const paymentIntentId = pi.id;
+        await conn.execute(
+          `UPDATE schedule_jobs SET
+            invoice_paid_at = NOW(),
+            invoice_payment_intent_id = ?,
+            payment_method = 'card',
+            payment_status = 'paid',
+            payment_intent_id = ?,
+            payment_total = ?,
+            payment_subtotal = ?,
+            payment_tip = ?,
+            tips = ?,
+            payment_paid_at = NOW(),
+            status = 'completed'
+          WHERE ${whereClause}`,
+          [paymentIntentId, paymentIntentId, amountTotal, amountSubtotal, tipAmount, tipAmount, whereParam]
+        );
+        console.log(`[Invoice Webhook] \u2705 Marked job ${existingJob.job_id} as paid via webhook (PI: ${paymentIntentId}, $${amountTotal})`);
+        return res.json({ received: true, marked: true, jobId: existingJob.job_id });
+      } finally {
+        await conn.end();
+      }
+    } catch (err) {
+      console.error("[Invoice Webhook] Error processing webhook:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
   router2.get("/status/:jobId", async (req, res) => {
     const { jobId } = req.params;
     const conn = await getConnection2();
@@ -28252,987 +29857,6 @@ function createInvoiceRouter() {
   });
   return router2;
 }
-
-// server/vipRouter.ts
-init_email();
-init_db();
-import { Router as Router4 } from "express";
-import mysql6 from "mysql2/promise";
-import crypto4 from "crypto";
-function getPublicUrl2() {
-  return process.env.PUBLIC_URL ?? "https://www.luxurywashonwheels.app";
-}
-async function getConn() {
-  return mysql6.createConnection(process.env.DATABASE_URL);
-}
-var vipRouter = Router4();
-var ADD_ONS_BY_VISIT = {
-  1: ["Paint Sealant", "Leather Deep Clean", "Leather Condition"],
-  5: ["Leather Deep Clean"],
-  7: ["Paint Sealant", "Leather Condition"],
-  9: ["Leather Deep Clean"]
-};
-function getAddOnsForVisit(visitNumber) {
-  return ADD_ONS_BY_VISIT[visitNumber] ?? [];
-}
-function addMonths(date, months) {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-function cityToSlug(city) {
-  const c = (city || "").toLowerCase().trim();
-  if (c.includes("fort walton") || c === "fwb") return "fwb";
-  if (c.includes("destin")) return "destin";
-  if (c.includes("niceville")) return "niceville";
-  if (c.includes("pensacola")) return "pensacola";
-  if (c.includes("crestview")) return "crestview";
-  return c || "crestview";
-}
-function getNthWeekdayOfMonth(year, month, week, day) {
-  if (week === 5) {
-    const lastDay = new Date(year, month + 1, 0);
-    let diff = lastDay.getDay() - day;
-    if (diff < 0) diff += 7;
-    return new Date(year, month, lastDay.getDate() - diff);
-  }
-  const first = new Date(year, month, 1);
-  let offset = day - first.getDay();
-  if (offset < 0) offset += 7;
-  return new Date(year, month, 1 + offset + (week - 1) * 7);
-}
-function computeVisitDate(start, visitIndex, scheduleWeek, scheduleDay, frequency = "monthly") {
-  if (frequency === "biweekly") {
-    const d = new Date(start);
-    d.setDate(d.getDate() + visitIndex * 14);
-    return d;
-  }
-  const targetMonth = start.getMonth() + visitIndex;
-  const actualYear = start.getFullYear() + Math.floor(targetMonth / 12);
-  const actualMonth = (targetMonth % 12 + 12) % 12;
-  if (scheduleWeek !== null && scheduleDay !== null) {
-    return getNthWeekdayOfMonth(actualYear, actualMonth, scheduleWeek, scheduleDay);
-  }
-  return addMonths(start, visitIndex);
-}
-function formatDate(date) {
-  return date.toISOString().split("T")[0];
-}
-function generateContractNumber(programType = "vip") {
-  const now = /* @__PURE__ */ new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 9e3) + 1e3;
-  const prefix = programType === "maintenance" ? "MNT" : programType === "vip_elite" ? "VIP" : "VIP";
-  return `${prefix}-${y}${m}${d}-${rand}`;
-}
-vipRouter.post("/create", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const {
-      customerName,
-      customerEmail,
-      customerPhone,
-      customerAddress,
-      vehicleDescription,
-      city,
-      startDate,
-      serviceStartDate,
-      totalPrice,
-      repName,
-      notes,
-      scheduleWeek,
-      scheduleDay,
-      frequency,
-      programType,
-      autoCreateJobs
-    } = req.body;
-    const shouldCreateJobs = autoCreateJobs !== false && autoCreateJobs !== "false";
-    if (!customerName || !startDate || !totalPrice) {
-      return res.status(400).json({ success: false, error: "Missing required fields" });
-    }
-    if (!customerEmail) {
-      return res.status(400).json({ success: false, error: "Customer email is required to link this contract to their app account" });
-    }
-    const progType = programType === "maintenance" ? "maintenance" : programType === "vip_elite" ? "vip_elite" : "vip";
-    const contractNumber = generateContractNumber(progType);
-    const signatureToken = crypto4.randomBytes(48).toString("hex");
-    const start = new Date(startDate);
-    const serviceStart = serviceStartDate ? new Date(serviceStartDate) : start;
-    const swNum = scheduleWeek !== void 0 && scheduleWeek !== null && scheduleWeek !== "" ? Number(scheduleWeek) : null;
-    const sdNum = scheduleDay !== void 0 && scheduleDay !== null && scheduleDay !== "" ? Number(scheduleDay) : null;
-    const freq = frequency === "biweekly" ? "biweekly" : "monthly";
-    const visitCount = freq === "biweekly" ? 26 : 12;
-    const visitDates = [];
-    for (let i = 0; i < visitCount + 1; i++) {
-      visitDates.push(computeVisitDate(serviceStart, i, swNum, sdNum, freq));
-    }
-    const end = visitDates[visitCount - 1];
-    const renewalDate = visitDates[visitCount];
-    const citySlug = cityToSlug(city ?? "");
-    const [contractResult] = await db.execute(
-      `INSERT INTO vip_contracts (contract_number, customer_name, customer_email, customer_phone, customer_address, vehicle_description, city, start_date, service_start_date, end_date, total_price, rep_name, notes, signature_token, status, schedule_week, schedule_day, frequency, program_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_signature', ?, ?, ?, ?)`,
-      [
-        contractNumber,
-        customerName,
-        customerEmail ?? null,
-        customerPhone ?? null,
-        customerAddress ?? null,
-        vehicleDescription ?? null,
-        city ?? null,
-        formatDate(start),
-        formatDate(serviceStart),
-        formatDate(end),
-        totalPrice,
-        repName ?? "Luxury Wash On Wheels",
-        notes ?? null,
-        signatureToken,
-        swNum,
-        sdNum,
-        freq,
-        progType
-      ]
-    );
-    const contractId = contractResult.insertId;
-    if (!shouldCreateJobs) {
-      await conn.end();
-      return res.json({
-        success: true,
-        contractId,
-        contractNumber,
-        signatureToken,
-        signatureUrl: `${getPublicUrl2()}/api/vip/sign/${signatureToken}`,
-        visitDates: visitDates.slice(0, visitCount).map(formatDate),
-        renewalDate: formatDate(renewalDate),
-        jobsCreated: false
-      });
-    }
-    for (let i = 1; i <= visitCount; i++) {
-      const visitDate = visitDates[i - 1];
-      const addOns = progType === "vip" ? getAddOnsForVisit(i) : [];
-      const jobId = `vip-${contractId}-v${i}-${Date.now()}`;
-      await db.execute(
-        `INSERT INTO vip_visits (contract_id, visit_number, scheduled_date, add_ons, status, schedule_job_id)
-         VALUES (?, ?, ?, ?, 'scheduled', ?)`,
-        [contractId, i, formatDate(visitDate), JSON.stringify(addOns), jobId]
-      );
-      try {
-        const addOnLabel = addOns.length > 0 ? ` + ${addOns.join(", ")}` : "";
-        await upsertScheduleJob({
-          jobId,
-          location: citySlug,
-          date: formatDate(visitDate),
-          timeSlot: null,
-          startHour: null,
-          endHour: null,
-          customerName,
-          customerPhone: customerPhone ?? null,
-          customerEmail: customerEmail ?? null,
-          vehicleType: vehicleDescription ?? null,
-          packageType: "luxury",
-          serviceDescription: progType === "maintenance" ? `Maintenance Visit ${i} of ${visitCount} \u2014 ${contractNumber}` : progType === "vip_elite" ? `VIP Elite Visit ${i} of ${visitCount} \u2014 ${contractNumber} (${i <= 2 ? "Luxury Detail" : "Basic Detail"})` : `VIP Visit ${i} of ${visitCount} \u2014 ${contractNumber}${addOnLabel}`,
-          selectedAddons: JSON.stringify(addOns),
-          // Visit 1 charges the full contract total; all subsequent visits are $0 (pre-paid for the year)
-          totalPrice: i === 1 ? Number(totalPrice).toFixed(2) : "0.00",
-          status: "pending",
-          source: "manual",
-          notes: progType === "maintenance" ? `Maintenance Program \u2014 Contract ${contractNumber}. Visit ${i} of ${visitCount} (${freq}).` : `VIP Program \u2014 Contract ${contractNumber}. Visit ${i} of ${visitCount} (${freq}).`,
-          tags: JSON.stringify([progType === "maintenance" ? "Maintenance" : progType === "vip_elite" ? "VIP Elite" : "VIP"]),
-          leadSource: progType === "maintenance" ? "Maintenance Program" : progType === "vip_elite" ? "VIP Elite Program" : "VIP Program"
-        });
-      } catch (jobErr) {
-        console.error(`[VIP] schedule_job for visit ${i} failed:`, jobErr.message);
-      }
-    }
-    const renewalJobId = `vip-${contractId}-renewal-${Date.now()}`;
-    try {
-      await upsertScheduleJob({
-        jobId: renewalJobId,
-        location: citySlug,
-        date: formatDate(renewalDate),
-        timeSlot: null,
-        startHour: null,
-        endHour: null,
-        customerName,
-        customerPhone: customerPhone ?? null,
-        customerEmail: customerEmail ?? null,
-        vehicleType: vehicleDescription ?? null,
-        packageType: "luxury",
-        serviceDescription: progType === "maintenance" ? `MAINTENANCE RENEWAL \u2014 ${contractNumber} \u2014 Discuss next contract` : progType === "vip_elite" ? `VIP ELITE RENEWAL \u2014 ${contractNumber} \u2014 Discuss next 12-month contract` : `VIP RENEWAL \u2014 ${contractNumber} \u2014 Discuss next 12-month contract`,
-        selectedAddons: "[]",
-        totalPrice: "0",
-        status: "pending",
-        source: "manual",
-        notes: progType === "maintenance" ? `Maintenance Renewal appointment for contract ${contractNumber}.` : `VIP Renewal appointment for contract ${contractNumber}.`,
-        tags: JSON.stringify([progType === "maintenance" ? "Maintenance" : "VIP", "Renewal"]),
-        leadSource: progType === "maintenance" ? "Maintenance Program" : "VIP Program"
-      });
-    } catch (jobErr) {
-      console.error("[VIP] renewal schedule_job failed:", jobErr.message);
-    }
-    return res.json({
-      success: true,
-      contractId,
-      contractNumber,
-      signatureToken,
-      signatureUrl: `${getPublicUrl2()}/api/vip/sign/${signatureToken}`,
-      visitDates: visitDates.slice(0, visitCount).map(formatDate),
-      renewalDate: formatDate(renewalDate)
-    });
-  } catch (err) {
-    console.error("[VIP] create error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.get("/list", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { city, status, programType } = req.query;
-    let where = "WHERE 1=1";
-    const params = [];
-    if (city) {
-      where += " AND city = ?";
-      params.push(city);
-    }
-    if (status) {
-      where += " AND status = ?";
-      params.push(status);
-    }
-    if (programType) {
-      where += " AND program_type = ?";
-      params.push(programType);
-    }
-    const [rows] = await db.execute(
-      `SELECT id, contract_number, customer_name, customer_email, customer_phone,
-              vehicle_description, city, start_date, service_start_date, end_date, total_price, status,
-              signed_at, rep_name, renewal_notified, created_at, program_type
-       FROM vip_contracts ${where} ORDER BY created_at DESC`,
-      params
-    );
-    return res.json({ success: true, contracts: rows });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.get("/contract/:id", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const [contracts] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE id = ?",
-      [req.params.id]
-    );
-    if (!contracts.length) return res.status(404).json({ success: false, error: "Not found" });
-    const contract = contracts[0];
-    const [visits] = await db.execute(
-      "SELECT * FROM vip_visits WHERE contract_id = ? ORDER BY visit_number ASC",
-      [contract.id]
-    );
-    contract.visits = visits.map((v) => ({
-      ...v,
-      add_ons: typeof v.add_ons === "string" ? JSON.parse(v.add_ons) : v.add_ons ?? []
-    }));
-    return res.json({ success: true, contract });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.get("/by-token/:token", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const [contracts] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE signature_token = ? AND status NOT IN ('cancelled')",
-      [req.params.token]
-    );
-    if (!contracts.length) return res.status(404).json({ success: false, error: "Not found" });
-    const contract = contracts[0];
-    const [visits] = await db.execute(
-      "SELECT * FROM vip_visits WHERE contract_id = ? ORDER BY visit_number ASC",
-      [contract.id]
-    );
-    contract.visits = visits.map((v) => ({
-      ...v,
-      add_ons: typeof v.add_ons === "string" ? JSON.parse(v.add_ons) : v.add_ons ?? []
-    }));
-    delete contract.client_signature_data;
-    return res.json({ success: true, contract });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.get("/by-email/:email", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const email = decodeURIComponent(req.params.email).toLowerCase().trim();
-    const lastName = req.query.lastName ? String(req.query.lastName).toLowerCase().trim() : null;
-    const [contracts] = await db.execute(
-      `SELECT * FROM vip_contracts
-       WHERE LOWER(TRIM(customer_email)) = ?
-         AND status IN ('active', 'pending_signature')
-       ORDER BY created_at DESC`,
-      [email]
-    );
-    if (!contracts.length) return res.json({ success: true, contract: null, contracts: [] });
-    async function enrichVisits(contractId) {
-      const [visits] = await db.execute(
-        `SELECT v.*, sj.time_slot AS sj_time_slot, sj.status AS sj_status, sj.date AS sj_date
-         FROM vip_visits v
-         LEFT JOIN schedule_jobs sj ON sj.job_id = v.schedule_job_id
-         WHERE v.contract_id = ?
-         ORDER BY v.visit_number ASC`,
-        [contractId]
-      );
-      return visits.map((v) => ({
-        ...v,
-        add_ons: typeof v.add_ons === "string" ? JSON.parse(v.add_ons) : v.add_ons ?? [],
-        // Use the linked schedule_job's date/time if available (admin may have updated it)
-        scheduled_date: v.sj_date ?? v.scheduled_date,
-        scheduled_time: v.sj_time_slot ?? v.scheduled_time ?? null,
-        // Auto-derive completion: if the linked schedule_job is completed, treat visit as completed
-        status: v.status === "completed" || v.sj_status === "completed" ? "completed" : v.status,
-        completed_at: v.completed_at ?? (v.sj_status === "completed" ? (/* @__PURE__ */ new Date()).toISOString() : null)
-      }));
-    }
-    let primaryContracts = contracts;
-    if (lastName) {
-      const matched = contracts.filter(
-        (c) => c.customer_name && c.customer_name.toLowerCase().includes(lastName)
-      );
-      if (matched.length) primaryContracts = matched;
-    }
-    const enrichedContracts = await Promise.all(
-      primaryContracts.map(async (c) => {
-        const enriched = { ...c };
-        enriched.visits = await enrichVisits(c.id);
-        delete enriched.client_signature_data;
-        const totalV = c.frequency === "biweekly" ? 26 : 12;
-        const completedV = enriched.visits.filter((v) => !v.is_replacement && v.status === "completed").length;
-        enriched.credits_remaining = Math.max(totalV - completedV, 0);
-        enriched.total_visits = totalV;
-        enriched.completed_visits = completedV;
-        return enriched;
-      })
-    );
-    return res.json({ success: true, contract: enrichedContracts[0], contracts: enrichedContracts });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.post("/send-signature", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { contractId, method } = req.body;
-    const [contracts] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE id = ?",
-      [contractId]
-    );
-    if (!contracts.length) return res.status(404).json({ success: false, error: "Not found" });
-    const contract = contracts[0];
-    const signUrl = `${getPublicUrl2()}/api/vip/sign/${contract.signature_token}`;
-    if (method === "email" && contract.customer_email) {
-      await sendEmail({
-        to: contract.customer_email,
-        subject: `Your Luxury Wash On Wheels VIP Contract \u2014 ${contract.contract_number}`,
-        type: "booking_confirmation",
-        urgent: true,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-            <h2 style="color:#1a1a2e">Your VIP Service Agreement is Ready to Sign</h2>
-            <p>Hi ${contract.customer_name},</p>
-            <p>Your 12-month VIP Mobile Detailing Service Agreement with <strong>Luxury Wash On Wheels</strong> is ready for your review and signature.</p>
-            <p><strong>Contract #:</strong> ${contract.contract_number}<br>
-            <strong>Vehicle:</strong> ${contract.vehicle_description || "\u2014"}<br>
-            <strong>Start Date:</strong> ${contract.start_date}<br>
-            <strong>Total:</strong> $${Number(contract.total_price).toFixed(2)}</p>
-            <p style="margin:24px 0">
-              <a href="${signUrl}" style="background:#1a1a2e;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold">Review & Sign Contract</a>
-            </p>
-            <p style="color:#666;font-size:13px">This link is unique to you. Please do not share it.</p>
-            <p style="color:#666;font-size:13px">Questions? Call us at 850-517-7874 or email Office@luxurywashonwheels.com</p>
-          </div>
-        `
-      });
-    } else if (method === "sms" && contract.customer_phone) {
-      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
-      if (twilioSid && twilioToken && twilioFrom) {
-        const body = `Hi ${contract.customer_name}! Your Luxury Wash On Wheels VIP contract (${contract.contract_number}) is ready to sign: ${signUrl}`;
-        const encoded = Buffer.from(`${twilioSid}:${twilioToken}`).toString("base64");
-        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
-          method: "POST",
-          headers: { "Authorization": `Basic ${encoded}`, "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ From: twilioFrom, To: contract.customer_phone, Body: body }).toString()
-        });
-      }
-    }
-    return res.json({ success: true, signatureUrl: signUrl });
-  } catch (err) {
-    console.error("[VIP] send-signature error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.get("/sign/:token", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    if (!db) return res.status(500).send("<h2>Service unavailable</h2>");
-    const [contracts] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE signature_token = ?",
-      [req.params.token]
-    );
-    if (!contracts.length) return res.status(404).send("<h2>Contract not found or link expired.</h2>");
-    const c = contracts[0];
-    if (c.status === "active" || c.signed_at) {
-      return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Signed</title>
-        <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f5f5f5}
-        .card{background:#fff;border-radius:16px;padding:40px;text-align:center;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.1)}
-        .check{font-size:64px;margin-bottom:16px}.title{font-size:22px;font-weight:700;color:#1a1a2e;margin-bottom:8px}
-        .sub{color:#666;font-size:15px}</style></head>
-        <body><div class="card"><div class="check">\u2705</div>
-        <div class="title">Contract Already Signed</div>
-        <div class="sub">Thank you, ${c.customer_name}! Your VIP contract #${c.contract_number} was signed on ${new Date(c.signed_at).toLocaleDateString()}.</div>
-        </div></body></html>`);
-    }
-    const [visits] = await db.execute(
-      "SELECT * FROM vip_visits WHERE contract_id = ? ORDER BY visit_number ASC",
-      [c.id]
-    );
-    const visitRows = visits.map((v) => {
-      const addOns = typeof v.add_ons === "string" ? JSON.parse(v.add_ons) : v.add_ons ?? [];
-      const addOnBadges = addOns.map((a) => `<span style="background:#e8f4fd;color:#1a6fa8;padding:2px 8px;border-radius:12px;font-size:12px;margin-right:4px">${a}</span>`).join("");
-      return `<tr style="border-bottom:1px solid #eee">
-        <td style="padding:8px 12px;font-weight:600">Visit ${v.visit_number}</td>
-        <td style="padding:8px 12px;color:#555">${v.scheduled_date || "TBD"}</td>
-        <td style="padding:8px 12px">${addOnBadges || '<span style="color:#999">Base service only</span>'}</td>
-      </tr>`;
-    }).join("");
-    res.send(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>VIP Contract \u2014 Luxury Wash On Wheels</title>
-  <style>
-    *{box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:0;background:#f5f5f5;color:#1a1a2e}
-    .header{background:#1a1a2e;color:#fff;padding:20px 24px;text-align:center}
-    .header h1{margin:0;font-size:20px;font-weight:700}
-    .header p{margin:4px 0 0;font-size:14px;opacity:.8}
-    .container{max-width:700px;margin:0 auto;padding:24px 16px}
-    .card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-    h2{font-size:16px;font-weight:700;margin:0 0 12px;color:#1a1a2e;border-bottom:2px solid #1a1a2e;padding-bottom:8px}
-    .info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px}
-    .info-row:last-child{border-bottom:none}
-    .info-label{color:#666;font-weight:500}
-    .info-value{font-weight:600;text-align:right}
-    ul{margin:8px 0;padding-left:20px}
-    ul li{margin-bottom:6px;font-size:14px;line-height:1.5}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th{background:#f8f8f8;padding:8px 12px;text-align:left;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.5px}
-    .sig-section{margin-top:8px}
-    .sig-label{font-size:13px;font-weight:600;margin-bottom:8px;color:#1a1a2e}
-    canvas{border:2px solid #ddd;border-radius:8px;width:100%;max-width:500px;height:160px;display:block;touch-action:none;background:#fafafa;cursor:crosshair}
-    .btn{display:block;width:100%;padding:16px;border-radius:12px;font-size:16px;font-weight:700;border:none;cursor:pointer;margin-top:12px}
-    .btn-clear{background:#f0f0f0;color:#333}
-    .btn-sign{background:#1a1a2e;color:#fff}
-    .btn-sign:disabled{background:#999;cursor:not-allowed}
-    .success-card{text-align:center;padding:40px 24px}
-    .success-icon{font-size:64px;margin-bottom:16px}
-    .success-title{font-size:22px;font-weight:700;margin-bottom:8px}
-    .success-sub{color:#666;font-size:15px}
-    p{font-size:14px;line-height:1.6;color:#333}
-    .policy-section{margin-bottom:16px}
-    .policy-section h3{font-size:14px;font-weight:700;margin:0 0 6px;color:#1a1a2e}
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>\u{1F697} Luxury Wash On Wheels</h1>
-    <p>${c.program_type === "vip_elite" ? "VIP Elite Mobile Detailing Service Agreement" : c.program_type === "maintenance" ? "Maintenance Program Service Agreement" : "VIP Mobile Detailing Service Agreement"}</p>
-  </div>
-  <div class="container" id="contract-view">
-
-    <div class="card">
-      <h2>Agreement Details</h2>
-      <div class="info-row"><span class="info-label">Contract #</span><span class="info-value">${c.contract_number}</span></div>
-      <div class="info-row"><span class="info-label">Date</span><span class="info-value">${new Date(c.created_at).toLocaleDateString()}</span></div>
-      <div class="info-row"><span class="info-label">Client</span><span class="info-value">${c.customer_name}</span></div>
-      <div class="info-row"><span class="info-label">Vehicle</span><span class="info-value">${c.vehicle_description || "\u2014"}</span></div>
-      <div class="info-row"><span class="info-label">Address</span><span class="info-value" style="max-width:60%;text-align:right">${c.customer_address || "\u2014"}</span></div>
-      <div class="info-row"><span class="info-label">Service Provider</span><span class="info-value">Luxury Wash On Wheels</span></div>
-      <div class="info-row"><span class="info-label">Phone</span><span class="info-value">850-517-7874</span></div>
-    </div>
-
-    <div class="card">
-      <h2>1. Services Provided</h2>
-      ${c.program_type === "vip_elite" ? `
-      <p>Luxury Wash On Wheels agrees to provide professional mobile detailing services for a total of <strong>12 detail credits</strong> over 12 months. The client may schedule each visit at their convenience through the customer portal.</p>
-      <p><strong>Credit Breakdown:</strong></p>
-      <ul>
-        <li><strong>Visits 1&ndash;2: Luxury Detail</strong> &mdash; Full premium service</li>
-        <li><strong>Visits 3&ndash;12: Basic Detail</strong> &mdash; Standard full detail service</li>
-      </ul>
-      <p><strong>With every visit, the client's vehicle will receive:</strong></p>
-      <ul>
-        <li>Hand wash / debug front end &amp; mirrors</li>
-        <li>Clean gas cap</li>
-        <li>Remove surface spots</li>
-        <li>Clean door and trunk jambs &amp; clean front rims</li>
-        <li>Clean wheels &amp; wheel wells</li>
-        <li>Dress tires</li>
-        <li>Wipe down leather</li>
-        <li>Vacuum interior</li>
-        <li>Wipe down dash, console, and door panels</li>
-        <li>Clean windows (inside &amp; out)</li>
-      </ul>
-      <p><strong>Maximum Time on Job:</strong> 1 hour per visit. Add-ons may be requested manually per visit.</p>
-      ` : `
-      <p>Luxury Wash On Wheels agrees to provide professional mobile detailing services once per month for a total of 12 visits over 12 months.</p>
-      <p><strong>With every visit, the client's vehicle will receive:</strong></p>
-      <ul>
-        <li>Hand wash / debug front end &amp; mirrors</li>
-        <li>Clean gas cap</li>
-        <li>Remove surface spots</li>
-        <li>Clean door and trunk jambs &amp; clean front rims</li>
-        <li>Clean wheels &amp; wheel wells</li>
-        <li>Dress tires</li>
-        <li>Wipe down leather</li>
-        <li>Vacuum interior</li>
-        <li>Wipe down dash, console, and door panels</li>
-        <li>Clean windows (inside &amp; out)</li>
-      </ul>
-      <p><strong>Maximum Time on Job:</strong> 1 hour</p>
-      <p><strong>Add-ons Included:</strong></p>
-      <ul>
-        <li>2 Paint Sealants (Visits 1 &amp; 7)</li>
-        <li>3 Leather Deep Cleans (Visits 1, 5 &amp; 9)</li>
-        <li>2 Leather Conditions (Visits 1 &amp; 7)</li>
-        <li>Shampoo when needed</li>
-      </ul>
-      `}
-    </div>
-
-    <div class="card">
-      <h2>2. Service Schedule</h2>
-      ${c.program_type === "vip_elite" ? `<p>The client receives <strong>12 detail credits</strong> valid for <strong>12 months</strong> from: <strong>${c.start_date}</strong>. Credits may be scheduled at the client's convenience through the customer portal, subject to availability.</p>` : `<p>Detailing services will be provided <strong>once per month</strong> for a duration of <strong>12 months</strong>, starting from: <strong>${c.start_date}</strong></p>`}
-      <table>
-        <thead><tr><th>Visit</th><th>Date</th><th>Add-Ons</th></tr></thead>
-        <tbody>${visitRows}</tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>3. Payment Terms</h2>
-      <ul>
-        <li>Total amount due for 12 months of service: <strong>$${Number(c.total_price).toFixed(2)}</strong></li>
-        <li><strong>Full payment is due upfront</strong> upon signing this agreement.</li>
-        <li>Payments are non-refundable except under the termination terms outlined below.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2>4. Cancellation &amp; Rescheduling Policy</h2>
-      <p>Clients may cancel or reschedule an appointment <strong>at least 12 hours before the scheduled time</strong>.</p>
-      <ul>
-        <li>Cancellations or no-shows within 12 hours of the appointment will result in <strong>forfeiture of that month's wash</strong>, with no refund or makeup.</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2>5. Early Termination</h2>
-      <p>Client may terminate this agreement early by:</p>
-      <ul>
-        <li>Submitting a <strong>30-day written notice</strong>, and</li>
-        <li>Paying <strong>50% penalty of remaining services</strong> at time of cancellation.</li>
-      </ul>
-      <p>Luxury Wash On Wheels also reserves the right to cancel the agreement due to client misconduct or vehicle safety concerns.</p>
-    </div>
-
-    <div class="card">
-      <h2>6. Liability &amp; Limitations</h2>
-      <p>Luxury Wash On Wheels is not liable for:</p>
-      <ul>
-        <li>Pre-existing vehicle damage</li>
-        <li>Delays caused by weather or unsafe work environments</li>
-      </ul>
-      <p>The client agrees to provide access to the vehicle and ensure it is safe and legally parked during service.</p>
-    </div>
-
-    <div class="card">
-      <h2>7. Entire Agreement</h2>
-      <p>This document represents the full agreement between both parties. Amendments must be made in writing and signed by both parties.</p>
-    </div>
-
-    <div class="card">
-      <h2>Client Signature</h2>
-      <p style="color:#666;font-size:13px">By signing below, you agree to all terms and conditions of this ${c.program_type === "vip_elite" ? "VIP Elite Service Agreement" : c.program_type === "maintenance" ? "Maintenance Program Service Agreement" : "VIP Service Agreement"}.</p>
-      <div class="sig-section">
-        <div class="sig-label">Sign here (use your finger or stylus):</div>
-        <canvas id="sig-canvas" width="600" height="160"></canvas>
-        <button class="btn btn-clear" onclick="clearSig()">Clear Signature</button>
-        <button class="btn btn-sign" id="sign-btn" onclick="submitSignature()" disabled>Sign &amp; Submit Contract</button>
-        <p id="error-msg" style="color:#e53e3e;font-size:13px;display:none"></p>
-      </div>
-    </div>
-
-  </div>
-
-  <div id="success-view" style="display:none" class="container">
-    <div class="card success-card">
-      <div class="success-icon">\u2705</div>
-      <div class="success-title">Contract Signed!</div>
-      <div class="success-sub">Thank you, ${c.customer_name}! Your ${c.program_type === "vip_elite" ? "VIP Elite" : c.program_type === "maintenance" ? "Maintenance Program" : "VIP"} contract has been signed and saved. You'll receive a confirmation shortly.</div>
-    </div>
-  </div>
-
-  <script>
-    const canvas = document.getElementById('sig-canvas');
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    let hasSig = false;
-
-    function getPos(e) {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const src = e.touches ? e.touches[0] : e;
-      return { x: (src.clientX - rect.left) * scaleX, y: (src.clientY - rect.top) * scaleY };
-    }
-
-    canvas.addEventListener('mousedown', e => { drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
-    canvas.addEventListener('mousemove', e => { if (!drawing) return; const p = getPos(e); ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1a2e'; ctx.lineTo(p.x, p.y); ctx.stroke(); hasSig = true; document.getElementById('sign-btn').disabled = false; });
-    canvas.addEventListener('mouseup', () => drawing = false);
-    canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }, { passive: false });
-    canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1a2e'; ctx.lineTo(p.x, p.y); ctx.stroke(); hasSig = true; document.getElementById('sign-btn').disabled = false; }, { passive: false });
-    canvas.addEventListener('touchend', () => drawing = false);
-
-    function clearSig() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      hasSig = false;
-      document.getElementById('sign-btn').disabled = true;
-    }
-
-    async function submitSignature() {
-      if (!hasSig) return;
-      const btn = document.getElementById('sign-btn');
-      btn.disabled = true;
-      btn.textContent = 'Submitting...';
-      const sigData = canvas.toDataURL('image/png');
-      try {
-        const res = await fetch('/api/vip/submit-signature', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: '${c.signature_token}', signatureData: sigData }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          document.getElementById('contract-view').style.display = 'none';
-          document.getElementById('success-view').style.display = 'block';
-        } else {
-          document.getElementById('error-msg').textContent = data.error || 'Failed to submit. Please try again.';
-          document.getElementById('error-msg').style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Sign & Submit Contract';
-        }
-      } catch {
-        document.getElementById('error-msg').textContent = 'Network error. Please try again.';
-        document.getElementById('error-msg').style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Sign & Submit Contract';
-      }
-    }
-  </script>
-</body>
-</html>`);
-  } catch (err) {
-    res.status(500).send("<h2>Error loading contract</h2>");
-  }
-});
-vipRouter.post("/submit-signature", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { token, signatureData } = req.body;
-    if (!token || !signatureData) return res.status(400).json({ success: false, error: "Missing fields" });
-    const [contracts] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE signature_token = ?",
-      [token]
-    );
-    if (!contracts.length) return res.status(404).json({ success: false, error: "Contract not found" });
-    const c = contracts[0];
-    if (c.signed_at) return res.json({ success: true, alreadySigned: true });
-    await db.execute(
-      "UPDATE vip_contracts SET status='active', signed_at=NOW(), client_signature_data=? WHERE id=?",
-      [signatureData, c.id]
-    );
-    if (c.customer_email) {
-      await sendEmail({
-        to: c.customer_email,
-        subject: `VIP Contract Signed \u2014 ${c.contract_number}`,
-        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#1a1a2e">\u2705 Your VIP Contract is Active!</h2>
-          <p>Hi ${c.customer_name},</p>
-          <p>Your VIP Service Agreement <strong>${c.contract_number}</strong> has been signed and is now active.</p>
-          <p><strong>Service starts:</strong> ${c.start_date}<br>
-          <strong>Contract ends:</strong> ${c.end_date}<br>
-          <strong>Total paid:</strong> $${Number(c.total_price).toFixed(2)}</p>
-          <p>We look forward to serving you every month! Questions? Call 850-517-7874 or email Office@luxurywashonwheels.com</p>
-        </div>`
-      }).catch(() => {
-      });
-    }
-    return res.json({ success: true });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.post("/visit/update", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { visitId, status, jobId, scheduledDate, scheduledTime, notes } = req.body;
-    const fields = [];
-    const params = [];
-    if (status) {
-      fields.push("status=?");
-      params.push(status);
-    }
-    if (jobId !== void 0) {
-      fields.push("job_id=?");
-      params.push(jobId);
-    }
-    if (scheduledDate !== void 0) {
-      fields.push("scheduled_date=?");
-      params.push(scheduledDate);
-    }
-    if (scheduledTime !== void 0) {
-      fields.push("scheduled_time=?");
-      params.push(scheduledTime);
-    }
-    if (notes !== void 0) {
-      fields.push("notes=?");
-      params.push(notes);
-    }
-    if (status === "completed") {
-      fields.push("completed_at=NOW()");
-    }
-    if (!fields.length) return res.json({ success: true });
-    params.push(visitId);
-    await db.execute(`UPDATE vip_visits SET ${fields.join(",")} WHERE id=?`, params);
-    let replacementVisit = null;
-    if (status === "missed") {
-      try {
-        const [visitRows] = await db.execute(
-          `SELECT v.*, c.contract_number, c.customer_name, c.customer_phone, c.customer_email,
-                  c.vehicle_description, c.city, c.total_price, c.service_start_date,
-                  c.schedule_week, c.schedule_day
-           FROM vip_visits v
-           JOIN vip_contracts c ON c.id = v.contract_id
-           WHERE v.id = ?`,
-          [visitId]
-        );
-        if (visitRows.length) {
-          const v = visitRows[0];
-          const contractId = v.contract_id;
-          const contractNumber = v.contract_number;
-          const citySlug = cityToSlug(v.city ?? "");
-          const swNum = v.schedule_week != null ? Number(v.schedule_week) : null;
-          const sdNum = v.schedule_day != null ? Number(v.schedule_day) : null;
-          const [latestRows] = await db.execute(
-            `SELECT MAX(scheduled_date) AS latest_date FROM vip_visits WHERE contract_id = ?`,
-            [contractId]
-          );
-          const latestDateRaw = latestRows[0]?.latest_date;
-          const latestDate = latestDateRaw ? new Date(latestDateRaw) : new Date(v.scheduled_date);
-          const replacementBase = addMonths(latestDate, 1);
-          const replacementDate = computeVisitDate(replacementBase, 0, swNum, sdNum);
-          const replacementDateStr = formatDate(replacementDate);
-          const [maxNumRows] = await db.execute(
-            `SELECT MAX(visit_number) AS max_num FROM vip_visits WHERE contract_id = ?`,
-            [contractId]
-          );
-          const nextVisitNumber = (maxNumRows[0]?.max_num ?? 0) + 1;
-          const addOns = v.add_ons ? typeof v.add_ons === "string" ? JSON.parse(v.add_ons) : v.add_ons : [];
-          const replacementJobId = `vip-${contractId}-replacement-${visitId}-${Date.now()}`;
-          const [insertResult] = await db.execute(
-            `INSERT INTO vip_visits
-               (contract_id, visit_number, scheduled_date, add_ons, status, schedule_job_id, notes, is_replacement, replaced_visit_id)
-             VALUES (?, ?, ?, ?, 'scheduled', ?, ?, 1, ?)`,
-            [
-              contractId,
-              nextVisitNumber,
-              replacementDateStr,
-              JSON.stringify(addOns),
-              replacementJobId,
-              `Replacement for missed Visit ${v.visit_number}`,
-              visitId
-            ]
-          );
-          const replacementVisitId = insertResult.insertId;
-          try {
-            const addOnLabel = addOns.length > 0 ? ` + ${addOns.join(", ")}` : "";
-            await upsertScheduleJob({
-              jobId: replacementJobId,
-              location: citySlug,
-              date: replacementDateStr,
-              timeSlot: null,
-              startHour: null,
-              endHour: null,
-              customerName: v.customer_name,
-              customerPhone: v.customer_phone ?? null,
-              customerEmail: v.customer_email ?? null,
-              vehicleType: v.vehicle_description ?? null,
-              packageType: "luxury",
-              serviceDescription: `VIP Replacement (was Visit ${v.visit_number}) \u2014 ${contractNumber}${addOnLabel}`,
-              selectedAddons: JSON.stringify(addOns),
-              totalPrice: (Number(v.total_price) / 12).toFixed(2),
-              status: "pending",
-              source: "manual",
-              notes: `VIP Replacement \u2014 Contract ${contractNumber}. Replaces missed Visit ${v.visit_number}.`,
-              tags: JSON.stringify(["VIP", "Replacement"]),
-              leadSource: "VIP Program"
-            });
-          } catch (jobErr) {
-            console.error(`[VIP] replacement schedule_job failed:`, jobErr.message);
-          }
-          const [contractRows] = await db.execute(
-            `SELECT end_date FROM vip_contracts WHERE id = ?`,
-            [contractId]
-          );
-          const currentEndDate = contractRows[0]?.end_date ? new Date(contractRows[0].end_date) : null;
-          if (!currentEndDate || replacementDate > currentEndDate) {
-            await db.execute(
-              `UPDATE vip_contracts SET end_date = ? WHERE id = ?`,
-              [replacementDateStr, contractId]
-            );
-          }
-          replacementVisit = {
-            id: replacementVisitId,
-            visitNumber: nextVisitNumber,
-            scheduledDate: replacementDateStr,
-            addOns,
-            status: "scheduled",
-            isReplacement: true,
-            replacedVisitId: visitId,
-            notes: `Replacement for missed Visit ${v.visit_number}`
-          };
-          console.log(`[VIP] Replacement visit created for missed visit ${visitId} \u2192 ${replacementDateStr}`);
-        }
-      } catch (replErr) {
-        console.error("[VIP] replacement visit creation failed:", replErr.message);
-      }
-    }
-    return res.json({ success: true, replacementVisit });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.post("/request-credit-booking", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { contractId, visitId, requestedDate, requestedTime, notes } = req.body;
-    if (!contractId || !visitId) return res.status(400).json({ success: false, error: "contractId and visitId required" });
-    const [contractRows] = await db.execute(
-      "SELECT * FROM vip_contracts WHERE id = ? AND status IN ('active','pending_signature')",
-      [contractId]
-    );
-    if (!contractRows.length) return res.status(404).json({ success: false, error: "Contract not found" });
-    const contract = contractRows[0];
-    const [visitRows] = await db.execute(
-      "SELECT * FROM vip_visits WHERE id = ? AND contract_id = ?",
-      [visitId, contractId]
-    );
-    if (!visitRows.length) return res.status(404).json({ success: false, error: "Visit not found" });
-    const visit = visitRows[0];
-    const requestNote = `Customer requested: ${requestedDate ?? "TBD"}${requestedTime ? " at " + requestedTime : ""}${notes ? " \u2014 " + notes : ""}`;
-    await db.execute(
-      `UPDATE vip_visits SET
-         scheduled_date = COALESCE(?, scheduled_date),
-         scheduled_time = COALESCE(?, scheduled_time),
-         notes = ?
-       WHERE id = ?`,
-      [requestedDate ?? null, requestedTime ?? null, requestNote, visitId]
-    );
-    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || "Office@luxurywashonwheels.com";
-    const visitLabel = visit.is_replacement ? `Replacement Visit ${visit.visit_number}` : `Visit ${visit.visit_number}`;
-    await sendEmail({
-      to: adminEmail,
-      subject: `VIP Credit Booking Request \u2014 ${contract.customer_name} (${contract.contract_number})`,
-      type: "booking_confirmation",
-      urgent: true,
-      html: `
-        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#0057FF">VIP Credit Booking Request</h2>
-          <p><strong>${contract.customer_name}</strong> has requested to schedule <strong>${visitLabel}</strong> of their VIP contract.</p>
-          <table style="width:100%;border-collapse:collapse;margin:16px 0">
-            <tr><td style="padding:8px;color:#666">Contract</td><td style="padding:8px;font-weight:bold">${contract.contract_number}</td></tr>
-            <tr style="background:#f9f9f9"><td style="padding:8px;color:#666">Vehicle</td><td style="padding:8px">${contract.vehicle_description ?? "\u2014"}</td></tr>
-            <tr><td style="padding:8px;color:#666">Requested Date</td><td style="padding:8px;font-weight:bold;color:#0057FF">${requestedDate ?? "No date specified"}</td></tr>
-            <tr style="background:#f9f9f9"><td style="padding:8px;color:#666">Requested Time</td><td style="padding:8px">${requestedTime ?? "Flexible"}</td></tr>
-            <tr><td style="padding:8px;color:#666">Visit</td><td style="padding:8px">${visitLabel}</td></tr>
-            <tr style="background:#f9f9f9"><td style="padding:8px;color:#666">Customer Notes</td><td style="padding:8px">${notes ?? "\u2014"}</td></tr>
-            <tr><td style="padding:8px;color:#666">Customer Phone</td><td style="padding:8px">${contract.customer_phone ?? "\u2014"}</td></tr>
-            <tr style="background:#f9f9f9"><td style="padding:8px;color:#666">Customer Email</td><td style="padding:8px">${contract.customer_email ?? "\u2014"}</td></tr>
-          </table>
-          <p style="color:#666;font-size:13px">Please confirm this appointment with the customer and add it to the schedule.</p>
-        </div>
-      `
-    }).catch((e) => console.error("[VIP] credit booking admin email failed:", e.message));
-    if (contract.customer_email) {
-      await sendEmail({
-        to: contract.customer_email,
-        subject: `We received your VIP visit request \u2014 ${contract.contract_number}`,
-        type: "booking_confirmation",
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-            <h2 style="color:#0057FF">Your VIP Visit Request Was Received</h2>
-            <p>Hi ${contract.customer_name},</p>
-            <p>We received your request to schedule <strong>${visitLabel}</strong> of your VIP contract.</p>
-            <p><strong>Requested Date:</strong> ${requestedDate ?? "No date specified"}<br>
-            <strong>Requested Time:</strong> ${requestedTime ?? "Flexible"}</p>
-            <p>Our team will reach out to confirm your appointment. If you need to reach us sooner, call <strong>850-517-7874</strong>.</p>
-            <p style="color:#666;font-size:13px">Contract: ${contract.contract_number}</p>
-          </div>
-        `
-      }).catch((e) => console.error("[VIP] credit booking customer email failed:", e.message));
-    }
-    await conn.end();
-    return res.json({ success: true });
-  } catch (err) {
-    console.error("[VIP] request-credit-booking error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-vipRouter.post("/cancel", async (req, res) => {
-  try {
-    const conn = await getConn();
-    const db = conn;
-    const { contractId } = req.body;
-    await db.execute("UPDATE vip_contracts SET status='cancelled' WHERE id=?", [contractId]);
-    await db.execute(
-      "UPDATE vip_visits SET status='cancelled' WHERE contract_id=? AND status IN ('scheduled','pending')",
-      [contractId]
-    );
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    await db.execute(
-      `UPDATE schedule_jobs SET status='cancelled'
-       WHERE job_id LIKE ? AND status NOT IN ('completed','cancelled') AND (date >= ? OR date IS NULL)`,
-      [`vip-${contractId}-%`, today]
-    );
-    return res.json({ success: true });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // server/_core/index.ts
 init_env();
@@ -29289,6 +29913,10 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
   });
+  const CACHE_VERSION = "v10";
+  app.get("/api/cache-version", (_req, res) => {
+    res.json({ version: CACHE_VERSION });
+  });
   app.post("/api/upload", async (req, res) => {
     try {
       const busboy = (await import("busboy")).default;
@@ -29329,6 +29957,8 @@ async function startServer() {
     try {
       const locationParam = req.query.location || req.body.location || "";
       const location = normalizeLocation(locationParam);
+      const sourceParam = req.query.source || req.body.source || "website";
+      const bookingSource = sourceParam === "portal_app" ? "portal_app" : "website";
       const knownLocations = ["crestview", "niceville", "destin", "fwb", "pensacola"];
       if (!location || !knownLocations.includes(location)) {
         res.status(400).json({ error: `Unknown location: '${locationParam}'. Use: crestview, niceville, destin, fwb, pensacola` });
@@ -29354,6 +29984,10 @@ async function startServer() {
       const [wh_yyyy, wh_mm, wh_dd] = selectedDate.split("-").map(Number);
       const wh_dow = new Date(wh_yyyy, wh_mm - 1, wh_dd).getDay();
       const workingLocationDetailers = locationDetailers.filter((d) => {
+        if (d.customWorkDays) {
+          const customDays = d.customWorkDays.split(",").map((x) => parseInt(x.trim(), 10));
+          return customDays.includes(wh_dow);
+        }
         const shift = d.shift ?? "shift1";
         if (shift === "shift1") return wh_shift1Days.has(wh_dow);
         return wh_dow === 5 || wh_dow === 6 || wh_dow === 0;
@@ -29457,9 +30091,9 @@ async function startServer() {
         tips: "0",
         assignedTo,
         status: "pending",
-        source: "online",
+        source: bookingSource === "portal_app" ? "portal_app" : "online",
         onlineBookingId: bookingId,
-        notes: null,
+        notes: bookingSource === "portal_app" ? `Booked via customer portal. Address: ${body.streetAddress || ""}${body.unit ? " " + body.unit : ""}, ${body.city || ""} ${body.state || ""} ${body.zipCode || ""}. Booking ref: ${bookingId}` : null,
         createdBy: null
       });
       console.log(`[Booking] Assigned to detailer: ${assignedTo ?? "unassigned"}`);
@@ -29543,26 +30177,50 @@ async function startServer() {
           const pushBodyText = `${customerName} \xB7 ${selectedDate} ${selectedTime} \xB7 ${resolvedPkgForPush}`;
           const pushDataBase = { jobId, date: selectedDate, timeSlot: selectedTime, customerName, packageType: body.packageType ?? "Detail Service", location, eventType: "created" };
           if (assignedTo) {
-            const [assignedEmp] = await drizzleDb.select({ pushToken: empTable.pushToken }).from(empTable).where(eqOp(empTable.employeeId, assignedTo)).limit(1);
-            const token = assignedEmp?.pushToken;
-            if (token && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["))) {
-              await fetch("https://exp.host/--/api/v2/push/send", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ to: token, title: `\u{1F4CB} New Job Assigned \u2014 ${cityLabel}`, body: pushBodyText, sound: "default", data: { screen: "job_detail", ...pushDataBase } }])
-              });
+            try {
+              const [assignedEmp] = await drizzleDb.select({ pushToken: empTable.pushToken }).from(empTable).where(eqOp(empTable.employeeId, assignedTo)).limit(1);
+              const token = assignedEmp?.pushToken;
+              console.log(`[Booking] Detailer ${assignedTo} token: ${token ? token.substring(0, 30) + "..." : "NONE"}`);
+              if (token && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["))) {
+                const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify([{ to: token, title: `\u{1F4CB} New Job Assigned \u2014 ${cityLabel}`, body: pushBodyText, sound: "default", data: { screen: "job_detail", ...pushDataBase } }])
+                });
+                const pushData = await pushRes.json();
+                if (!pushRes.ok) {
+                  console.error(`[Booking] Detailer push failed: ${pushRes.status}`, pushData);
+                } else {
+                  console.log(`[Booking] Detailer push sent successfully`);
+                }
+              } else {
+                console.warn(`[Booking] Detailer ${assignedTo} has no valid push token`);
+              }
+            } catch (detailerPushErr) {
+              console.error(`[Booking] Detailer push error for ${assignedTo}:`, detailerPushErr);
             }
           }
           try {
             const { inArray: inArrayOp } = await import("drizzle-orm");
             const adminRows = await drizzleDb.select({ pushToken: empTable.pushToken }).from(empTable).where(inArrayOp(empTable.role, ["admin", "office", "operations_manager"]));
+            console.log(`[Booking] Found ${adminRows.length} admin/ops users`);
             const adminTokens = adminRows.map((r) => r.pushToken).filter((t2) => !!t2 && (t2.startsWith("ExponentPushToken[") || t2.startsWith("ExpoPushToken[")));
+            console.log(`[Booking] Found ${adminTokens.length} valid push tokens for admins`);
             if (adminTokens.length > 0) {
-              await fetch("https://exp.host/--/api/v2/push/send", {
+              const pushPayloads = adminTokens.map((to) => ({ to, title: `\u{1F4CB} New Job Booked \u2014 ${cityLabel}`, body: pushBodyText, sound: "default", data: { screen: "new_bookings", ...pushDataBase } }));
+              const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(adminTokens.map((to) => ({ to, title: `\u{1F4CB} New Job Booked \u2014 ${cityLabel}`, body: pushBodyText, sound: "default", data: { screen: "new_bookings", ...pushDataBase } })))
+                body: JSON.stringify(pushPayloads)
               });
+              const pushData = await pushRes.json();
+              if (!pushRes.ok) {
+                console.error(`[Booking] Admin push failed: ${pushRes.status}`, pushData);
+              } else {
+                console.log(`[Booking] Admin push sent to ${adminTokens.length} recipients:`, pushData);
+              }
+            } else {
+              console.warn("[Booking] No valid push tokens found for admins/ops");
             }
           } catch (adminPushErr) {
             console.error("[Booking] Admin push error:", adminPushErr);
@@ -29713,26 +30371,26 @@ async function startServer() {
     res.header("Access-Control-Allow-Origin", "*");
     try {
       const locationParam = req.query.location || "";
-      const date = req.query.date || "";
+      const date2 = req.query.date || "";
       const location = normalizeLocation(locationParam);
       const knownLocations2 = ["crestview", "niceville", "destin", "fwb", "pensacola"];
       if (!location || !knownLocations2.includes(location)) {
         res.status(400).json({ error: `Unknown location: '${locationParam}'` });
         return;
       }
-      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      if (!date2 || !/^\d{4}-\d{2}-\d{2}$/.test(date2)) {
         res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
         return;
       }
       const [capacity, onlineBookings2, scheduleJobsForDay, allDetailers, dayBlockers] = await Promise.all([
         getLocationCapacity(location),
-        getBookingsByDateAndLocation(location, date),
-        getScheduleJobsByLocationAndDateRange(location, date, date),
+        getBookingsByDateAndLocation(location, date2),
+        getScheduleJobsByLocationAndDateRange(location, date2, date2),
         getDetailersByLocation(location),
-        getBlockersForDate(location, date)
+        getBlockersForDate(location, date2)
       ]);
       const shift1Days = /* @__PURE__ */ new Set([1, 2, 3, 4]);
-      const [yyyy, mm, dd] = date.split("-").map(Number);
+      const [yyyy, mm, dd] = date2.split("-").map(Number);
       const dow = new Date(yyyy, mm - 1, dd).getDay();
       const blockedNames = /* @__PURE__ */ new Set();
       for (const b of dayBlockers) {
@@ -29742,8 +30400,14 @@ async function startServer() {
         if (first) blockedNames.add(first);
       }
       const workingDetailers = allDetailers.filter((d) => {
-        const shift = d.shift ?? "shift1";
-        const onShift = shift === "shift1" ? shift1Days.has(dow) : dow === 5 || dow === 6 || dow === 0;
+        let onShift;
+        if (d.customWorkDays) {
+          const customDays = d.customWorkDays.split(",").map((x) => parseInt(x.trim(), 10));
+          onShift = customDays.includes(dow);
+        } else {
+          const shift = d.shift ?? "shift1";
+          onShift = shift === "shift1" ? shift1Days.has(dow) : dow === 5 || dow === 6 || dow === 0;
+        }
         if (!onShift) return false;
         const fullName = (d.fullName || "").toLowerCase();
         const firstName = fullName.split(" ")[0];
@@ -29763,7 +30427,7 @@ async function startServer() {
           "2:00pm - 4:00pm",
           "4:00pm - 6:00pm"
         ];
-        res.json({ location, date, capacity: 0, totalBookings: 0, bookedSlots: allSlotsFull, slotCounts: {}, tooSoonSlots: [] });
+        res.json({ location, date: date2, capacity: 0, totalBookings: 0, bookedSlots: allSlotsFull, slotCounts: {}, tooSoonSlots: [] });
         return;
       }
       const allSlots = [
@@ -29820,7 +30484,7 @@ async function startServer() {
       const tooSoonSlots = [];
       const nowCentral = new Date((/* @__PURE__ */ new Date()).toLocaleString("en-US", { timeZone: "America/Chicago" }));
       const todayCentralStr = `${nowCentral.getFullYear()}-${String(nowCentral.getMonth() + 1).padStart(2, "0")}-${String(nowCentral.getDate()).padStart(2, "0")}`;
-      const isToday = date === todayCentralStr;
+      const isToday = date2 === todayCentralStr;
       if (isToday) {
         const nowHour = nowCentral.getHours() + nowCentral.getMinutes() / 60;
         const earliestAllowed = nowHour + 4;
@@ -29832,7 +30496,7 @@ async function startServer() {
       const bookedSlots = Array.from(/* @__PURE__ */ new Set([...fullyBookedSlots, ...tooSoonSlots]));
       res.json({
         location,
-        date,
+        date: date2,
         capacity,
         effectiveCapacity,
         // working detailers on this specific day (used by website form)
@@ -29896,18 +30560,12 @@ async function startServer() {
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  app.post("/api/booking/seed-detailers", async (_req, res) => {
-    try {
-      const result = await seedDetailers();
-      res.json({ success: true, ...result });
-    } catch (err) {
-      console.error("[Seed detailers error]", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
+  app.post("/api/booking/seed-detailers", (_req, res) => {
+    res.status(410).json({ error: "This endpoint has been permanently disabled." });
   });
   app.get("/api/confirm/:token", async (req, res) => {
     const { token } = req.params;
-    const conn = await mysql7.createConnection(process.env.DATABASE_URL);
+    const conn = await mysql6.createConnection(process.env.DATABASE_URL);
     try {
       const [rows] = await conn.execute(
         `SELECT job_id, customer_name, date, time_slot, appt_confirmation_status FROM schedule_jobs WHERE appt_confirm_token = ? LIMIT 1`,
@@ -30020,7 +30678,18 @@ async function startServer() {
       };
       const city = cityConf[row.location ?? ""] ?? { label: row.location ?? "your area", bookingUrl: "https://luxurywashonwheels.com/book/" };
       const resumeUrl = `${city.bookingUrl}?resume=${resumeToken}`;
-      await dbConn.update(obTable).set({ resumeToken, pipelineNotes: `recovery_sent:${(/* @__PURE__ */ new Date()).toISOString()}` }).where(eq9(obTable.bookingId, bookingId));
+      const now = /* @__PURE__ */ new Date();
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZoneName: "short"
+      });
+      const centralTimeStr = formatter.format(now);
+      await dbConn.update(obTable).set({ resumeToken, pipelineNotes: `Recovery SMS sent: ${centralTimeStr}` }).where(eq9(obTable.bookingId, bookingId));
       let emailSent = false;
       let emailError = "";
       if (row.email) {
@@ -30506,11 +31175,10 @@ async function startServer() {
   app.use("/api/receptionist", createReceptionistRouter());
   app.use("/api/phone", createPhoneRouter());
   app.use("/api/invoice", createInvoiceRouter());
-  app.use("/api/vip", vipRouter);
   app.get("/tip/:token", async (req, res) => {
     const { token } = req.params;
     try {
-      const conn = await mysql7.createConnection(process.env.DATABASE_URL);
+      const conn = await mysql6.createConnection(process.env.DATABASE_URL);
       const [rows] = await conn.execute(`SELECT * FROM tip_requests WHERE token = ? LIMIT 1`, [token]);
       await conn.end();
       if (rows.length === 0) {
@@ -30544,7 +31212,7 @@ async function startServer() {
     const { token } = req.params;
     const { tipAmountCents } = req.body;
     try {
-      const conn = await mysql7.createConnection(process.env.DATABASE_URL);
+      const conn = await mysql6.createConnection(process.env.DATABASE_URL);
       const [rows] = await conn.execute(`SELECT * FROM tip_requests WHERE token = ? LIMIT 1`, [token]);
       if (rows.length === 0) {
         await conn.end();
@@ -30594,9 +31262,30 @@ async function startServer() {
       res.status(500).json({ success: false, error: err.message || "Payment failed" });
     }
   });
+  app.get("/api/places/autocomplete", async (req, res) => {
+    try {
+      const input = req.query.input;
+      const region = req.query.region || "us";
+      const countries = req.query.countries || "country:us";
+      if (!input || input.length < 3) {
+        return res.json({ status: "OK", predictions: [] });
+      }
+      const googleKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+      if (!googleKey) {
+        return res.status(500).json({ error: "Google Maps API key not configured" });
+      }
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=address&components=${encodeURIComponent(countries)}&region=${region}&key=${googleKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      res.json(data);
+    } catch (e) {
+      console.error("[Places Proxy] Error:", e.message);
+      res.status(500).json({ error: "Places API request failed" });
+    }
+  });
   app.get("/api/hero-config", async (_req, res) => {
     try {
-      const conn = await mysql7.createConnection(process.env.DATABASE_URL);
+      const conn = await mysql6.createConnection(process.env.DATABASE_URL);
       const [rows] = await conn.execute(
         `SELECT config_key, config_value FROM app_config WHERE config_key IN ('hero_media_type', 'hero_media_url', 'action_media_type', 'action_media_url')`
       );
@@ -30735,6 +31424,10 @@ startAutoDeductMonitor();
 startAbandonedCartMonitor();
 startStripeReconciliationJob();
 async function sendBookingConfirmationSms(params) {
+  if (process.env.SMS_ENABLED !== "true") {
+    console.log("[SMS] Outbound SMS disabled \u2014 A2P campaign pending. Skipping booking confirmation SMS.");
+    return;
+  }
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -30742,13 +31435,13 @@ async function sendBookingConfirmationSms(params) {
     console.warn("[Booking SMS] Twilio credentials not set \u2014 skipping confirmation SMS");
     return;
   }
-  const { phone, firstName, date, time, vehicleType, packageType, streetAddress, city, finalTotal } = params;
+  const { phone, firstName, date: date2, time, vehicleType, packageType, streetAddress, city, finalTotal } = params;
   const addressLine = [streetAddress, city].filter(Boolean).join(", ");
   const serviceDesc = [vehicleType, packageType].filter(Boolean).join(" \u2014 ");
   const priceStr = finalTotal ? `$${parseFloat(finalTotal).toFixed(2)}` : "";
   const msg = [
     `Hi ${firstName}! Your Luxury Wash on Wheels appointment request has been received \u{1F690}`,
-    `\u{1F4C5} ${date}`,
+    `\u{1F4C5} ${date2}`,
     `\u23F0 ${time}`,
     serviceDesc ? `\u{1F697} ${serviceDesc}` : null,
     addressLine ? `\u{1F4CD} ${addressLine}` : null,
