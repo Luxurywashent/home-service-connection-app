@@ -27,7 +27,7 @@ export type JobSyncNativeSession = {
 type JobSyncAuthContextValue = {
   session: JobSyncNativeSession | null;
   isLoading: boolean;
-  loginCompany: (input: { companyId: string; email: string; password: string }) => Promise<JobSyncNativeSession>;
+  loginCompany: (input: { email: string; password: string }) => Promise<JobSyncNativeSession>;
   loginPlatform: (input: { email: string; password: string }) => Promise<JobSyncNativeSession>;
   logout: () => Promise<void>;
 };
@@ -80,7 +80,7 @@ export function JobSyncAuthProvider({ children }: { children: React.ReactNode })
     return nextSession;
   }, []);
 
-  const loginCompany = useCallback(async (input: { companyId: string; email: string; password: string }) => {
+  const loginCompany = useCallback(async (input: { email: string; password: string }) => {
     const result = await companyLogin.mutateAsync(input);
     return save(result as JobSyncNativeSession);
   }, [companyLogin, save]);

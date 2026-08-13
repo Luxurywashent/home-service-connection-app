@@ -85,7 +85,7 @@ async function mintNativeSession(payload: Omit<JobSyncNativeSession, "token">) {
   return { ...payload, token };
 }
 
-export async function loginJobSyncCompany(input: { companyId: string; email: string; password: string }): Promise<JobSyncNativeSession | null> {
+export async function loginJobSyncCompany(input: { email: string; password: string }): Promise<JobSyncNativeSession | null> {
   const login = await runMutation(
     "auth.emailLogin",
     { email: input.email.trim().toLowerCase(), password: input.password },
@@ -98,7 +98,7 @@ export async function loginJobSyncCompany(input: { companyId: string; email: str
     company?: { id?: number; name?: string; slug?: string; logoUrl?: string | null; primaryColor?: string | null; accentColor?: string | null };
   } | null;
 
-  if (!workspace?.user?.id || !workspace.company?.id || String(workspace.company.id) !== input.companyId.trim()) return null;
+  if (!workspace?.user?.id || !workspace.company?.id) return null;
   if (!workspace.user.role || !["owner", "dispatcher", "technician"].includes(workspace.user.role)) return null;
 
   return mintNativeSession({

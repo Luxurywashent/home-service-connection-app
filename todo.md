@@ -8,6 +8,7 @@
 - [x] Replace the embedded JobSync web portals with native login forms and native Home Service Connection sessions.
 - [x] Route Company and Platform Admin credentials through a secure backend exchange that does not expose JobSync session cookies to the mobile client.
 - [ ] Validate a live JobSync Company account and Platform Admin account through the native mobile app on a device.
+- [x] Remove Company ID from native JobSync login; use email and password only for automatic Company resolution.
 
 - [x] Theme configuration (blue/black brand colors, performance colors)
 - [x] Database schema (Employees, Daily_Performance, Notifications, Time_Off_Requests, Notification_Read_Log)

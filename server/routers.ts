@@ -36,10 +36,10 @@ export const appRouter = router({
 
   jobsyncAuth: router({
     companyLogin: publicProcedure
-      .input(z.object({ companyId: z.string().trim().min(1).max(32), email: z.string().trim().toLowerCase().email(), password: z.string().min(8).max(128) }))
+      .input(z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(8).max(128) }))
       .mutation(async ({ input }) => {
         const session = await jobSyncAuth.loginJobSyncCompany(input);
-        if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Company ID, email, or password." });
+        if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Company email or password." });
         return session;
       }),
     platformLogin: publicProcedure

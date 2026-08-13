@@ -6,7 +6,7 @@ The uploaded JobSync project is deployed at `https://jobwash-veysiubh.manus.spac
 
 ## Portal split
 
-The live Company sign-in route is `https://jobwash-veysiubh.manus.space/login`. It asks for an email address and password, then determines the correct company workspace from the authenticated account. The reference source defines the separate platform-owner route as `/platform/login`, with its own email-and-password credentials and session.
+The live Company sign-in route is `https://jobwash-veysiubh.manus.space/login`. It asks for an email address and password, then determines the correct Company workspace from the authenticated account. The reference source defines the separate platform-owner route as `/platform/login`, with its own email-and-password credentials and session.
 
 ## Integration implication
 

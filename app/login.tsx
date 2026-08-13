@@ -12,7 +12,6 @@ export default function LoginScreen() {
   const { loginCompany, loginPlatform } = useJobSyncAuth();
   const { logout: logoutLegacyEmployee } = useEmployeeAuth();
   const [portal, setPortal] = useState<JobSyncPortalKind>("company");
-  const [companyId, setCompanyId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -26,15 +25,15 @@ export default function LoginScreen() {
     : "Sign in with your separate JobSync platform-admin account.";
 
   const handleLogin = async () => {
-    if ((companyPortal && !companyId.trim()) || !email.trim() || !password) {
-      setError(companyPortal ? "Enter your Company ID, email, and password." : "Enter your email and password.");
+    if (!email.trim() || !password) {
+      setError("Enter your email and password.");
       return;
     }
     setError("");
     setLoading(true);
     try {
       const session = companyPortal
-        ? await loginCompany({ companyId: companyId.trim(), email: email.trim(), password })
+        ? await loginCompany({ email: email.trim(), password })
         : await loginPlatform({ email: email.trim(), password });
 
       await logoutLegacyEmployee();
@@ -75,14 +74,13 @@ export default function LoginScreen() {
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>{title}</Text>
               <Text style={styles.formDescription}>{description}</Text>
-              {companyPortal ? <View><Text style={styles.fieldLabel}>Company ID</Text><TextInput value={companyId} onChangeText={setCompanyId} autoCapitalize="none" autoCorrect={false} keyboardType="number-pad" placeholder="Enter your JobSync Company ID" placeholderTextColor="#71829B" style={styles.input} /></View> : null}
               <View><Text style={styles.fieldLabel}>Email</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="you@company.com" placeholderTextColor="#71829B" style={styles.input} /></View>
               <View><Text style={styles.fieldLabel}>Password</Text><View><TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={handleLogin} placeholder="Enter your password" placeholderTextColor="#71829B" returnKeyType="done" style={[styles.input, styles.passwordInput]} /><Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} onPress={() => setShowPassword((current) => !current)} style={styles.eyeButton}><MaterialIcons color="#94A3B8" name={showPassword ? "visibility-off" : "visibility"} size={20} /></Pressable></View></View>
               {error ? <View style={styles.errorBox}><MaterialIcons color="#F87171" name="error-outline" size={18} /><Text style={styles.errorText}>{error}</Text></View> : null}
               <Pressable accessibilityRole="button" disabled={loading} onPress={handleLogin} style={({ pressed }) => [styles.signInButton, (pressed || loading) && styles.signInButtonPressed]}>{loading ? <Text style={styles.signInText}>Verifying securely…</Text> : <><Text style={styles.signInText}>Sign in to the app</Text><MaterialIcons color="#FFFFFF" name="arrow-forward" size={19} /></>}</Pressable>
             </View>
             <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>Your password is verified by JobSync. The app creates its own native session and does not open the website.</Text></View>
-            <Text style={styles.helpText}>{companyPortal ? "Use the numeric Company ID assigned to your JobSync workspace, plus the same email and password you use there." : "Platform Admin credentials are separate from Company credentials."}</Text>
+            <Text style={styles.helpText}>{companyPortal ? "Use the same email and password you already use in JobSync. We identify your Company workspace automatically." : "Platform Admin credentials are separate from Company credentials."}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -18348,7 +18348,7 @@ async function loginJobSyncCompany(input) {
   );
   if (!login) return null;
   const workspace = await runQuery("auth.workspace", login.cookie);
-  if (!workspace?.user?.id || !workspace.company?.id || String(workspace.company.id) !== input.companyId.trim()) return null;
+  if (!workspace?.user?.id || !workspace.company?.id) return null;
   if (!workspace.user.role || !["owner", "dispatcher", "technician"].includes(workspace.user.role)) return null;
   return mintNativeSession({
     portal: "company",
@@ -18417,9 +18417,9 @@ var appRouter = router({
     })
   }),
   jobsyncAuth: router({
-    companyLogin: publicProcedure.input(z3.object({ companyId: z3.string().trim().min(1).max(32), email: z3.string().trim().toLowerCase().email(), password: z3.string().min(8).max(128) })).mutation(async ({ input }) => {
+    companyLogin: publicProcedure.input(z3.object({ email: z3.string().trim().toLowerCase().email(), password: z3.string().min(8).max(128) })).mutation(async ({ input }) => {
       const session = await loginJobSyncCompany(input);
-      if (!session) throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid Company ID, email, or password." });
+      if (!session) throw new TRPCError3({ code: "UNAUTHORIZED", message: "Invalid Company email or password." });
       return session;
     }),
     platformLogin: publicProcedure.input(z3.object({ email: z3.string().trim().toLowerCase().email(), password: z3.string().min(8).max(128) })).mutation(async ({ input }) => {
