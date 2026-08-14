@@ -30,6 +30,27 @@ export type JobSyncCompanyMember = {
   isActive: boolean;
 };
 
+export type JobSyncCompanyMemberDetail = JobSyncCompanyMember & {
+  memberId: string | null;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  hireDate: string | null;
+  availability: string | null;
+  workDays: string[];
+  hourlyRate: number | null;
+  upsellBonusPct: number | null;
+  mysteryBonusStatus: string | null;
+  assignedVehicle: {
+    id: number | null;
+    name: string;
+    shift: string | null;
+    assignedAt: string | null;
+  } | null;
+};
+
 export type JobSyncCompanyRoster = {
   company: { id: number; name: string };
   members: JobSyncCompanyMember[];
@@ -79,6 +100,25 @@ function firstNumber(...values: unknown[]) {
     if (Number.isInteger(parsed) && parsed > 0) return parsed;
   }
   return null;
+}
+
+function nullableNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function stringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim()).map((item) => item.trim());
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 function isActiveMember(value: unknown) {
@@ -283,6 +323,58 @@ export async function getJobSyncCompanyMembers(token: string, expectedCompanyId:
   const roster = normalizeJobSyncCompanyRoster(payload, expectedCompanyId);
   if (!roster) throw new Error("JobSync returned an invalid Company team roster.");
   return roster;
+}
+
+export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMemberId: number): JobSyncCompanyMemberDetail | null {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const member = firstRecord(data.member, root?.member, data.profile) ?? {};
+  const id = firstNumber(member.id, member.userId, member.memberId);
+  if (id !== expectedMemberId || !isActiveMember(member.isActive ?? member.is_active)) return null;
+
+  const firstName = firstString(member.firstName, member.first_name) ?? "";
+  const lastName = firstString(member.lastName, member.last_name) ?? "";
+  const name = firstString(member.name, member.displayName, member.fullName, `${firstName} ${lastName}`.trim());
+  if (!name) return null;
+  const vehicle = firstRecord(member.assignedVehicle, member.assigned_vehicle, member.vehicle);
+
+  return {
+    id,
+    name,
+    memberId: firstString(member.memberId, member.member_id, member.identifier),
+    firstName: firstName || name.split(/\s+/)[0] || "",
+    lastName: lastName || name.split(/\s+/).slice(1).join(" "),
+    email: firstString(member.email),
+    phone: firstString(member.phone, member.phoneNumber),
+    city: firstString(member.city),
+    hireDate: firstString(member.hireDate, member.hire_date, member.createdAt, member.created_at),
+    role: firstString(member.role, member.memberRole) ?? "team_member",
+    availability: firstString(member.availability),
+    workDays: stringList(member.workDays ?? member.work_days ?? member.customWorkDays),
+    hourlyRate: nullableNumber(member.hourlyRate, member.hourly_rate),
+    upsellBonusPct: nullableNumber(member.upsellBonusPct, member.upsell_bonus_pct),
+    mysteryBonusStatus: firstString(member.mysteryBonusStatus, member.mystery_bonus_status),
+    isActive: true,
+    assignedVehicle: vehicle ? {
+      id: nullableNumber(vehicle.id, vehicle.vehicleId),
+      name: firstString(vehicle.name, vehicle.vehicleName, vehicle.unitNumber) ?? "Assigned vehicle",
+      shift: firstString(vehicle.shift, vehicle.shiftName),
+      assignedAt: firstString(vehicle.assignedAt, vehicle.assigned_at),
+    } : null,
+  };
+}
+
+export async function getJobSyncCompanyMemberDetail(token: string, memberId: number) {
+  if (!Number.isInteger(memberId) || memberId <= 0) {
+    throw new Error("JobSync returned an invalid Team Member identifier.");
+  }
+  const payload = await requestJson(`${COMPANY_TEAM_MEMBERS_PATH}/${memberId}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  const detail = normalizeJobSyncCompanyMemberDetail(payload, memberId);
+  if (!detail) throw new Error("JobSync returned an invalid Team Member profile.");
+  return detail;
 }
 
 export async function updateJobSyncCompanyMember(

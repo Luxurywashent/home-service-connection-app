@@ -4,7 +4,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyMemberDetail, getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember, type JobSyncCompanyMemberDetail } from "@/lib/jobsync-mobile-api";
 
 function getWeekRange() {
   const now = new Date();
@@ -57,6 +57,11 @@ function formatDate(dateStr: string | null | undefined) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatWorkDays(days: string[]) {
+  const labels: Record<string, string> = { sun: "Sun", mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat" };
+  return days.map((day) => labels[day.toLowerCase().slice(0, 3)] ?? day).join(", ") || "-";
+}
+
 export default function AdminEmployeesScreen() {
   const colors = useColors();
   const { session: jobSyncSession } = useJobSyncAuth();
@@ -71,6 +76,8 @@ export default function AdminEmployeesScreen() {
   const [editError, setEditError] = useState("");
   const [companyMembers, setCompanyMembers] = useState<JobSyncCompanyMember[]>([]);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
+  const [companyMemberDetail, setCompanyMemberDetail] = useState<JobSyncCompanyMemberDetail | null>(null);
+  const [companyMemberDetailLoading, setCompanyMemberDetailLoading] = useState(false);
   const { start, end } = useMemo(() => getWeekRange(), []);
 
   const utils = trpc.useUtils();
@@ -219,6 +226,29 @@ export default function AdminEmployeesScreen() {
     return () => { cancelled = true; };
   }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id]);
 
+  useEffect(() => {
+    const memberId = Number(selectedEmp?.jobSyncMemberId);
+    const token = jobSyncSession?.token;
+    if (!isJobSyncCompany || !selectedEmp?.isJobSyncMember || !token || !Number.isInteger(memberId)) {
+      setCompanyMemberDetail(null);
+      setCompanyMemberDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCompanyMemberDetailLoading(true);
+    getJobSyncCompanyMemberDetail(token, memberId)
+      .then((detail) => {
+        if (!cancelled) setCompanyMemberDetail(detail);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyMemberDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyMemberDetailLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isJobSyncCompany, jobSyncSession?.token, selectedEmp?.isJobSyncMember, selectedEmp?.jobSyncMemberId]);
+
   const empWithPerf = useMemo(() => {
     if (!employees) return [];
     return employees.map((emp) => {
@@ -271,12 +301,13 @@ export default function AdminEmployeesScreen() {
   };
 
   const startEdit = () => {
+    const profile = isJobSyncCompany ? companyMemberDetail : null;
     setEditData({
-      fullName: selectedEmp.fullName,
-      email: selectedEmp.email ?? "",
-      phoneNumber: selectedEmp.phoneNumber ?? "",
-      city: isJobSyncCompany ? "" : selectedEmp.city ?? "",
-      role: selectedEmp.role,
+      fullName: profile?.name ?? selectedEmp.fullName,
+      email: profile?.email ?? selectedEmp.email ?? "",
+      phoneNumber: profile?.phone ?? selectedEmp.phoneNumber ?? "",
+      city: isJobSyncCompany ? profile?.city ?? "" : selectedEmp.city ?? "",
+      role: profile ? nativeRoleForJobSyncMember(profile.role) : selectedEmp.role,
       pin: "",
       hourlyRate: selectedEmp.hourlyRate != null ? String(selectedEmp.hourlyRate) : "17.00",
       upsellBonusPct: selectedEmp.upsellBonusPct != null ? String(selectedEmp.upsellBonusPct) : "40.00",
@@ -705,7 +736,7 @@ export default function AdminEmployeesScreen() {
                     {editMode ? editData.fullName : selectedEmp.fullName}
                   </Text>
                   <Text style={{ fontSize: 14, color: colors.muted }}>
-                    {roleLabel(editMode ? editData.role : selectedEmp.role)} · {isJobSyncCompany ? "Synced with JobSync" : (editMode ? editData.city : selectedEmp.city)}
+                    {roleLabel(editMode ? editData.role : selectedEmp.role)} · {isJobSyncCompany ? (companyMemberDetail?.city ?? "Synced with JobSync") : (editMode ? editData.city : selectedEmp.city)}
                   </Text>
                 </View>
 
@@ -878,12 +909,23 @@ export default function AdminEmployeesScreen() {
                 ) : (
                   /* ─── View Mode ─── */
                   <>
+                    {isJobSyncCompany && companyMemberDetailLoading && (
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={{ fontSize: 13, color: colors.muted }}>Loading member profile…</Text>
+                      </View>
+                    )}
                     <View style={{ gap: 8, marginBottom: 16 }}>
-                      <InfoRow label="Team Member ID" value={selectedEmp.employeeId} colors={colors} />
-                      <InfoRow label="Email" value={selectedEmp.email ?? "-"} colors={colors} />
-                      <InfoRow label="Phone" value={selectedEmp.phoneNumber ?? "-"} colors={colors} />
-                      <InfoRow label="Hire Date" value={formatDate(selectedEmp.hireDate)} colors={colors} />
-                      {selectedEmp.role === "detailer" && (() => {
+                      <InfoRow label="Team Member ID" value={isJobSyncCompany ? companyMemberDetail?.memberId ?? `Member ${selectedEmp.jobSyncMemberId ?? "-"}` : selectedEmp.employeeId} colors={colors} />
+                      <InfoRow label="Email" value={isJobSyncCompany ? companyMemberDetail?.email ?? "-" : selectedEmp.email ?? "-"} colors={colors} />
+                      <InfoRow label="Phone" value={isJobSyncCompany ? companyMemberDetail?.phone ?? "-" : selectedEmp.phoneNumber ?? "-"} colors={colors} />
+                      <InfoRow label="Hire Date" value={isJobSyncCompany ? formatDate(companyMemberDetail?.hireDate) : formatDate(selectedEmp.hireDate)} colors={colors} />
+                      {isJobSyncCompany ? (
+                        <>
+                          <InfoRow label="Availability" value={companyMemberDetail?.availability ? companyMemberDetail.availability.replace(/_/g, " ") : "-"} colors={colors} />
+                          <InfoRow label="Work Days" value={formatWorkDays(companyMemberDetail?.workDays ?? [])} colors={colors} />
+                        </>
+                      ) : selectedEmp.role === "detailer" && (() => {
                         const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
                         const activeDays: number[] = selectedEmp.customWorkDays
                           ? selectedEmp.customWorkDays.split(",").map((x: string) => parseInt(x.trim(), 10))
@@ -908,9 +950,27 @@ export default function AdminEmployeesScreen() {
                       </View>
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8, textAlign: "center" }}>Tap Edit to change rates · Syncs with payroll &amp; projected paycheck</Text>
                     </View>)}
+                    {isJobSyncCompany && (
+                      <View style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>💰 Pay Rates</Text>
+                        <View style={{ flexDirection: "row", gap: 12 }}>
+                          <View style={{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 12, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
+                            <Text style={{ fontSize: 22, fontWeight: "900", color: colors.primary }}>{companyMemberDetail?.hourlyRate == null ? "—" : `$${companyMemberDetail.hourlyRate.toFixed(2)}`}</Text>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>per hour</Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 12, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
+                            <Text style={{ fontSize: 22, fontWeight: "900", color: colors.success }}>{companyMemberDetail?.upsellBonusPct == null ? "—" : `${companyMemberDetail.upsellBonusPct.toFixed(0)}%`}</Text>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>upsell bonus</Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8, textAlign: "center" }}>Rates are managed in your JobSync Company record.</Text>
+                      </View>
+                    )}
 
                     <View style={{ gap: 8, marginBottom: 16 }}>
-                      {selectedEmp.role === "detailer" && (
+                      {isJobSyncCompany ? (
+                        <InfoRow label="Mystery Bonus" value={companyMemberDetail?.mysteryBonusStatus ?? "No challenges attempted"} colors={colors} />
+                      ) : selectedEmp.role === "detailer" && (
                         <InfoRow
                           label="Mystery Bonus"
                           value={getLatestAttemptForEmp(selectedEmp.employeeId) > 0
@@ -922,8 +982,32 @@ export default function AdminEmployeesScreen() {
                     </View>
 
                     {/* Van Assignment */}
-                    {selectedEmp.role === "detailer" && (
+                    {isJobSyncCompany ? (
+                      <View style={{ backgroundColor: colors.surface, borderRadius: 14, marginBottom: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16 }}>
+                          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground }}>🚐 Assigned Van</Text>
+                          <Text style={{ fontSize: 12, color: colors.muted }}>JobSync</Text>
+                        </View>
+                        <View style={{ backgroundColor: colors.background, padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <Text style={{ fontSize: 18, fontWeight: "800", color: colors.foreground }}>{companyMemberDetail?.assignedVehicle?.name ?? "No assigned van"}</Text>
+                          {companyMemberDetail?.assignedVehicle ? (
+                            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>
+                              {[companyMemberDetail.assignedVehicle.shift, companyMemberDetail.assignedVehicle.assignedAt ? `Assigned ${formatDate(companyMemberDetail.assignedVehicle.assignedAt)}` : null].filter(Boolean).join(" · ")}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : selectedEmp.role === "detailer" && (
                       <VanAssignmentSection employeeId={selectedEmp.employeeId} employeeName={selectedEmp.fullName} colors={colors} />
+                    )}
+
+                    {isJobSyncCompany && (
+                      <View style={{ marginBottom: 24, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+                        <View style={{ padding: 16, backgroundColor: colors.surface }}>
+                          <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>🔑 Login Credentials</Text>
+                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Password and account recovery are securely managed in JobSync.</Text>
+                        </View>
+                      </View>
                     )}
 
                     {/* Reset PIN */}

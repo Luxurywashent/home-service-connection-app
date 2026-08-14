@@ -2,6 +2,13 @@
 
 ## JobSync Platform Integration
 
+- [x] Restore complete Team Member profiles with ID, contact, hire date, work days, pay, bonus, assigned van, and credential-management sections.
+- [x] Obtain a Company-scoped JobSync detail API for member profile, payroll, availability, and vehicle assignment data.
+- [x] Add a bearer-protected JobSync `GET /api/mobile/v1/company/team-members/:memberId` detail endpoint with authorized profile fields.
+- [x] Verify and connect the newly published JobSync detailed Team Member profile endpoint to the mobile profile view.
+- [ ] Add authorized JobSync mobile endpoints for work schedule, vehicle assignment, and password/PIN reset before enabling those profile controls.
+- [x] Ensure displayed Team Member profile values come from authoritative JobSync Company records rather than copied local placeholders.
+
 - [x] Restore Team Member profile editing through the authoritative JobSync Company API.
 - [x] Add and publish a bearer-protected JobSync member-update endpoint for authorized Company Owner and Operations Manager edits.
 - [x] Verify the published JobSync member-update endpoint contract and connect mobile saves to it.

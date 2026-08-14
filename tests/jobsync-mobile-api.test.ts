@@ -5,6 +5,7 @@ import {
   createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
   extractJobSyncMobileToken,
+  normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
 } from "../lib/jobsync-mobile-api";
@@ -101,5 +102,33 @@ describe("JobSync mobile API contract", () => {
     expect(roster?.company.name).toBe("Casey Services");
     expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
+  });
+
+  it("normalizes an authoritative detailed Company member profile", () => {
+    const detail = normalizeJobSyncCompanyMemberDetail({
+      member: {
+        id: 41,
+        memberId: "ANTHONY",
+        firstName: "Anthony",
+        lastName: "Slentz",
+        email: "aslentz03@icloud.com",
+        phone: "(850) 987-1000",
+        city: "Destin",
+        hireDate: "2026-07-01",
+        role: "technician",
+        availability: "available",
+        workDays: ["mon", "tue", "wed", "thu"],
+        hourlyRate: 17,
+        upsellBonusPct: 40,
+        mysteryBonusStatus: "No challenges attempted",
+        assignedVehicle: { id: 12, name: "DU2", shift: "1st Shift", assignedAt: "2026-07-05" },
+        isActive: true,
+      },
+    }, 41);
+
+    expect(detail?.memberId).toBe("ANTHONY");
+    expect(detail?.workDays).toEqual(["mon", "tue", "wed", "thu"]);
+    expect(detail?.hourlyRate).toBe(17);
+    expect(detail?.assignedVehicle?.name).toBe("DU2");
   });
 });
