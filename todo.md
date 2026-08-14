@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Revise the JobSync mobile API prompt to exclude completed login, session, roster, and detailed Team Member profile integrations.
+- [x] Deliver a reduced operational API prompt for clocking, breaks, schedules, jobs, customers, dispatch, payroll, notifications, training, and dashboards.
+
 - [ ] Produce a complete JobSync web-to-mobile API inventory covering every Home Service Connection feature, including read, write, permissions, and sync requirements.
 - [ ] Create a ready-to-paste implementation prompt for the JobSync web project to build the complete versioned mobile API surface.
 
