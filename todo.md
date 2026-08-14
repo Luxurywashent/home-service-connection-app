@@ -2,6 +2,15 @@
 
 ## JobSync Platform Integration
 
+- [x] Add a safe native recovery action that exposes Clock Out when JobSync rejects Clock In as already active but current-state parsing is unavailable.
+- [ ] Document the server-side diagnostic or admin action needed to reconcile stale active time entries without device tokens.
+
+- [ ] Verify the active Ashley Lawn JobSync time entry and request confirmation before clocking it out.
+- [ ] Reconcile the authorized time entry and confirm the native mobile clock status refreshes correctly.
+
+- [ ] Capture the exact redacted authenticated JobSync current-time response that reports the user as clocked in.
+- [ ] Map the exact current-time contract so the native header visually switches from Clock In to Clock Out and Break.
+
 - [x] Fix the JobSync time-state adapter so an already-clocked-in user sees Clock Out and Break controls instead of Clock In.
 - [ ] Verify the mobile header state matches JobSync after live clock-in, break, and clock-out actions.
 

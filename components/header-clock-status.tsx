@@ -44,13 +44,16 @@ export function HeaderClockStatus() {
   const [pendingClockIn, setPendingClockIn] = useState(false);
   const [jobSyncTime, setJobSyncTime] = useState<JobSyncTimeCurrent | null>(null);
   const [jobSyncTimeLoading, setJobSyncTimeLoading] = useState(false);
+  const [clockStateMismatch, setClockStateMismatch] = useState(false);
   const isJobSyncCompany = session?.portal === "company";
 
   const refreshJobSyncTime = useCallback(async () => {
     if (!isJobSyncCompany || !session?.token) return;
     setJobSyncTimeLoading(true);
     try {
-      setJobSyncTime(await getJobSyncTimeCurrent(session.token));
+      const current = await getJobSyncTimeCurrent(session.token);
+      setJobSyncTime(current);
+      setClockStateMismatch(false);
     } catch (error) {
       console.warn("Unable to refresh JobSync time-clock state:", error);
     } finally {
@@ -87,6 +90,7 @@ export function HeaderClockStatus() {
   const activeBreak = isJobSyncCompany ? jobSyncTime?.activeBreak : activeBreakQuery.data;
   const activeBreakId = activeBreak ? ("id" in activeBreak ? activeBreak.id : activeBreak.breakId) : undefined;
   const isClockedIn = clockStatus?.status === "clocked_in";
+  const shouldShowClockedInControls = isClockedIn || (isJobSyncCompany && clockStateMismatch);
 
   // Update elapsed time every second when clocked in
   useEffect(() => {
@@ -205,6 +209,9 @@ export function HeaderClockStatus() {
       }
     } catch (error) {
       console.error("Clock in error:", error);
+      if (isJobSyncCompany && error instanceof Error && /already clocked in/i.test(error.message)) {
+        setClockStateMismatch(true);
+      }
       if (isJobSyncCompany) {
         await refreshJobSyncTime();
       }
@@ -286,6 +293,7 @@ export function HeaderClockStatus() {
     try {
       if (isJobSyncCompany && session?.token) {
         setJobSyncTime(await clockOutJobSyncTime(session.token));
+        setClockStateMismatch(false);
         if (Platform.OS !== "web") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
@@ -325,7 +333,7 @@ export function HeaderClockStatus() {
   };
 
   // When clocked in, show Break/End Break and Clock Out buttons
-  if (isClockedIn) {
+  if (shouldShowClockedInControls) {
     const isOnBreak = !!activeBreakId && !activeBreak?.breakEndTime;
 
     return (
@@ -343,6 +351,11 @@ export function HeaderClockStatus() {
           isLoading={endingBreak}
         />
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {clockStateMismatch && (
+            <Text style={{ maxWidth: 88, fontSize: 11, color: colors.warning, fontWeight: "600" }}>
+              Active shift detected
+            </Text>
+          )}
           {/* Break/End Break Button - Tap to start break, tap again to end early */}
           <TouchableOpacity
             disabled={endingBreak || clockingInOut || jobSyncTimeLoading}

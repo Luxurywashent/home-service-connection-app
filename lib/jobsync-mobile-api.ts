@@ -172,6 +172,19 @@ function errorMessage(payload: unknown, fallback: string) {
   return firstString(error?.message, root?.message) ?? fallback;
 }
 
+function summarizeTimePayloadShape(value: unknown, depth = 2): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return `[array:${value.length}]`;
+  if (typeof value === "boolean" || typeof value === "number") return value;
+  if (typeof value === "string") return "[string]";
+  const record = asRecord(value);
+  if (!record) return `[${typeof value}]`;
+  if (depth <= 0) return "[object]";
+  return Object.fromEntries(
+    Object.entries(record).map(([key, item]) => [key, summarizeTimePayloadShape(item, depth - 1)]),
+  );
+}
+
 function getJobSyncBaseUrl() {
   const configured = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL?.trim();
   return (configured || DEFAULT_JOBSYNC_BASE_URL).replace(/\/$/, "");
@@ -410,6 +423,9 @@ export async function getJobSyncTimeCurrent(token: string) {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
   });
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[JobSync time current response shape]", JSON.stringify(summarizeTimePayloadShape(payload)));
+  }
   const current = normalizeJobSyncTimeCurrent(payload);
   if (!current) throw new Error("JobSync returned an invalid time-clock state.");
   return current;
