@@ -256,15 +256,55 @@ function normalizeJobSyncActiveBreak(value: unknown): JobSyncActiveBreak | null 
 export function normalizeJobSyncTimeCurrent(payload: unknown): JobSyncTimeCurrent | null {
   const root = asRecord(payload);
   const data = firstRecord(root?.data, root) ?? {};
-  const time = firstRecord(data.current, data.time, data.timeEntry, data.entry, root?.current, root?.time, root?.timeEntry, root) ?? {};
-  const clockInTime = firstString(time.clockInTime, time.clock_in_time, time.clockedInAt, time.clocked_in_at);
-  const clockOutTime = firstString(time.clockOutTime, time.clock_out_time, time.clockedOutAt, time.clocked_out_at);
+  const time = firstRecord(
+    data.current,
+    data.time,
+    data.timeEntry,
+    data.timeRecord,
+    data.entry,
+    data.activeShift,
+    data.activeTimeEntry,
+    data.currentShift,
+    root?.current,
+    root?.time,
+    root?.timeEntry,
+    root?.timeRecord,
+    root?.activeShift,
+    root?.activeTimeEntry,
+    root?.currentShift,
+    root,
+  ) ?? {};
+  const clockInTime = firstString(
+    time.clockInTime,
+    time.clock_in_time,
+    time.clockedInAt,
+    time.clocked_in_at,
+    time.clockInAt,
+    time.clock_in_at,
+    time.startTime,
+    time.start_time,
+    time.startedAt,
+    time.started_at,
+  );
+  const clockOutTime = firstString(
+    time.clockOutTime,
+    time.clock_out_time,
+    time.clockedOutAt,
+    time.clocked_out_at,
+    time.clockOutAt,
+    time.clock_out_at,
+    time.endTime,
+    time.end_time,
+    time.endedAt,
+    time.ended_at,
+  );
   const rawStatus = firstString(time.status, data.status, root?.status)?.toLowerCase().replace(/[ -]+/g, "_");
-  const status = rawStatus === "clocked_in" || rawStatus === "on_clock" || (!clockOutTime && Boolean(clockInTime))
+  const explicitClockedIn = time.isClockedIn === true || time.clockedIn === true || data.isClockedIn === true || data.clockedIn === true || root?.isClockedIn === true || root?.clockedIn === true;
+  const status = explicitClockedIn || rawStatus === "clocked_in" || rawStatus === "on_clock" || rawStatus === "active" || rawStatus === "in" || (!clockOutTime && Boolean(clockInTime))
     ? "clocked_in"
     : "clocked_out";
   const activeBreak = normalizeJobSyncActiveBreak(
-    time.activeBreak ?? time.active_break ?? data.activeBreak ?? data.active_break ?? root?.activeBreak ?? root?.active_break,
+    time.activeBreak ?? time.active_break ?? time.currentBreak ?? time.current_break ?? time.break ?? data.activeBreak ?? data.active_break ?? data.currentBreak ?? data.current_break ?? data.break ?? root?.activeBreak ?? root?.active_break ?? root?.currentBreak ?? root?.current_break ?? root?.break,
   );
   return {
     status,

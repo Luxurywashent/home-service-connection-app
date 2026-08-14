@@ -205,6 +205,9 @@ export function HeaderClockStatus() {
       }
     } catch (error) {
       console.error("Clock in error:", error);
+      if (isJobSyncCompany) {
+        await refreshJobSyncTime();
+      }
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }

@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Fix the JobSync time-state adapter so an already-clocked-in user sees Clock Out and Break controls instead of Clock In.
+- [ ] Verify the mobile header state matches JobSync after live clock-in, break, and clock-out actions.
+
 - [x] Verify and connect the published JobSync Time Clock and Breaks APIs to native Clock In, Clock Out, and Break controls.
 - [ ] Validate live timecard state and break transitions through the authenticated Company mobile session.
 

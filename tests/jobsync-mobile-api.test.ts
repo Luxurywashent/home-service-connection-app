@@ -166,6 +166,27 @@ describe("JobSync mobile API contract", () => {
     });
   });
 
+  it("recognizes active-shift time payloads even when the server uses a clock-in flag", () => {
+    const current = normalizeJobSyncTimeCurrent({
+      data: {
+        isClockedIn: true,
+        activeShift: {
+          startTime: "2026-08-14T08:00:00.000Z",
+          currentBreak: {
+            id: "break-4",
+            startedAt: "2026-08-14T10:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    expect(current).toMatchObject({
+      status: "clocked_in",
+      clockInTime: "2026-08-14T08:00:00.000Z",
+      activeBreak: { id: "break-4", breakStartTime: "2026-08-14T10:00:00.000Z" },
+    });
+  });
+
   it("normalizes JobSync timesheet records and embedded breaks", () => {
     const history = normalizeJobSyncTimeHistory({
       data: {
