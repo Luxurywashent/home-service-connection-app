@@ -8,6 +8,8 @@ import {
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
+  normalizeJobSyncTimeCurrent,
+  normalizeJobSyncTimeHistory,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -130,5 +132,61 @@ describe("JobSync mobile API contract", () => {
     expect(detail?.workDays).toEqual(["mon", "tue", "wed", "thu"]);
     expect(detail?.hourlyRate).toBe(17);
     expect(detail?.assignedVehicle?.name).toBe("DU2");
+  });
+
+  it("normalizes the authoritative time clock and active-break state", () => {
+    const current = normalizeJobSyncTimeCurrent({
+      data: {
+        status: "clocked_in",
+        timeEntry: {
+          clockInTime: "2026-08-14T08:00:00.000Z",
+          todayHours: 3.5,
+          activeBreak: {
+            breakId: 18,
+            breakType: "lunch_30min",
+            durationMinutes: 30,
+            breakStartTime: "2026-08-14T11:30:00.000Z",
+          },
+        },
+      },
+    });
+
+    expect(current).toEqual({
+      status: "clocked_in",
+      clockInTime: "2026-08-14T08:00:00.000Z",
+      clockOutTime: null,
+      activeBreak: {
+        id: 18,
+        type: "lunch_30min",
+        durationMinutes: 30,
+        breakStartTime: "2026-08-14T11:30:00.000Z",
+        breakEndTime: null,
+      },
+      todayHours: 3.5,
+    });
+  });
+
+  it("normalizes JobSync timesheet records and embedded breaks", () => {
+    const history = normalizeJobSyncTimeHistory({
+      data: {
+        records: [{
+          id: 8,
+          clockInTime: "2026-08-14T08:00:00.000Z",
+          clockOutTime: "2026-08-14T12:00:00.000Z",
+          totalHours: 4,
+          breaks: [{
+            id: 3,
+            type: "lunch_30min",
+            durationMinutes: 30,
+            breakStartTime: "2026-08-14T10:00:00.000Z",
+            breakEndTime: "2026-08-14T10:30:00.000Z",
+          }],
+        }],
+      },
+    });
+
+    expect(history.totalHours).toBe(4);
+    expect(history.logs[0]).toMatchObject({ recordId: 8, date: "2026-08-14", totalHours: 4 });
+    expect(history.breaks[0]).toMatchObject({ breakId: 3, status: "taken", breakType: "lunch_30min" });
   });
 });

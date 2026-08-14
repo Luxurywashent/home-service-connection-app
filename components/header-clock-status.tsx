@@ -1,8 +1,16 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  clockInJobSyncTime,
+  clockOutJobSyncTime,
+  endJobSyncBreak,
+  getJobSyncTimeCurrent,
+  type JobSyncTimeCurrent,
+} from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
@@ -10,7 +18,7 @@ import { BreakModal } from "./break-modal";
 import { EndBreakConfirmationModal } from "./end-break-confirmation-modal";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "./location-disclosure-modal";
 
-function formatElapsedTime(startTime: Date | null): string {
+function formatElapsedTime(startTime: Date | string | null): string {
   if (!startTime) return "00:00:00";
   
   const now = new Date();
@@ -26,6 +34,7 @@ function formatElapsedTime(startTime: Date | null): string {
 export function HeaderClockStatus() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session } = useJobSyncAuth();
   const [elapsedTime, setElapsedTime] = useState("00:00:00");
   const [clockingInOut, setClockinginOut] = useState(false);
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -33,10 +42,35 @@ export function HeaderClockStatus() {
   const [showEndBreakConfirmation, setShowEndBreakConfirmation] = useState(false);
   const [showLocationDisclosure, setShowLocationDisclosure] = useState(false);
   const [pendingClockIn, setPendingClockIn] = useState(false);
+  const [jobSyncTime, setJobSyncTime] = useState<JobSyncTimeCurrent | null>(null);
+  const [jobSyncTimeLoading, setJobSyncTimeLoading] = useState(false);
+  const isJobSyncCompany = session?.portal === "company";
+
+  const refreshJobSyncTime = useCallback(async () => {
+    if (!isJobSyncCompany || !session?.token) return;
+    setJobSyncTimeLoading(true);
+    try {
+      setJobSyncTime(await getJobSyncTimeCurrent(session.token));
+    } catch (error) {
+      console.warn("Unable to refresh JobSync time-clock state:", error);
+    } finally {
+      setJobSyncTimeLoading(false);
+    }
+  }, [isJobSyncCompany, session?.token]);
+
+  useEffect(() => {
+    if (!isJobSyncCompany) {
+      setJobSyncTime(null);
+      return;
+    }
+    void refreshJobSyncTime();
+    const interval = setInterval(() => { void refreshJobSyncTime(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [isJobSyncCompany, refreshJobSyncTime]);
 
   const clockStatusQuery = trpc.timesheet.getTodayStatus.useQuery(
     { employeeId: employee?.employeeId || "" },
-    { enabled: !!employee?.employeeId, refetchInterval: 30000, refetchOnWindowFocus: false }
+    { enabled: !!employee?.employeeId && !isJobSyncCompany, refetchInterval: 30000, refetchOnWindowFocus: false }
   );
 
   const clockInMutation = trpc.timesheet.clockIn.useMutation();
@@ -46,10 +80,12 @@ export function HeaderClockStatus() {
 
   const activeBreakQuery = trpc.timesheet.getActiveBreak.useQuery(
     { employeeId: employee?.employeeId || "" },
-    { enabled: !!employee?.employeeId, refetchInterval: 30000, refetchOnWindowFocus: false }
+    { enabled: !!employee?.employeeId && !isJobSyncCompany, refetchInterval: 30000, refetchOnWindowFocus: false }
   );
 
-  const clockStatus = clockStatusQuery.data;
+  const clockStatus = isJobSyncCompany ? jobSyncTime : clockStatusQuery.data;
+  const activeBreak = isJobSyncCompany ? jobSyncTime?.activeBreak : activeBreakQuery.data;
+  const activeBreakId = activeBreak ? ("id" in activeBreak ? activeBreak.id : activeBreak.breakId) : undefined;
   const isClockedIn = clockStatus?.status === "clocked_in";
 
   // Update elapsed time every second when clocked in
@@ -69,7 +105,7 @@ export function HeaderClockStatus() {
   // Continuous background location updates every 5 minutes while clocked in.
   // This keeps the fleet map pin current even when no job is active.
   useEffect(() => {
-    if (!isClockedIn || !employee?.employeeId || Platform.OS === "web") return;
+    if (!isClockedIn || !employee?.employeeId || isJobSyncCompany || Platform.OS === "web") return;
     let cancelled = false;
     const pushLocation = async () => {
       try {
@@ -90,14 +126,14 @@ export function HeaderClockStatus() {
     pushLocation();
     const interval = setInterval(pushLocation, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [isClockedIn, employee?.employeeId]);
+  }, [isClockedIn, employee?.employeeId, isJobSyncCompany]);
 
   // Auto-end break after duration expires
   useEffect(() => {
-    const activeBreak = activeBreakQuery.data;
     if (!activeBreak?.breakStartTime || activeBreak?.breakEndTime) return;
 
-    const durationMs = activeBreak.durationMinutes * 60 * 1000;
+    const durationMs = (activeBreak.durationMinutes ?? 0) * 60 * 1000;
+    if (durationMs <= 0) return;
     const breakStartTime = new Date(activeBreak.breakStartTime).getTime();
     const now = new Date().getTime();
     const timeElapsed = now - breakStartTime;
@@ -115,7 +151,7 @@ export function HeaderClockStatus() {
     }, timeRemaining);
 
     return () => clearTimeout(timer);
-  }, [activeBreakQuery.data?.breakStartTime, activeBreakQuery.data?.breakEndTime, activeBreakQuery.data?.durationMinutes]);
+  }, [activeBreak?.breakStartTime, activeBreak?.breakEndTime, activeBreak?.durationMinutes]);
 
   const handleClockIn = async () => {
     // Show prominent location disclosure on first clock-in (Google Play policy requirement)
@@ -128,6 +164,13 @@ export function HeaderClockStatus() {
     }
     setClockinginOut(true);
     try {
+      if (isJobSyncCompany && session?.token) {
+        setJobSyncTime(await clockInJobSyncTime(session.token));
+        if (Platform.OS !== "web") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        return;
+      }
       // Capture GPS before clocking in so coordinates are saved with the record
       let clockInLat: number | undefined;
       let clockInLng: number | undefined;
@@ -181,12 +224,20 @@ export function HeaderClockStatus() {
   };
 
   const handleConfirmEndBreak = async () => {
-    if (!activeBreakQuery.data?.breakId) {
+    if (!activeBreakId) {
       console.error("No active break found");
       return;
     }
     setEndingBreak(true);
     try {
+      if (isJobSyncCompany && session?.token) {
+        setJobSyncTime(await endJobSyncBreak(session.token));
+        setShowEndBreakConfirmation(false);
+        if (Platform.OS !== "web") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        return;
+      }
       // Capture GPS when ending break
       let endLat: number | undefined;
       let endLng: number | undefined;
@@ -202,9 +253,9 @@ export function HeaderClockStatus() {
           console.warn("End-break location capture failed:", locErr);
         }
       }
-      console.log("Ending break:", activeBreakQuery.data.breakId);
+      console.log("Ending break:", activeBreakId);
       const result = await endBreakMutation.mutateAsync({
-        breakId: activeBreakQuery.data.breakId,
+        breakId: activeBreakId,
         ...(endLat != null && endLng != null ? { endLat, endLng } : {}),
       });
       console.log("End break result:", result);
@@ -230,6 +281,13 @@ export function HeaderClockStatus() {
   const handleClockOut = async () => {
     setClockinginOut(true);
     try {
+      if (isJobSyncCompany && session?.token) {
+        setJobSyncTime(await clockOutJobSyncTime(session.token));
+        if (Platform.OS !== "web") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        return;
+      }
       // Capture GPS before clocking out so coordinates are saved with the record
       let clockOutLat: number | undefined;
       let clockOutLng: number | undefined;
@@ -265,7 +323,7 @@ export function HeaderClockStatus() {
 
   // When clocked in, show Break/End Break and Clock Out buttons
   if (isClockedIn) {
-    const isOnBreak = !!activeBreakQuery.data?.breakId && !activeBreakQuery.data?.breakEndTime;
+    const isOnBreak = !!activeBreakId && !activeBreak?.breakEndTime;
 
     return (
       <>
@@ -274,7 +332,7 @@ export function HeaderClockStatus() {
           onAccept={handleLocationDisclosureAccept}
           onDecline={handleLocationDisclosureDecline}
         />
-        <BreakModal visible={showBreakModal} onClose={() => setShowBreakModal(false)} />
+        <BreakModal visible={showBreakModal} onClose={() => setShowBreakModal(false)} onStarted={refreshJobSyncTime} />
         <EndBreakConfirmationModal
           visible={showEndBreakConfirmation}
           onConfirm={handleConfirmEndBreak}
@@ -284,7 +342,7 @@ export function HeaderClockStatus() {
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           {/* Break/End Break Button - Tap to start break, tap again to end early */}
           <TouchableOpacity
-            disabled={endingBreak || clockingInOut}
+            disabled={endingBreak || clockingInOut || jobSyncTimeLoading}
             style={{
               backgroundColor: isOnBreak ? colors.success : colors.warning,
               borderRadius: 8,
@@ -293,7 +351,7 @@ export function HeaderClockStatus() {
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
-              opacity: (endingBreak || clockingInOut) ? 0.6 : 1,
+              opacity: (endingBreak || clockingInOut || jobSyncTimeLoading) ? 0.6 : 1,
             }}
             onPress={() => {
               if (isOnBreak) {
@@ -319,7 +377,7 @@ export function HeaderClockStatus() {
 
         {/* Clock Out Button */}
         <TouchableOpacity
-          disabled={clockingInOut}
+          disabled={clockingInOut || jobSyncTimeLoading}
           onPress={handleClockOut}
           style={{
             backgroundColor: colors.error,
@@ -329,7 +387,7 @@ export function HeaderClockStatus() {
             flexDirection: "row",
             alignItems: "center",
             gap: 6,
-            opacity: clockingInOut ? 0.6 : 1,
+            opacity: (clockingInOut || jobSyncTimeLoading) ? 0.6 : 1,
           }}
         >
           {clockingInOut ? (
@@ -355,7 +413,7 @@ export function HeaderClockStatus() {
       />
       <TouchableOpacity
       onPress={handleClockIn}
-      disabled={clockingInOut}
+      disabled={clockingInOut || jobSyncTimeLoading}
       style={{
         backgroundColor: colors.primary,
         borderRadius: 8,
@@ -364,7 +422,7 @@ export function HeaderClockStatus() {
         flexDirection: "row",
         alignItems: "center",
         gap: 6,
-        opacity: clockingInOut ? 0.6 : 1,
+        opacity: (clockingInOut || jobSyncTimeLoading) ? 0.6 : 1,
       }}
     >
       {clockingInOut ? (

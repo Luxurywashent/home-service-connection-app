@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Verify and connect the published JobSync Time Clock and Breaks APIs to native Clock In, Clock Out, and Break controls.
+- [ ] Validate live timecard state and break transitions through the authenticated Company mobile session.
+
 - [x] Revise the JobSync mobile API prompt to exclude completed login, session, roster, and detailed Team Member profile integrations.
 - [x] Deliver a reduced operational API prompt for clocking, breaks, schedules, jobs, customers, dispatch, payroll, notifications, training, and dashboards.
 

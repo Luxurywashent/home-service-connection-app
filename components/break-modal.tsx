@@ -5,6 +5,8 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { startJobSyncBreak } from "@/lib/jobsync-mobile-api";
 import * as Location from "expo-location";
 
 interface BreakType {
@@ -42,21 +44,35 @@ const BREAK_TYPES: BreakType[] = [
 interface BreakModalProps {
   visible: boolean;
   onClose: () => void;
+  onStarted?: () => Promise<void> | void;
 }
 
-export function BreakModal({ visible, onClose }: BreakModalProps) {
+export function BreakModal({ visible, onClose, onStarted }: BreakModalProps) {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session } = useJobSyncAuth();
   const [selectedBreak, setSelectedBreak] = useState<"morning_15min" | "afternoon_15min" | "lunch_30min" | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const createBreakMutation = trpc.timesheet.createBreakNotification.useMutation();
+  const isJobSyncCompany = session?.portal === "company";
 
   const handleStartBreak = async () => {
-    if (!selectedBreak || !employee?.employeeId) return;
+    if (!selectedBreak || (!isJobSyncCompany && !employee?.employeeId)) return;
 
     setIsSubmitting(true);
     try {
+      if (isJobSyncCompany && session?.token) {
+        const durationMinutes = selectedBreak === "lunch_30min" ? 30 : 15;
+        await startJobSyncBreak(session.token, { breakType: selectedBreak, durationMinutes });
+        await onStarted?.();
+        setSelectedBreak(null);
+        onClose();
+        if (Platform.OS !== "web") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        return;
+      }
       // Capture GPS when starting break
       let startLat: number | undefined;
       let startLng: number | undefined;
@@ -132,7 +148,7 @@ export function BreakModal({ visible, onClose }: BreakModalProps) {
               Select Break Type
             </Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
-              Choose the type of break you're taking
+              Choose the type of break you&apos;re taking
             </Text>
           </View>
 
