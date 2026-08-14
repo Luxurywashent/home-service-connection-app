@@ -2,6 +2,12 @@
 
 ## JobSync Platform Integration
 
+- [ ] Produce a complete JobSync web-to-mobile API inventory covering every Home Service Connection feature, including read, write, permissions, and sync requirements.
+- [ ] Create a ready-to-paste implementation prompt for the JobSync web project to build the complete versioned mobile API surface.
+
+- [ ] Replace piecemeal web-to-mobile data endpoints with a complete, versioned JobSync mobile API covering every Company and Platform Admin mobile domain.
+- [ ] Connect every mobile screen to authoritative JobSync data and retire copied local data sources for Company sessions.
+
 - [x] Restore complete Team Member profiles with ID, contact, hire date, work days, pay, bonus, assigned van, and credential-management sections.
 - [x] Obtain a Company-scoped JobSync detail API for member profile, payroll, availability, and vehicle assignment data.
 - [x] Add a bearer-protected JobSync `GET /api/mobile/v1/company/team-members/:memberId` detail endpoint with authorized profile fields.
@@ -18,6 +24,7 @@
 - [ ] Verify Team Members count, cards, and role filters match the Company calendar roster.
 
 - [ ] Diagnose why the latest checkpoint is not appearing in the published Home Service Connection deployment.
+- [ ] Determine why the latest checkpoint appears not to publish despite successful deployment notifications.
 
 - [x] Increase the signed-in Company-name text size in the shared header while preserving a one-line long-name fallback.
 - [x] Retrieve authenticated Company team members from the JobSync API so web-created members appear in the mobile schedule.
