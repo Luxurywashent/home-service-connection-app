@@ -66,51 +66,10 @@ export type JobSyncCompanyMemberUpdateInput = {
   availability?: "available" | "busy" | "off_duty";
 };
 
-export type JobSyncActiveBreak = {
-  id: number | string;
-  type: string | null;
-  durationMinutes: number | null;
-  breakStartTime: string;
-  breakEndTime: string | null;
-};
-
-export type JobSyncTimeCurrent = {
-  status: "clocked_in" | "clocked_out";
-  clockInTime: string | null;
-  clockOutTime: string | null;
-  activeBreak: JobSyncActiveBreak | null;
-  todayHours: number | null;
-};
-
-export type JobSyncTimeHistory = {
-  logs: Array<{
-    recordId: number | string;
-    date: string;
-    clockInTime: string;
-    clockOutTime: string | null;
-    totalHours: number;
-  }>;
-  breaks: Array<{
-    breakId: number | string;
-    date: string;
-    breakType: string | null;
-    durationMinutes: number | null;
-    status: "taken" | "pending";
-    breakStartTime: string;
-    breakEndTime: string | null;
-  }>;
-  totalHours: number;
-};
-
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
-const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
-const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
-const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
-const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
-const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -170,19 +129,6 @@ function errorMessage(payload: unknown, fallback: string) {
   const root = asRecord(payload);
   const error = asRecord(root?.error);
   return firstString(error?.message, root?.message) ?? fallback;
-}
-
-function summarizeTimePayloadShape(value: unknown, depth = 2): unknown {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) return `[array:${value.length}]`;
-  if (typeof value === "boolean" || typeof value === "number") return value;
-  if (typeof value === "string") return "[string]";
-  const record = asRecord(value);
-  if (!record) return `[${typeof value}]`;
-  if (depth <= 0) return "[object]";
-  return Object.fromEntries(
-    Object.entries(record).map(([key, item]) => [key, summarizeTimePayloadShape(item, depth - 1)]),
-  );
 }
 
 function getJobSyncBaseUrl() {
@@ -250,82 +196,6 @@ export function createJobSyncMobileLoginPayload(input: { accountType: JobSyncAcc
 
 export function createJobSyncBearerHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
-}
-
-function normalizeJobSyncActiveBreak(value: unknown): JobSyncActiveBreak | null {
-  const record = asRecord(value);
-  const id = firstString(record?.id, record?.breakId, record?.break_id) ?? firstNumber(record?.id, record?.breakId, record?.break_id);
-  const breakStartTime = firstString(record?.breakStartTime, record?.break_start_time, record?.startedAt, record?.started_at);
-  if (!record || !id || !breakStartTime) return null;
-  return {
-    id,
-    type: firstString(record.type, record.breakType, record.break_type),
-    durationMinutes: nullableNumber(record.durationMinutes, record.duration_minutes, record.plannedMinutes),
-    breakStartTime,
-    breakEndTime: firstString(record.breakEndTime, record.break_end_time, record.endedAt, record.ended_at),
-  };
-}
-
-export function normalizeJobSyncTimeCurrent(payload: unknown): JobSyncTimeCurrent | null {
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const time = firstRecord(
-    data.current,
-    data.time,
-    data.timeEntry,
-    data.timeRecord,
-    data.entry,
-    data.activeShift,
-    data.activeTimeEntry,
-    data.currentShift,
-    root?.current,
-    root?.time,
-    root?.timeEntry,
-    root?.timeRecord,
-    root?.activeShift,
-    root?.activeTimeEntry,
-    root?.currentShift,
-    root,
-  ) ?? {};
-  const clockInTime = firstString(
-    time.clockInTime,
-    time.clock_in_time,
-    time.clockedInAt,
-    time.clocked_in_at,
-    time.clockInAt,
-    time.clock_in_at,
-    time.startTime,
-    time.start_time,
-    time.startedAt,
-    time.started_at,
-  );
-  const clockOutTime = firstString(
-    time.clockOutTime,
-    time.clock_out_time,
-    time.clockedOutAt,
-    time.clocked_out_at,
-    time.clockOutAt,
-    time.clock_out_at,
-    time.endTime,
-    time.end_time,
-    time.endedAt,
-    time.ended_at,
-  );
-  const rawStatus = firstString(time.status, data.status, root?.status)?.toLowerCase().replace(/[ -]+/g, "_");
-  const explicitClockedIn = time.isClockedIn === true || time.clockedIn === true || data.isClockedIn === true || data.clockedIn === true || root?.isClockedIn === true || root?.clockedIn === true;
-  const status = explicitClockedIn || rawStatus === "clocked_in" || rawStatus === "on_clock" || rawStatus === "active" || rawStatus === "in" || (!clockOutTime && Boolean(clockInTime))
-    ? "clocked_in"
-    : "clocked_out";
-  const activeBreak = normalizeJobSyncActiveBreak(
-    time.activeBreak ?? time.active_break ?? time.currentBreak ?? time.current_break ?? time.break ?? data.activeBreak ?? data.active_break ?? data.currentBreak ?? data.current_break ?? data.break ?? root?.activeBreak ?? root?.active_break ?? root?.currentBreak ?? root?.current_break ?? root?.break,
-  );
-  return {
-    status,
-    clockInTime,
-    clockOutTime,
-    activeBreak,
-    todayHours: nullableNumber(time.todayHours, time.today_hours, time.totalHours, time.total_hours, data.todayHours, root?.todayHours),
-  };
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
@@ -416,109 +286,6 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("JobSync returned an unsupported mobile session profile.");
   return session;
-}
-
-export async function getJobSyncTimeCurrent(token: string) {
-  const payload = await requestJson(TIME_CURRENT_PATH, {
-    method: "GET",
-    headers: createJobSyncBearerHeaders(token),
-  });
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[JobSync time current response shape]", JSON.stringify(summarizeTimePayloadShape(payload)));
-  }
-  const current = normalizeJobSyncTimeCurrent(payload);
-  if (!current) throw new Error("JobSync returned an invalid time-clock state.");
-  return current;
-}
-
-async function postJobSyncTimeOperation(token: string, path: string, body?: Record<string, unknown>) {
-  return requestJson(path, {
-    method: "POST",
-    headers: createJobSyncBearerHeaders(token),
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-}
-
-export async function clockInJobSyncTime(token: string) {
-  await postJobSyncTimeOperation(token, TIME_CLOCK_IN_PATH);
-  return getJobSyncTimeCurrent(token);
-}
-
-export async function clockOutJobSyncTime(token: string) {
-  await postJobSyncTimeOperation(token, TIME_CLOCK_OUT_PATH);
-  return getJobSyncTimeCurrent(token);
-}
-
-export async function startJobSyncBreak(token: string, input: { breakType: string; durationMinutes: number }) {
-  await postJobSyncTimeOperation(token, TIME_BREAK_START_PATH, input);
-  return getJobSyncTimeCurrent(token);
-}
-
-export async function endJobSyncBreak(token: string) {
-  await postJobSyncTimeOperation(token, TIME_BREAK_END_PATH);
-  return getJobSyncTimeCurrent(token);
-}
-
-export function normalizeJobSyncTimeHistory(payload: unknown): JobSyncTimeHistory {
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const rawLogs = Array.isArray(data.logs)
-    ? data.logs
-    : Array.isArray(data.records)
-      ? data.records
-      : Array.isArray(data.timesheets)
-        ? data.timesheets
-        : Array.isArray(root?.logs)
-          ? root.logs
-          : [];
-  const logs = rawLogs.flatMap((value) => {
-    const record = asRecord(value);
-    const recordId = firstString(record?.recordId, record?.id, record?.timeEntryId) ?? firstNumber(record?.recordId, record?.id, record?.timeEntryId);
-    const clockInTime = firstString(record?.clockInTime, record?.clock_in_time, record?.clockedInAt, record?.clocked_in_at);
-    const date = firstString(record?.date, record?.workDate, record?.work_date, clockInTime?.slice(0, 10));
-    if (!record || !recordId || !clockInTime || !date) return [];
-    return [{
-      recordId,
-      date,
-      clockInTime,
-      clockOutTime: firstString(record.clockOutTime, record.clock_out_time, record.clockedOutAt, record.clocked_out_at),
-      totalHours: nullableNumber(record.totalHours, record.total_hours, record.hoursWorked, record.hours_worked) ?? 0,
-    }];
-  });
-  const explicitBreaks = Array.isArray(data.breaks) ? data.breaks : Array.isArray(root?.breaks) ? root.breaks : [];
-  const embeddedBreaks = rawLogs.flatMap((value) => {
-    const record = asRecord(value);
-    return Array.isArray(record?.breaks) ? record.breaks : [];
-  });
-  const breaks = [...explicitBreaks, ...embeddedBreaks].flatMap((value) => {
-    const current = normalizeJobSyncActiveBreak(value);
-    const record = asRecord(value);
-    const date = firstString(record?.date, record?.workDate, record?.work_date, current?.breakStartTime.slice(0, 10));
-    if (!current || !date) return [];
-    return [{
-      breakId: current.id,
-      date,
-      breakType: current.type,
-      durationMinutes: current.durationMinutes,
-      status: current.breakEndTime ? "taken" : "pending" as const,
-      breakStartTime: current.breakStartTime,
-      breakEndTime: current.breakEndTime,
-    }];
-  });
-  return {
-    logs,
-    breaks,
-    totalHours: nullableNumber(data.totalHours, data.total_hours, root?.totalHours, root?.total_hours) ?? logs.reduce((sum, log) => sum + log.totalHours, 0),
-  };
-}
-
-export async function getJobSyncTimeHistory(token: string, range?: { start: string; end: string }) {
-  const search = range ? `?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}` : "";
-  const payload = await requestJson(`/api/mobile/v1/time/timesheets${search}`, {
-    method: "GET",
-    headers: createJobSyncBearerHeaders(token),
-  });
-  return normalizeJobSyncTimeHistory(payload);
 }
 
 export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyId: number): JobSyncCompanyRoster | null {

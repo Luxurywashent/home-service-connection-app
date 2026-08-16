@@ -2,20 +2,16 @@
 
 ## JobSync Platform Integration
 
-- [x] Add a safe native recovery action that exposes Clock Out when JobSync rejects Clock In as already active but current-state parsing is unavailable.
-- [ ] Document the server-side diagnostic or admin action needed to reconcile stale active time entries without device tokens.
+- [x] Remove AI Coach, Receptionist, Sales Calls, Training, Door Hangers, Inventory, Bonus, Alerts, Equipment List, Repair Log, Pipeline, Inbox, Geofence, Locations, Promotions, Rewards, Accountability, Efficiency, and QC from Company Admin mobile navigation.
+- [x] Block direct mobile access to the removed Company Admin routes while retaining only approved Admin areas.
 
-- [ ] Verify the active Ashley Lawn JobSync time entry and request confirmation before clocking it out.
-- [ ] Reconcile the authorized time entry and confirm the native mobile clock status refreshes correctly.
+- [ ] Replace hard-coded Team Member roles with Company-managed roles in Team Members settings.
+- [ ] Add JobSync Company role-definition and member-role assignment APIs before enabling synced mobile role management.
+- [ ] Support Company Owner/Admin creation, editing, activation, and assignment of Company roles through JobSync.
+- [ ] Keep platform authorization separate from configurable Company job titles and role labels.
 
-- [ ] Capture the exact redacted authenticated JobSync current-time response that reports the user as clocked in.
-- [ ] Map the exact current-time contract so the native header visually switches from Clock In to Clock Out and Break.
-
-- [x] Fix the JobSync time-state adapter so an already-clocked-in user sees Clock Out and Break controls instead of Clock In.
-- [ ] Verify the mobile header state matches JobSync after live clock-in, break, and clock-out actions.
-
-- [x] Verify and connect the published JobSync Time Clock and Breaks APIs to native Clock In, Clock Out, and Break controls.
-- [ ] Validate live timecard state and break transitions through the authenticated Company mobile session.
+- [ ] Remove Schedule from Company Admin/Owner navigation and protect direct Schedule routes from that role.
+- [ ] Preserve Schedule access only for technician and authorized Operations/Dispatch roles.
 
 - [x] Revise the JobSync mobile API prompt to exclude completed login, session, roster, and detailed Team Member profile integrations.
 - [x] Deliver a reduced operational API prompt for clocking, breaks, schedules, jobs, customers, dispatch, payroll, notifications, training, and dashboards.

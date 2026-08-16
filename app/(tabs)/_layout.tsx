@@ -1,4 +1,4 @@
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, usePathname, useRouter } from "expo-router";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform, View, Text, StyleSheet } from "react-native";
@@ -45,11 +45,24 @@ const adminStyles = StyleSheet.create({
   },
 });
 
+const COMPANY_ADMIN_HIDDEN_ROUTES = [
+  "/admin-schedule",
+  "/admin-ai-coach",
+  "/admin-receptionist",
+  "/admin-callbacks",
+  "/admin-training",
+  "/admin-door-hangers",
+  "/admin-inventory",
+  "/admin-quiz",
+  "/admin-alerts",
+] as const;
+
 export default function TabLayout() {
   const colors = useColors();
   const { employee, isAuthenticated, isAdmin, isOpsManager, loading, login: establishNativeRole } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const employeeId = employee?.employeeId;
   const employeeName = employee?.fullName ?? "";
   const nativeJobSyncEmployee = useMemo(
@@ -76,6 +89,14 @@ export default function TabLayout() {
     }
     if (!nativeJobSyncEmployee) router.replace("/login");
   }, [jobSyncLoading, jobSyncSession?.portal, loading, nativeJobSyncEmployee, router]);
+
+  useEffect(() => {
+    if (loading || jobSyncLoading || !isAdmin || isOpsManager) return;
+    const isHiddenAdminRoute = COMPANY_ADMIN_HIDDEN_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
+    );
+    if (isHiddenAdminRoute) router.replace("/(tabs)/admin-dashboard");
+  }, [isAdmin, isOpsManager, jobSyncLoading, loading, pathname, router]);
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {

@@ -2,10 +2,8 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
-import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncTimeHistory, type JobSyncTimeHistory } from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
@@ -42,34 +40,8 @@ export default function TimesheetScreen() {
   const colors = useColors();
   const router = useRouter();
   const { employee } = useEmployeeAuth();
-  const { session } = useJobSyncAuth();
   const [weekOffset, setWeekOffset] = useState(0);
-  const [jobSyncHistory, setJobSyncHistory] = useState<JobSyncTimeHistory | null>(null);
-  const [jobSyncHistoryLoading, setJobSyncHistoryLoading] = useState(false);
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
-  const isJobSyncCompany = session?.portal === "company";
-
-  useEffect(() => {
-    if (!isJobSyncCompany || !session?.token) {
-      setJobSyncHistory(null);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      setJobSyncHistoryLoading(true);
-      try {
-        const history = await getJobSyncTimeHistory(session.token, { start: weekDates.start, end: weekDates.end });
-        if (!cancelled) setJobSyncHistory(history);
-      } catch (error) {
-        console.warn("Unable to load JobSync timesheet history:", error);
-        if (!cancelled) setJobSyncHistory({ logs: [], breaks: [], totalHours: 0 });
-      } finally {
-        if (!cancelled) setJobSyncHistoryLoading(false);
-      }
-    };
-    void load();
-    return () => { cancelled = true; };
-  }, [isJobSyncCompany, session?.token, weekDates.start, weekDates.end]);
 
   const weeklyLogsQuery = trpc.timesheet.getWeeklyLogs.useQuery(
     {
@@ -77,7 +49,7 @@ export default function TimesheetScreen() {
       startDate: weekDates.start,
       endDate: weekDates.end,
     },
-    { enabled: !!employee?.employeeId && !isJobSyncCompany }
+    { enabled: !!employee?.employeeId }
   );
 
   const weeklyHoursQuery = trpc.timesheet.getWeeklyHours.useQuery(
@@ -86,12 +58,12 @@ export default function TimesheetScreen() {
       startDate: weekDates.start,
       endDate: weekDates.end,
     },
-    { enabled: !!employee?.employeeId && !isJobSyncCompany }
+    { enabled: !!employee?.employeeId }
   );
 
-  const logs = isJobSyncCompany ? jobSyncHistory?.logs ?? [] : (weeklyLogsQuery.data as any)?.logs ?? [];
-  const breaks = isJobSyncCompany ? jobSyncHistory?.breaks ?? [] : (weeklyLogsQuery.data as any)?.breaks ?? [];
-  const totalHours = isJobSyncCompany ? jobSyncHistory?.totalHours ?? 0 : (weeklyHoursQuery.data as any)?.totalHours ?? 0;
+  const logs = (weeklyLogsQuery.data as any)?.logs ?? [];
+  const breaks = (weeklyLogsQuery.data as any)?.breaks ?? [];
+  const totalHours = (weeklyHoursQuery.data as any)?.totalHours ?? 0;
 
   const groupedByDate = useMemo(() => {
     const grouped: Record<string, any[]> = {};
@@ -102,7 +74,7 @@ export default function TimesheetScreen() {
     return grouped;
   }, [logs]);
 
-  const isLoading = isJobSyncCompany ? jobSyncHistoryLoading : weeklyLogsQuery.isLoading || weeklyHoursQuery.isLoading;
+  const isLoading = weeklyLogsQuery.isLoading || weeklyHoursQuery.isLoading;
 
   return (
     <ScreenContainer className="px-0" edges={["left", "right"]}>
