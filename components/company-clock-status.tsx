@@ -36,11 +36,27 @@ export function CompanyClockStatus({ token }: { token: string }) {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const run = useCallback(async (action: () => Promise<unknown>) => {
+  const run = useCallback(async (
+    action: () => Promise<unknown>,
+    nextState: "clock-in" | "clock-out" | "break-start" | "break-end",
+  ) => {
     setWorking(true);
+    setError(null);
     try {
-      await action();
-      await refresh();
+      await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Time action did not respond. Please sign out and sign in again, then retry.")), 12_000)),
+      ]);
+      setState((current) => {
+        const clockedIn = nextState === "clock-in" ? true : nextState === "clock-out" ? false : current?.isClockedIn === true;
+        const activeBreak = nextState === "break-start"
+          ? { isActive: true, startedAt: new Date().toISOString() }
+          : nextState === "break-end"
+            ? null
+            : current?.activeBreak ?? null;
+        return { isClockedIn: clockedIn, clockInAt: clockedIn ? current?.clockInAt ?? new Date().toISOString() : null, activeBreak };
+      });
+      void refresh();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to update your time status.");
     } finally {
@@ -67,7 +83,10 @@ export function CompanyClockStatus({ token }: { token: string }) {
             <TouchableOpacity
               accessibilityRole="button"
               disabled={working}
-              onPress={() => void run(() => isOnBreak ? endHomeServiceConnectedBreak(token) : startHomeServiceConnectedBreak(token))}
+              onPress={() => void run(
+                () => isOnBreak ? endHomeServiceConnectedBreak(token) : startHomeServiceConnectedBreak(token),
+                isOnBreak ? "break-end" : "break-start",
+              )}
               style={[buttonBase, { backgroundColor: isOnBreak ? colors.success : colors.warning, opacity: working ? 0.6 : 1 }]}
             >
               <Text style={{ color: isOnBreak ? "#FFFFFF" : "#111827", fontSize: 14, fontWeight: "800" }}>{isOnBreak ? "End Break" : "Break"}</Text>
@@ -75,7 +94,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
             <TouchableOpacity
               accessibilityRole="button"
               disabled={working}
-              onPress={() => void run(() => clockOutHomeServiceConnected(token))}
+              onPress={() => void run(() => clockOutHomeServiceConnected(token), "clock-out")}
               style={[buttonBase, { backgroundColor: colors.error, opacity: working ? 0.6 : 1 }]}
             >
               {working ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>Clock Out</Text>}
@@ -85,7 +104,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
           <TouchableOpacity
             accessibilityRole="button"
             disabled={working}
-            onPress={() => void run(() => clockInHomeServiceConnected(token))}
+            onPress={() => void run(() => clockInHomeServiceConnected(token), "clock-in")}
             style={[buttonBase, { alignItems: "center", backgroundColor: colors.primary, flexDirection: "row", gap: 6, opacity: working ? 0.6 : 1 }]}
           >
             {working ? <ActivityIndicator color="#FFFFFF" size="small" /> : <><Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>▶</Text><Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>Clock In</Text></>}

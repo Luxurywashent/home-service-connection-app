@@ -2,6 +2,12 @@
 
 ## JobSync Platform Integration
 
+- [x] Diagnose the Clock In spinner that completes without a visible success or error state.
+- [x] Add bounded request handling and explicit Clock In failure feedback for Company sessions.
+
+- [ ] Capture the exact redacted live Clock In request and response from the current mobile Company session.
+- [ ] Repair the remaining shared time API contract or authorization mismatch that prevents Clock In.
+
 - [x] Remove Team Efficiency and Manage Locations quick actions from the Company Admin dashboard and their direct action paths.
 
 - [x] Diagnose and repair the broken native Clock In action against the authenticated JobSync time API.
