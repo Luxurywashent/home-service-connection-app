@@ -2,8 +2,11 @@
 
 ## JobSync Platform Integration
 
-- [x] Remove AI Coach, Receptionist, Sales Calls, Training, Door Hangers, Inventory, Bonus, Alerts, Equipment List, Repair Log, Pipeline, Inbox, Geofence, Locations, Promotions, Rewards, Accountability, Efficiency, and QC from Company Admin mobile navigation.
-- [x] Block direct mobile access to the removed Company Admin routes while retaining only approved Admin areas.
+- [x] Restore Schedule in Company Admin navigation and direct-route access.
+- [x] Remove Equipment List, Repair Log, Pipeline, Inbox, Geofence, Locations, Promotions, Rewards, Accountability, Efficiency, and QC from Company Admin navigation and direct access.
+
+- [x] Superseded by the revised Admin navigation scope: the initial removal set was replaced by the user-approved Schedule restoration and final removed-feature list.
+- [x] Superseded direct-route scope: the final Company Admin route restriction follows the revised removed-feature list above.
 
 - [ ] Replace hard-coded Team Member roles with Company-managed roles in Team Members settings.
 - [ ] Add JobSync Company role-definition and member-role assignment APIs before enabling synced mobile role management.

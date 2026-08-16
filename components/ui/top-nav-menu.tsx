@@ -25,6 +25,7 @@ interface MenuItem {
 // ─── Admin menu — all features ────────────────────────────────────────────────
 const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Dashboard",    icon: "👥",  route: "/admin-dashboard" },
+  { label: "Schedule",     icon: "📅",  route: "/admin-schedule" },
   { label: "Fleet",        icon: "🚐",  route: "/admin-fleet-map" },
   { label: "Team Chat",    icon: "💬",  route: "/chat" },
   { label: "Timesheets",   icon: "⏱️",  route: "/admin-timesheet" },
@@ -34,20 +35,9 @@ const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Customers",    icon: "👤",  route: "/admin-customers" },
   { label: "Time Off",     icon: "🌴",  route: "/admin-timeoff" },
   { label: "Team Members", icon: "🪪",  route: "/admin-employees" },
-  { label: "Equip. List",  icon: "🛠️",  route: "/admin-repair-equipment" },
-  { label: "Repair Log",   icon: "📋",  route: "/admin-repair-history" },
-  { label: "Pipeline",     icon: "📊",  route: "/admin-pipeline" },
-  { label: "Inbox", icon: "📲",  route: "/admin-communications" },
-  { label: "Geofence",      icon: "📡",  route: "/admin-geofence" },
   { label: "EOD Review",    icon: "✅",  route: "/admin-eod-review" },
-  { label: "Locations",     icon: "📍",  route: "/admin-locations" },
-  { label: "Promotions",    icon: "🎉",  route: "/admin-promotions" },
-  { label: "Rewards",       icon: "🏆",  route: "/admin-rewards" },
   { label: "Reporting",     icon: "📈",  route: "/admin-reporting" },
   { label: "Price Book",    icon: "💰",  route: "/admin-pricebook" },
-  { label: "Accountability", icon: "📌",  route: "/admin-points" },
-  { label: "Efficiency",     icon: "⚡",  route: "/admin-efficiency" },
-  { label: "QC",             icon: "✅",  route: "/ops-qc" },
 ];
 
 const DETAILER_ITEMS: MenuItem[] = [

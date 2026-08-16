@@ -46,7 +46,6 @@ const adminStyles = StyleSheet.create({
 });
 
 const COMPANY_ADMIN_HIDDEN_ROUTES = [
-  "/admin-schedule",
   "/admin-ai-coach",
   "/admin-receptionist",
   "/admin-callbacks",
@@ -55,6 +54,17 @@ const COMPANY_ADMIN_HIDDEN_ROUTES = [
   "/admin-inventory",
   "/admin-quiz",
   "/admin-alerts",
+  "/admin-repair-equipment",
+  "/admin-repair-history",
+  "/admin-pipeline",
+  "/admin-communications",
+  "/admin-geofence",
+  "/admin-locations",
+  "/admin-promotions",
+  "/admin-rewards",
+  "/admin-points",
+  "/admin-efficiency",
+  "/ops-qc",
 ] as const;
 
 export default function TabLayout() {
