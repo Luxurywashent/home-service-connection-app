@@ -2,6 +2,8 @@
 
 ## JobSync Platform Integration
 
+- [x] Remove Team Efficiency and Manage Locations quick actions from the Company Admin dashboard and their direct action paths.
+
 - [x] Diagnose and repair the broken native Clock In action against the authenticated JobSync time API.
 - [ ] Validate Clock In, Clock Out, and Break state transitions on a real Company session.
 

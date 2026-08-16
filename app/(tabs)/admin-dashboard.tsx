@@ -347,93 +347,10 @@ export default function AdminDashboard() {
               </View>
             </View>
 
-            {/* Team Efficiency Card */}
-            {(() => {
-              const perfRecords = (weekPerf as any[] ?? []);
-              const periodRecords = perfRecords.filter((r: any) => {
-                if (period === "day") return r.date === today;
-                return true; // week
-              });
-              // Group by employeeId and average efficiency per detailer
-              const byDetailer: Record<string, { name: string; scores: number[] }> = {};
-              for (const r of periodRecords) {
-                const eff = parseFloat(r.efficiencyPercent ?? "0");
-                if (eff > 0.01) {
-                  if (!byDetailer[r.employeeId]) byDetailer[r.employeeId] = { name: r.fullName ?? r.employeeId, scores: [] };
-                  byDetailer[r.employeeId].scores.push(eff);
-                }
-              }
-              const detailerAvgs = Object.values(byDetailer).map(d => d.scores.reduce((a, b) => a + b, 0) / d.scores.length);
-              const teamAvg = detailerAvgs.length > 0 ? detailerAvgs.reduce((a, b) => a + b, 0) / detailerAvgs.length : null;
-              const getEffColor = (score: number | null) => {
-                if (score === null) return colors.muted;
-                if (score >= 85) return colors.success;
-                if (score >= 70) return "#F59E0B";
-                return colors.error;
-              };
-              const getEffLabel = (score: number | null) => {
-                if (score === null) return "No data";
-                if (score >= 85) return "Excellent";
-                if (score >= 70) return "Good";
-                if (score >= 55) return "Needs Improvement";
-                return "Critical";
-              };
-              return (
-                <TouchableOpacity
-                  onPress={() => { if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/admin-efficiency" as any); }}
-                  style={{ marginBottom: 24 }}
-                >
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground }}>Team Efficiency</Text>
-                    <Text style={{ fontSize: 11, color: colors.primary }}>View Details ›</Text>
-                  </View>
-                  <View style={{
-                    backgroundColor: teamAvg !== null ? getEffColor(teamAvg) + "18" : colors.surface,
-                    borderRadius: 16, padding: 20, borderWidth: 1.5,
-                    borderColor: teamAvg !== null ? getEffColor(teamAvg) + "60" : colors.border,
-                  }}>
-                    {teamAvg === null ? (
-                      <View style={{ alignItems: "center" }}>
-                        <Text style={{ fontSize: 24 }}>⚡</Text>
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.muted, marginTop: 8 }}>No efficiency data yet</Text>
-                        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Data appears after EOD reviews are submitted</Text>
-                      </View>
-                    ) : (
-                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                        <View>
-                          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, letterSpacing: 0.8, textTransform: "uppercase" }}>Team Average</Text>
-                          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 4 }}>
-                            <Text style={{ fontSize: 42, fontWeight: "900", color: getEffColor(teamAvg) }}>{teamAvg.toFixed(1)}</Text>
-                            <Text style={{ fontSize: 18, fontWeight: "700", color: getEffColor(teamAvg), marginBottom: 8 }}>%</Text>
-                          </View>
-                          <View style={{ backgroundColor: getEffColor(teamAvg) + "30", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, alignSelf: "flex-start", marginTop: 4 }}>
-                            <Text style={{ fontSize: 12, fontWeight: "700", color: getEffColor(teamAvg) }}>{getEffLabel(teamAvg)}</Text>
-                          </View>
-                        </View>
-                        <View style={{ alignItems: "flex-end", gap: 6 }}>
-                          <Text style={{ fontSize: 12, color: colors.muted }}>{detailerAvgs.length} detailer{detailerAvgs.length !== 1 ? "s" : ""}</Text>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>with data</Text>
-                          <Text style={{ fontSize: 28 }}>⚡</Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })()}
-
             {/* Quick Actions */}
             <View style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Quick Actions</Text>
               <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-                <TouchableOpacity
-                  onPress={() => { if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/admin-locations" as any); }}
-                  style={{ flex: 1, minWidth: 140, backgroundColor: colors.surface, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: "flex-start", gap: 6 }}
-                >
-                  <Text style={{ fontSize: 26 }}>📍</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground }}>Manage Locations</Text>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>Service areas & detailers</Text>
-                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/(tabs)/admin-employees" as any); }}
                   style={{ flex: 1, minWidth: 140, backgroundColor: colors.surface, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: "flex-start", gap: 6 }}
