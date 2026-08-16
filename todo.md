@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Diagnose and repair the broken native Clock In action against the authenticated JobSync time API.
+- [ ] Validate Clock In, Clock Out, and Break state transitions on a real Company session.
+
 - [x] Replace every user-facing JobSync reference with Home Service Connected branding while retaining internal integration identifiers only in code.
 
 - [ ] Replace the local Add Team Member flow with JobSync-synchronized Company Team Member creation.

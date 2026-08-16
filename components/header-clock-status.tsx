@@ -7,8 +7,10 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { BreakModal } from "./break-modal";
+import { CompanyClockStatus } from "./company-clock-status";
 import { EndBreakConfirmationModal } from "./end-break-confirmation-modal";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "./location-disclosure-modal";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 function formatElapsedTime(startTime: Date | null): string {
   if (!startTime) return "00:00:00";
@@ -24,6 +26,14 @@ function formatElapsedTime(startTime: Date | null): string {
 }
 
 export function HeaderClockStatus() {
+  const { session } = useJobSyncAuth();
+  if (session?.portal === "company") {
+    return <CompanyClockStatus token={session.token} />;
+  }
+  return <LegacyHeaderClockStatus />;
+}
+
+function LegacyHeaderClockStatus() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const [elapsedTime, setElapsedTime] = useState("00:00:00");

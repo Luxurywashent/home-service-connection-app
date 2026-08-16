@@ -70,6 +70,11 @@ const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
+const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
+const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
+const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
+const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -400,4 +405,56 @@ export async function loginJobSyncMobile(input: { accountType: JobSyncAccountTyp
   const token = extractJobSyncMobileToken(payload);
   if (!token) throw new Error("Home Service Connected did not return a mobile session token.");
   return getJobSyncMobileSession(token);
+}
+
+export type HomeServiceConnectedTimeState = {
+  isClockedIn: boolean;
+  clockInAt: string | null;
+  activeBreak: { isActive: boolean; startedAt: string | null } | null;
+};
+
+function booleanState(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true" || value === "clocked_in" || value === "active";
+}
+
+export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeServiceConnectedTimeState {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const time = firstRecord(data.time, data.current, data.state, data.status, data) ?? {};
+  const entry = firstRecord(time.activeEntry, time.activeShift, time.activeTimesheet, time.timeEntry, data.activeEntry, data.activeShift, data.activeTimesheet, data.timeEntry);
+  const activeBreak = firstRecord(time.activeBreak, data.activeBreak, entry?.activeBreak, entry?.break);
+  const status = firstString(time.status, time.clockStatus, data.status, data.clockStatus, entry?.status);
+  const clockInAt = firstString(time.clockInAt, time.clockInTime, data.clockInAt, data.clockInTime, entry?.clockInAt, entry?.clockInTime, entry?.startedAt);
+  const isClockedIn = booleanState(time.isClockedIn) || booleanState(data.isClockedIn) || booleanState(status) || Boolean(entry) || Boolean(clockInAt);
+  const breakActive = Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime);
+  return {
+    isClockedIn,
+    clockInAt,
+    activeBreak: activeBreak ? { isActive: breakActive, startedAt: firstString(activeBreak.startedAt, activeBreak.breakStartTime, activeBreak.startTime) } : null,
+  };
+}
+
+export async function getHomeServiceConnectedTimeState(token: string) {
+  const payload = await requestJson(TIME_CURRENT_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  return normalizeHomeServiceConnectedTimeState(payload);
+}
+
+async function performHomeServiceConnectedTimeAction(token: string, path: string) {
+  return requestJson(path, { method: "POST", headers: createJobSyncBearerHeaders(token) });
+}
+
+export function clockInHomeServiceConnected(token: string) {
+  return performHomeServiceConnectedTimeAction(token, TIME_CLOCK_IN_PATH);
+}
+
+export function clockOutHomeServiceConnected(token: string) {
+  return performHomeServiceConnectedTimeAction(token, TIME_CLOCK_OUT_PATH);
+}
+
+export function startHomeServiceConnectedBreak(token: string) {
+  return performHomeServiceConnectedTimeAction(token, TIME_BREAK_START_PATH);
+}
+
+export function endHomeServiceConnectedBreak(token: string) {
+  return performHomeServiceConnectedTimeAction(token, TIME_BREAK_END_PATH);
 }

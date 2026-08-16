@@ -8,6 +8,7 @@ import {
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
+  normalizeHomeServiceConnectedTimeState,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -130,5 +131,19 @@ describe("JobSync mobile API contract", () => {
     expect(detail?.workDays).toEqual(["mon", "tue", "wed", "thu"]);
     expect(detail?.hourlyRate).toBe(17);
     expect(detail?.assignedVehicle?.name).toBe("DU2");
+  });
+
+  it("recognizes active current-time and break state response variants", () => {
+    expect(normalizeHomeServiceConnectedTimeState({
+      data: { current: { isClockedIn: true, clockInAt: "2026-08-16T13:00:00Z", activeBreak: { startedAt: "2026-08-16T14:00:00Z" } } },
+    })).toEqual({
+      isClockedIn: true,
+      clockInAt: "2026-08-16T13:00:00Z",
+      activeBreak: { isActive: true, startedAt: "2026-08-16T14:00:00Z" },
+    });
+
+    expect(normalizeHomeServiceConnectedTimeState({
+      activeShift: { startedAt: "2026-08-16T13:00:00Z", status: "active" },
+    }).isClockedIn).toBe(true);
   });
 });
