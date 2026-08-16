@@ -2,6 +2,15 @@
 
 ## JobSync Platform Integration
 
+- [x] Replace every user-facing JobSync reference with Home Service Connected branding while retaining internal integration identifiers only in code.
+
+- [ ] Replace the local Add Team Member flow with JobSync-synchronized Company Team Member creation.
+- [ ] Add a visible + Add Team Member header action that opens the synchronized creation form when the JobSync management API is available.
+- [ ] Replace hard-coded role buttons with Company-managed roles from JobSync.
+- [ ] Replace first/second shift controls with a Monday–Sunday individual work-day selector synchronized to JobSync.
+- [ ] Ensure newly created Team Members appear on both web and Company schedule calendar lanes.
+- [ ] Add JobSync bearer-protected APIs for Company Team Member creation, custom role management, and work-day availability updates.
+
 - [x] Restore Schedule in Company Admin navigation and direct-route access.
 - [x] Remove Equipment List, Repair Log, Pipeline, Inbox, Geofence, Locations, Promotions, Rewards, Accountability, Efficiency, and QC from Company Admin navigation and direct access.
 

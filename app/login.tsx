@@ -22,7 +22,7 @@ export default function LoginScreen() {
   const title = companyPortal ? "Company Sign In" : "Platform Admin";
   const description = companyPortal
     ? "Sign in to your Home Service Connection Company workspace."
-    : "Sign in with your separate JobSync platform-admin account.";
+    : "Sign in with your separate Home Service Connected Platform Admin account.";
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -30,7 +30,7 @@ export default function LoginScreen() {
       return;
     }
     if (password.length < 8) {
-      setError("Enter the same password you use on the web app. JobSync passwords are at least 8 characters.");
+      setError("Enter the same password you use on the web app. Passwords are at least 8 characters.");
       return;
     }
     setError("");
@@ -70,7 +70,7 @@ export default function LoginScreen() {
             <View style={styles.logoSection}>
               <View style={styles.logoBox}><Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" /></View>
               <Text style={styles.appName}>Home Service Connection</Text>
-              <Text style={styles.appSubtitle}>Native mobile access to your JobSync account</Text>
+              <Text style={styles.appSubtitle}>Native mobile access to Home Service Connected</Text>
             </View>
 
             <View style={styles.modeToggle}>
@@ -90,8 +90,8 @@ export default function LoginScreen() {
               {error ? <View style={styles.errorBox}><MaterialIcons color="#F87171" name="error-outline" size={18} /><Text style={styles.errorText}>{error}</Text></View> : null}
               <Pressable accessibilityRole="button" disabled={loading} onPress={handleLogin} style={({ pressed }) => [styles.signInButton, (pressed || loading) && styles.signInButtonPressed]}>{loading ? <Text style={styles.signInText}>Verifying securely…</Text> : <><Text style={styles.signInText}>Sign in to the app</Text><MaterialIcons color="#FFFFFF" name="arrow-forward" size={19} /></>}</Pressable>
             </View>
-            <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>Your password is verified by JobSync. The app creates its own native session and does not open the website.</Text></View>
-            <Text style={styles.helpText}>{companyPortal ? "Company Owner/Admin, Operations Manager, and Detailer access is assigned automatically from your JobSync Company role." : "Platform Admin credentials are separate from Company credentials."}</Text>
+            <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>Your password is securely verified. The app creates its own native session and does not open the website.</Text></View>
+            <Text style={styles.helpText}>{companyPortal ? "Company Owner/Admin, Operations Manager, and Detailer access is assigned automatically from your Company role." : "Platform Admin credentials are separate from Company credentials."}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -151,12 +151,12 @@ async function requestJson(path: string, init: RequestInit) {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "JobSync authentication is unavailable."));
+      throw new Error(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "Home Service Connected authentication is unavailable."));
     }
     return payload;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("JobSync took too long to respond. Check your connection and try again.");
+      throw new Error("Home Service Connected took too long to respond. Check your connection and try again.");
     }
     throw error;
   } finally {
@@ -284,7 +284,7 @@ export async function getJobSyncMobileSession(token: string) {
     headers: createJobSyncBearerHeaders(token),
   });
   const session = normalizeJobSyncMobileSession(payload, token);
-  if (!session) throw new Error("JobSync returned an unsupported mobile session profile.");
+  if (!session) throw new Error("Home Service Connected returned an unsupported mobile session profile.");
   return session;
 }
 
@@ -321,7 +321,7 @@ export async function getJobSyncCompanyMembers(token: string, expectedCompanyId:
     headers: createJobSyncBearerHeaders(token),
   });
   const roster = normalizeJobSyncCompanyRoster(payload, expectedCompanyId);
-  if (!roster) throw new Error("JobSync returned an invalid Company team roster.");
+  if (!roster) throw new Error("Home Service Connected returned an invalid Company team roster.");
   return roster;
 }
 
@@ -366,14 +366,14 @@ export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMe
 
 export async function getJobSyncCompanyMemberDetail(token: string, memberId: number) {
   if (!Number.isInteger(memberId) || memberId <= 0) {
-    throw new Error("JobSync returned an invalid Team Member identifier.");
+    throw new Error("Home Service Connected returned an invalid Team Member identifier.");
   }
   const payload = await requestJson(`${COMPANY_TEAM_MEMBERS_PATH}/${memberId}`, {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
   });
   const detail = normalizeJobSyncCompanyMemberDetail(payload, memberId);
-  if (!detail) throw new Error("JobSync returned an invalid Team Member profile.");
+  if (!detail) throw new Error("Home Service Connected returned an invalid Team Member profile.");
   return detail;
 }
 
@@ -383,7 +383,7 @@ export async function updateJobSyncCompanyMember(
   input: JobSyncCompanyMemberUpdateInput,
 ) {
   if (!Number.isInteger(memberId) || memberId <= 0) {
-    throw new Error("JobSync returned an invalid Team Member identifier.");
+    throw new Error("Home Service Connected returned an invalid Team Member identifier.");
   }
   return requestJson(`${COMPANY_TEAM_MEMBERS_PATH}/${memberId}`, {
     method: "PATCH",
@@ -398,6 +398,6 @@ export async function loginJobSyncMobile(input: { accountType: JobSyncAccountTyp
     body: JSON.stringify(createJobSyncMobileLoginPayload(input)),
   });
   const token = extractJobSyncMobileToken(payload);
-  if (!token) throw new Error("JobSync did not return a mobile bearer token.");
+  if (!token) throw new Error("Home Service Connected did not return a mobile session token.");
   return getJobSyncMobileSession(token);
 }

@@ -333,7 +333,7 @@ export default function AdminEmployeesScreen() {
         const companyId = jobSyncSession?.company?.id;
         const memberId = Number(selectedEmp.jobSyncMemberId);
         if (!token || !companyId || !Number.isInteger(memberId)) {
-          throw new Error("Your JobSync Company session is unavailable. Please sign in again.");
+          throw new Error("Your Home Service Connected Company session is unavailable. Please sign in again.");
         }
         await updateJobSyncCompanyMember(token, memberId, {
           firstName: nameParts[0],
@@ -963,7 +963,7 @@ export default function AdminEmployeesScreen() {
                             <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>upsell bonus</Text>
                           </View>
                         </View>
-                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8, textAlign: "center" }}>Rates are managed in your JobSync Company record.</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8, textAlign: "center" }}>Rates are managed in your Home Service Connected Company record.</Text>
                       </View>
                     )}
 
@@ -986,7 +986,7 @@ export default function AdminEmployeesScreen() {
                       <View style={{ backgroundColor: colors.surface, borderRadius: 14, marginBottom: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16 }}>
                           <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground }}>🚐 Assigned Van</Text>
-                          <Text style={{ fontSize: 12, color: colors.muted }}>JobSync</Text>
+                          <Text style={{ fontSize: 12, color: colors.muted }}>Home Service Connected</Text>
                         </View>
                         <View style={{ backgroundColor: colors.background, padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
                           <Text style={{ fontSize: 18, fontWeight: "800", color: colors.foreground }}>{companyMemberDetail?.assignedVehicle?.name ?? "No assigned van"}</Text>
@@ -1005,7 +1005,7 @@ export default function AdminEmployeesScreen() {
                       <View style={{ marginBottom: 24, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
                         <View style={{ padding: 16, backgroundColor: colors.surface }}>
                           <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>🔑 Login Credentials</Text>
-                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Password and account recovery are securely managed in JobSync.</Text>
+                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Password and account recovery are securely managed in Home Service Connected.</Text>
                         </View>
                       </View>
                     )}

@@ -34,11 +34,11 @@ export default function PlatformDashboard() {
       </View>
       <View style={styles.card}>
         <Text style={styles.welcome}>Welcome, {session.user.name || "Platform administrator"}</Text>
-        <Text style={styles.body}>You are signed in to Home Service Connection with your JobSync platform-admin account.</Text>
+        <Text style={styles.body}>You are signed in to Home Service Connected with your Platform Admin account.</Text>
         <View style={styles.detailRow}><Text style={styles.detailLabel}>Platform role</Text><Text style={styles.detailValue}>{session.user.role.replaceAll("_", " ") || "platform admin"}</Text></View>
         <View style={styles.detailRow}><Text style={styles.detailLabel}>Administrator ID</Text><Text style={styles.detailValue}>{session.user.memberId || "—"}</Text></View>
       </View>
-      <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>This is a native app session. Your JobSync password and remote session cookie are not stored on this device.</Text></View>
+      <View style={styles.notice}><MaterialIcons color="#52D3B8" name="verified-user" size={19} /><Text style={styles.noticeText}>This is a native app session. Your password and remote session cookie are not stored on this device.</Text></View>
       <Pressable accessibilityRole="button" onPress={handleSignOut} style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}><Text style={styles.signOutText}>Sign out</Text></Pressable>
     </ScreenContainer>
   );

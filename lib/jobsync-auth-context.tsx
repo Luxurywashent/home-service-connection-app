@@ -43,8 +43,8 @@ async function clearStoredToken() {
 const JobSyncAuthContext = createContext<JobSyncAuthContextValue>({
   session: null,
   isLoading: true,
-  loginCompany: async () => { throw new Error("JobSync authentication is unavailable"); },
-  loginPlatform: async () => { throw new Error("JobSync authentication is unavailable"); },
+  loginCompany: async () => { throw new Error("Home Service Connected authentication is unavailable"); },
+  loginPlatform: async () => { throw new Error("Home Service Connected authentication is unavailable"); },
   logout: async () => {},
 });
 
