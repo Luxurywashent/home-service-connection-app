@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Map the JobSync active-break conflict response to a green On Break and End Break header state.
+- [ ] Verify the header displays the same active break state as the shared time service.
+
 - [x] Map the JobSync already-clocked-in conflict response to visible On Shift, Break, and Clock Out controls.
 - [ ] Verify the dashboard header and Team Locations state reflect the same active JobSync shift.
 

@@ -18,6 +18,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeShiftRecovery, setActiveShiftRecovery] = useState(false);
+  const [activeBreakRecovery, setActiveBreakRecovery] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -25,6 +26,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
       const nextState = await getHomeServiceConnectedTimeState(token);
       setState(nextState);
       if (nextState.isClockedIn) setActiveShiftRecovery(false);
+      if (nextState.activeBreak?.isActive) setActiveBreakRecovery(false);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
     } finally {
@@ -60,6 +62,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
         return { isClockedIn: clockedIn, clockInAt: clockedIn ? current?.clockInAt ?? new Date().toISOString() : null, activeBreak };
       });
       if (nextState === "clock-in" || nextState === "clock-out") setActiveShiftRecovery(false);
+      if (nextState === "break-start" || nextState === "break-end") setActiveBreakRecovery(false);
       void refresh();
     } catch (actionError) {
       const message = actionError instanceof Error ? actionError.message : "Unable to update your time status.";
@@ -69,6 +72,15 @@ export function CompanyClockStatus({ token }: { token: string }) {
           isClockedIn: true,
           clockInAt: current?.clockInAt ?? new Date().toISOString(),
           activeBreak: current?.activeBreak ?? null,
+        }));
+        setError(null);
+      } else if (nextState === "break-start" && /break\s+is\s+already\s+active|already\s+(?:on\s+)?break/i.test(message)) {
+        setActiveShiftRecovery(true);
+        setActiveBreakRecovery(true);
+        setState((current) => ({
+          isClockedIn: true,
+          clockInAt: current?.clockInAt ?? new Date().toISOString(),
+          activeBreak: { isActive: true, startedAt: current?.activeBreak?.startedAt ?? new Date().toISOString() },
         }));
         setError(null);
       } else {
@@ -82,7 +94,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
   if (loading) return <ActivityIndicator color={colors.primary} size="small" />;
 
   const isClockedIn = state?.isClockedIn === true || activeShiftRecovery;
-  const isOnBreak = state?.activeBreak?.isActive === true;
+  const isOnBreak = state?.activeBreak?.isActive === true || activeBreakRecovery;
   const buttonBase = { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 } as const;
 
   return (
