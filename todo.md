@@ -2,6 +2,9 @@
 
 ## JobSync Platform Integration
 
+- [x] Map the JobSync already-clocked-in conflict response to visible On Shift, Break, and Clock Out controls.
+- [ ] Verify the dashboard header and Team Locations state reflect the same active JobSync shift.
+
 - [x] Diagnose the Clock In spinner that completes without a visible success or error state.
 - [x] Add bounded request handling and explicit Clock In failure feedback for Company sessions.
 

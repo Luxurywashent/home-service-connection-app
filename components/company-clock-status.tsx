@@ -17,11 +17,14 @@ export function CompanyClockStatus({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeShiftRecovery, setActiveShiftRecovery] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      setState(await getHomeServiceConnectedTimeState(token));
+      const nextState = await getHomeServiceConnectedTimeState(token);
+      setState(nextState);
+      if (nextState.isClockedIn) setActiveShiftRecovery(false);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
     } finally {
@@ -56,9 +59,21 @@ export function CompanyClockStatus({ token }: { token: string }) {
             : current?.activeBreak ?? null;
         return { isClockedIn: clockedIn, clockInAt: clockedIn ? current?.clockInAt ?? new Date().toISOString() : null, activeBreak };
       });
+      if (nextState === "clock-in" || nextState === "clock-out") setActiveShiftRecovery(false);
       void refresh();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Unable to update your time status.");
+      const message = actionError instanceof Error ? actionError.message : "Unable to update your time status.";
+      if (nextState === "clock-in" && /already\s+(?:clocked\s+)?in|already\s+on\s+shift/i.test(message)) {
+        setActiveShiftRecovery(true);
+        setState((current) => ({
+          isClockedIn: true,
+          clockInAt: current?.clockInAt ?? new Date().toISOString(),
+          activeBreak: current?.activeBreak ?? null,
+        }));
+        setError(null);
+      } else {
+        setError(message);
+      }
     } finally {
       setWorking(false);
     }
@@ -66,7 +81,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
 
   if (loading) return <ActivityIndicator color={colors.primary} size="small" />;
 
-  const isClockedIn = state?.isClockedIn === true;
+  const isClockedIn = state?.isClockedIn === true || activeShiftRecovery;
   const isOnBreak = state?.activeBreak?.isActive === true;
   const buttonBase = { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 } as const;
 
