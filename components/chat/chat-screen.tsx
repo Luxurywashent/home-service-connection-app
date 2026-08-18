@@ -8,9 +8,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
 import PttScreen, { InlinePttButton, VoiceBubble } from "@/components/chat/ptt-screen";
 import CommunityScreen from "@/components/chat/community-screen";
+import { CompanyChatScreen } from "@/components/chat/company-chat-screen";
 import { useLocalSearchParams } from "expo-router";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -364,6 +366,14 @@ function NewDmModal({ visible, members, currentEmployeeId, onSelect, onClose }: 
 type View_ = "inbox" | "conversation";
 
 export default function ChatScreen() {
+  const { session } = useJobSyncAuth();
+  if (session?.portal === "company" && session.company) {
+    return <CompanyChatScreen token={session.token} companyId={session.company.id} userId={session.user.id} userName={session.user.name} role={session.user.role} />;
+  }
+  return <LegacyChatScreen />;
+}
+
+function LegacyChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { employee } = useEmployeeAuth();

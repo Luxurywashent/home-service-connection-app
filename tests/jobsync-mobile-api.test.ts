@@ -9,6 +9,7 @@ import {
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
   normalizeHomeServiceConnectedTimeState,
+  normalizeHomeServiceConnectedChatGroups,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -145,5 +146,18 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeHomeServiceConnectedTimeState({
       activeShift: { startedAt: "2026-08-16T13:00:00Z", status: "active" },
     }).isClockedIn).toBe(true);
+  });
+
+  it("normalizes active Company-managed chat groups and excludes archived groups", () => {
+    expect(normalizeHomeServiceConnectedChatGroups({
+      data: {
+        groups: [
+          { id: "grp-field", name: "Field Operations", description: "Technicians", emoji: "🛠️", isActive: true, memberIds: ["41", "42"] },
+          { id: "grp-old", name: "Archived", isActive: false },
+        ],
+      },
+    })).toEqual([
+      { id: "grp-field", name: "Field Operations", description: "Technicians", emoji: "🛠️", isActive: true, memberIds: ["41", "42"] },
+    ]);
   });
 });

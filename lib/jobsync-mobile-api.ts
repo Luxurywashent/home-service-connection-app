@@ -75,6 +75,7 @@ const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
 const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
 const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
+const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -412,6 +413,93 @@ export type HomeServiceConnectedTimeState = {
   clockInAt: string | null;
   activeBreak: { isActive: boolean; startedAt: string | null } | null;
 };
+
+export type HomeServiceConnectedChatGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  emoji: string;
+  isActive: boolean;
+  memberIds: string[];
+};
+
+export type HomeServiceConnectedChatMessage = {
+  id: string;
+  senderName: string;
+  senderId: string | null;
+  text: string;
+  createdAt: string;
+};
+
+function normalizeHomeServiceConnectedChatGroup(value: unknown): HomeServiceConnectedChatGroup | null {
+  const group = asRecord(value);
+  if (!group) return null;
+  const id = firstString(group.id, group.groupId, group.group_id, group.channelId, group.channel_id);
+  const name = firstString(group.name, group.title, group.label);
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    description: firstString(group.description, group.subtitle),
+    emoji: firstString(group.emoji, group.icon, group.iconEmoji) ?? "💬",
+    isActive: isActiveMember(group.isActive ?? group.active ?? group.status),
+    memberIds: stringList(group.memberIds ?? group.member_ids ?? group.members).map(String),
+  };
+}
+
+export function normalizeHomeServiceConnectedChatGroups(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const groups = Array.isArray(data.groups) ? data.groups : Array.isArray(root?.groups) ? root.groups : Array.isArray(data.items) ? data.items : [];
+  return groups.map(normalizeHomeServiceConnectedChatGroup).filter((group): group is HomeServiceConnectedChatGroup => Boolean(group?.isActive));
+}
+
+export async function getHomeServiceConnectedChatGroups(token: string) {
+  const payload = await requestJson(COMPANY_CHAT_GROUPS_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  return normalizeHomeServiceConnectedChatGroups(payload);
+}
+
+export async function createHomeServiceConnectedChatGroup(token: string, input: { name: string; description?: string; emoji?: string; memberIds?: string[] }) {
+  const name = input.name.trim();
+  if (!name) throw new Error("A group name is required.");
+  return requestJson(COMPANY_CHAT_GROUPS_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      name,
+      ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+      ...(input.emoji?.trim() ? { emoji: input.emoji.trim() } : {}),
+      ...(input.memberIds?.length ? { memberIds: input.memberIds } : {}),
+    }),
+  });
+}
+
+export async function getHomeServiceConnectedGroupMessages(token: string, groupId: string) {
+  const payload = await requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/messages`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const messages = Array.isArray(data.messages) ? data.messages : Array.isArray(root?.messages) ? root.messages : [];
+  return messages.map((value) => {
+    const message = asRecord(value) ?? {};
+    return {
+      id: firstString(message.id, message.messageId, message.message_id) ?? `${firstString(message.createdAt, message.created_at) ?? "message"}-${firstString(message.senderId, message.sender_id) ?? "sender"}`,
+      senderName: firstString(message.senderName, message.sender_name, message.fullName, message.authorName) ?? "Team member",
+      senderId: firstString(message.senderId, message.sender_id, message.employeeId),
+      text: firstString(message.text, message.message, message.body, message.messageText) ?? "",
+      createdAt: firstString(message.createdAt, message.created_at, message.sentAt) ?? new Date().toISOString(),
+    } satisfies HomeServiceConnectedChatMessage;
+  });
+}
+
+export async function sendHomeServiceConnectedGroupMessage(token: string, groupId: string, text: string) {
+  const message = text.trim();
+  if (!message) throw new Error("A message is required.");
+  return requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/messages`, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ message }),
+  });
+}
 
 function booleanState(value: unknown) {
   return value === true || value === 1 || value === "1" || value === "true" || value === "clocked_in" || value === "active";

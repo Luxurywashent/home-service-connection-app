@@ -2,6 +2,12 @@
 
 ## JobSync Platform Integration
 
+- [x] Replace hard-coded Team Chat groups with Company-managed groups synchronized through Home Service Connected.
+- [x] Verify and connect the published Home Service Connected Company chat-group API to Team Chat.
+- [x] Add Home Service Connected bearer-protected Company chat-group and group-message APIs before enabling mobile group management.
+- [x] Provide authorized Company group creation through the published Company API.
+- [ ] Verify live Company group creation, membership, messages, and Company isolation on device.
+
 - [x] Map the JobSync active-break conflict response to a green On Break and End Break header state.
 - [ ] Verify the header displays the same active break state as the shared time service.
 
