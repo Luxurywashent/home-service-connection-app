@@ -4,6 +4,7 @@ import {
   createJobSyncBearerHeaders,
   createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
+  createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
@@ -159,5 +160,19 @@ describe("JobSync mobile API contract", () => {
     })).toEqual([
       { id: "grp-field", name: "Field Operations", description: "Technicians", emoji: "🛠️", isActive: true, memberIds: ["41", "42"] },
     ]);
+  });
+
+  it("uses the published Company chat-group create fields with numeric member IDs", () => {
+    expect(createHomeServiceConnectedChatGroupPayload({
+      name: " Field Operations ",
+      description: " Field technicians ",
+      icon: "🛠️",
+      memberIds: [41, 42, 41, 0],
+    })).toEqual({
+      name: "Field Operations",
+      description: "Field technicians",
+      icon: "🛠️",
+      memberIds: [41, 42],
+    });
   });
 });

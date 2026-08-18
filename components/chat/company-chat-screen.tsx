@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
@@ -20,6 +20,8 @@ type Props = {
   userName: string;
   role: string;
 };
+
+const GROUP_ICON_OPTIONS = ["💬", "🛠️", "📍", "📣", "🚐", "⭐"];
 
 export function CompanyChatScreen({ token, companyId, userId, userName, role }: Props) {
   const colors = useColors();
@@ -104,7 +106,7 @@ function NewGroupModal({ visible, token, companyId, onClose, onCreated }: { visi
     try {
       setSaving(true); setError(null);
       const roster = await getJobSyncCompanyMembers(token, companyId);
-      await createHomeServiceConnectedChatGroup(token, { name, description, emoji, memberIds: roster.members.map((member) => String(member.id)) });
+      await createHomeServiceConnectedChatGroup(token, { name, description, icon: emoji, memberIds: roster.members.map((member) => member.id) });
       setName(""); setDescription(""); setEmoji("💬");
       await onCreated();
     } catch (createError) {
@@ -114,24 +116,38 @@ function NewGroupModal({ visible, token, companyId, onClose, onCreated }: { visi
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScreenContainer edges={["top", "bottom", "left", "right"]} className="p-5">
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose}><Text style={[styles.modalCancel, { color: colors.primary }]}>Cancel</Text></TouchableOpacity>
-          <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Group</Text>
-          <View style={{ width: 50 }} />
-        </View>
-        <Text style={[styles.fieldLabel, { color: colors.muted }]}>GROUP NAME</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="e.g. Field Operations" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface }]} />
-        <Text style={[styles.fieldLabel, { color: colors.muted }]}>DESCRIPTION</Text>
-        <TextInput value={description} onChangeText={setDescription} placeholder="Who should use this group?" placeholderTextColor={colors.muted} multiline style={[styles.input, styles.descriptionInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface }]} />
-        <Text style={[styles.fieldLabel, { color: colors.muted }]}>ICON</Text>
-        <TextInput value={emoji} onChangeText={setEmoji} maxLength={4} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface }]} />
-        <Text style={[styles.helper, { color: colors.muted }]}>New groups include all active Company team members. Membership can be adjusted in Company group settings.</Text>
-        {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
-        <TouchableOpacity disabled={saving || !name.trim()} onPress={() => void create()} style={[styles.createButton, { backgroundColor: colors.primary, opacity: saving || !name.trim() ? 0.6 : 1 }]}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.createButtonText}>Create Group</Text>}
-        </TouchableOpacity>
-      </ScreenContainer>
+      <KeyboardAvoidingView style={styles.modalKeyboardAvoider} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScreenContainer edges={["top", "bottom", "left", "right"]}>
+          <View style={styles.modalShell}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={onClose}><Text style={[styles.modalCancel, { color: colors.primary }]}>Cancel</Text></TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Group</Text>
+              <View style={{ width: 50 }} />
+            </View>
+            <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={[styles.fieldLabel, { color: colors.muted }]}>GROUP NAME</Text>
+              <TextInput value={name} onChangeText={setName} placeholder="e.g. Field Operations" placeholderTextColor={colors.muted} returnKeyType="next" onSubmitEditing={() => Keyboard.dismiss()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface }]} />
+              <Text style={[styles.fieldLabel, { color: colors.muted }]}>DESCRIPTION</Text>
+              <TextInput value={description} onChangeText={setDescription} placeholder="Who should use this group?" placeholderTextColor={colors.muted} multiline textAlignVertical="top" style={[styles.input, styles.descriptionInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface }]} />
+              <Text style={[styles.fieldLabel, { color: colors.muted }]}>ICON</Text>
+              <View style={styles.iconSelector}>
+                {GROUP_ICON_OPTIONS.map((option) => (
+                  <TouchableOpacity key={option} accessibilityRole="button" accessibilityLabel={`Use ${option} as the group icon`} onPress={() => { setEmoji(option); Keyboard.dismiss(); }} style={[styles.iconOption, { borderColor: emoji === option ? colors.primary : colors.border, backgroundColor: emoji === option ? colors.primary : colors.surface }]}>
+                    <Text style={styles.iconOptionText}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={[styles.helper, { color: colors.muted }]}>New groups include all active Company team members. Membership can be adjusted in Company group settings.</Text>
+              {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
+            </ScrollView>
+            <View style={[styles.modalFooter, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+              <TouchableOpacity disabled={saving || !name.trim()} onPress={() => void create()} style={[styles.createButton, { backgroundColor: colors.primary, opacity: saving || !name.trim() ? 0.6 : 1 }]}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.createButtonText}>Create Group</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScreenContainer>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -172,6 +188,6 @@ const styles = StyleSheet.create({
   sectionIntro: { fontSize: 14, fontWeight: "700", paddingHorizontal: 20, paddingTop: 16, textTransform: "uppercase" }, loader: { marginTop: 36 }, list: { padding: 20, gap: 12 },
   groupRow: { alignItems: "center", borderRadius: 18, borderWidth: 1, flexDirection: "row", minHeight: 92, padding: 14 }, emojiCircle: { alignItems: "center", borderRadius: 28, height: 56, justifyContent: "center", marginRight: 14, width: 56 }, emoji: { fontSize: 27 }, groupBody: { flex: 1 }, groupName: { fontSize: 19, fontWeight: "800" }, groupDescription: { fontSize: 14, marginTop: 3 }, chevron: { fontSize: 30, fontWeight: "300" },
   empty: { fontSize: 15, lineHeight: 22, paddingHorizontal: 24, paddingTop: 40, textAlign: "center" }, error: { fontSize: 13, lineHeight: 18, padding: 14, textAlign: "center" },
-  modalHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 28 }, modalTitle: { fontSize: 21, fontWeight: "800" }, modalCancel: { fontSize: 15, fontWeight: "700" }, fieldLabel: { fontSize: 12, fontWeight: "800", marginBottom: 8, marginTop: 18 }, input: { borderRadius: 12, borderWidth: 1, fontSize: 16, minHeight: 52, paddingHorizontal: 14 }, descriptionInput: { minHeight: 90, paddingTop: 12, textAlignVertical: "top" }, helper: { fontSize: 13, lineHeight: 19, marginTop: 16 }, createButton: { alignItems: "center", borderRadius: 12, marginTop: 28, minHeight: 52, justifyContent: "center" }, createButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  modalKeyboardAvoider: { flex: 1 }, modalShell: { flex: 1 }, modalHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 }, modalTitle: { fontSize: 21, fontWeight: "800" }, modalCancel: { fontSize: 15, fontWeight: "700" }, modalForm: { paddingHorizontal: 20, paddingBottom: 20 }, fieldLabel: { fontSize: 12, fontWeight: "800", marginBottom: 8, marginTop: 18 }, input: { borderRadius: 12, borderWidth: 1, fontSize: 16, minHeight: 52, paddingHorizontal: 14 }, descriptionInput: { minHeight: 90, paddingTop: 12 }, iconSelector: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, iconOption: { alignItems: "center", borderRadius: 12, borderWidth: 1, height: 50, justifyContent: "center", width: 50 }, iconOptionText: { fontSize: 24 }, helper: { fontSize: 13, lineHeight: 19, marginTop: 16 }, modalFooter: { borderTopWidth: 1, paddingHorizontal: 20, paddingVertical: 14 }, createButton: { alignItems: "center", borderRadius: 12, minHeight: 52, justifyContent: "center" }, createButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
   messages: { gap: 10, padding: 16 }, messageBubble: { borderRadius: 16, maxWidth: "82%", padding: 12 }, messageSender: { fontSize: 11, fontWeight: "800", marginBottom: 4 }, messageText: { fontSize: 15, lineHeight: 20 }, composer: { borderTopWidth: 1, flexDirection: "row", gap: 8, padding: 12 }, composerInput: { borderRadius: 20, flex: 1, minHeight: 42, paddingHorizontal: 14 }, sendButton: { alignItems: "center", borderRadius: 20, justifyContent: "center", paddingHorizontal: 16 }, sendText: { color: "#fff", fontWeight: "800" },
 });

@@ -134,7 +134,13 @@ function isActiveMember(value: unknown) {
 function errorMessage(payload: unknown, fallback: string) {
   const root = asRecord(payload);
   const error = asRecord(root?.error);
-  return firstString(error?.message, root?.message) ?? fallback;
+  return firstString(
+    typeof root?.error === "string" ? root.error : null,
+    error?.message,
+    error?.detail,
+    root?.message,
+    root?.detail,
+  ) ?? fallback;
 }
 
 function getJobSyncBaseUrl() {
@@ -431,6 +437,13 @@ export type HomeServiceConnectedChatMessage = {
   createdAt: string;
 };
 
+export type HomeServiceConnectedChatGroupCreateInput = {
+  name: string;
+  description?: string;
+  icon?: string;
+  memberIds?: number[];
+};
+
 function normalizeHomeServiceConnectedChatGroup(value: unknown): HomeServiceConnectedChatGroup | null {
   const group = asRecord(value);
   if (!group) return null;
@@ -459,18 +472,25 @@ export async function getHomeServiceConnectedChatGroups(token: string) {
   return normalizeHomeServiceConnectedChatGroups(payload);
 }
 
-export async function createHomeServiceConnectedChatGroup(token: string, input: { name: string; description?: string; emoji?: string; memberIds?: string[] }) {
+export function createHomeServiceConnectedChatGroupPayload(input: HomeServiceConnectedChatGroupCreateInput) {
   const name = input.name.trim();
   if (!name) throw new Error("A group name is required.");
+  const memberIds = Array.from(new Set(
+    (input.memberIds ?? []).filter((memberId) => Number.isInteger(memberId) && memberId > 0),
+  ));
+  return {
+    name,
+    ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+    ...(input.icon?.trim() ? { icon: input.icon.trim() } : {}),
+    ...(memberIds.length ? { memberIds } : {}),
+  };
+}
+
+export async function createHomeServiceConnectedChatGroup(token: string, input: HomeServiceConnectedChatGroupCreateInput) {
   return requestJson(COMPANY_CHAT_GROUPS_PATH, {
     method: "POST",
     headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({
-      name,
-      ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-      ...(input.emoji?.trim() ? { emoji: input.emoji.trim() } : {}),
-      ...(input.memberIds?.length ? { memberIds: input.memberIds } : {}),
-    }),
+    body: JSON.stringify(createHomeServiceConnectedChatGroupPayload(input)),
   });
 }
 

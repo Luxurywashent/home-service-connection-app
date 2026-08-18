@@ -1,0 +1,24 @@
+/home/ubuntu/jobsync_reference
+/home/ubuntu/screenshots/jobwash-veysiubh_man_2026-08-13_19-47-33_4845.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_marked_2026-08-13_19-47-34_2804.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_2026-08-13_19-47-48_4202.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_marked_2026-08-13_19-47-49_9760.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_2026-08-13_19-48-21_8914.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_marked_2026-08-13_19-48-22_3302.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_2026-08-13_19-49-17_2252.webp
+/home/ubuntu/screenshots/jobwash-veysiubh_man_marked_2026-08-13_19-49-17_8885.webp
+/home/ubuntu/page_texts/jobwash-veysiubh.manus.space_login.md
+/home/ubuntu/page_texts/jobwash-veysiubh.manus.space_platform_login.md
+/home/ubuntu/page_texts/jobwash-veysiubh.manus.space__code_4mEJwZW9RBBHDvV6vxaFEQ.md
+/home/ubuntu/page_texts/jobwash-veysiubh.manus.space_platform_setup.md
+     2220  1980-00-00 00:00   client/src/components/ui/button-group.tsx
+     5066  1980-00-00 00:00   client/src/components/ui/input-group.tsx
+     1459  1980-00-00 00:00   client/src/components/ui/radio-group.tsx
+     1936  1980-00-00 00:00   client/src/components/ui/toggle-group.tsx
+    14773  1980-00-00 00:00   client/src/pages/Chat.tsx
+     6894  1980-00-00 00:00   client/src/pages/TeamArchive.tsx
+     9587  1980-00-00 00:00   client/src/pages/TeamEfficiency.tsx
+    14804  1980-00-00 00:00   client/src/pages/TeamMembers.tsx
+     7881  1980-00-00 00:00   client/src/platform-support-chat.css
+     8061  1980-00-00 00:00   client/src/team-chat.css
+     5892  1980-00-00 00:00   client/src/team-efficiency-dashboard.css
