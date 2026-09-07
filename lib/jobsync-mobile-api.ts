@@ -76,6 +76,7 @@ const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
 const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
+const COMPANY_PRICE_BOOK_PATH = "/api/mobile/v1/price-book";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -420,6 +421,18 @@ export type HomeServiceConnectedTimeState = {
   activeBreak: { isActive: boolean; startedAt: string | null } | null;
 };
 
+export type HomeServiceConnectedPriceBookService = {
+  serviceId: string;
+  name: string;
+  emoji: string;
+  description: string;
+  features: string[];
+  vehiclePrices: Record<string, number>;
+  imageUrl: string | null;
+  sortOrder: number;
+  serviceTypeId: number | null;
+};
+
 export type HomeServiceConnectedChatGroup = {
   id: string;
   name: string;
@@ -443,6 +456,87 @@ export type HomeServiceConnectedChatGroupCreateInput = {
   icon?: string;
   memberIds?: number[];
 };
+
+function parseJsonRecord(value: unknown) {
+  if (typeof value === "string") {
+    try { return asRecord(JSON.parse(value)); } catch { return null; }
+  }
+  return asRecord(value);
+}
+
+function priceMap(value: unknown) {
+  const record = parseJsonRecord(value);
+  if (!record) return {};
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([key, rawValue]) => {
+      const amount = nullableNumber(rawValue);
+      return amount !== null && amount >= 0 ? [[key, amount]] : [];
+    }),
+  );
+}
+
+function priceBookFeatures(value: unknown) {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return stringList(parsed);
+    } catch { /* The platform may return a simple comma-separated feature string. */ }
+  }
+  return stringList(value);
+}
+
+function isActivePriceBookService(value: unknown) {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return !["false", "0", "no", "inactive", "archived", "disabled"].includes(normalized);
+  }
+  return isActiveMember(value);
+}
+
+function normalizeHomeServiceConnectedPriceBookService(value: unknown): HomeServiceConnectedPriceBookService | null {
+  const service = asRecord(value);
+  if (!service || !isActivePriceBookService(service.isActive ?? service.is_active ?? service.is_active_pb ?? service.status)) return null;
+  const serviceId = firstString(service.serviceId, service.service_id, service.id) ?? nullableNumber(service.id)?.toString();
+  const name = firstString(service.name, service.serviceName, service.service_name, service.title);
+  if (!serviceId || !name) return null;
+  return {
+    serviceId,
+    name,
+    emoji: firstString(service.emoji, service.icon) ?? "🛠️",
+    description: firstString(service.description, service.details) ?? "",
+    features: priceBookFeatures(service.features),
+    vehiclePrices: priceMap(service.vehiclePrices ?? service.vehicle_prices ?? service.prices),
+    imageUrl: firstString(service.imageUrl, service.image_url, service.image_url_pb),
+    sortOrder: nullableNumber(service.sortOrder, service.sort_order, service.sort_order_pb) ?? 0,
+    serviceTypeId: nullableNumber(service.serviceTypeId, service.service_type_id),
+  };
+}
+
+export function normalizeHomeServiceConnectedPriceBook(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const services = Array.isArray(data.services)
+    ? data.services
+    : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(root?.services)
+        ? root.services
+        : Array.isArray(root?.items)
+          ? root.items
+          : [];
+  return services
+    .map(normalizeHomeServiceConnectedPriceBookService)
+    .filter((service): service is HomeServiceConnectedPriceBookService => Boolean(service))
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
+}
+
+export async function getHomeServiceConnectedPriceBook(token: string) {
+  const payload = await requestJson(COMPANY_PRICE_BOOK_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeHomeServiceConnectedPriceBook(payload);
+}
 
 function normalizeHomeServiceConnectedChatGroup(value: unknown): HomeServiceConnectedChatGroup | null {
   const group = asRecord(value);

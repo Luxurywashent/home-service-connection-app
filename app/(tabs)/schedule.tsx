@@ -37,6 +37,7 @@ import Svg, { Rect, Text as SvgText, G, Path } from "react-native-svg";
 import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
+import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
@@ -621,44 +622,21 @@ type WizardStep = "vehicle" | "package" | "addons";
 interface ServiceWizardProps {
   onSelect: (serviceTitle: string, serviceDescription: string, price: number, vehicleType: VehicleType, packageId: string, addonIds: string[]) => void;
   onCancel: () => void;
+  packages: PackageDef[];
+  isCompanySession: boolean;
+  isLoadingPriceBook: boolean;
+  priceBookError: string | null;
 }
 
-function ServiceWizard({ onSelect, onCancel }: ServiceWizardProps) {
+function ServiceWizard({ onSelect, onCancel, packages, isCompanySession, isLoadingPriceBook, priceBookError }: ServiceWizardProps) {
   const colors = useColors();
   const [step, setStep] = useState<WizardStep>("vehicle");
   const [vehicle, setVehicle] = useState<VehicleType | null>(null);
   const [pkg, setPkg] = useState<PackageDef | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<Set<string>>(new Set());
   const [rvSealantFeet, setRvSealantFeet] = useState<string>("");
-  // Load dynamic price book services from DB; fall back to hardcoded PACKAGES if empty
-  const pbQ = trpc.pricebook.list.useQuery(undefined, { staleTime: 60_000 });
-  const dynamicPackages: PackageDef[] = pbQ.data && pbQ.data.length > 0
-    ? pbQ.data.map((s) => {
-        const vp = s.vehiclePrices as Record<string, number>;
-        const isRv = s.serviceId.startsWith("pb_rv") ||
-          ((vp.rv_20_29 ?? 0) > 0 || (vp.rv_30_39 ?? 0) > 0 || (vp.rv_40_plus ?? 0) > 0);
-        return {
-          id: s.serviceId,
-          title: s.name,
-          emoji: s.emoji,
-          tagline: s.description || "",
-          features: s.features,
-          isRv,
-          basePrice: {
-            sedan: vp.sedan ?? 0,
-            suv: vp.suv ?? 0,
-            xl_suv_van: vp.xl_suv_van ?? 0,
-            truck: vp.truck ?? 0,
-            rv_20_29: vp.rv_20_29 ?? 0,
-            rv_30_39: vp.rv_30_39 ?? 0,
-            rv_40_plus: vp.rv_40_plus ?? 0,
-          } as Partial<Record<VehicleType, number>>,
-        };
-      })
-    : PACKAGES;
-
   // Filter packages to match the selected vehicle group
-  const filteredPackages = dynamicPackages.filter((p) =>
+  const filteredPackages = packages.filter((p) =>
     isRvVehicle(vehicle) ? p.isRv : !p.isRv
   );
 
@@ -765,20 +743,20 @@ function ServiceWizard({ onSelect, onCancel }: ServiceWizardProps) {
     );
   }
 
-  // Step 3: Add-ons
+  // Step 3: Confirm the selected service. Legacy sessions can still add local add-ons.
   const isRvJob = vehicle ? isRvVehicle(vehicle) : false;
   return (
     <View>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
         <TouchableOpacity onPress={() => setStep("package")}><Text style={{ color: colors.primary, fontSize: 15 }}>‹ Back</Text></TouchableOpacity>
-        <Text style={[wz.title, { color: colors.foreground, flex: 1 }]}>Choose Your Add-Ons</Text>
+        <Text style={[wz.title, { color: colors.foreground, flex: 1 }]}>{isCompanySession ? "Review Service" : "Choose Your Add-Ons"}</Text>
       </View>
       <View style={[wz.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: colors.foreground, fontWeight: "600" }}>{pkg?.title}</Text>
         <Text style={{ color: colors.primary, fontWeight: "700" }}>${packagePrice.toFixed(2)}</Text>
       </View>
       {/* RV Paint Sealant footage input — only shown for RV jobs */}
-      {isRvJob && (
+      {isRvJob && !isCompanySession && (
         <View style={{ borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: rvSealantFt > 0 ? 2 : 1, borderColor: rvSealantFt > 0 ? colors.primary : colors.border, backgroundColor: rvSealantFt > 0 ? colors.primary + "12" : colors.surface }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
             <Text style={{ fontSize: 22, marginRight: 10 }}>🎨</Text>
@@ -808,7 +786,7 @@ function ServiceWizard({ onSelect, onCancel }: ServiceWizardProps) {
         </View>
       )}
       {/* Standard add-ons — hidden for RV jobs */}
-      {!isRvJob && (
+      {!isRvJob && !isCompanySession && (
         <View style={wz.addonGrid}>
           {ADDONS.map((a) => {
             const sel = selectedAddons.has(a.id);
@@ -838,7 +816,7 @@ function ServiceWizard({ onSelect, onCancel }: ServiceWizardProps) {
           activeOpacity={0.85}
         >
           <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-            {(selectedAddons.size > 0 || rvSealantFt > 0) ? `Add ${selectedAddons.size + (rvSealantFt > 0 ? 1 : 0)} Add-on${selectedAddons.size + (rvSealantFt > 0 ? 1 : 0) > 1 ? "s" : ""}` : "No Add-ons"} →
+            {isCompanySession ? "Use Service" : (selectedAddons.size > 0 || rvSealantFt > 0) ? `Add ${selectedAddons.size + (rvSealantFt > 0 ? 1 : 0)} Add-on${selectedAddons.size + (rvSealantFt > 0 ? 1 : 0) > 1 ? "s" : ""}` : "No Add-ons"} →
           </Text>
         </TouchableOpacity>
       </View>
@@ -2275,11 +2253,13 @@ export default function ScheduleScreen() {
   const { employee, loading: authLoading } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const companyPriceBook = useCompanyPriceBook();
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
   const highlightJobHandledRef = useRef<string | null>(null);
   const utils = trpc.useUtils();
   // Price book loaded early so syncServerJobs closure can reference it
-  const { data: _pbDataEarly } = trpc.pricebook.list.useQuery(undefined, { staleTime: 60_000 });
+  const { data: localPriceBookEarly } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const _pbDataEarly = isJobSyncCompany ? companyPriceBook.services : localPriceBookEarly;
   const _schedPackages: PackageDef[] = _pbDataEarly && _pbDataEarly.length > 0
     ? _pbDataEarly.map((s) => {
         const vp = s.vehiclePrices as Record<string, number>;
@@ -2303,7 +2283,7 @@ export default function ScheduleScreen() {
           } as Partial<Record<VehicleType, number>>,
         };
       })
-    : PACKAGES;
+    : isJobSyncCompany ? [] : PACKAGES;
   const performanceUpsertMutation = trpc.performance.upsert.useMutation();
   // Server-side job sync mutations
   const jobUpsertMutation = trpc.jobs.upsert.useMutation();
@@ -3942,7 +3922,8 @@ export default function ScheduleScreen() {
   const isAdminRole = employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office";
   const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole && !isJobSyncCompany, staleTime: 300000 });
   // Price book for New Job form
-  const { data: pbData } = trpc.pricebook.list.useQuery(undefined, { staleTime: 60_000 });
+  const { data: localPbData } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const pbData = isJobSyncCompany ? companyPriceBook.services : localPbData;
   const allJobPackages: PackageDef[] = pbData && pbData.length > 0
     ? pbData.map((s) => {
         const vp = s.vehiclePrices as Record<string, number>;
@@ -3966,7 +3947,7 @@ export default function ScheduleScreen() {
           } as Partial<Record<VehicleType, number>>,
         };
       })
-    : PACKAGES;
+    : isJobSyncCompany ? [] : PACKAGES;
   const myName = employee?.fullName?.toLowerCase() ?? "";
   const myId = employee?.employeeId ?? "";
   const visibleJobs = jobs.filter((j) => {
@@ -5990,6 +5971,17 @@ export default function ScheduleScreen() {
                   {vehicleType && (
                     <>
                       <Text style={[s.sectionLabel, { color: colors.muted }]}>PACKAGE</Text>
+                      {allJobPackages.filter((p) => isRvVehicle(vehicleType) ? p.isRv : !p.isRv).length === 0 && (
+                        <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>
+                          {isJobSyncCompany && companyPriceBook.isLoading
+                            ? "Loading your Company Price Book…"
+                            : isJobSyncCompany && companyPriceBook.error
+                              ? companyPriceBook.error
+                              : isJobSyncCompany
+                                ? "No active service is available for this vehicle type. Add or activate a service in the web Price Book."
+                                : "No packages are available for this vehicle type."}
+                        </Text>
+                      )}
                       {allJobPackages.filter((p) => isRvVehicle(vehicleType) ? p.isRv : !p.isRv).map((p) => {
                         const pkgPrice = (p.basePrice[vehicleType] ?? 0);
                         const sel = packageId === p.id;
@@ -6032,7 +6024,7 @@ export default function ScheduleScreen() {
                     </>
                   )}
 
-                  {vehicleType && packageId && (
+                  {!isJobSyncCompany && vehicleType && packageId && (
                     <>
                       <Text style={[s.sectionLabel, { color: colors.muted, marginTop: 4 }]}>ADD-ONS (OPTIONAL)</Text>
                       {ADDONS.map((a) => {

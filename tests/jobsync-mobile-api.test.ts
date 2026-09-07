@@ -11,6 +11,7 @@ import {
   normalizeJobSyncMobileSession,
   normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedChatGroups,
+  normalizeHomeServiceConnectedPriceBook,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -174,5 +175,18 @@ describe("JobSync mobile API contract", () => {
       icon: "🛠️",
       memberIds: [41, 42],
     });
+  });
+
+  it("normalizes only active Company Price Book services and preserves web service IDs", () => {
+    expect(normalizeHomeServiceConnectedPriceBook({
+      services: [
+        { service_id: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: "[\"Wash\",\"Vacuum\"]", vehicle_prices: "{\"sedan\":180,\"suv\":220}", image_url_pb: "https://cdn.example.com/full.png", sort_order_pb: 2, is_active_pb: "yes" },
+        { serviceId: "svc-inactive", name: "Inactive service", isActive: false },
+        { serviceId: "svc-basic", name: "Basic Service", features: ["Exterior"], vehiclePrices: { sedan: 120 }, sortOrder: 1, isActive: true },
+      ],
+    })).toEqual([
+      { serviceId: "svc-basic", name: "Basic Service", emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
+      { serviceId: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
+    ]);
   });
 });

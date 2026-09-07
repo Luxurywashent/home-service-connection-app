@@ -22,11 +22,13 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/use-colors";
+import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -282,9 +284,13 @@ interface AddJobModalProps {
 export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
   const colors = useColors();
   const { employee: currentEmployee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const companyPriceBook = useCompanyPriceBook();
 
-  // ── Live price book ──
-  const { data: pbServices = [] } = trpc.pricebook.list.useQuery(undefined, { staleTime: 60_000 });
+  // Company sessions use only their active Home Service Connected Price Book.
+  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const pbServices = isJobSyncCompany ? companyPriceBook.services : localPbServices;
   const allJobPackages: PackageDef[] = pbServices.length > 0
     ? pbServices.map((s: any) => {
         const vp = (s.vehiclePrices ?? {}) as Record<string, number>;
@@ -308,7 +314,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
           } as Partial<Record<VehicleType, number>>,
         };
       })
-    : PACKAGES_FALLBACK;
+    : isJobSyncCompany ? [] : PACKAGES_FALLBACK;
 
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const standardPackages = allJobPackages.filter((p) => !p.isRv);
@@ -753,7 +759,15 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                 <>
                   <Text style={[s.sectionLabel, { color: colors.muted }]}>Package</Text>
                   {packagesToShow.length === 0 && (
-                    <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 12 }}>No packages available for this vehicle type.</Text>
+                    <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>
+                      {isJobSyncCompany && companyPriceBook.isLoading
+                        ? "Loading your Company Price Book…"
+                        : isJobSyncCompany && companyPriceBook.error
+                          ? companyPriceBook.error
+                          : isJobSyncCompany
+                            ? "No active service is available for this vehicle type. Add or activate a service in the web Price Book."
+                            : "No packages available for this vehicle type."}
+                    </Text>
                   )}
                   {packagesToShow.map((p) => {
                     const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[vehicleType] ?? 0;
@@ -801,8 +815,8 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                 </>
               )}
 
-              {/* ── Add-ons ── */}
-              {vehicleType && packageId && (
+              {/* Static add-ons are retained only for legacy sessions. */}
+              {!isJobSyncCompany && vehicleType && packageId && (
                 <>
                   <TouchableOpacity
                     onPress={() => setAddonsExpanded((e) => !e)}

@@ -35,6 +35,7 @@ import * as ImagePicker from "expo-image-picker";
 import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
+import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
@@ -1275,6 +1276,7 @@ export default function AdminScheduleScreen() {
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const companyPriceBook = useCompanyPriceBook();
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
     prefillFirst?: string;
@@ -1307,7 +1309,8 @@ export default function AdminScheduleScreen() {
     },
   });
   const performanceUpsertMutation = trpc.performance.upsert.useMutation();
-  const { data: pbServices = [] } = trpc.pricebook.list.useQuery(undefined, { staleTime: 300000 });
+  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 300000 });
+  const pbServices = isJobSyncCompany ? companyPriceBook.services : localPbServices;
   // ── Schedule Blockers ──
   const blockerCreateMutation = trpc.scheduleBlockers.create.useMutation();
   const blockerDeleteMutation = trpc.scheduleBlockers.delete.useMutation();
@@ -1356,7 +1359,7 @@ export default function AdminScheduleScreen() {
         if (a.isRv !== b.isRv) return a.isRv ? 1 : -1;
         return pkgSortKey(a.id) - pkgSortKey(b.id);
       })
-    : PACKAGES;
+    : isJobSyncCompany ? [] : PACKAGES;
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const [showReassignPicker, setShowReassignPicker] = useState(false);
   const [showMoveCityPicker, setShowMoveCityPicker] = useState(false);
@@ -4948,6 +4951,17 @@ export default function AdminScheduleScreen() {
                   return (
                     <>
                       <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Package</Text>
+                      {packagesToShow.length === 0 && (
+                        <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>
+                          {isJobSyncCompany && companyPriceBook.isLoading
+                            ? "Loading your Company Price Book…"
+                            : isJobSyncCompany && companyPriceBook.error
+                              ? companyPriceBook.error
+                              : isJobSyncCompany
+                                ? "No active service is available for this vehicle type. Add or activate a service in the web Price Book."
+                                : "No packages are available for this vehicle type."}
+                        </Text>
+                      )}
                       {packagesToShow.map((p) => {
                         const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[addVehicleType] ?? 0;
                         const sel = addPackageId === p.id;
@@ -5026,7 +5040,8 @@ export default function AdminScheduleScreen() {
                           </TouchableOpacity>
                         );
                       })}
-                      {/* ── Custom Package card ── */}
+                      {/* Local custom services are retained only for legacy sessions. */}
+                      {!isJobSyncCompany && (
                       <TouchableOpacity
                         onPress={() => {
                           setAddPackageId(undefined);
@@ -5092,12 +5107,13 @@ export default function AdminScheduleScreen() {
                           </View>
                         )}
                       </TouchableOpacity>
+                      )}
                     </>
                   );
                 })()}
 
                 {/* Add-ons */}
-                {addVehicleType && (addPackageId || showCustomPackageForm) && (() => {
+                {!isJobSyncCompany && addVehicleType && (addPackageId || showCustomPackageForm) && (() => {
                   const isRvJob = isRvVehicle(addVehicleType);
                   const rvSealantFeet = parseInt(addRvSealantFeet) || 0;
                   const rvSealantPrice = rvSealantFeet * 15;
