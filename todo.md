@@ -2,6 +2,8 @@
 
 ## JobSync Platform Integration
 
+- [x] Upgrade the project from Expo SDK 54 to SDK 57 so it opens in the current iOS Expo Go application.
+
 - [x] Replace mobile job-service catalogs with the authenticated Company Price Book from Home Service Connected and preserve price-book IDs on created jobs.
 - [ ] Connect mobile job creation and updates to the Company Jobs API so the web platform revalidates the selected Price Book service and authoritative price before saving.
 - [x] Remove App Activity and Abandoned Cart from the Reporting section and their direct navigation paths.

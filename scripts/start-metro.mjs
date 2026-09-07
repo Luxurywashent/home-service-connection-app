@@ -4,6 +4,8 @@ import path from "node:path";
 
 const port = Number(process.env.EXPO_PORT ?? 8081);
 const expoCli = path.join(process.cwd(), "node_modules", "expo", "bin", "cli");
+const metroEnv = { ...process.env, EXPO_NO_METRO_WORKSPACE_ROOT: "1" };
+delete metroEnv.EXPO_USE_METRO_WORKSPACE_ROOT;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,7 +53,7 @@ async function prewarmIosBundle() {
 
 const metro = spawn(process.execPath, [expoCli, "start", "--port", String(port)], {
   cwd: process.cwd(),
-  env: { ...process.env, EXPO_USE_METRO_WORKSPACE_ROOT: "1" },
+  env: metroEnv,
   stdio: "inherit",
 });
 
