@@ -2,6 +2,8 @@
 
 ## JobSync Platform Integration
 
+- [x] Remove App Activity and Abandoned Cart from the Reporting section and their direct navigation paths.
+
 - [x] Replace hard-coded Team Chat groups with Company-managed groups synchronized through Home Service Connected.
 - [x] Verify and connect the published Home Service Connected Company chat-group API to Team Chat.
 - [x] Add Home Service Connected bearer-protected Company chat-group and group-message APIs before enabling mobile group management.
