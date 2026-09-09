@@ -28,7 +28,10 @@
   },
   "submit": {
     "production": {
-      "ios": {}
+      "ios": {
+        "appleId": "adrian@luxurywashonwheels.com",
+        "appleTeamId": "2G8C7Y3QC6"
+      }
     },
     "testflight": {
       "extends": "production"

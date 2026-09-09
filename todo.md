@@ -2,6 +2,8 @@
 
 ## JobSync Platform Integration
 
+- [x] Configure Apple Developer Team ID 2G8C7Y3QC6 for non-interactive production iOS builds and submissions.
+- [x] Configure Apple ID adrian@luxurywashonwheels.com for non-interactive production iOS submissions.
 - [x] Diagnose and repair the iOS build-stage failure for production build 10001 after the build-number increment succeeded.
 - [x] Add a production EAS submit profile and configure iOS build-number incrementing so the next TestFlight archive is higher than Apple’s existing build 10000.
 - [x] Lower and enlarge the login logo, remove the Home Service Connected native-access subtitle, and rename the form heading to Sign In.
