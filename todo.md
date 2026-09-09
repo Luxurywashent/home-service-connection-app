@@ -2,6 +2,7 @@
 
 ## JobSync Platform Integration
 
+- [x] Lower and enlarge the login logo, remove the Home Service Connected native-access subtitle, and rename the form heading to Sign In.
 - [x] Limit the login screen to Company sign-in and remove Platform Admin selection plus internal access/session explanatory notices.
 - [x] Upgrade the project from Expo SDK 54 to SDK 57 so it opens in the current iOS Expo Go application.
 

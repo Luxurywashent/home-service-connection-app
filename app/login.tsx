@@ -57,11 +57,10 @@ export default function LoginScreen() {
             <View style={styles.logoSection}>
               <View style={styles.logoBox}><Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" /></View>
               <Text style={styles.appName}>Home Service Connection</Text>
-              <Text style={styles.appSubtitle}>Native mobile access to Home Service Connected</Text>
             </View>
 
             <View style={styles.formCard}>
-              <Text style={styles.formTitle}>Company Sign In</Text>
+              <Text style={styles.formTitle}>Sign In</Text>
               <Text style={styles.formDescription}>Sign in to your Home Service Connection Company workspace.</Text>
               <View><Text style={styles.fieldLabel}>Email</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="you@company.com" placeholderTextColor="#71829B" style={styles.input} /></View>
               <View><Text style={styles.fieldLabel}>Password</Text><View><TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={handleLogin} placeholder="Enter your password" placeholderTextColor="#71829B" returnKeyType="done" style={[styles.input, styles.passwordInput]} /><Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} onPress={() => setShowPassword((current) => !current)} style={styles.eyeButton}><MaterialIcons color="#94A3B8" name={showPassword ? "visibility-off" : "visibility"} size={20} /></Pressable></View></View>
@@ -76,9 +75,9 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { flexGrow: 1, justifyContent: "center", paddingBottom: 28, paddingTop: 48 },
+  scrollContent: { flexGrow: 1, justifyContent: "flex-start", paddingBottom: 40, paddingTop: 112 },
   container: { alignSelf: "center", flex: 1, maxWidth: 480, paddingHorizontal: 24, width: "100%" },
-  logoSection: { alignItems: "center", marginBottom: 24 }, logoBox: { alignItems: "center", backgroundColor: "#102038", borderColor: "#243754", borderRadius: 24, borderWidth: 1, height: 84, justifyContent: "center", marginBottom: 15, width: 84 }, logoImage: { height: 68, width: 68 }, appName: { color: "#F6F8FC", fontSize: 25, fontWeight: "800", textAlign: "center" }, appSubtitle: { color: "#94A3B8", fontSize: 13, marginTop: 6, textAlign: "center" },
+  logoSection: { alignItems: "center", marginBottom: 30 }, logoBox: { alignItems: "center", backgroundColor: "#102038", borderColor: "#243754", borderRadius: 42, borderWidth: 1, height: 152, justifyContent: "center", marginBottom: 18, width: 152 }, logoImage: { height: 136, width: 136 }, appName: { color: "#F6F8FC", fontSize: 27, fontWeight: "800", textAlign: "center" },
   formCard: { backgroundColor: "#102038", borderColor: "#243754", borderRadius: 18, borderWidth: 1, gap: 15, padding: 20 }, formTitle: { color: "#F6F8FC", fontSize: 20, fontWeight: "800" }, formDescription: { color: "#A9B8CC", fontSize: 13, lineHeight: 19, marginBottom: 2 }, fieldLabel: { color: "#C9D5E8", fontSize: 12, fontWeight: "800", letterSpacing: 0.5, marginBottom: 7, textTransform: "uppercase" }, input: { backgroundColor: "#0B1730", borderColor: "#243754", borderRadius: 12, borderWidth: 1, color: "#F6F8FC", fontSize: 16, paddingHorizontal: 14, paddingVertical: 14 }, passwordInput: { paddingRight: 50 }, eyeButton: { bottom: 0, justifyContent: "center", paddingHorizontal: 13, position: "absolute", right: 0, top: 0 },
   errorBox: { alignItems: "center", backgroundColor: "#3B2029", borderColor: "#6D3341", borderRadius: 10, borderWidth: 1, flexDirection: "row", padding: 11 }, errorText: { color: "#FFD7DD", flex: 1, fontSize: 13, lineHeight: 18, marginLeft: 8 }, signInButton: { alignItems: "center", backgroundColor: "#4D8DFF", borderRadius: 14, flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 3, paddingVertical: 16 }, signInButtonPressed: { opacity: 0.78, transform: [{ scale: 0.985 }] }, signInText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
 });
