@@ -49,19 +49,11 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    config: {
-      googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
-    },
     "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
   },
   android: {
-    config: {
-      googleMaps: {
-        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
-      },
-    },
     adaptiveIcon: {
       backgroundColor: "#07111F",
       foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -93,6 +85,13 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    [
+      "react-native-maps",
+      {
+        iosGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+        androidGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+      },
+    ],
     "@react-native-community/datetimepicker",
     "expo-asset",
     "expo-audio",
