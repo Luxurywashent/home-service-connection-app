@@ -2,6 +2,7 @@
 
 ## JobSync Platform Integration
 
+- [x] Limit the login screen to Company sign-in and remove Platform Admin selection plus internal access/session explanatory notices.
 - [x] Upgrade the project from Expo SDK 54 to SDK 57 so it opens in the current iOS Expo Go application.
 
 - [x] Replace mobile job-service catalogs with the authenticated Company Price Book from Home Service Connected and preserve price-book IDs on created jobs.
