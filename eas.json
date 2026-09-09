@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -12,7 +12,7 @@
       "distribution": "internal",
       "credentialsSource": "remote"
     },
-    "testflight": {
+    "production": {
       "autoIncrement": true,
       "node": "22.13.0",
       "credentialsSource": "remote",
@@ -21,6 +21,17 @@
         "EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://jobwash-veysiubh.manus.space",
         "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCyHAADT6snES3tVLDwz5NGT2mJq9U0Djs"
       }
+    },
+    "testflight": {
+      "extends": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {}
+    },
+    "testflight": {
+      "extends": "production"
     }
   }
 }
