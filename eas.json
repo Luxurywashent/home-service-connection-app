@@ -24,6 +24,10 @@
     },
     "testflight": {
       "extends": "production"
+    },
+    "transporter": {
+      "extends": "production",
+      "distribution": "store"
     }
   },
   "submit": {

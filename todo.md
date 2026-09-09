@@ -2,6 +2,7 @@
 
 ## JobSync Platform Integration
 
+- [x] Prepare a production iOS build-only profile and Transporter handoff that avoids blocked automatic submission.
 - [x] Configure Apple Developer Team ID 2G8C7Y3QC6 for non-interactive production iOS builds and submissions.
 - [x] Configure Apple ID adrian@luxurywashonwheels.com for non-interactive production iOS submissions.
 - [x] Diagnose and repair the iOS build-stage failure for production build 10001 after the build-number increment succeeded.
