@@ -11,6 +11,8 @@ import {
   normalizeJobSyncMobileSession,
   normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedChatGroups,
+  normalizeHomeServiceConnectedCommunityCategories,
+  normalizeHomeServiceConnectedCommunityPosts,
   normalizeHomeServiceConnectedPriceBook,
 } from "../lib/jobsync-mobile-api";
 
@@ -175,6 +177,23 @@ describe("JobSync mobile API contract", () => {
       icon: "🛠️",
       memberIds: [41, 42],
     });
+  });
+
+  it("normalizes active Company Community categories and post interactions", () => {
+    expect(normalizeHomeServiceConnectedCommunityCategories({
+      categories: [
+        { id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true },
+        { id: 22, name: "Archived", isActive: false },
+      ],
+    })).toEqual([
+      { id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true },
+    ]);
+
+    expect(normalizeHomeServiceConnectedCommunityPosts({
+      posts: [{ id: 51, category_id: 21, category_name: "Wins", category_icon: "🏆", author_user_id: 7, author_name: "Avery Stone", title: "Great review", body: "The customer thanked the team.", is_pinned: 1, comment_count: 2, like_count: 3, viewer_liked: true, created_at: "2026-09-14T18:00:00.000Z" }],
+    })).toEqual([
+      { id: 51, categoryId: 21, categoryName: "Wins", categoryIcon: "🏆", authorUserId: 7, authorName: "Avery Stone", title: "Great review", body: "The customer thanked the team.", mediaUrl: null, isPinned: true, commentCount: 2, likeCount: 3, viewerLiked: true, createdAt: "2026-09-14T18:00:00.000Z" },
+    ]);
   });
 
   it("normalizes only active Company Price Book services and preserves web service IDs", () => {

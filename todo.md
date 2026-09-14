@@ -2,6 +2,10 @@
 
 ## JobSync Platform Integration
 
+- [x] Review and merge the supplied Home Service Connected mobile Team Chat parity package without replacing newer mobile integrations.
+- [ ] Verify Community, Direct Messages, group membership changes, and group archiving on an authenticated Company device session.
+- [x] Deliver a ready-to-paste Home Service Connected web-project prompt for the shared secure password-reset implementation.
+- [ ] Add a Company Forgot Password flow that requests the Home Service Connected reset email and hands off password setup to the website.
 - [x] Prepare a production iOS build-only profile and Transporter handoff that avoids blocked automatic submission.
 - [x] Configure Apple Developer Team ID 2G8C7Y3QC6 for non-interactive production iOS builds and submissions.
 - [x] Configure Apple ID adrian@luxurywashonwheels.com for non-interactive production iOS submissions.

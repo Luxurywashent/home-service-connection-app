@@ -76,6 +76,8 @@ const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
 const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
+const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
+const COMPANY_CHAT_DIRECT_PATH = "/api/mobile/v1/chat/direct";
 const COMPANY_PRICE_BOOK_PATH = "/api/mobile/v1/price-book";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
@@ -457,6 +459,48 @@ export type HomeServiceConnectedChatGroupCreateInput = {
   memberIds?: number[];
 };
 
+export type HomeServiceConnectedCommunityCategory = {
+  id: number;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type HomeServiceConnectedCommunityPost = {
+  id: number;
+  categoryId: number | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  authorUserId: number;
+  authorName: string;
+  title: string;
+  body: string;
+  mediaUrl: string | null;
+  isPinned: boolean;
+  commentCount: number;
+  likeCount: number;
+  viewerLiked: boolean;
+  createdAt: string;
+};
+
+export type HomeServiceConnectedCommunityComment = {
+  id: number;
+  authorUserId: number;
+  authorName: string;
+  body: string;
+  createdAt: string;
+};
+
+export type HomeServiceConnectedDirectMember = {
+  id: number;
+  name: string;
+  role: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+};
+
 function parseJsonRecord(value: unknown) {
   if (typeof value === "string") {
     try { return asRecord(JSON.parse(value)); } catch { return null; }
@@ -588,6 +632,31 @@ export async function createHomeServiceConnectedChatGroup(token: string, input: 
   });
 }
 
+export async function updateHomeServiceConnectedChatGroup(token: string, groupId: string, input: HomeServiceConnectedChatGroupCreateInput) {
+  return requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(createHomeServiceConnectedChatGroupPayload(input)),
+  });
+}
+
+export async function updateHomeServiceConnectedChatGroupMembers(token: string, groupId: string, memberIds: number[]) {
+  const activeMemberIds = Array.from(new Set(memberIds.filter((memberId) => Number.isInteger(memberId) && memberId > 0)));
+  return requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/members`, {
+    method: "PUT",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ memberIds: activeMemberIds }),
+  });
+}
+
+export async function updateHomeServiceConnectedChatGroupStatus(token: string, groupId: string, isActive: boolean) {
+  return requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/status`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ isActive }),
+  });
+}
+
 export async function getHomeServiceConnectedGroupMessages(token: string, groupId: string) {
   const payload = await requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/messages`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
   const root = asRecord(payload);
@@ -613,6 +682,163 @@ export async function sendHomeServiceConnectedGroupMessage(token: string, groupI
     headers: createJobSyncBearerHeaders(token),
     body: JSON.stringify({ message }),
   });
+}
+
+function strictBoolean(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function normalizeCommunityCategory(value: unknown): HomeServiceConnectedCommunityCategory | null {
+  const category = asRecord(value);
+  const id = nullableNumber(category?.id, category?.categoryId, category?.category_id);
+  const name = firstString(category?.name, category?.label);
+  if (!category || !id || !name) return null;
+  return {
+    id,
+    name,
+    description: firstString(category.description),
+    icon: firstString(category.icon),
+    sortOrder: nullableNumber(category.sortOrder, category.sort_order) ?? 0,
+    isActive: isActiveMember(category.isActive ?? category.is_active ?? true),
+  };
+}
+
+export function normalizeHomeServiceConnectedCommunityCategories(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const categories = Array.isArray(data.categories) ? data.categories : Array.isArray(root?.categories) ? root.categories : [];
+  return categories
+    .map(normalizeCommunityCategory)
+    .filter((category): category is HomeServiceConnectedCommunityCategory => Boolean(category?.isActive));
+}
+
+function normalizeCommunityPost(value: unknown): HomeServiceConnectedCommunityPost | null {
+  const post = asRecord(value);
+  const id = nullableNumber(post?.id, post?.postId, post?.post_id);
+  const authorUserId = nullableNumber(post?.authorUserId, post?.author_user_id);
+  const authorName = firstString(post?.authorName, post?.author_name);
+  const title = firstString(post?.title);
+  const body = firstString(post?.body, post?.message);
+  if (!post || !id || !authorUserId || !authorName || !title || !body) return null;
+  return {
+    id,
+    categoryId: nullableNumber(post.categoryId, post.category_id),
+    categoryName: firstString(post.categoryName, post.category_name),
+    categoryIcon: firstString(post.categoryIcon, post.category_icon),
+    authorUserId,
+    authorName,
+    title,
+    body,
+    mediaUrl: firstString(post.mediaUrl, post.media_url),
+    isPinned: strictBoolean(post.isPinned ?? post.is_pinned),
+    commentCount: nullableNumber(post.commentCount, post.comment_count) ?? 0,
+    likeCount: nullableNumber(post.likeCount, post.like_count) ?? 0,
+    viewerLiked: strictBoolean(post.viewerLiked ?? post.viewer_liked),
+    createdAt: firstString(post.createdAt, post.created_at) ?? new Date().toISOString(),
+  };
+}
+
+export function normalizeHomeServiceConnectedCommunityPosts(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const posts = Array.isArray(data.posts) ? data.posts : Array.isArray(root?.posts) ? root.posts : [];
+  return posts.map(normalizeCommunityPost).filter((post): post is HomeServiceConnectedCommunityPost => Boolean(post));
+}
+
+function normalizeCommunityComment(value: unknown): HomeServiceConnectedCommunityComment | null {
+  const comment = asRecord(value);
+  const id = nullableNumber(comment?.id, comment?.commentId, comment?.comment_id);
+  const authorUserId = nullableNumber(comment?.authorUserId, comment?.author_user_id);
+  const authorName = firstString(comment?.authorName, comment?.author_name);
+  const body = firstString(comment?.body, comment?.message);
+  if (!comment || !id || !authorUserId || !authorName || !body) return null;
+  return { id, authorUserId, authorName, body, createdAt: firstString(comment.createdAt, comment.created_at) ?? new Date().toISOString() };
+}
+
+export async function getHomeServiceConnectedCommunityCategories(token: string) {
+  const payload = await requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/categories`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  return normalizeHomeServiceConnectedCommunityCategories(payload);
+}
+
+export async function createHomeServiceConnectedCommunityCategory(token: string, input: { name: string; description?: string; icon?: string; sortOrder?: number }) {
+  const name = input.name.trim();
+  if (!name) throw new Error("A category name is required.");
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/categories`, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ name, ...(input.description?.trim() ? { description: input.description.trim() } : {}), ...(input.icon?.trim() ? { icon: input.icon.trim() } : {}), ...(Number.isInteger(input.sortOrder) ? { sortOrder: input.sortOrder } : {}) }),
+  });
+}
+
+export async function getHomeServiceConnectedCommunityPosts(token: string, categoryId?: number) {
+  const query = categoryId ? `?categoryId=${encodeURIComponent(String(categoryId))}` : "";
+  const payload = await requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  return normalizeHomeServiceConnectedCommunityPosts(payload);
+}
+
+export async function createHomeServiceConnectedCommunityPost(token: string, input: { categoryId?: number; title: string; body: string }) {
+  const title = input.title.trim();
+  const body = input.body.trim();
+  if (!title || !body) throw new Error("A post title and message are required.");
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts`, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ ...(input.categoryId ? { categoryId: input.categoryId } : {}), title, body }),
+  });
+}
+
+export async function getHomeServiceConnectedCommunityComments(token: string, postId: number) {
+  const payload = await requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/comments`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const comments = Array.isArray(data.comments) ? data.comments : Array.isArray(root?.comments) ? root.comments : [];
+  return comments.map(normalizeCommunityComment).filter((comment): comment is HomeServiceConnectedCommunityComment => Boolean(comment));
+}
+
+export async function createHomeServiceConnectedCommunityComment(token: string, postId: number, body: string) {
+  const message = body.trim();
+  if (!message) throw new Error("A comment is required.");
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/comments`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ body: message }) });
+}
+
+export function toggleHomeServiceConnectedCommunityLike(token: string, postId: number) {
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/like`, { method: "POST", headers: createJobSyncBearerHeaders(token) });
+}
+
+export async function getHomeServiceConnectedDirectMembers(token: string): Promise<HomeServiceConnectedDirectMember[]> {
+  const payload = await requestJson(`${COMPANY_CHAT_DIRECT_PATH}/members`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const members = Array.isArray(data.members) ? data.members : Array.isArray(root?.members) ? root.members : [];
+  return members.flatMap((value) => {
+    const member = asRecord(value);
+    const id = nullableNumber(member?.id, member?.userId);
+    const name = firstString(member?.name, member?.fullName);
+    return id && name ? [{ id, name, role: firstString(member?.role) ?? "Team Member", lastMessage: firstString(member?.lastMessage, member?.last_message), lastMessageAt: firstString(member?.lastMessageAt, member?.last_message_at) }] : [];
+  });
+}
+
+export async function getHomeServiceConnectedDirectMessages(token: string, memberId: number) {
+  const payload = await requestJson(`${COMPANY_CHAT_DIRECT_PATH}/${encodeURIComponent(String(memberId))}/messages`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const messages = Array.isArray(data.messages) ? data.messages : Array.isArray(root?.messages) ? root.messages : [];
+  return messages.map((value) => {
+    const message = asRecord(value) ?? {};
+    return {
+      id: firstString(message.id, message.messageId, message.message_id) ?? `${firstString(message.createdAt, message.created_at) ?? "message"}-${firstString(message.senderId, message.sender_id) ?? "sender"}`,
+      senderName: firstString(message.senderName, message.sender_name) ?? "Team Member",
+      senderId: firstString(message.senderId, message.sender_id),
+      text: firstString(message.message, message.text, message.body) ?? "",
+      createdAt: firstString(message.createdAt, message.created_at) ?? new Date().toISOString(),
+    } satisfies HomeServiceConnectedChatMessage;
+  });
+}
+
+export async function sendHomeServiceConnectedDirectMessage(token: string, memberId: number, text: string) {
+  const message = text.trim();
+  if (!message) throw new Error("A message is required.");
+  return requestJson(`${COMPANY_CHAT_DIRECT_PATH}/${encodeURIComponent(String(memberId))}/messages`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ message }) });
 }
 
 function booleanState(value: unknown) {
