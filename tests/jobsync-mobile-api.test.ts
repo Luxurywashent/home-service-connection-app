@@ -4,6 +4,7 @@ import {
   createJobSyncBearerHeaders,
   createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
+  createJobSyncPasswordResetRequestPayload,
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
   normalizeJobSyncCompanyMemberDetail,
@@ -24,6 +25,13 @@ describe("JobSync mobile API contract", () => {
       password: "password-123",
     });
     expect(createJobSyncMobileLoginPayload({ accountType: "platform_admin", email: "owner@example.com", password: "password-456" }).accountType).toBe("platform_admin");
+  });
+
+  it("creates a Company-only password-reset request without a reset token", () => {
+    expect(createJobSyncPasswordResetRequestPayload("  OWNER@EXAMPLE.COM ")).toEqual({
+      email: "owner@example.com",
+      accountType: "company",
+    });
   });
 
   it("sends restored sessions with an Authorization bearer header", () => {

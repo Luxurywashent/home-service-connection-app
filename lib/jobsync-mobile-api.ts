@@ -69,6 +69,7 @@ export type JobSyncCompanyMemberUpdateInput = {
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
+const PASSWORD_RESET_REQUEST_PATH = "/api/mobile/v1/auth/password-reset/request";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
@@ -209,6 +210,10 @@ export function createJobSyncMobileLoginPayload(input: { accountType: JobSyncAcc
   };
 }
 
+export function createJobSyncPasswordResetRequestPayload(email: string) {
+  return { email: email.trim().toLowerCase(), accountType: "company" as const };
+}
+
 export function createJobSyncBearerHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
@@ -301,6 +306,14 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("Home Service Connected returned an unsupported mobile session profile.");
   return session;
+}
+
+export async function requestJobSyncCompanyPasswordReset(email: string) {
+  await requestJson(PASSWORD_RESET_REQUEST_PATH, {
+    method: "POST",
+    body: JSON.stringify(createJobSyncPasswordResetRequestPayload(email)),
+  });
+  return { ok: true } as const;
 }
 
 export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyId: number): JobSyncCompanyRoster | null {
