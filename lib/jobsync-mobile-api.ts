@@ -237,6 +237,31 @@ export function createJobSyncBearerHeaders(token: string) {
 export type JobSyncSyncChange = { id: number; updatedAt?: string | null; createdAt?: string | null };
 export type JobSyncIncrementalSync = { since: string; generatedAt: string; changes: Record<string, JobSyncSyncChange[]> };
 export type JobSyncMobileJob = { id: number; customerId: number; assignedUserId: number | null; title: string; serviceName: string; status: string; scheduledStartAt: string | null; scheduledEndAt: string | null; updatedAt: string | null; addressLine1: string | null; city: string | null; amount: number; customerName: string; assignedName: string | null };
+export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null };
+export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
+export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
+
+function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    customerId: Number(row.customerId),
+    assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
+    title: firstString(row.title) ?? "",
+    serviceName: firstString(row.serviceName) ?? "",
+    status: firstString(row.status) ?? "scheduled",
+    scheduledStartAt: firstString(row.scheduledStartAt),
+    scheduledEndAt: firstString(row.scheduledEndAt),
+    updatedAt: firstString(row.updatedAt),
+    addressLine1: firstString(row.addressLine1),
+    city: firstString(row.city),
+    amount: Number(row.amount || 0),
+    customerName: firstString(row.customerName) ?? "",
+    assignedName: firstString(row.assignedName),
+  };
+}
 
 export function normalizeJobSyncIncrementalSync(payload: unknown, fallbackSince?: string | null): JobSyncIncrementalSync {
   const root = asRecord(payload) ?? {};
@@ -258,10 +283,72 @@ export async function getJobSyncCompanyJobs(token: string, range?: { start?: str
   if (range?.start) search.set("start", range.start);
   if (range?.end) search.set("end", range.end);
   const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
-  return (Array.isArray(payload.jobs) ? payload.jobs : []).map((item) => {
-    const row = asRecord(item) ?? {};
-    return { id: Number(row.id), customerId: Number(row.customerId), assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null, title: firstString(row.title) ?? "", serviceName: firstString(row.serviceName) ?? "", status: firstString(row.status) ?? "scheduled", scheduledStartAt: firstString(row.scheduledStartAt), scheduledEndAt: firstString(row.scheduledEndAt), updatedAt: firstString(row.updatedAt), addressLine1: firstString(row.addressLine1), city: firstString(row.city), amount: Number(row.amount || 0), customerName: firstString(row.customerName) ?? "", assignedName: firstString(row.assignedName) };
-  }).filter((job) => Number.isSafeInteger(job.id) && job.id > 0);
+  return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncMobileJob).filter((job): job is JobSyncMobileJob => Boolean(job));
+}
+
+function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  const firstName = firstString(row.firstName) ?? "";
+  const lastName = firstString(row.lastName) ?? "";
+  if (!Number.isSafeInteger(id) || id <= 0 || !firstName || !lastName) return null;
+  return {
+    id,
+    firstName,
+    lastName,
+    name: firstString(row.name) ?? `${firstName} ${lastName}`.trim(),
+    email: firstString(row.email),
+    phone: firstString(row.phone),
+    addressLine1: firstString(row.addressLine1),
+    city: firstString(row.city),
+    region: firstString(row.region),
+    postalCode: firstString(row.postalCode),
+    vehicleType: firstString(row.vehicleType),
+  };
+}
+
+export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
+  const payload = asRecord(await requestJson("/api/mobile/v1/customers", { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
+}
+
+export async function createJobSyncCompanyCustomer(token: string, input: JobSyncCompanyCustomerCreateInput): Promise<JobSyncCompanyCustomer> {
+  const payload = asRecord(await requestJson("/api/mobile/v1/customers", {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
+      ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+      ...(input.addressLine1?.trim() ? { addressLine1: input.addressLine1.trim() } : {}),
+      ...(input.city?.trim() ? { city: input.city.trim() } : {}),
+      ...(input.region?.trim() ? { region: input.region.trim() } : {}),
+      ...(input.postalCode?.trim() ? { postalCode: input.postalCode.trim() } : {}),
+      ...(input.vehicleType?.trim() ? { vehicleType: input.vehicleType.trim() } : {}),
+    }),
+  })) ?? {};
+  const customer = normalizeJobSyncCompanyCustomer(payload.customer);
+  if (!customer) throw new Error("Home Service Connected returned an invalid customer response.");
+  return customer;
+}
+
+export async function createJobSyncCompanyJob(token: string, input: JobSyncCompanyJobCreateInput): Promise<JobSyncMobileJob> {
+  const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      customerId: input.customerId,
+      priceBookServiceId: input.priceBookServiceId,
+      ...(input.assignedUserId ? { assignedUserId: input.assignedUserId } : {}),
+      scheduledStartAt: input.scheduledStartAt,
+      ...(input.scheduledEndAt ? { scheduledEndAt: input.scheduledEndAt } : {}),
+      ...(input.privateNotes?.trim() ? { privateNotes: input.privateNotes.trim() } : {}),
+    }),
+  })) ?? {};
+  const job = normalizeJobSyncMobileJob(payload.job);
+  if (!job) throw new Error("Home Service Connected returned an invalid Job response.");
+  return job;
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
@@ -519,6 +606,7 @@ export type HomeServiceConnectedTimeState = {
 export type HomeServiceConnectedPriceBookService = {
   serviceId: string;
   name: string;
+  basePrice: number;
   emoji: string;
   description: string;
   features: string[];
@@ -639,6 +727,7 @@ function normalizeHomeServiceConnectedPriceBookService(value: unknown): HomeServ
   return {
     serviceId,
     name,
+    basePrice: nullableNumber(service.basePrice, service.base_price) ?? 0,
     emoji: firstString(service.emoji, service.icon) ?? "🛠️",
     description: firstString(service.description, service.details) ?? "",
     features: priceBookFeatures(service.features),

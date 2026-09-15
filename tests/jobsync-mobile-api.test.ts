@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createJobSyncBearerHeaders,
+  createJobSyncCompanyCustomer,
+  createJobSyncCompanyJob,
   createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
   createJobSyncPasswordResetRequestPayload,
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
+  getJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
@@ -247,8 +250,8 @@ describe("JobSync mobile API contract", () => {
         { serviceId: "svc-basic", name: "Basic Service", features: ["Exterior"], vehiclePrices: { sedan: 120 }, sortOrder: 1, isActive: true },
       ],
     })).toEqual([
-      { serviceId: "svc-basic", name: "Basic Service", emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
-      { serviceId: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
+      { serviceId: "svc-basic", name: "Basic Service", basePrice: 0, emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
+      { serviceId: "svc-full", name: "Full Service", basePrice: 0, emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
     ]);
   });
   it("fetches mounted Company Schedule Jobs only from the scoped Company endpoint", async () => {
@@ -274,5 +277,36 @@ describe("JobSync mobile API contract", () => {
     expect(companyScheduleSlotIndex(8)).toBe(16);
     expect(companyScheduleSlotIndex(23.75)).toBe(COMPANY_SCHEDULE_HALF_HOUR_SLOTS.length - 1);
     expect(companyScheduleInitialOffset(32)).toBe(512);
+  });
+
+  it("uses Company-owned customer IDs and a numeric Price Book service ID for server-priced Job creation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ job: { id: 45, customerId: 8, serviceName: "Window Cleaning", title: "Window Cleaning", status: "scheduled", scheduledStartAt: "2026-09-11T13:00:00.000Z", scheduledEndAt: "2026-09-11T14:30:00.000Z", amount: 249.5, customerName: "Test Customer" } }),
+    } as Response);
+    try {
+      await createJobSyncCompanyJob("company-token", { customerId: 8, priceBookServiceId: 501, assignedUserId: 41, scheduledStartAt: "2026-09-11T13:00:00.000Z", privateNotes: "Gate code in CRM" });
+      const [, request] = fetchMock.mock.calls[0];
+      expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/company/jobs");
+      expect(request).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
+      expect(JSON.parse(String((request as RequestInit).body))).toEqual({ customerId: 8, priceBookServiceId: 501, assignedUserId: 41, scheduledStartAt: "2026-09-11T13:00:00.000Z", privateNotes: "Gate code in CRM" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reads and creates customers only through the Company-scoped mobile contract", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ customers: [{ id: 8, firstName: "Test", lastName: "Customer", email: "test@example.com", phone: null, addressLine1: "1 Main St", city: "Mobile" }] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ customer: { id: 9, firstName: "New", lastName: "Customer", email: "new@example.com" } }) } as Response);
+    try {
+      await expect(getJobSyncCompanyCustomers("company-token")).resolves.toMatchObject([{ id: 8, name: "Test Customer" }]);
+      await expect(createJobSyncCompanyCustomer("company-token", { firstName: " New ", lastName: " Customer ", email: "NEW@EXAMPLE.COM" })).resolves.toMatchObject({ id: 9, email: "new@example.com" });
+      expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/customers");
+      expect(fetchMock.mock.calls[1][0]).toContain("/api/mobile/v1/customers");
+      expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))).toEqual({ firstName: "New", lastName: "Customer", email: "new@example.com" });
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });
