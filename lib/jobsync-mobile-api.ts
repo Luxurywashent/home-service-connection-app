@@ -79,7 +79,8 @@ export type JobSyncCompanyMemberUpdateInput = {
   availability?: "available" | "busy" | "off_duty";
 };
 
-const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
+const DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com";
+const HSC_API_HOSTS = new Set(["homeserviceconnected.com", "www.homeserviceconnected.com", "jobwash-veysiubh.manus.space"]);
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
 const PASSWORD_RESET_REQUEST_PATH = "/api/mobile/v1/auth/password-reset/request";
@@ -163,9 +164,21 @@ function errorMessage(payload: unknown, fallback: string) {
   ) ?? fallback;
 }
 
+export function resolveJobSyncBaseUrl(configured = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL) {
+  const candidate = configured?.trim();
+  if (!candidate) return DEFAULT_JOBSYNC_BASE_URL;
+  try {
+    const parsed = new URL(candidate);
+    const host = parsed.hostname.toLowerCase();
+    const isLocalDevelopment = process.env.NODE_ENV !== "production" && (host === "localhost" || host === "127.0.0.1");
+    return HSC_API_HOSTS.has(host) || isLocalDevelopment ? candidate.replace(/\/$/, "") : DEFAULT_JOBSYNC_BASE_URL;
+  } catch {
+    return DEFAULT_JOBSYNC_BASE_URL;
+  }
+}
+
 function getJobSyncBaseUrl() {
-  const configured = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL?.trim();
-  return (configured || DEFAULT_JOBSYNC_BASE_URL).replace(/\/$/, "");
+  return resolveJobSyncBaseUrl();
 }
 
 async function requestJson(path: string, init: RequestInit) {

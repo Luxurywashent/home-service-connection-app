@@ -29,6 +29,7 @@ import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/compon
 import { CalendarPicker } from "@/components/calendar-picker";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -466,6 +467,25 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
   // ── Fetch detailers when city changes ──
   useEffect(() => {
     const fetchDetailers = async () => {
+      if (isJobSyncCompany && jobSyncSession?.company) {
+        try {
+          const roster = await getJobSyncCompanyMembers(jobSyncSession.token, jobSyncSession.company.id);
+          const entries = roster.members
+            .filter((member) => member.calendarEligible)
+            .map((member, index) => ({
+              employeeId: String(member.id),
+              name: member.name,
+              color: DETAILER_COLORS[index % DETAILER_COLORS.length],
+            }));
+          setDetailers(entries);
+          setDetailer(entries[0]?.name ?? "");
+        } catch {
+          // Never substitute a Luxury Wash roster for a Company session.
+          setDetailers([]);
+          setDetailer("");
+        }
+        return;
+      }
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/detailers?location=${selectedCity}`);
         if (!res.ok) return;
@@ -491,7 +511,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
       }
     };
     fetchDetailers();
-  }, [selectedCity]);
+  }, [isJobSyncCompany, jobSyncSession, selectedCity]);
 
   const cityLabel = CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity;
 
