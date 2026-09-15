@@ -40,7 +40,8 @@ import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
-import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJobs, getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
@@ -1275,6 +1276,7 @@ export default function AdminScheduleScreen() {
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: companySyncRevision } = useJobSyncSync();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const companyPriceBook = useCompanyPriceBook();
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
@@ -1638,8 +1640,27 @@ export default function AdminScheduleScreen() {
   // Sync all jobs (manual + online) from server DB when city changes or manual refresh
   useEffect(() => {
     if (isJobSyncCompany) {
-      setJobs([]);
-      setIsSyncing(false);
+      const token = jobSyncSession?.token;
+      if (!token) return;
+      const syncCompanyJobs = async () => {
+        setIsSyncing(true);
+        try {
+          const today = new Date();
+          const start = new Date(today); start.setDate(today.getDate() - 365);
+          const end = new Date(today); end.setDate(today.getDate() + 365);
+          const serverJobs = await getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() });
+          const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => {
+            const scheduled = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
+            const endAt = job.scheduledEndAt ? new Date(job.scheduledEndAt) : new Date(scheduled.getTime() + 60 * 60 * 1000);
+            const dayIndex = (scheduled.getDay() + 6) % 7;
+            const todayMonday = new Date(); todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7); todayMonday.setHours(0, 0, 0, 0);
+            const scheduledMonday = new Date(scheduled); scheduledMonday.setDate(scheduled.getDate() - dayIndex); scheduledMonday.setHours(0, 0, 0, 0);
+            return { id: String(job.id), location: job.city || selectedCity, firstName: job.customerName.split(" ")[0] || "", lastName: job.customerName.split(" ").slice(1).join(" "), email: undefined, phone: "", address: job.addressLine1 || "", serviceTitle: job.serviceName || job.title, serviceDescription: job.title, price: job.amount, startHour: scheduled.getHours() + scheduled.getMinutes() / 60, endHour: endAt.getHours() + endAt.getMinutes() / 60, dayIndex, weekOffset: Math.round((scheduledMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)), status: (job.status === "completed" ? "finished" : job.status === "on_site" ? "started" : "scheduled") as JobStatus, _rawStatus: job.status, detailerName: job.assignedName || undefined, assignedTo: job.assignedUserId ? `jobsync-${job.assignedUserId}` : undefined, createdAt: scheduled.toISOString() } as Job;
+          });
+          setJobs(mappedJobs);
+        } finally { setIsSyncing(false); }
+      };
+      void syncCompanyJobs();
       return;
     }
     const syncServerJobs = async () => {
@@ -1765,7 +1786,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [isJobSyncCompany, selectedCity, syncKey]);
+  }, [companySyncRevision, isJobSyncCompany, jobSyncSession?.token, selectedCity, syncKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
