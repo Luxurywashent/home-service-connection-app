@@ -542,13 +542,13 @@ export default function CustomerHomeScreen() {
           {heroConfig.type === "image" ? (
             <Image
               source={{ uri: heroConfig.url }}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               resizeMode="cover"
             />
           ) : (
             <VideoView
               player={player}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               contentFit="cover"
               nativeControls={false}
             />
@@ -784,7 +784,7 @@ function PackageCard({
           }
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
       </View>
 

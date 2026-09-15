@@ -429,7 +429,7 @@ export function NavigationMapModal({
           mapMounted ? (
           <MapView
             ref={mapRef}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             provider={PROVIDER_GOOGLE}
             showsUserLocation={false}
             showsMyLocationButton={false}
@@ -489,7 +489,7 @@ export function NavigationMapModal({
           </MapView>
           ) : null
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.webFallback]}>
+          <View style={[StyleSheet.absoluteFill, styles.webFallback]}>
             <Text style={styles.webFallbackText}>
               In-app navigation is available on iOS and Android.
             </Text>

@@ -135,8 +135,6 @@ export function ReviewOverlay({
             <VideoView
               player={player}
               style={styles.video}
-              allowsFullscreen
-              allowsPictureInPicture={false}
               contentFit="cover"
               nativeControls
             />

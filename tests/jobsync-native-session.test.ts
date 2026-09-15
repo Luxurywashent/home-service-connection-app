@@ -4,7 +4,7 @@ import { getNativeEmployeeSession } from "../lib/jobsync-role-map";
 
 const companySession = (role: "owner" | "dispatcher" | "technician") => ({
   token: "test-token",
-  portal: "company",
+  portal: "company" as const,
   user: { id: 42, name: "Taylor Test", email: "taylor@example.com", role, memberId: "member-42" },
   company: { id: 9, name: "Test Company", slug: "test-company", logoUrl: null, primaryColor: null, accentColor: null },
 });

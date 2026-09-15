@@ -9,7 +9,7 @@ import { useCustomerAuth } from "@/lib/customer-context";
 import { useEffect, useRef } from "react";
 import Constants from "expo-constants";
 
-function MessageTabIcon({ color }: { color: string }) {
+function MessageTabIcon({ color }: { color: any }) {
   const { token } = useCustomerAuth();
   const { data } = trpc.customer.unreadCount.useQuery(
     { token: token ?? "" },
