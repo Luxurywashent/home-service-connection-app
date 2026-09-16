@@ -11,6 +11,7 @@ import {
   extractJobSyncMobileToken,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
+  resolveJobSyncBaseUrl,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
@@ -269,6 +270,11 @@ describe("JobSync mobile API contract", () => {
     } finally {
       fetchMock.mockRestore();
     }
+  });
+  it("rejects Luxury Wash API overrides and resolves the canonical HSC production origin", () => {
+    expect(resolveJobSyncBaseUrl(undefined)).toBe("https://www.homeserviceconnected.com");
+    expect(resolveJobSyncBaseUrl("https://www.homeserviceconnected.com/")).toBe("https://www.homeserviceconnected.com");
+    expect(resolveJobSyncBaseUrl("https://luxwashapp-n2wveyqg.manus.space")).toBe("https://www.homeserviceconnected.com");
   });
   it("keeps early and late Company Jobs inside the full-day Schedule timeline", () => {
     expect(COMPANY_SCHEDULE_HALF_HOUR_SLOTS[0]).toBe(0);

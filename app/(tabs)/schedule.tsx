@@ -2082,6 +2082,7 @@ function PrivateNotesCard({
   onNotesChange: (notes: PrivateNote[]) => void;
 }) {
   const colors = useColors();
+  const { session: jobSyncSession } = useJobSyncAuth();
   const [newNoteText, setNewNoteText] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -2089,6 +2090,10 @@ function PrivateNotesCard({
 
   const notes: PrivateNote[] = job.privateNotes ?? [];
   const isAdmin = ["admin", "office", "operations_manager"].includes(currentRole);
+
+  // Private-note mutations still target the legacy local endpoint. Keep them
+  // unavailable to Company sessions until the HSC notes contract is published.
+  if (jobSyncSession?.portal === "company") return null;
 
   const addNote = async () => {
     const text = newNoteText.trim();
@@ -2533,16 +2538,16 @@ export default function ScheduleScreen() {
   useEffect(() => {
     setCustomerHistoryJobs([]);
     setAddrPhotos([]);
-    if (selectedJob && (selectedJob.phone || selectedJob.email)) {
+    if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       loadCustomerHistory(selectedJob);
     }
-    if (selectedJob?.address) {
+    if (!isJobSyncCompany && selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddrPhotos(photos)).catch(() => {});
     }
     // Live-refresh photo URLs from the server whenever a job detail panel is opened.
     // This ensures photos uploaded from another device (or a previous session) are always visible.
-    if (selectedJob?.id) {
+    if (!isJobSyncCompany && selectedJob?.id) {
       const jobId = selectedJob.id;
       utils.jobs.getPhotos.fetch({ jobId })
         .then(({ urls }: { urls: string[] }) => {
@@ -3074,6 +3079,7 @@ export default function ScheduleScreen() {
 
   // Sync online bookings from the server for the selected location
   const syncOnlineBookings = async (location: LocationSlug) => {
+    if (isJobSyncCompany) return;
     setIsSyncingBookings(true);
     try {
       // Detailers must NOT use the unfiltered /api/booking/list endpoint — it returns ALL
@@ -3245,6 +3251,7 @@ export default function ScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server
+    if (isJobSyncCompany) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightJobId)}`);
@@ -3303,7 +3310,7 @@ export default function ScheduleScreen() {
       }
     };
     fetchAndOpen();
-  }, [highlightJobId, jobs]);
+  }, [highlightJobId, jobs, isJobSyncCompany]);
 
   // Pull-to-refresh handler for detailer view
   const handleRefresh = useCallback(async () => {
@@ -3510,6 +3517,7 @@ export default function ScheduleScreen() {
   // ─── Enhanced Job Detail Helpers ────────────────────────────────────────────
 
   const loadCustomerHistory = async (job: Job) => {
+    if (isJobSyncCompany) return;
     if (!job.phone && !job.email) return;
     setCustomerHistoryLoading(true);
     try {
@@ -3777,7 +3785,7 @@ export default function ScheduleScreen() {
       });
     }
     // Push revenue + tips to daily performance record so dashboard updates automatically
-    if (employee) {
+    if (employee && !isJobSyncCompany) {
       const jobDate = getWeekDates(job.weekOffset)[job.dayIndex];
       const dateStr = localDateStr(jobDate);
       // Use the same record ID format as syncPerformanceFromJobs on the server (underscores, no dashes in date)

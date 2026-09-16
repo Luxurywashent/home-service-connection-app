@@ -868,9 +868,11 @@ function AdminPrivateNotesCard({
 }) {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
   const currentEmployeeId = employee?.employeeId ?? "ADMIN";
   const currentEmployeeName = employee?.fullName ?? "Admin";
   const currentRole = employee?.role ?? "admin";
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
 
   const [newNoteText, setNewNoteText] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -879,6 +881,11 @@ function AdminPrivateNotesCard({
 
   const notes: PrivateNote[] = job.privateNotes ?? [];
   const isAdmin = ["admin", "office", "operations_manager"].includes(currentRole);
+
+  // Private-note mutations still target the legacy local endpoint. Do not expose
+  // this card to Company sessions until an equivalent bearer-authenticated HSC
+  // notes contract is published.
+  if (isJobSyncCompany) return null;
 
   const addNote = async () => {
     const text = newNoteText.trim();
@@ -1868,6 +1875,7 @@ export default function AdminScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server by bookingId
+    if (isJobSyncCompany) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightBookingId)}`);
@@ -1935,7 +1943,7 @@ export default function AdminScheduleScreen() {
       }
     };
     fetchAndOpen();
-  }, [highlightBookingId, jobs]);
+  }, [highlightBookingId, jobs, isJobSyncCompany]);
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
@@ -2297,6 +2305,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminLoadCustomerHistory = async (job: Job) => {
+    if (isJobSyncCompany) return;
     try {
       const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
       const res = await fetch(url);
@@ -2325,10 +2334,10 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     setCustomerHistory([]);
     setAddressPhotos([]);
-    if (selectedJob && (selectedJob.phone || selectedJob.email)) {
+    if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       adminLoadCustomerHistory(selectedJob);
     }
-    if (selectedJob?.address) {
+    if (!isJobSyncCompany && selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddressPhotos(photos)).catch(() => {});
     }
@@ -4860,6 +4869,10 @@ export default function AdminScheduleScreen() {
                   {/* Send button */}
                     <TouchableOpacity
                     onPress={async () => {
+                      if (isJobSyncCompany) {
+                        Alert.alert("Invoice unavailable", "Company invoice delivery will be available after the Home Service Connected billing contract is published.");
+                        return;
+                      }
                       setInvoiceSending(true);
                       try {
                         const resp = await fetch(`${APP_API_BASE}/api/invoice/send`, {

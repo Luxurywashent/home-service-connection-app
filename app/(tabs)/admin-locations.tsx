@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type LocationDetaier = { locationId: string; employeeId: string; isPrimary: number };
@@ -90,7 +91,22 @@ function emptyForm() {
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
+function CompanyLocationsUnavailable() {
+  const colors = useColors();
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: colors.background }}>
+      <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "700", textAlign: "center" }}>Locations is not available in Home Service Connected yet</Text>
+      <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 22, marginTop: 12, textAlign: "center" }}>This legacy location and booking configuration has no verified Home Service Connected contract. Your Company data will not be sent to the legacy service.</Text>
+    </View>
+  );
+}
+
 export default function AdminLocationsScreen() {
+  const { session } = useJobSyncAuth();
+  return session?.portal === "company" ? <CompanyLocationsUnavailable /> : <AdminLocationsLegacyScreen />;
+}
+
+function AdminLocationsLegacyScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
