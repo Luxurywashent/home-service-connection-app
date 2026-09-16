@@ -29,7 +29,13 @@ import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/compon
 import { CalendarPicker } from "@/components/calendar-picker";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
+import {
+  createJobSyncCompanyCustomer,
+  createJobSyncCompanyJob,
+  getJobSyncCompanyCustomers,
+  getJobSyncCompanyMembers,
+  type JobSyncCompanyCustomer,
+} from "@/lib/jobsync-mobile-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,13 +144,15 @@ function CustomerSearchField({
   showDropdown,
   setShowDropdown,
   onSelect,
+  companyCustomers,
 }: {
   colors: any;
   value: string;
   onChange: (v: string) => void;
   showDropdown: boolean;
   setShowDropdown: (v: boolean) => void;
-  onSelect: (c: { fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
+  onSelect: (c: { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
+  companyCustomers?: JobSyncCompanyCustomer[];
 }) {
   const [query, setQuery] = React.useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,8 +160,17 @@ function CustomerSearchField({
 
   const { data: results = [] } = trpc.customers.listAll.useQuery(
     { search: searchTerm },
-    { enabled: searchTerm.length >= 2, staleTime: 10_000 }
+    { enabled: !companyCustomers && searchTerm.length >= 2, staleTime: 10_000 }
   );
+  const visibleResults = companyCustomers
+    ? companyCustomers
+      .filter((customer) => {
+        const normalized = searchTerm.trim().toLowerCase();
+        return normalized.length >= 2 && [customer.name, customer.email, customer.phone, customer.addressLine1].some((part) => part?.toLowerCase().includes(normalized));
+      })
+      .slice(0, 8)
+      .map((customer) => ({ id: customer.id, fullName: customer.name, phone: customer.phone, email: customer.email, address: customer.addressLine1 }))
+    : results as Array<{ id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }>;
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -188,12 +205,12 @@ function CustomerSearchField({
           </TouchableOpacity>
         )}
       </View>
-      {showDropdown && (results as any[]).length > 0 && (
+      {showDropdown && visibleResults.length > 0 && (
         <View style={{ position: "absolute", top: 50, left: 0, right: 0, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, maxHeight: 200, overflow: "hidden", elevation: 8, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}>
           <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
-            {(results as any[]).slice(0, 8).map((c: any, i: number) => (
+            {visibleResults.map((c, i: number) => (
               <TouchableOpacity
-                key={c.customerId || i}
+                key={c.id || i}
                 onPress={() => { setQuery(c.fullName); onSelect(c); }}
                 style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < Math.min((results as any[]).length, 8) - 1 ? 0.5 : 0, borderBottomColor: colors.border }}
                 activeOpacity={0.7}
@@ -288,6 +305,9 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
   const { session: jobSyncSession } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const companyPriceBook = useCompanyPriceBook();
+  const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
+  const [companyCustomersError, setCompanyCustomersError] = useState<string | null>(null);
+  const [selectedCompanyCustomerId, setSelectedCompanyCustomerId] = useState<number | null>(null);
 
   // Company sessions use only their active Home Service Connected Price Book.
   const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
@@ -305,10 +325,10 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
           features: s.features ?? [],
           isRv,
           basePrice: {
-            sedan: vp.sedan ?? 0,
-            suv: vp.suv ?? 0,
-            xl_suv_van: vp.xl_suv_van ?? 0,
-            truck: vp.truck ?? 0,
+            sedan: vp.sedan ?? s.basePrice ?? 0,
+            suv: vp.suv ?? s.basePrice ?? 0,
+            xl_suv_van: vp.xl_suv_van ?? s.basePrice ?? 0,
+            truck: vp.truck ?? s.basePrice ?? 0,
             rv_20_29: vp.rv_20_29 ?? 0,
             rv_30_39: vp.rv_30_39 ?? 0,
             rv_40_plus: vp.rv_40_plus ?? 0,
@@ -427,6 +447,21 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
   const jobUpsertMutation = trpc.jobs.upsert.useMutation();
   const jobCreateRecurringMutation = trpc.jobs.createRecurring.useMutation();
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!visible || !isJobSyncCompany || !jobSyncSession?.token) {
+      if (!isJobSyncCompany) {
+        setCompanyCustomers([]);
+        setCompanyCustomersError(null);
+      }
+      return () => { cancelled = true; };
+    }
+    void getJobSyncCompanyCustomers(jobSyncSession.token)
+      .then((customers) => { if (!cancelled) { setCompanyCustomers(customers); setCompanyCustomersError(null); } })
+      .catch((error) => { if (!cancelled) setCompanyCustomersError(error instanceof Error ? error.message : "Home Service Connected could not load Company customers."); });
+    return () => { cancelled = true; };
+  }, [visible, isJobSyncCompany, jobSyncSession?.token]);
+
   // ── Reset on open ──
   useEffect(() => {
     if (visible) {
@@ -438,6 +473,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
       setSelectedCity((prefill?.city as CitySlug) ?? "crestview");
       setCustomerSearch("");
       setShowCustomerDropdown(false);
+      setSelectedCompanyCustomerId(null);
       setSelectedDate(todayStr());
       setShowDatePicker(false);
       setVehicleType(undefined);
@@ -579,6 +615,40 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
     };
 
     try {
+      if (isJobSyncCompany) {
+        if (!jobSyncSession?.token) throw new Error("Your Company session has expired. Sign in again to create a Job.");
+        const priceBookServiceId = Number(packageId);
+        if (!Number.isSafeInteger(priceBookServiceId) || priceBookServiceId <= 0) {
+          throw new Error("Select an active Company Price Book service before creating this Job.");
+        }
+        if (addonIds.length || extraVehicles.length || priceOverridden || computedDiscount > 0 || recurrenceRule?.type !== "none") {
+          throw new Error("Company Jobs currently support one active Price Book service per Job. Add additional services in the Company Price Book before scheduling.");
+        }
+        const customer = selectedCompanyCustomerId
+          ? { id: selectedCompanyCustomerId }
+          : await createJobSyncCompanyCustomer(jobSyncSession.token, {
+              firstName,
+              lastName,
+              phone,
+              email,
+              addressLine1: address,
+              city: cityLabel,
+              vehicleType,
+            });
+        const start = new Date(`${selectedDate}T${String(startHour).padStart(2, "0")}:00`);
+        const end = new Date(`${selectedDate}T${String(endHour).padStart(2, "0")}:00`);
+        const job = await createJobSyncCompanyJob(jobSyncSession.token, {
+          customerId: customer.id,
+          priceBookServiceId,
+          scheduledStartAt: start.toISOString(),
+          scheduledEndAt: end.toISOString(),
+          privateNotes: jobNotes,
+        });
+        Alert.alert("Job Saved", `${job.serviceName} has been scheduled using the Company Price Book total of $${job.amount.toFixed(2)}.`);
+        onSaved?.();
+        onClose();
+        return;
+      }
       if (recurrenceRule && recurrenceRule.type !== "none") {
         const res = await jobCreateRecurringMutation.mutateAsync({
           ...basePayload,
@@ -693,20 +763,23 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                   setEmail(c.email || "");
                   setAddress(c.address || "");
                   setCustomerSearch(c.fullName || "");
+                  setSelectedCompanyCustomerId(c.id ?? null);
                   setShowCustomerDropdown(false);
                 }}
+                companyCustomers={isJobSyncCompany ? companyCustomers : undefined}
               />
+              {isJobSyncCompany && companyCustomersError ? <Text style={{ color: colors.error, fontSize: 12, marginBottom: 8 }}>{companyCustomersError}</Text> : null}
               <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>
                 <TextInput
                   value={firstName}
-                  onChangeText={setFirstName}
+                  onChangeText={(value) => { setFirstName(value); setSelectedCompanyCustomerId(null); }}
                   placeholder="First Name *"
                   placeholderTextColor={colors.muted}
                   style={[s.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.foreground }]}
                 />
                 <TextInput
                   value={lastName}
-                  onChangeText={setLastName}
+                  onChangeText={(value) => { setLastName(value); setSelectedCompanyCustomerId(null); }}
                   placeholder="Last Name *"
                   placeholderTextColor={colors.muted}
                   style={[s.input, { flex: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.foreground }]}
@@ -714,7 +787,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               </View>
               <TextInput
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(value) => { setPhone(value); setSelectedCompanyCustomerId(null); }}
                 placeholder="Phone"
                 placeholderTextColor={colors.muted}
                 keyboardType="phone-pad"
@@ -722,7 +795,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               />
               <TextInput
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => { setEmail(value); setSelectedCompanyCustomerId(null); }}
                 placeholder="Email"
                 placeholderTextColor={colors.muted}
                 keyboardType="email-address"
@@ -731,7 +804,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               />
               <AddressAutocomplete
                 value={address}
-                onChangeText={setAddress}
+                onChangeText={(value) => { setAddress(value); setSelectedCompanyCustomerId(null); }}
                 onSelectAddress={setAddress}
                 placeholder="Address *"
                 style={{ marginBottom: 16, zIndex: 999 }}
