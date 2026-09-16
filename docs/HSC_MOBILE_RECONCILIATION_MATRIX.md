@@ -1,7 +1,7 @@
 # HSC Mobile Reconciliation Matrix
 
-**Baseline:** `Luxurywashent/home-service-connection-app:main` at `3a30e6f07a18…`  
-**Manus comparison source:** `/home/ubuntu/mobile-hsc`  
+**Baseline:** `Luxurywashent/home-service-connection-app:main` at `3a30e6f07a18…`
+**Manus comparison source:** preserved active workspace and isolated reconciliation clones
 **Rule:** Each decision is capability-scoped. No whole-tree overwrite is permitted.
 
 | File | Capability | GitHub behavior | Manus behavior | Chosen behavior | Merge strategy | Tests required | Risk |
