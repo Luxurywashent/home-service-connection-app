@@ -1,20 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createJobSyncBearerHeaders,
+  createJobSyncCompanyCustomer,
+  createJobSyncCompanyJob,
   createJobSyncCompanyMemberUpdatePayload,
   createJobSyncMobileLoginPayload,
+  createJobSyncPasswordResetRequestPayload,
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
+  getJobSyncCompanyCustomers,
+  getJobSyncCompanyJobs,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
+  normalizeJobSyncFeatureAccess,
   normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedChatGroups,
   normalizeHomeServiceConnectedCommunityCategories,
   normalizeHomeServiceConnectedCommunityPosts,
   normalizeHomeServiceConnectedPriceBook,
+  normalizeJobSyncIncrementalSync,
 } from "../lib/jobsync-mobile-api";
+import { COMPANY_SCHEDULE_HALF_HOUR_SLOTS, companyScheduleInitialOffset, companyScheduleSlotIndex } from "../lib/jobsync-schedule-window";
 
 describe("JobSync mobile API contract", () => {
   it("uses the deployed Company and Platform Admin account-type contract", () => {
@@ -26,8 +34,29 @@ describe("JobSync mobile API contract", () => {
     expect(createJobSyncMobileLoginPayload({ accountType: "platform_admin", email: "owner@example.com", password: "password-456" }).accountType).toBe("platform_admin");
   });
 
+  it("creates the documented Company-only password-reset request without exposing a reset token to mobile", () => {
+    expect(createJobSyncPasswordResetRequestPayload("  OWNER@EXAMPLE.COM ")).toEqual({
+      email: "owner@example.com",
+      accountType: "company",
+    });
+  });
+
   it("sends restored sessions with an Authorization bearer header", () => {
     expect(createJobSyncBearerHeaders("mobile-token")).toEqual({ Authorization: "Bearer mobile-token" });
+  });
+
+  it("normalizes a Company-only incremental sync signal without treating local data as authoritative", () => {
+    const sync = normalizeJobSyncIncrementalSync({
+      since: "2026-09-15T12:00:00.000Z",
+      generatedAt: "2026-09-15T12:00:45.000Z",
+      changes: {
+        jobs: [{ id: 12, updatedAt: "2026-09-15T12:00:30.000Z" }, { id: "invalid" }],
+        messages: [{ id: 77, createdAt: "2026-09-15T12:00:40.000Z" }],
+      },
+    }, "2026-09-15T11:00:00.000Z");
+    expect(sync.since).toBe("2026-09-15T12:00:00.000Z");
+    expect(sync.changes.jobs).toEqual([{ id: 12, updatedAt: "2026-09-15T12:00:30.000Z", createdAt: null }]);
+    expect(sync.changes.messages).toEqual([{ id: 77, updatedAt: null, createdAt: "2026-09-15T12:00:40.000Z" }]);
   });
 
   it("normalizes an authorized Company member update payload", () => {
@@ -96,6 +125,22 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeJobSyncMobileSession({ accountType: "company", user: { role: "owner" } }, "bad-token")).toBeNull();
   });
 
+  it("normalizes Company feature access and fails closed for disabled mobile tabs", () => {
+    expect(normalizeJobSyncFeatureAccess({
+      features: [
+        { key: "finance", isEnabled: true },
+        { key: "payments", isEnabled: true },
+        { key: "eod", isEnabled: false },
+      ],
+      mobile: { finance: true, invoices: true, eodReview: false },
+    })).toEqual({
+      features: { finance: true, payments: true, eod: false },
+      mobile: { finance: true, invoices: true, eodReview: false },
+    });
+
+    expect(normalizeJobSyncFeatureAccess(null).mobile).toEqual({ finance: false, invoices: false, eodReview: false });
+  });
+
   it("normalizes active Company members and rejects a mismatched Company boundary", () => {
     const roster = normalizeJobSyncCompanyRoster({
       company: { id: 9, name: "Casey Services" },
@@ -106,7 +151,16 @@ describe("JobSync mobile API contract", () => {
     }, 9);
 
     expect(roster?.company.name).toBe("Casey Services");
-    expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true }]);
+    expect(roster?.members).toEqual([{
+      id: 41,
+      name: "Alex Technician",
+      role: "technician",
+      isActive: true,
+      city: null,
+      positionId: null,
+      positionName: null,
+      calendarEligible: false,
+    }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
   });
 
@@ -179,21 +233,13 @@ describe("JobSync mobile API contract", () => {
     });
   });
 
-  it("normalizes active Company Community categories and post interactions", () => {
+  it("normalizes Company-scoped Community categories and post interactions", () => {
     expect(normalizeHomeServiceConnectedCommunityCategories({
-      categories: [
-        { id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true },
-        { id: 22, name: "Archived", isActive: false },
-      ],
-    })).toEqual([
-      { id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true },
-    ]);
-
+      categories: [{ id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true }, { id: 22, name: "Archived", isActive: false }],
+    })).toEqual([{ id: 21, name: "Wins", description: "Share the good work", icon: "🏆", sortOrder: 2, isActive: true }]);
     expect(normalizeHomeServiceConnectedCommunityPosts({
       posts: [{ id: 51, category_id: 21, category_name: "Wins", category_icon: "🏆", author_user_id: 7, author_name: "Avery Stone", title: "Great review", body: "The customer thanked the team.", is_pinned: 1, comment_count: 2, like_count: 3, viewer_liked: true, created_at: "2026-09-14T18:00:00.000Z" }],
-    })).toEqual([
-      { id: 51, categoryId: 21, categoryName: "Wins", categoryIcon: "🏆", authorUserId: 7, authorName: "Avery Stone", title: "Great review", body: "The customer thanked the team.", mediaUrl: null, isPinned: true, commentCount: 2, likeCount: 3, viewerLiked: true, createdAt: "2026-09-14T18:00:00.000Z" },
-    ]);
+    })).toEqual([{ id: 51, categoryId: 21, categoryName: "Wins", categoryIcon: "🏆", authorUserId: 7, authorName: "Avery Stone", title: "Great review", body: "The customer thanked the team.", mediaUrl: null, isPinned: true, commentCount: 2, likeCount: 3, viewerLiked: true, createdAt: "2026-09-14T18:00:00.000Z" }]);
   });
 
   it("normalizes only active Company Price Book services and preserves web service IDs", () => {
@@ -204,8 +250,63 @@ describe("JobSync mobile API contract", () => {
         { serviceId: "svc-basic", name: "Basic Service", features: ["Exterior"], vehiclePrices: { sedan: 120 }, sortOrder: 1, isActive: true },
       ],
     })).toEqual([
-      { serviceId: "svc-basic", name: "Basic Service", emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
-      { serviceId: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
+      { serviceId: "svc-basic", name: "Basic Service", basePrice: 0, emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
+      { serviceId: "svc-full", name: "Full Service", basePrice: 0, emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
     ]);
+  });
+  it("fetches mounted Company Schedule Jobs only from the scoped Company endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ jobs: [{ id: 44, customerId: 8, title: "Lawn service", serviceName: "Mow", status: "scheduled", scheduledStartAt: "2026-09-11T13:00:00.000Z", scheduledEndAt: "2026-09-11T14:00:00.000Z", amount: 90, customerName: "Test Customer" }] }),
+    } as Response);
+    try {
+      const jobs = await getJobSyncCompanyJobs("company-token", { start: "2026-09-11T00:00:00.000Z", end: "2026-09-12T00:00:00.000Z" });
+      expect(jobs).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/mobile/v1/company/jobs?start="),
+        expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  it("keeps early and late Company Jobs inside the full-day Schedule timeline", () => {
+    expect(COMPANY_SCHEDULE_HALF_HOUR_SLOTS[0]).toBe(0);
+    expect(COMPANY_SCHEDULE_HALF_HOUR_SLOTS.at(-1)).toBe(23.5);
+    expect(companyScheduleSlotIndex(3 + 59 / 60)).toBe(7);
+    expect(companyScheduleSlotIndex(8)).toBe(16);
+    expect(companyScheduleSlotIndex(23.75)).toBe(COMPANY_SCHEDULE_HALF_HOUR_SLOTS.length - 1);
+    expect(companyScheduleInitialOffset(32)).toBe(512);
+  });
+
+  it("uses Company-owned customer IDs and a numeric Price Book service ID for server-priced Job creation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ job: { id: 45, customerId: 8, serviceName: "Window Cleaning", title: "Window Cleaning", status: "scheduled", scheduledStartAt: "2026-09-11T13:00:00.000Z", scheduledEndAt: "2026-09-11T14:30:00.000Z", amount: 249.5, customerName: "Test Customer" } }),
+    } as Response);
+    try {
+      await createJobSyncCompanyJob("company-token", { customerId: 8, priceBookServiceId: 501, assignedUserId: 41, scheduledStartAt: "2026-09-11T13:00:00.000Z", privateNotes: "Gate code in CRM" });
+      const [, request] = fetchMock.mock.calls[0];
+      expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/company/jobs");
+      expect(request).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
+      expect(JSON.parse(String((request as RequestInit).body))).toEqual({ customerId: 8, priceBookServiceId: 501, assignedUserId: 41, scheduledStartAt: "2026-09-11T13:00:00.000Z", privateNotes: "Gate code in CRM" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reads and creates customers only through the Company-scoped mobile contract", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ customers: [{ id: 8, firstName: "Test", lastName: "Customer", email: "test@example.com", phone: null, addressLine1: "1 Main St", city: "Mobile" }] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ customer: { id: 9, firstName: "New", lastName: "Customer", email: "new@example.com" } }) } as Response);
+    try {
+      await expect(getJobSyncCompanyCustomers("company-token")).resolves.toMatchObject([{ id: 8, name: "Test Customer" }]);
+      await expect(createJobSyncCompanyCustomer("company-token", { firstName: " New ", lastName: " Customer ", email: "NEW@EXAMPLE.COM" })).resolves.toMatchObject({ id: 9, email: "new@example.com" });
+      expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/customers");
+      expect(fetchMock.mock.calls[1][0]).toContain("/api/mobile/v1/customers");
+      expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))).toEqual({ firstName: "New", lastName: "Customer", email: "new@example.com" });
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });

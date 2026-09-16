@@ -23,11 +23,24 @@ export type JobSyncNativeSession = {
   };
 };
 
+export type JobSyncFeatureAccess = {
+  features: Record<string, boolean>;
+  mobile: {
+    finance: boolean;
+    invoices: boolean;
+    eodReview: boolean;
+  };
+};
+
 export type JobSyncCompanyMember = {
   id: number;
   name: string;
   role: string;
   isActive: boolean;
+  city: string | null;
+  positionId: number | null;
+  positionName: string | null;
+  calendarEligible: boolean;
 };
 
 export type JobSyncCompanyMemberDetail = JobSyncCompanyMember & {
@@ -69,7 +82,11 @@ export type JobSyncCompanyMemberUpdateInput = {
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
+const PASSWORD_RESET_REQUEST_PATH = "/api/mobile/v1/auth/password-reset/request";
+const COMPANY_SYNC_PATH = "/api/mobile/v1/sync";
+const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
 const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
@@ -209,8 +226,129 @@ export function createJobSyncMobileLoginPayload(input: { accountType: JobSyncAcc
   };
 }
 
+export function createJobSyncPasswordResetRequestPayload(email: string) {
+  return { email: email.trim().toLowerCase(), accountType: "company" as const };
+}
+
 export function createJobSyncBearerHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+export type JobSyncSyncChange = { id: number; updatedAt?: string | null; createdAt?: string | null };
+export type JobSyncIncrementalSync = { since: string; generatedAt: string; changes: Record<string, JobSyncSyncChange[]> };
+export type JobSyncMobileJob = { id: number; customerId: number; assignedUserId: number | null; title: string; serviceName: string; status: string; scheduledStartAt: string | null; scheduledEndAt: string | null; updatedAt: string | null; addressLine1: string | null; city: string | null; amount: number; customerName: string; assignedName: string | null };
+export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null };
+export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
+export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
+
+function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    customerId: Number(row.customerId),
+    assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
+    title: firstString(row.title) ?? "",
+    serviceName: firstString(row.serviceName) ?? "",
+    status: firstString(row.status) ?? "scheduled",
+    scheduledStartAt: firstString(row.scheduledStartAt),
+    scheduledEndAt: firstString(row.scheduledEndAt),
+    updatedAt: firstString(row.updatedAt),
+    addressLine1: firstString(row.addressLine1),
+    city: firstString(row.city),
+    amount: Number(row.amount || 0),
+    customerName: firstString(row.customerName) ?? "",
+    assignedName: firstString(row.assignedName),
+  };
+}
+
+export function normalizeJobSyncIncrementalSync(payload: unknown, fallbackSince?: string | null): JobSyncIncrementalSync {
+  const root = asRecord(payload) ?? {};
+  const changesRoot = asRecord(root.changes) ?? {};
+  const normalizeChanges = (value: unknown): JobSyncSyncChange[] => Array.isArray(value) ? value.map((item) => {
+    const row = asRecord(item) ?? {};
+    return { id: Number(row.id), updatedAt: firstString(row.updatedAt), createdAt: firstString(row.createdAt) };
+  }).filter((item) => Number.isSafeInteger(item.id) && item.id > 0) : [];
+  return { since: firstString(root.since) ?? fallbackSince ?? new Date(0).toISOString(), generatedAt: firstString(root.generatedAt) ?? new Date().toISOString(), changes: Object.fromEntries(Object.entries(changesRoot).map(([key, value]) => [key, normalizeChanges(value)])) };
+}
+
+export async function getJobSyncCompanyIncrementalSync(token: string, since?: string | null): Promise<JobSyncIncrementalSync> {
+  const query = since ? `?since=${encodeURIComponent(since)}` : "";
+  return normalizeJobSyncIncrementalSync(await requestJson(`${COMPANY_SYNC_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) }), since);
+}
+
+export async function getJobSyncCompanyJobs(token: string, range?: { start?: string; end?: string }): Promise<JobSyncMobileJob[]> {
+  const search = new URLSearchParams();
+  if (range?.start) search.set("start", range.start);
+  if (range?.end) search.set("end", range.end);
+  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncMobileJob).filter((job): job is JobSyncMobileJob => Boolean(job));
+}
+
+function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  const firstName = firstString(row.firstName) ?? "";
+  const lastName = firstString(row.lastName) ?? "";
+  if (!Number.isSafeInteger(id) || id <= 0 || !firstName || !lastName) return null;
+  return {
+    id,
+    firstName,
+    lastName,
+    name: firstString(row.name) ?? `${firstName} ${lastName}`.trim(),
+    email: firstString(row.email),
+    phone: firstString(row.phone),
+    addressLine1: firstString(row.addressLine1),
+    city: firstString(row.city),
+    region: firstString(row.region),
+    postalCode: firstString(row.postalCode),
+    vehicleType: firstString(row.vehicleType),
+  };
+}
+
+export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
+  const payload = asRecord(await requestJson("/api/mobile/v1/customers", { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
+}
+
+export async function createJobSyncCompanyCustomer(token: string, input: JobSyncCompanyCustomerCreateInput): Promise<JobSyncCompanyCustomer> {
+  const payload = asRecord(await requestJson("/api/mobile/v1/customers", {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
+      ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+      ...(input.addressLine1?.trim() ? { addressLine1: input.addressLine1.trim() } : {}),
+      ...(input.city?.trim() ? { city: input.city.trim() } : {}),
+      ...(input.region?.trim() ? { region: input.region.trim() } : {}),
+      ...(input.postalCode?.trim() ? { postalCode: input.postalCode.trim() } : {}),
+      ...(input.vehicleType?.trim() ? { vehicleType: input.vehicleType.trim() } : {}),
+    }),
+  })) ?? {};
+  const customer = normalizeJobSyncCompanyCustomer(payload.customer);
+  if (!customer) throw new Error("Home Service Connected returned an invalid customer response.");
+  return customer;
+}
+
+export async function createJobSyncCompanyJob(token: string, input: JobSyncCompanyJobCreateInput): Promise<JobSyncMobileJob> {
+  const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      customerId: input.customerId,
+      priceBookServiceId: input.priceBookServiceId,
+      ...(input.assignedUserId ? { assignedUserId: input.assignedUserId } : {}),
+      scheduledStartAt: input.scheduledStartAt,
+      ...(input.scheduledEndAt ? { scheduledEndAt: input.scheduledEndAt } : {}),
+      ...(input.privateNotes?.trim() ? { privateNotes: input.privateNotes.trim() } : {}),
+    }),
+  })) ?? {};
+  const job = normalizeJobSyncMobileJob(payload.job);
+  if (!job) throw new Error("Home Service Connected returned an invalid Job response.");
+  return job;
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
@@ -293,6 +431,33 @@ export function normalizeJobSyncMobileSession(payload: unknown, token: string): 
   };
 }
 
+export function normalizeJobSyncFeatureAccess(payload: unknown): JobSyncFeatureAccess {
+  const root = asRecord(payload);
+  const rawFeatures = Array.isArray(root?.features) ? root.features : [];
+  const features = Object.fromEntries(rawFeatures.flatMap((value) => {
+    const item = asRecord(value);
+    const key = firstString(item?.key);
+    return key ? [[key, item?.isEnabled === true]] : [];
+  }));
+  const mobile = asRecord(root?.mobile) ?? {};
+  return {
+    features,
+    mobile: {
+      finance: mobile.finance === true,
+      invoices: mobile.invoices === true,
+      eodReview: mobile.eodReview === true,
+    },
+  };
+}
+
+export async function getJobSyncCompanyFeatureAccess(token: string) {
+  const payload = await requestJson(COMPANY_FEATURE_ACCESS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncFeatureAccess(payload);
+}
+
 export async function getJobSyncMobileSession(token: string) {
   const payload = await requestJson(SESSION_PATH, {
     method: "GET",
@@ -301,6 +466,14 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("Home Service Connected returned an unsupported mobile session profile.");
   return session;
+}
+
+export async function requestJobSyncCompanyPasswordReset(email: string) {
+  await requestJson(PASSWORD_RESET_REQUEST_PATH, {
+    method: "POST",
+    body: JSON.stringify(createJobSyncPasswordResetRequestPayload(email)),
+  });
+  return { ok: true } as const;
 }
 
 export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyId: number): JobSyncCompanyRoster | null {
@@ -321,6 +494,10 @@ export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyI
       name,
       role: firstString(member.role, member.memberRole) ?? "team_member",
       isActive: true,
+      city: firstString(member.city, member.serviceCity, member.service_city),
+      positionId: firstNumber(member.positionId, member.position_id),
+      positionName: firstString(member.positionName, member.position_name),
+      calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
     }];
   });
 
@@ -364,6 +541,9 @@ export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMe
     city: firstString(member.city),
     hireDate: firstString(member.hireDate, member.hire_date, member.createdAt, member.created_at),
     role: firstString(member.role, member.memberRole) ?? "team_member",
+    positionId: firstNumber(member.positionId, member.position_id),
+    positionName: firstString(member.positionName, member.position_name),
+    calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
     availability: firstString(member.availability),
     workDays: stringList(member.workDays ?? member.work_days ?? member.customWorkDays),
     hourlyRate: nullableNumber(member.hourlyRate, member.hourly_rate),
@@ -426,6 +606,7 @@ export type HomeServiceConnectedTimeState = {
 export type HomeServiceConnectedPriceBookService = {
   serviceId: string;
   name: string;
+  basePrice: number;
   emoji: string;
   description: string;
   features: string[];
@@ -546,6 +727,7 @@ function normalizeHomeServiceConnectedPriceBookService(value: unknown): HomeServ
   return {
     serviceId,
     name,
+    basePrice: nullableNumber(service.basePrice, service.base_price) ?? 0,
     emoji: firstString(service.emoji, service.icon) ?? "🛠️",
     description: firstString(service.description, service.details) ?? "",
     features: priceBookFeatures(service.features),
@@ -641,11 +823,10 @@ export async function updateHomeServiceConnectedChatGroup(token: string, groupId
 }
 
 export async function updateHomeServiceConnectedChatGroupMembers(token: string, groupId: string, memberIds: number[]) {
-  const activeMemberIds = Array.from(new Set(memberIds.filter((memberId) => Number.isInteger(memberId) && memberId > 0)));
   return requestJson(`${COMPANY_CHAT_GROUPS_PATH}/${encodeURIComponent(groupId)}/members`, {
     method: "PUT",
     headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ memberIds: activeMemberIds }),
+    body: JSON.stringify({ memberIds: Array.from(new Set(memberIds.filter((memberId) => Number.isInteger(memberId) && memberId > 0))) }),
   });
 }
 
@@ -684,32 +865,17 @@ export async function sendHomeServiceConnectedGroupMessage(token: string, groupI
   });
 }
 
-function strictBoolean(value: unknown) {
-  return value === true || value === 1 || value === "1" || value === "true";
-}
-
 function normalizeCommunityCategory(value: unknown): HomeServiceConnectedCommunityCategory | null {
   const category = asRecord(value);
   const id = nullableNumber(category?.id, category?.categoryId, category?.category_id);
   const name = firstString(category?.name, category?.label);
   if (!category || !id || !name) return null;
-  return {
-    id,
-    name,
-    description: firstString(category.description),
-    icon: firstString(category.icon),
-    sortOrder: nullableNumber(category.sortOrder, category.sort_order) ?? 0,
-    isActive: isActiveMember(category.isActive ?? category.is_active ?? true),
-  };
+  return { id, name, description: firstString(category.description), icon: firstString(category.icon), sortOrder: nullableNumber(category.sortOrder, category.sort_order) ?? 0, isActive: isActiveMember(category.isActive ?? category.is_active ?? true) };
 }
 
 export function normalizeHomeServiceConnectedCommunityCategories(payload: unknown) {
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const categories = Array.isArray(data.categories) ? data.categories : Array.isArray(root?.categories) ? root.categories : [];
-  return categories
-    .map(normalizeCommunityCategory)
-    .filter((category): category is HomeServiceConnectedCommunityCategory => Boolean(category?.isActive));
+  const root = asRecord(payload); const data = firstRecord(root?.data, root) ?? {}; const categories = Array.isArray(data.categories) ? data.categories : Array.isArray(root?.categories) ? root.categories : [];
+  return categories.map(normalizeCommunityCategory).filter((category): category is HomeServiceConnectedCommunityCategory => Boolean(category?.isActive));
 }
 
 function normalizeCommunityPost(value: unknown): HomeServiceConnectedCommunityPost | null {
@@ -720,28 +886,11 @@ function normalizeCommunityPost(value: unknown): HomeServiceConnectedCommunityPo
   const title = firstString(post?.title);
   const body = firstString(post?.body, post?.message);
   if (!post || !id || !authorUserId || !authorName || !title || !body) return null;
-  return {
-    id,
-    categoryId: nullableNumber(post.categoryId, post.category_id),
-    categoryName: firstString(post.categoryName, post.category_name),
-    categoryIcon: firstString(post.categoryIcon, post.category_icon),
-    authorUserId,
-    authorName,
-    title,
-    body,
-    mediaUrl: firstString(post.mediaUrl, post.media_url),
-    isPinned: strictBoolean(post.isPinned ?? post.is_pinned),
-    commentCount: nullableNumber(post.commentCount, post.comment_count) ?? 0,
-    likeCount: nullableNumber(post.likeCount, post.like_count) ?? 0,
-    viewerLiked: strictBoolean(post.viewerLiked ?? post.viewer_liked),
-    createdAt: firstString(post.createdAt, post.created_at) ?? new Date().toISOString(),
-  };
+  return { id, categoryId: nullableNumber(post.categoryId, post.category_id), categoryName: firstString(post.categoryName, post.category_name), categoryIcon: firstString(post.categoryIcon, post.category_icon), authorUserId, authorName, title, body, mediaUrl: firstString(post.mediaUrl, post.media_url), isPinned: isActiveMember(post.isPinned ?? post.is_pinned), commentCount: nullableNumber(post.commentCount, post.comment_count) ?? 0, likeCount: nullableNumber(post.likeCount, post.like_count) ?? 0, viewerLiked: isActiveMember(post.viewerLiked ?? post.viewer_liked), createdAt: firstString(post.createdAt, post.created_at) ?? new Date().toISOString() };
 }
 
 export function normalizeHomeServiceConnectedCommunityPosts(payload: unknown) {
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const posts = Array.isArray(data.posts) ? data.posts : Array.isArray(root?.posts) ? root.posts : [];
+  const root = asRecord(payload); const data = firstRecord(root?.data, root) ?? {}; const posts = Array.isArray(data.posts) ? data.posts : Array.isArray(root?.posts) ? root.posts : [];
   return posts.map(normalizeCommunityPost).filter((post): post is HomeServiceConnectedCommunityPost => Boolean(post));
 }
 
@@ -761,13 +910,7 @@ export async function getHomeServiceConnectedCommunityCategories(token: string) 
 }
 
 export async function createHomeServiceConnectedCommunityCategory(token: string, input: { name: string; description?: string; icon?: string; sortOrder?: number }) {
-  const name = input.name.trim();
-  if (!name) throw new Error("A category name is required.");
-  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/categories`, {
-    method: "POST",
-    headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ name, ...(input.description?.trim() ? { description: input.description.trim() } : {}), ...(input.icon?.trim() ? { icon: input.icon.trim() } : {}), ...(Number.isInteger(input.sortOrder) ? { sortOrder: input.sortOrder } : {}) }),
-  });
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/categories`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ name: input.name.trim(), ...(input.description?.trim() ? { description: input.description.trim() } : {}), ...(input.icon?.trim() ? { icon: input.icon.trim() } : {}), ...(Number.isInteger(input.sortOrder) ? { sortOrder: input.sortOrder } : {}) }) });
 }
 
 export async function getHomeServiceConnectedCommunityPosts(token: string, categoryId?: number) {
@@ -777,67 +920,37 @@ export async function getHomeServiceConnectedCommunityPosts(token: string, categ
 }
 
 export async function createHomeServiceConnectedCommunityPost(token: string, input: { categoryId?: number; title: string; body: string }) {
-  const title = input.title.trim();
-  const body = input.body.trim();
-  if (!title || !body) throw new Error("A post title and message are required.");
-  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts`, {
-    method: "POST",
-    headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ ...(input.categoryId ? { categoryId: input.categoryId } : {}), title, body }),
-  });
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ ...(input.categoryId ? { categoryId: input.categoryId } : {}), title: input.title.trim(), body: input.body.trim() }) });
 }
 
 export async function getHomeServiceConnectedCommunityComments(token: string, postId: number) {
   const payload = await requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/comments`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const comments = Array.isArray(data.comments) ? data.comments : Array.isArray(root?.comments) ? root.comments : [];
+  const root = asRecord(payload); const data = firstRecord(root?.data, root) ?? {}; const comments = Array.isArray(data.comments) ? data.comments : Array.isArray(root?.comments) ? root.comments : [];
   return comments.map(normalizeCommunityComment).filter((comment): comment is HomeServiceConnectedCommunityComment => Boolean(comment));
 }
 
 export async function createHomeServiceConnectedCommunityComment(token: string, postId: number, body: string) {
-  const message = body.trim();
-  if (!message) throw new Error("A comment is required.");
-  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/comments`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ body: message }) });
+  return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/comments`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ body: body.trim() }) });
 }
 
-export function toggleHomeServiceConnectedCommunityLike(token: string, postId: number) {
+export async function toggleHomeServiceConnectedCommunityLike(token: string, postId: number) {
   return requestJson(`${COMPANY_CHAT_COMMUNITY_PATH}/posts/${encodeURIComponent(String(postId))}/like`, { method: "POST", headers: createJobSyncBearerHeaders(token) });
 }
 
 export async function getHomeServiceConnectedDirectMembers(token: string): Promise<HomeServiceConnectedDirectMember[]> {
   const payload = await requestJson(`${COMPANY_CHAT_DIRECT_PATH}/members`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const members = Array.isArray(data.members) ? data.members : Array.isArray(root?.members) ? root.members : [];
-  return members.flatMap((value) => {
-    const member = asRecord(value);
-    const id = nullableNumber(member?.id, member?.userId);
-    const name = firstString(member?.name, member?.fullName);
-    return id && name ? [{ id, name, role: firstString(member?.role) ?? "Team Member", lastMessage: firstString(member?.lastMessage, member?.last_message), lastMessageAt: firstString(member?.lastMessageAt, member?.last_message_at) }] : [];
-  });
+  const root = asRecord(payload); const data = firstRecord(root?.data, root) ?? {}; const members = Array.isArray(data.members) ? data.members : Array.isArray(root?.members) ? root.members : [];
+  return members.flatMap((value) => { const member = asRecord(value); const id = nullableNumber(member?.id, member?.userId); const name = firstString(member?.name, member?.fullName); return id && name ? [{ id, name, role: firstString(member?.role) ?? "Team Member", lastMessage: firstString(member?.lastMessage, member?.last_message), lastMessageAt: firstString(member?.lastMessageAt, member?.last_message_at) }] : []; });
 }
 
 export async function getHomeServiceConnectedDirectMessages(token: string, memberId: number) {
   const payload = await requestJson(`${COMPANY_CHAT_DIRECT_PATH}/${encodeURIComponent(String(memberId))}/messages`, { method: "GET", headers: createJobSyncBearerHeaders(token) });
-  const root = asRecord(payload);
-  const data = firstRecord(root?.data, root) ?? {};
-  const messages = Array.isArray(data.messages) ? data.messages : Array.isArray(root?.messages) ? root.messages : [];
-  return messages.map((value) => {
-    const message = asRecord(value) ?? {};
-    return {
-      id: firstString(message.id, message.messageId, message.message_id) ?? `${firstString(message.createdAt, message.created_at) ?? "message"}-${firstString(message.senderId, message.sender_id) ?? "sender"}`,
-      senderName: firstString(message.senderName, message.sender_name) ?? "Team Member",
-      senderId: firstString(message.senderId, message.sender_id),
-      text: firstString(message.message, message.text, message.body) ?? "",
-      createdAt: firstString(message.createdAt, message.created_at) ?? new Date().toISOString(),
-    } satisfies HomeServiceConnectedChatMessage;
-  });
+  const root = asRecord(payload); const data = firstRecord(root?.data, root) ?? {}; const messages = Array.isArray(data.messages) ? data.messages : Array.isArray(root?.messages) ? root.messages : [];
+  return messages.map((value) => { const message = asRecord(value) ?? {}; return { id: firstString(message.id, message.messageId, message.message_id) ?? `${firstString(message.createdAt, message.created_at) ?? "message"}-${firstString(message.senderId, message.sender_id) ?? "sender"}`, senderName: firstString(message.senderName, message.sender_name) ?? "Team Member", senderId: firstString(message.senderId, message.sender_id), text: firstString(message.message, message.text, message.body) ?? "", createdAt: firstString(message.createdAt, message.created_at) ?? new Date().toISOString() } satisfies HomeServiceConnectedChatMessage; });
 }
 
 export async function sendHomeServiceConnectedDirectMessage(token: string, memberId: number, text: string) {
-  const message = text.trim();
-  if (!message) throw new Error("A message is required.");
+  const message = text.trim(); if (!message) throw new Error("A message is required.");
   return requestJson(`${COMPANY_CHAT_DIRECT_PATH}/${encodeURIComponent(String(memberId))}/messages`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ message }) });
 }
 

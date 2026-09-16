@@ -23,6 +23,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { CustomerProvider } from "@/lib/customer-context";
 import { InvestorAuthProvider } from "@/lib/investor-auth";
 import { JobSyncAuthProvider } from "@/lib/jobsync-auth-context";
+import { JobSyncSyncProvider } from "@/lib/jobsync-sync-context";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform as RNPlatform } from "react-native";
@@ -355,6 +356,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AuthProvider>
           <JobSyncAuthProvider>
+          <JobSyncSyncProvider>
           <InvestorAuthProvider>
           <CustomerProvider>
             <NotificationRouter />
@@ -375,6 +377,7 @@ export default function RootLayout() {
             </Stack>
           </CustomerProvider>
           </InvestorAuthProvider>
+          </JobSyncSyncProvider>
           </JobSyncAuthProvider>
           </AuthProvider>
           <StatusBar style="auto" />
