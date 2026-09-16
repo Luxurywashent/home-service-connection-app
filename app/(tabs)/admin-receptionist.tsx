@@ -13,6 +13,7 @@ import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { trpc } from "@/lib/trpc";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PhoneLine {
@@ -90,7 +91,22 @@ function formatDuration(seconds: number): string {
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
+function CompanyReceptionistUnavailable() {
+  const colors = useColors();
+  return (
+    <ScreenContainer className="items-center justify-center px-6">
+      <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "700", textAlign: "center" }}>Receptionist is not available in Home Service Connected yet</Text>
+      <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 22, marginTop: 12, textAlign: "center" }}>This legacy feature has no verified Home Service Connected API contract. Your Company data will not be sent to the legacy service.</Text>
+    </ScreenContainer>
+  );
+}
+
 export default function AdminReceptionistScreen() {
+  const { session } = useJobSyncAuth();
+  return session?.portal === "company" ? <CompanyReceptionistUnavailable /> : <AdminReceptionistLegacyScreen />;
+}
+
+function AdminReceptionistLegacyScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const [activeTab, setActiveTab] = useState<"status" | "calls" | "test" | "training">("status");
