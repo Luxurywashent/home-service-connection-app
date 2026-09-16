@@ -40,7 +40,15 @@ import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
-import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
+import {
+  createJobSyncCompanyCustomer,
+  createJobSyncCompanyJob,
+  getJobSyncCompanyCustomers,
+  getJobSyncCompanyJobs,
+  getJobSyncCompanyMembers,
+  type JobSyncCompanyCustomer,
+} from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
@@ -860,9 +868,11 @@ function AdminPrivateNotesCard({
 }) {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
   const currentEmployeeId = employee?.employeeId ?? "ADMIN";
   const currentEmployeeName = employee?.fullName ?? "Admin";
   const currentRole = employee?.role ?? "admin";
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
 
   const [newNoteText, setNewNoteText] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -871,6 +881,11 @@ function AdminPrivateNotesCard({
 
   const notes: PrivateNote[] = job.privateNotes ?? [];
   const isAdmin = ["admin", "office", "operations_manager"].includes(currentRole);
+
+  // Private-note mutations still target the legacy local endpoint. Do not expose
+  // this card to Company sessions until an equivalent bearer-authenticated HSC
+  // notes contract is published.
+  if (isJobSyncCompany) return null;
 
   const addNote = async () => {
     const text = newNoteText.trim();
@@ -1042,13 +1057,15 @@ function CustomerSearchField({
   showDropdown,
   setShowDropdown,
   onSelect,
+  companyCustomers,
 }: {
   colors: any;
   value: string;
   onChange: (v: string) => void;
   showDropdown: boolean;
   setShowDropdown: (v: boolean) => void;
-  onSelect: (c: { fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
+  onSelect: (c: { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
+  companyCustomers?: JobSyncCompanyCustomer[];
 }) {
   const [query, setQuery] = React.useState(value);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1056,8 +1073,17 @@ function CustomerSearchField({
 
   const { data: results = [] } = trpc.customers.listAll.useQuery(
     { search: searchTerm },
-    { enabled: searchTerm.length >= 2, staleTime: 10_000 }
+    { enabled: !companyCustomers && searchTerm.length >= 2, staleTime: 10_000 }
   );
+  const visibleResults = companyCustomers
+    ? companyCustomers
+      .filter((customer) => {
+        const normalized = searchTerm.trim().toLowerCase();
+        return normalized.length >= 2 && [customer.name, customer.email, customer.phone, customer.addressLine1].some((part) => part?.toLowerCase().includes(normalized));
+      })
+      .slice(0, 8)
+      .map((customer) => ({ id: customer.id, fullName: customer.name, phone: customer.phone, email: customer.email, address: customer.addressLine1 }))
+    : results as Array<{ id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }>;
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -1092,12 +1118,12 @@ function CustomerSearchField({
           </TouchableOpacity>
         )}
       </View>
-      {showDropdown && results.length > 0 && (
+      {showDropdown && visibleResults.length > 0 && (
         <View style={{ position: "absolute", top: 50, left: 0, right: 0, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, maxHeight: 200, overflow: "hidden", elevation: 8, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}>
           <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
-            {(results as any[]).slice(0, 8).map((c: any, i: number) => (
+            {visibleResults.map((c, i: number) => (
               <TouchableOpacity
-                key={c.customerId || i}
+                key={c.id || i}
                 onPress={() => { setQuery(c.fullName); onSelect(c); }}
                 style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < Math.min(results.length, 8) - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }}
                 activeOpacity={0.7}
@@ -1275,8 +1301,11 @@ export default function AdminScheduleScreen() {
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: companySyncRevision } = useJobSyncSync();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const companyPriceBook = useCompanyPriceBook();
+  const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
+  const [companyCustomersError, setCompanyCustomersError] = useState<string | null>(null);
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
     prefillFirst?: string;
@@ -1345,10 +1374,10 @@ export default function AdminScheduleScreen() {
           features: s.features ?? [],
           isRv,
           basePrice: {
-            sedan: vp.sedan ?? 0,
-            suv: vp.suv ?? 0,
-            xl_suv_van: vp.xl_suv_van ?? 0,
-            truck: vp.truck ?? 0,
+            sedan: vp.sedan ?? s.basePrice ?? 0,
+            suv: vp.suv ?? s.basePrice ?? 0,
+            xl_suv_van: vp.xl_suv_van ?? s.basePrice ?? 0,
+            truck: vp.truck ?? s.basePrice ?? 0,
             rv_20_29: vp.rv_20_29 ?? 0,
             rv_30_39: vp.rv_30_39 ?? 0,
             rv_40_plus: vp.rv_40_plus ?? 0,
@@ -1455,6 +1484,7 @@ export default function AdminScheduleScreen() {
   const [addAddress, setAddAddress] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [selectedCompanyCustomerId, setSelectedCompanyCustomerId] = useState<number | null>(null);
   const [addonsExpanded, setAddonsExpanded] = useState(false);
   const [addService, setAddService] = useState("");
   const [addPrice, setAddPrice] = useState("");
@@ -1555,6 +1585,21 @@ export default function AdminScheduleScreen() {
     setSyncKey((k) => k + 1);
   }, [utils]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!showAddModal || !isJobSyncCompany || !jobSyncSession?.token) {
+      if (!isJobSyncCompany) {
+        setCompanyCustomers([]);
+        setCompanyCustomersError(null);
+      }
+      return () => { cancelled = true; };
+    }
+    void getJobSyncCompanyCustomers(jobSyncSession.token)
+      .then((customers) => { if (!cancelled) { setCompanyCustomers(customers); setCompanyCustomersError(null); } })
+      .catch((error) => { if (!cancelled) setCompanyCustomersError(error instanceof Error ? error.message : "Home Service Connected could not load Company customers."); });
+    return () => { cancelled = true; };
+  }, [showAddModal, isJobSyncCompany, jobSyncSession?.token]);
+
   // Fetch blockers for the current week whenever city or week changes
   useEffect(() => {
     const fetchBlockers = async () => {
@@ -1638,8 +1683,27 @@ export default function AdminScheduleScreen() {
   // Sync all jobs (manual + online) from server DB when city changes or manual refresh
   useEffect(() => {
     if (isJobSyncCompany) {
-      setJobs([]);
-      setIsSyncing(false);
+      const token = jobSyncSession?.token;
+      if (!token) return;
+      const syncCompanyJobs = async () => {
+        setIsSyncing(true);
+        try {
+          const today = new Date();
+          const start = new Date(today); start.setDate(today.getDate() - 365);
+          const end = new Date(today); end.setDate(today.getDate() + 365);
+          const serverJobs = await getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() });
+          const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => {
+            const scheduled = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
+            const endAt = job.scheduledEndAt ? new Date(job.scheduledEndAt) : new Date(scheduled.getTime() + 60 * 60 * 1000);
+            const dayIndex = (scheduled.getDay() + 6) % 7;
+            const todayMonday = new Date(); todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7); todayMonday.setHours(0, 0, 0, 0);
+            const scheduledMonday = new Date(scheduled); scheduledMonday.setDate(scheduled.getDate() - dayIndex); scheduledMonday.setHours(0, 0, 0, 0);
+            return { id: String(job.id), location: job.city || selectedCity, firstName: job.customerName.split(" ")[0] || "", lastName: job.customerName.split(" ").slice(1).join(" "), email: undefined, phone: "", address: job.addressLine1 || "", serviceTitle: job.serviceName || job.title, serviceDescription: job.title, price: job.amount, startHour: scheduled.getHours() + scheduled.getMinutes() / 60, endHour: endAt.getHours() + endAt.getMinutes() / 60, dayIndex, weekOffset: Math.round((scheduledMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)), status: (job.status === "completed" ? "finished" : job.status === "on_site" ? "started" : "scheduled") as JobStatus, _rawStatus: job.status, detailerName: job.assignedName || undefined, assignedTo: job.assignedUserId ? `jobsync-${job.assignedUserId}` : undefined, createdAt: scheduled.toISOString() } as Job;
+          });
+          setJobs(mappedJobs);
+        } finally { setIsSyncing(false); }
+      };
+      void syncCompanyJobs();
       return;
     }
     const syncServerJobs = async () => {
@@ -1765,7 +1829,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [isJobSyncCompany, selectedCity, syncKey]);
+  }, [companySyncRevision, isJobSyncCompany, jobSyncSession?.token, selectedCity, syncKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
@@ -1811,6 +1875,7 @@ export default function AdminScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server by bookingId
+    if (isJobSyncCompany) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightBookingId)}`);
@@ -1878,7 +1943,7 @@ export default function AdminScheduleScreen() {
       }
     };
     fetchAndOpen();
-  }, [highlightBookingId, jobs]);
+  }, [highlightBookingId, jobs, isJobSyncCompany]);
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
@@ -1889,7 +1954,7 @@ export default function AdminScheduleScreen() {
     const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
     const dow = selectedDate.getDay();
     // Find the soonest available slot across all on-shift detailers
-    let bestDetailer = cityDets[0]?.name ?? "";
+    let bestDetailer = isJobSyncCompany ? (cityDets[0]?.employeeId ?? "") : (cityDets[0]?.name ?? "");
     let bestStart = 8;
     let bestEnd = 10;
     let foundSlot = false;
@@ -1900,7 +1965,7 @@ export default function AdminScheduleScreen() {
       for (let h = 8; h <= 15; h += 0.5) {
         if (!blocked.has(h) && !blocked.has(h + 0.5) && !blocked.has(h + 1) && !blocked.has(h + 1.5)) {
           if (!foundSlot || h < bestStart) {
-            bestDetailer = det.name;
+            bestDetailer = isJobSyncCompany ? det.employeeId : det.name;
             bestStart = h;
             bestEnd = h + 2;
             foundSlot = true;
@@ -1911,6 +1976,7 @@ export default function AdminScheduleScreen() {
     }
     setAddFirstName(""); setAddLastName(""); setAddPhone(""); setAddEmail(""); setAddAddress("");
     setCustomerSearch(""); setShowCustomerDropdown(false); setAddonsExpanded(false);
+    setSelectedCompanyCustomerId(null);
     setAddService(""); setAddPrice(""); setAddStartHour(bestStart); setAddEndHour(bestEnd);
     setAddDetailer(bestDetailer);
     setAddVehicleType(undefined); setAddPackageId(undefined);
@@ -1929,8 +1995,47 @@ export default function AdminScheduleScreen() {
 
   const jobCreateRecurringMutation = trpc.jobs.createRecurring.useMutation();
 
-  const saveAdminJob = () => {
+  const saveAdminJob = async () => {
     if (!addFirstName.trim() || !addLastName.trim() || !addAddress.trim()) return;
+    if (isJobSyncCompany) {
+      try {
+        if (!jobSyncSession?.token) throw new Error("Your Company session has expired. Sign in again to create a Job.");
+        const priceBookServiceId = Number(addPackageId);
+        if (!Number.isSafeInteger(priceBookServiceId) || priceBookServiceId <= 0) throw new Error("Select an active Company Price Book service before creating this Job.");
+        if (addAddonIds.length || addExtraVehicles.length || addCustomPrice.trim() || addDiscountInput.trim() || addRecurrenceRule?.type !== "none") {
+          throw new Error("Company Jobs currently support one active Price Book service per Job. Configure extra services in the Company Price Book before scheduling.");
+        }
+        const customer = selectedCompanyCustomerId
+          ? { id: selectedCompanyCustomerId }
+          : await createJobSyncCompanyCustomer(jobSyncSession.token, {
+              firstName: addFirstName,
+              lastName: addLastName,
+              phone: addPhone,
+              email: addEmail,
+              addressLine1: addAddress,
+              city: CITY_LIST.find((city) => city.slug === selectedCity)?.label ?? selectedCity,
+              vehicleType: addVehicleType,
+            });
+        const dateStr = addJobDate || localDateStr(getWeekDates(weekOffset)[selectedDay]);
+        const scheduledStartAt = new Date(`${dateStr}T${String(Math.floor(addStartHour)).padStart(2, "0")}:${addStartHour % 1 ? "30" : "00"}:00`).toISOString();
+        const scheduledEndAt = new Date(`${dateStr}T${String(Math.floor(addEndHour)).padStart(2, "0")}:${addEndHour % 1 ? "30" : "00"}:00`).toISOString();
+        const assignedUserId = addDetailer.startsWith("jobsync-") ? Number(addDetailer.slice("jobsync-".length)) : undefined;
+        const job = await createJobSyncCompanyJob(jobSyncSession.token, {
+          customerId: customer.id,
+          priceBookServiceId,
+          ...(Number.isSafeInteger(assignedUserId) && (assignedUserId ?? 0) > 0 ? { assignedUserId } : {}),
+          scheduledStartAt,
+          scheduledEndAt,
+        });
+        setShowAddModal(false);
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        forceSync();
+        Alert.alert("Job Saved", `${job.serviceName} was scheduled using the Company Price Book total of $${job.amount.toFixed(2)}.`);
+      } catch (error) {
+        Alert.alert("Job Not Saved", error instanceof Error ? error.message : "Home Service Connected could not create this Job.");
+      }
+      return;
+    }
     // Warn if any extra vehicle has no package selected (price = 0 and no packageId)
     const unpricedVehicles = addExtraVehicles.filter(v => !v.packageId && v.price === 0);
     if (unpricedVehicles.length > 0) {
@@ -2200,6 +2305,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminLoadCustomerHistory = async (job: Job) => {
+    if (isJobSyncCompany) return;
     try {
       const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
       const res = await fetch(url);
@@ -2228,10 +2334,10 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     setCustomerHistory([]);
     setAddressPhotos([]);
-    if (selectedJob && (selectedJob.phone || selectedJob.email)) {
+    if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       adminLoadCustomerHistory(selectedJob);
     }
-    if (selectedJob?.address) {
+    if (!isJobSyncCompany && selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddressPhotos(photos)).catch(() => {});
     }
@@ -4763,6 +4869,10 @@ export default function AdminScheduleScreen() {
                   {/* Send button */}
                     <TouchableOpacity
                     onPress={async () => {
+                      if (isJobSyncCompany) {
+                        Alert.alert("Invoice unavailable", "Company invoice delivery will be available after the Home Service Connected billing contract is published.");
+                        return;
+                      }
                       setInvoiceSending(true);
                       try {
                         const resp = await fetch(`${APP_API_BASE}/api/invoice/send`, {
@@ -4891,7 +5001,7 @@ export default function AdminScheduleScreen() {
                 <CustomerSearchField
                   colors={colors}
                   value={customerSearch}
-                  onChange={setCustomerSearch}
+                  onChange={(value) => { setCustomerSearch(value); setSelectedCompanyCustomerId(null); }}
                   showDropdown={showCustomerDropdown}
                   setShowDropdown={setShowCustomerDropdown}
                   onSelect={(c) => {
@@ -4902,19 +5012,22 @@ export default function AdminScheduleScreen() {
                     setAddEmail(c.email || "");
                     setAddAddress(c.address || "");
                     setCustomerSearch(c.fullName || "");
+                    setSelectedCompanyCustomerId(c.id ?? null);
                     setShowCustomerDropdown(false);
                   }}
+                  companyCustomers={isJobSyncCompany ? companyCustomers : undefined}
                 />
+                {isJobSyncCompany && companyCustomersError ? <Text style={{ color: colors.error, fontSize: 12, marginBottom: 8 }}>{companyCustomersError}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>
-                  <TextInput value={addFirstName} onChangeText={setAddFirstName} placeholder="First Name *" placeholderTextColor={colors.muted} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background }} />
-                  <TextInput value={addLastName} onChangeText={setAddLastName} placeholder="Last Name *" placeholderTextColor={colors.muted} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background }} />
+                  <TextInput value={addFirstName} onChangeText={(value) => { setAddFirstName(value); setSelectedCompanyCustomerId(null); }} placeholder="First Name *" placeholderTextColor={colors.muted} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background }} />
+                  <TextInput value={addLastName} onChangeText={(value) => { setAddLastName(value); setSelectedCompanyCustomerId(null); }} placeholder="Last Name *" placeholderTextColor={colors.muted} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background }} />
                 </View>
-                <TextInput value={addPhone} onChangeText={setAddPhone} placeholder="Phone" placeholderTextColor={colors.muted} keyboardType="phone-pad" style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background, marginBottom: 8 }} />
-                <TextInput value={addEmail} onChangeText={setAddEmail} placeholder="Email" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background, marginBottom: 8 }} />
+                <TextInput value={addPhone} onChangeText={(value) => { setAddPhone(value); setSelectedCompanyCustomerId(null); }} placeholder="Phone" placeholderTextColor={colors.muted} keyboardType="phone-pad" style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background, marginBottom: 8 }} />
+                <TextInput value={addEmail} onChangeText={(value) => { setAddEmail(value); setSelectedCompanyCustomerId(null); }} placeholder="Email" placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, backgroundColor: colors.background, marginBottom: 8 }} />
                 <AddressAutocomplete
                   value={addAddress}
-                  onChangeText={setAddAddress}
-                  onSelectAddress={setAddAddress}
+                  onChangeText={(value) => { setAddAddress(value); setSelectedCompanyCustomerId(null); }}
+                  onSelectAddress={(value) => { setAddAddress(value); setSelectedCompanyCustomerId(null); }}
                   placeholder="Address *"
                   style={{ marginBottom: 16, zIndex: 999 }}
                 />

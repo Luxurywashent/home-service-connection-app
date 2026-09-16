@@ -40,6 +40,9 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyJobs, getJobSyncCompanyMembers, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { COMPANY_SCHEDULE_HALF_HOUR_SLOTS, COMPANY_SCHEDULE_START_HOUR, companyScheduleInitialOffset, companyScheduleSlotIndex } from "@/lib/jobsync-schedule-window";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -481,8 +484,10 @@ const WEEK_DAYS_SHORT = ["M", "T", "W", "T", "F", "S", "S"];
 const WEEK_DAYS_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-// Half-hour slots: 8:00, 8:30, ..., 17:00 (19 slots)
-const HOURS = Array.from({ length: 19 }, (_, i) => 8 + i * 0.5); // 8:00 AM – 5:00 PM
+// Half-hour slots across the full day. The visible grid opens at 8 AM, but
+// authoritative early and late Company Jobs remain reachable by scrolling.
+const SCHEDULE_START_HOUR = COMPANY_SCHEDULE_START_HOUR;
+const HOURS = COMPANY_SCHEDULE_HALF_HOUR_SLOTS;
 const SLOT_HEIGHT = 32; // half height since slots are 30min now
 const TIME_COL_WIDTH = 68;
 
@@ -497,6 +502,8 @@ function formatHour(h: number) {
   if (whole < 12) return `${whole}${mins} AM`;
   return `${whole - 12 || 12}${mins} PM`;
 }
+
+const hourToSlotIndex = companyScheduleSlotIndex;
 
 function formatFullDate(d: Date) {
   // WEEK_DAYS_FULL is now Mon-indexed (0=Mon…6=Sun), so convert JS getDay() (0=Sun) to Mon-based
@@ -1716,6 +1723,7 @@ function AdminDispatchBoard({
       {/* Timeline grid — time column fixed, detailer columns scroll horizontally together */}
       <ScrollView
         style={{ flex: 1 }}
+        contentOffset={{ x: 0, y: companyScheduleInitialOffset(SLOT_HEIGHT) }}
         contentContainerStyle={{ paddingBottom: 40 }}
         nestedScrollEnabled
       >
@@ -1754,9 +1762,9 @@ function AdminDispatchBoard({
                 // Build occupied hour set for this column
                 const occupied = new Set<number>();
                 for (const job of colJobs) {
-                  const si = HOURS.indexOf(job.startHour);
-                  const ei = HOURS.indexOf(job.endHour);
-                  if (si >= 0) for (let h = si; h < (ei >= 0 ? ei : si + 1); h++) occupied.add(h);
+                  const si = hourToSlotIndex(job.startHour);
+                  const ei = hourToSlotIndex(job.endHour);
+                  for (let h = si; h < Math.max(si + 1, ei); h++) occupied.add(h);
                 }
                 return (
                   <View
@@ -1790,12 +1798,12 @@ function AdminDispatchBoard({
 
                     {/* Job cards — absolutely positioned, guaranteed tappable */}
                     {colJobs.map((job) => {
-                      const startIdx = HOURS.indexOf(job.startHour);
-                      const endIdx = HOURS.indexOf(job.endHour);
-                      const top = (startIdx >= 0 ? startIdx : 0) * SLOT_HEIGHT + 2;
+                      const startIdx = hourToSlotIndex(job.startHour);
+                      const endIdx = hourToSlotIndex(job.endHour);
+                      const top = startIdx * SLOT_HEIGHT + 2;
                       const height = Math.max(
                         SLOT_HEIGHT - 4,
-                        ((endIdx >= 0 ? endIdx : (startIdx >= 0 ? startIdx : 0) + 1) - (startIdx >= 0 ? startIdx : 0)) * SLOT_HEIGHT - 4
+                        (Math.max(startIdx + 1, endIdx) - startIdx) * SLOT_HEIGHT - 4
                       );
                       return (
                         <TouchableOpacity
@@ -1924,11 +1932,9 @@ function DayTimeline({
   // Build a set of occupied hour indices for quick lookup
   const occupiedHours = new Set<number>();
   for (const job of dayJobs) {
-    const si = HOURS.indexOf(job.startHour);
-    const ei = HOURS.indexOf(job.endHour);
-    if (si >= 0) {
-      for (let h = si; h < (ei >= 0 ? ei : si + 1); h++) occupiedHours.add(h);
-    }
+    const si = hourToSlotIndex(job.startHour);
+    const ei = hourToSlotIndex(job.endHour);
+    for (let h = si; h < Math.max(si + 1, ei); h++) occupiedHours.add(h);
   }
 
   // ── Swipe detector for changing days ──
@@ -1972,6 +1978,7 @@ function DayTimeline({
   const renderTimelineContent = () => (
     <ScrollView
       style={{ flex: 1 }}
+      contentOffset={{ x: 0, y: companyScheduleInitialOffset(SLOT_HEIGHT) }}
       onScroll={(e) => { scrollOffsetY.value = e.nativeEvent.contentOffset.y; }}
       scrollEventThrottle={16}
       contentContainerStyle={{ paddingBottom: 40 }}
@@ -2018,10 +2025,10 @@ function DayTimeline({
 
         {/* Job cards — receive taps directly (no background gesture layer blocking them) */}
         {dayJobs.map((job) => {
-          const startIdx = HOURS.indexOf(job.startHour);
-          const endIdx = HOURS.indexOf(job.endHour);
-          const top = (startIdx >= 0 ? startIdx : 0) * SLOT_HEIGHT + 2;
-          const height = Math.max(SLOT_HEIGHT - 4, ((endIdx >= 0 ? endIdx : (startIdx >= 0 ? startIdx : 0) + 1) - (startIdx >= 0 ? startIdx : 0)) * SLOT_HEIGHT - 4);
+          const startIdx = hourToSlotIndex(job.startHour);
+          const endIdx = hourToSlotIndex(job.endHour);
+          const top = startIdx * SLOT_HEIGHT + 2;
+          const height = Math.max(SLOT_HEIGHT - 4, (Math.max(startIdx + 1, endIdx) - startIdx) * SLOT_HEIGHT - 4);
 
           return (
             <JobBlock
@@ -2075,6 +2082,7 @@ function PrivateNotesCard({
   onNotesChange: (notes: PrivateNote[]) => void;
 }) {
   const colors = useColors();
+  const { session: jobSyncSession } = useJobSyncAuth();
   const [newNoteText, setNewNoteText] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -2082,6 +2090,10 @@ function PrivateNotesCard({
 
   const notes: PrivateNote[] = job.privateNotes ?? [];
   const isAdmin = ["admin", "office", "operations_manager"].includes(currentRole);
+
+  // Private-note mutations still target the legacy local endpoint. Keep them
+  // unavailable to Company sessions until the HSC notes contract is published.
+  if (jobSyncSession?.portal === "company") return null;
 
   const addNote = async () => {
     const text = newNoteText.trim();
@@ -2252,6 +2264,7 @@ export default function ScheduleScreen() {
   const colors = useColors();
   const { employee, loading: authLoading } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: jobSyncRevision } = useJobSyncSync();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const companyPriceBook = useCompanyPriceBook();
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
@@ -2314,12 +2327,35 @@ export default function ScheduleScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [companyCalendarMembers, setCompanyCalendarMembers] = useState<JobSyncCompanyMember[]>([]);
+  const [companyCalendarMembersLoading, setCompanyCalendarMembersLoading] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationSlug>(() => {
     // Will be overridden by employee city in useEffect below
     return "crestview";
   });
   const [isSyncingBookings, setIsSyncingBookings] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isJobSyncCompany || !jobSyncSession?.token || !jobSyncSession.company?.id) {
+      setCompanyCalendarMembers([]);
+      setCompanyCalendarMembersLoading(false);
+      return () => { cancelled = true; };
+    }
+    setCompanyCalendarMembersLoading(true);
+    getJobSyncCompanyMembers(jobSyncSession.token, jobSyncSession.company.id)
+      .then((roster) => {
+        if (!cancelled) setCompanyCalendarMembers(roster.members);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyCalendarMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyCalendarMembersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncRevision]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showServiceWizard, setShowServiceWizard] = useState(false);
@@ -2502,16 +2538,16 @@ export default function ScheduleScreen() {
   useEffect(() => {
     setCustomerHistoryJobs([]);
     setAddrPhotos([]);
-    if (selectedJob && (selectedJob.phone || selectedJob.email)) {
+    if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       loadCustomerHistory(selectedJob);
     }
-    if (selectedJob?.address) {
+    if (!isJobSyncCompany && selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddrPhotos(photos)).catch(() => {});
     }
     // Live-refresh photo URLs from the server whenever a job detail panel is opened.
     // This ensures photos uploaded from another device (or a previous session) are always visible.
-    if (selectedJob?.id) {
+    if (!isJobSyncCompany && selectedJob?.id) {
       const jobId = selectedJob.id;
       utils.jobs.getPhotos.fetch({ jobId })
         .then(({ urls }: { urls: string[] }) => {
@@ -2700,7 +2736,54 @@ export default function ScheduleScreen() {
   // Sync server jobs (both manual + online) for the selected location into local state
   const syncServerJobs = async (location: LocationSlug, emp = employee) => {
     if (isJobSyncCompany) {
-      setJobs([]);
+      if (!jobSyncSession?.token) {
+        setJobs([]);
+        return;
+      }
+      try {
+        const companyJobs = await getJobSyncCompanyJobs(jobSyncSession.token);
+        const todayMonday = new Date();
+        todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7);
+        todayMonday.setHours(0, 0, 0, 0);
+        const mappedCompanyJobs: Job[] = companyJobs.map((job) => {
+          const start = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
+          const end = job.scheduledEndAt ? new Date(job.scheduledEndAt) : null;
+          const bookingMonday = new Date(start);
+          const dayIndex = (start.getDay() + 6) % 7;
+          bookingMonday.setDate(start.getDate() - dayIndex);
+          bookingMonday.setHours(0, 0, 0, 0);
+          const customerParts = job.customerName.split(" ").filter(Boolean);
+          return {
+            id: String(job.id),
+            location: (job.city ? cityToSlug(job.city) : location) as LocationSlug,
+            firstName: customerParts[0] || "",
+            lastName: customerParts.slice(1).join(" "),
+            email: "",
+            phone: "",
+            address: job.addressLine1 || "",
+            serviceTitle: job.serviceName || "Service",
+            serviceDescription: job.serviceName || "",
+            price: job.amount,
+            startHour: start.getHours() + start.getMinutes() / 60,
+            endHour: end ? end.getHours() + end.getMinutes() / 60 : start.getHours() + start.getMinutes() / 60 + 1,
+            dayIndex,
+            weekOffset: Math.round((bookingMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)),
+            status: (job.status === "completed" ? "finished" : job.status === "en_route" || job.status === "on_site" ? "started" : job.status === "cancelled" ? "cancelled" : "scheduled") as JobStatus,
+            _rawStatus: job.status,
+            detailerName: job.assignedName || undefined,
+            tags: [],
+            taxAmount: 0,
+            discountAmount: 0,
+            depositAmount: 0,
+            upsellTotal: 0,
+            additionalVehicles: [],
+            createdAt: job.updatedAt || start.toISOString(),
+          } as Job;
+        });
+        setJobs(mappedCompanyJobs);
+      } catch {
+        // Keep the last confirmed schedule state. The lifecycle provider retries on foreground, reconnect, and interval.
+      }
       return;
     }
     try {
@@ -2996,6 +3079,7 @@ export default function ScheduleScreen() {
 
   // Sync online bookings from the server for the selected location
   const syncOnlineBookings = async (location: LocationSlug) => {
+    if (isJobSyncCompany) return;
     setIsSyncingBookings(true);
     try {
       // Detailers must NOT use the unfiltered /api/booking/list endpoint — it returns ALL
@@ -3112,7 +3196,7 @@ export default function ScheduleScreen() {
     }
     // Pass employee explicitly so syncServerJobs never reads a stale closure value
     syncServerJobs(slug, employee);
-  }, [authLoading, employee?.employeeId]);
+  }, [authLoading, employee?.employeeId, jobSyncRevision]);
   // Also sync whenever admin manually changes the selected location
   useEffect(() => {
     if (!authLoading && (employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office")) {
@@ -3167,6 +3251,7 @@ export default function ScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server
+    if (isJobSyncCompany) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightJobId)}`);
@@ -3225,7 +3310,7 @@ export default function ScheduleScreen() {
       }
     };
     fetchAndOpen();
-  }, [highlightJobId, jobs]);
+  }, [highlightJobId, jobs, isJobSyncCompany]);
 
   // Pull-to-refresh handler for detailer view
   const handleRefresh = useCallback(async () => {
@@ -3432,6 +3517,7 @@ export default function ScheduleScreen() {
   // ─── Enhanced Job Detail Helpers ────────────────────────────────────────────
 
   const loadCustomerHistory = async (job: Job) => {
+    if (isJobSyncCompany) return;
     if (!job.phone && !job.email) return;
     setCustomerHistoryLoading(true);
     try {
@@ -3699,7 +3785,7 @@ export default function ScheduleScreen() {
       });
     }
     // Push revenue + tips to daily performance record so dashboard updates automatically
-    if (employee) {
+    if (employee && !isJobSyncCompany) {
       const jobDate = getWeekDates(job.weekOffset)[job.dayIndex];
       const dateStr = localDateStr(jobDate);
       // Use the same record ID format as syncPerformanceFromJobs on the server (underscores, no dashes in date)
@@ -3920,6 +4006,7 @@ export default function ScheduleScreen() {
   // Dot indicators for week strip
   const myJobSlug = employee?.city ? cityToSlug(employee.city) : "crestview";
   const isAdminRole = employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office";
+  const isCompanyCalendarManager = isJobSyncCompany && (jobSyncSession?.user.role === "owner" || jobSyncSession?.user.role === "dispatcher");
   const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole && !isJobSyncCompany, staleTime: 300000 });
   // Price book for New Job form
   const { data: localPbData } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
@@ -4104,23 +4191,27 @@ export default function ScheduleScreen() {
         </View>
 
         {/* Timeline */}
-        {isAdminRole ? (
+        {isAdminRole || isCompanyCalendarManager ? (
           // Show a loading spinner until detailerList is available so jobs never
           // flicker into the wrong column before the real column order arrives.
-          detailersLoading || !detailerList ? (
+          detailersLoading || (!isJobSyncCompany && !detailerList) || (isJobSyncCompany && companyCalendarMembersLoading) ? (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (
           // Admin: multi-column dispatch board — one column per detailer at this location
           <AdminDispatchBoard
-            jobs={jobs.filter((j) => !j.location || j.location.toLowerCase() === selectedLocation.toLowerCase())}
+            jobs={isJobSyncCompany ? jobs : jobs.filter((j) => !j.location || j.location.toLowerCase() === selectedLocation.toLowerCase())}
             weekOffset={weekOffset}
             dayIndex={selectedDay}
             detailers={
-              (detailerList as any[] | undefined ?? []).filter((d: any) =>
-                d.city ? cityToSlug(d.city) === selectedLocation : true
-              ).map((d: any) => ({ employeeId: d.employeeId, fullName: d.fullName }))
+              isJobSyncCompany
+                ? companyCalendarMembers
+                    .filter((member) => member.isActive && member.calendarEligible)
+                    .map((member) => ({ employeeId: String(member.id), fullName: member.city ? `${member.name} · ${member.city}` : member.name }))
+                : (detailerList as any[] | undefined ?? []).filter((d: any) =>
+                    d.city ? cityToSlug(d.city) === selectedLocation : true
+                  ).map((d: any) => ({ employeeId: d.employeeId, fullName: d.fullName }))
             }
             onJobPress={(job) => setSelectedJob(job)}
             onCreateJob={(sh, eh, detailerId) => {

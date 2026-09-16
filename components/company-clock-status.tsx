@@ -10,9 +10,11 @@ import {
   startHomeServiceConnectedBreak,
   type HomeServiceConnectedTimeState,
 } from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 
 export function CompanyClockStatus({ token }: { token: string }) {
   const colors = useColors();
+  const { revision } = useJobSyncSync();
   const [state, setState] = useState<HomeServiceConnectedTimeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -39,7 +41,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
     void refresh();
     const interval = setInterval(() => { void refresh(); }, 30_000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [refresh, revision]);
 
   const run = useCallback(async (
     action: () => Promise<unknown>,

@@ -1,0 +1,46 @@
+name: Home Service Connection mobile validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "reconcile/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: SDK, TypeScript, Company contracts, and iOS bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Expo SDK alignment
+        run: npx expo install --check
+
+      - name: Run Expo diagnostics
+        run: npx expo-doctor
+
+      - name: Run deterministic Company contract tests
+        run: pnpm exec vitest run tests/jobsync-mobile-api.test.ts tests/jobsync-native-session.test.ts --pool=forks --poolOptions.forks.singleFork=true
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Export a disposable iOS JavaScript bundle
+        run: npx expo export --platform ios --output-dir /tmp/hsc-ios-export
