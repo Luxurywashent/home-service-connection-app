@@ -1,7 +1,7 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Platform, View, Text, StyleSheet } from "react-native";
+import { Platform, View, Text, StyleSheet, type ColorValue } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { getNativeEmployeeSession, useJobSyncAuth } from "@/lib/jobsync-auth-context";
@@ -10,7 +10,7 @@ import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { trpc } from "@/lib/trpc";
 import { startGeofencing, stopGeofencing } from "@/lib/geofence-task";
 
-function InboxTabIcon({ color }: { color: string }) {
+function InboxTabIcon({ color }: { color: ColorValue }) {
   const { data } = trpc.portalInbox.unreadCount.useQuery(undefined, { refetchInterval: 30000 });
   const count = data?.count ?? 0;
   return (

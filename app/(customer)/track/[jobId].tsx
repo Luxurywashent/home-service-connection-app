@@ -484,7 +484,7 @@ export default function CustomerTrackScreen() {
       {/* Full-screen map */}
       <MapView
         ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
         initialRegion={initialRegion}
         showsUserLocation={false}
@@ -891,7 +891,7 @@ const styles = StyleSheet.create({
   },
   // ── Arrived overlay ───────────────────────────────────────────────────────
   arrivedOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.6)",
     alignItems: "center",
     justifyContent: "center",

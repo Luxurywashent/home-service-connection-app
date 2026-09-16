@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   playOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   pauseOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   starsRow: {
     flexDirection: "row",

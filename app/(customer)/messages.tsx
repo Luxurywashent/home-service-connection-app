@@ -183,7 +183,7 @@ export default function CustomerMessagesScreen() {
 
           {/* Blur layer */}
           <View
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.6)' }]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.6)' }]}
             pointerEvents="none"
           />
 
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   },
   // Guest overlay styles
   guestOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     padding: 32,

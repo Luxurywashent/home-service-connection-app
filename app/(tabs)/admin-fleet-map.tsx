@@ -844,7 +844,7 @@ export default function AdminFleetMapScreen() {
             <MapView
               provider={(Platform.OS as string) !== "web" ? PROVIDER_GOOGLE : undefined}
               ref={mapRef}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               initialRegion={REGION_DEFAULT}
               showsUserLocation={false}
               showsMyLocationButton={false}
@@ -1172,7 +1172,7 @@ const styles = StyleSheet.create({
   fabText: { color: "#fff", fontSize: 28, fontWeight: "300", lineHeight: 32 },
   webFallback: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center",
+    ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.4)",
   },
   demoBanner: {
