@@ -52,6 +52,7 @@ import {
   resolveCompanyJobAuthority,
   usesCompanyJobAuthority,
 } from "@/lib/jobsync-company-authority";
+import { CompanyCollectPayment } from "@/components/company-collect-payment";
 import { COMPANY_SCHEDULE_HALF_HOUR_SLOTS, COMPANY_SCHEDULE_START_HOUR, companyScheduleInitialOffset, companyScheduleSlotIndex } from "@/lib/jobsync-schedule-window";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import { trpc } from "@/lib/trpc";
@@ -2275,7 +2276,7 @@ export default function ScheduleScreen() {
   const colors = useColors();
   const { employee, loading: authLoading } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
-  const { revision: jobSyncRevision } = useJobSyncSync();
+  const { revision: jobSyncRevision, refreshCompanyData, invalidateCanonicalSurfaces } = useJobSyncSync();
   const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
   const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
   const allowLegacyJobAuthority = allowsLegacyJobAuthority(companyAuthority);
@@ -4503,15 +4504,34 @@ export default function ScheduleScreen() {
                         )}
                       </View>
                     ) : (
-                      <View style={[s.paymentSummary, { backgroundColor: "#0a7ea418", borderColor: "#0a7ea444" }]}>
-                        <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 14 }}>
-                          {(selectedJob as Job & { paymentStatus?: string }).paymentStatus === "paid" ? "Paid" : (selectedJob as Job & { paymentStatus?: string }).paymentStatus === "partial" ? "Partially paid" : "Unpaid"} — ${(Number((selectedJob as Job & { balance?: number }).balance ?? selectedJob.price) || 0).toFixed(2)} due
-                        </Text>
-                        <Text style={{ color: "#0a7ea4", fontSize: 12, marginTop: 2 }}>
-                          Amount ${(selectedJob.price ?? 0).toFixed(2)} · Paid ${Number((selectedJob as Job & { paidTotal?: number }).paidTotal || 0).toFixed(2)}
-                        </Text>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Card collection is disabled for Company Jobs.</Text>
-                      </View>
+                      isJobSyncCompany && jobSyncSession?.token && canonicalJobId(selectedJob.id) ? (
+                        <CompanyCollectPayment
+                          key={canonicalJobId(selectedJob.id)!}
+                          token={jobSyncSession.token}
+                          jobId={canonicalJobId(selectedJob.id)!}
+                          role={jobSyncSession.user.role}
+                          authority={companyAuthority}
+                          amount={selectedJob.price}
+                          paidTotal={Number((selectedJob as Job & { paidTotal?: number }).paidTotal || 0)}
+                          balance={Number((selectedJob as Job & { balance?: number }).balance ?? selectedJob.price) || 0}
+                          paymentStatus={(selectedJob as Job & { paymentStatus?: string }).paymentStatus}
+                          jobStatus={(selectedJob as Job & { _rawStatus?: string })._rawStatus}
+                          onCanonicalRefresh={async () => {
+                            invalidateCanonicalSurfaces();
+                            await refreshCompanyData({ force: true });
+                          }}
+                        />
+                      ) : (
+                        <View style={[s.paymentSummary, { backgroundColor: "#0a7ea418", borderColor: "#0a7ea444" }]}>
+                          <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 14 }}>
+                            {(selectedJob as Job & { paymentStatus?: string }).paymentStatus === "paid" ? "Paid" : (selectedJob as Job & { paymentStatus?: string }).paymentStatus === "partial" ? "Partially paid" : "Unpaid"} — ${(Number((selectedJob as Job & { balance?: number }).balance ?? selectedJob.price) || 0).toFixed(2)} due
+                          </Text>
+                          <Text style={{ color: "#0a7ea4", fontSize: 12, marginTop: 2 }}>
+                            Amount ${(selectedJob.price ?? 0).toFixed(2)} · Paid ${Number((selectedJob as Job & { paidTotal?: number }).paidTotal || 0).toFixed(2)}
+                          </Text>
+                          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Card collection is disabled for Company Jobs.</Text>
+                        </View>
+                      )
                     )}
                   </View>
 

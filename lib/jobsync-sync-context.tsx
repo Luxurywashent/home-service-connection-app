@@ -7,8 +7,21 @@ import { AppState, type AppStateStatus, Platform } from "react-native";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyIncrementalSync } from "@/lib/jobsync-mobile-api";
 
-type JobSyncSyncContextValue = { revision: number; isSyncing: boolean; lastSyncedAt: string | null; refreshCompanyData: () => Promise<void> };
-const JobSyncSyncContext = createContext<JobSyncSyncContextValue>({ revision: 0, isSyncing: false, lastSyncedAt: null, refreshCompanyData: async () => {} });
+type JobSyncSyncRefreshResult = { ok: boolean };
+type JobSyncSyncContextValue = {
+  revision: number;
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
+  refreshCompanyData: (options?: { force?: boolean }) => Promise<JobSyncSyncRefreshResult>;
+  invalidateCanonicalSurfaces: () => void;
+};
+const JobSyncSyncContext = createContext<JobSyncSyncContextValue>({
+  revision: 0,
+  isSyncing: false,
+  lastSyncedAt: null,
+  refreshCompanyData: async () => ({ ok: true }),
+  invalidateCanonicalSurfaces: () => {},
+});
 
 function cursorKey(companyId: number) { return `hsc_jobsync_sync_cursor_v1:${companyId}`; }
 
@@ -19,9 +32,12 @@ export function JobSyncSyncProvider({ children }: { children: React.ReactNode })
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
-  const refreshCompanyData = useCallback(async () => {
+  const invalidateCanonicalSurfaces = useCallback(() => {
+    setRevision((current) => current + 1);
+  }, []);
+  const refreshCompanyData = useCallback(async (options?: { force?: boolean }): Promise<JobSyncSyncRefreshResult> => {
     const companyId = session?.portal === "company" ? session.company?.id : undefined;
-    if (!companyId || !session) return;
+    if (!companyId || !session) return { ok: false };
     const key = cursorKey(companyId);
     try {
       setIsSyncing(true);
@@ -30,12 +46,14 @@ export function JobSyncSyncProvider({ children }: { children: React.ReactNode })
       await AsyncStorage.setItem(key, result.generatedAt);
       const changed = Object.values(result.changes).some((entries) => entries.length > 0);
       setLastSyncedAt(result.generatedAt);
-      if (changed) {
+      if (changed || options?.force) {
         await queryClient.invalidateQueries({ type: "active" });
         setRevision((current) => current + 1);
       }
+      return { ok: true };
     } catch {
       // Offline or failed requests retain last confirmed server state; no local write is treated as authoritative.
+      return { ok: false };
     } finally { setIsSyncing(false); }
   }, [queryClient, session]);
   useEffect(() => { if (session?.portal === "company") void refreshCompanyData(); }, [refreshCompanyData, session?.portal]);
@@ -63,7 +81,10 @@ export function JobSyncSyncProvider({ children }: { children: React.ReactNode })
     const timer = setInterval(() => void refreshCompanyData(), 45_000);
     return () => clearInterval(timer);
   }, [refreshCompanyData, session?.portal]);
-  const value = useMemo(() => ({ revision, isSyncing, lastSyncedAt, refreshCompanyData }), [isSyncing, lastSyncedAt, refreshCompanyData, revision]);
+  const value = useMemo(
+    () => ({ revision, isSyncing, lastSyncedAt, refreshCompanyData, invalidateCanonicalSurfaces }),
+    [invalidateCanonicalSurfaces, isSyncing, lastSyncedAt, refreshCompanyData, revision],
+  );
   return <JobSyncSyncContext.Provider value={value}>{children}</JobSyncSyncContext.Provider>;
 }
 

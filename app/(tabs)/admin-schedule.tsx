@@ -38,6 +38,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
+import { CompanyCollectPayment } from "@/components/company-collect-payment";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
 import {
@@ -1320,7 +1321,7 @@ export default function AdminScheduleScreen() {
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
-  const { revision: companySyncRevision } = useJobSyncSync();
+  const { revision: companySyncRevision, refreshCompanyData, invalidateCanonicalSurfaces } = useJobSyncSync();
   const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
   const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
   const allowLegacyJobAuthority = allowsLegacyJobAuthority(companyAuthority);
@@ -3704,6 +3705,27 @@ export default function AdminScheduleScreen() {
                         <Text style={{ color: "#EF4444", fontWeight: "700", fontSize: 14 }}>Issue Refund</Text>
                       </TouchableOpacity>
                     )}
+                  </View>
+                ) : null}
+
+                {isJobSyncCompany && jobSyncSession?.token && selectedJob && canonicalJobId(selectedJob.id) ? (
+                  <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+                    <CompanyCollectPayment
+                      key={canonicalJobId(selectedJob.id)!}
+                      token={jobSyncSession.token}
+                      jobId={canonicalJobId(selectedJob.id)!}
+                      role={jobSyncSession.user.role}
+                      authority={companyAuthority}
+                      amount={selectedJob.price}
+                      paidTotal={Number((selectedJob as { paidTotal?: number }).paidTotal || 0)}
+                      balance={Number((selectedJob as { balance?: number }).balance ?? selectedJob.price) || 0}
+                      paymentStatus={(selectedJob as { paymentStatus?: string }).paymentStatus}
+                      jobStatus={(selectedJob as { _rawStatus?: string })._rawStatus}
+                      onCanonicalRefresh={async () => {
+                        invalidateCanonicalSurfaces();
+                        await refreshCompanyData({ force: true });
+                      }}
+                    />
                   </View>
                 ) : null}
 
