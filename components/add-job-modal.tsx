@@ -38,7 +38,9 @@ import {
 } from "@/lib/jobsync-mobile-api";
 import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  addJobLocalCustomerSearchEnabled,
   allowsLegacyJobAuthority,
+  companyAddJobUsesCanonicalCustomers,
   resolveCompanyJobAuthority,
   usesCompanyJobAuthority,
 } from "@/lib/jobsync-company-authority";
@@ -151,6 +153,7 @@ function CustomerSearchField({
   setShowDropdown,
   onSelect,
   companyCustomers,
+  allowLegacyCustomerSearch = false,
 }: {
   colors: any;
   value: string;
@@ -159,6 +162,7 @@ function CustomerSearchField({
   setShowDropdown: (v: boolean) => void;
   onSelect: (c: { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
   companyCustomers?: JobSyncCompanyCustomer[];
+  allowLegacyCustomerSearch?: boolean;
 }) {
   const [query, setQuery] = React.useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,7 +170,7 @@ function CustomerSearchField({
 
   const { data: results = [] } = trpc.customers.listAll.useQuery(
     { search: searchTerm },
-    { enabled: !companyCustomers && searchTerm.length >= 2, staleTime: 10_000 }
+    { enabled: addJobLocalCustomerSearchEnabled({ allowLegacyCustomerSearch, searchTerm }), staleTime: 10_000 }
   );
   const visibleResults = companyCustomers
     ? companyCustomers
@@ -774,7 +778,8 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                   setSelectedCompanyCustomerId(c.id ?? null);
                   setShowCustomerDropdown(false);
                 }}
-                companyCustomers={isJobSyncCompany ? companyCustomers : undefined}
+                companyCustomers={companyAddJobUsesCanonicalCustomers(companyAuthority) ? companyCustomers : undefined}
+                allowLegacyCustomerSearch={allowLegacy}
               />
               {isJobSyncCompany && companyCustomersError ? <Text style={{ color: colors.error, fontSize: 12, marginBottom: 8 }}>{companyCustomersError}</Text> : null}
               <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>

@@ -364,7 +364,11 @@ describe("JobSync mobile API contract", () => {
       await expect(getJobSyncCompanyFinance("company-token")).resolves.toMatchObject({ income: 10, collected: 8, outstanding: 2 });
       await expect(getJobSyncCompanyFinance("company-token")).rejects.toThrow("Home Service Connected operations are temporarily unavailable.");
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/customers/8");
+      expect(String(fetchMock.mock.calls[0][0])).not.toContain("companyId");
       expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/finance");
+      expect(String(fetchMock.mock.calls[1][0])).not.toContain("companyId");
+      expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
+      expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
     } finally {
       fetchMock.mockRestore();
     }

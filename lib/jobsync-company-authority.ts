@@ -166,6 +166,31 @@ export function companyLocalFinancialMutationAllowed(mode: CompanyJobAuthorityMo
   return mode === "legacy";
 }
 
+export function companyAddJobUsesCanonicalCustomers(mode: CompanyJobAuthorityMode) {
+  return mode !== "legacy";
+}
+
+export function addJobLocalCustomerSearchEnabled(input: {
+  allowLegacyCustomerSearch: boolean;
+  searchTerm: string;
+}) {
+  return input.allowLegacyCustomerSearch === true && input.searchTerm.trim().length >= 2;
+}
+
+export function companyScheduleCheckoutMounted(input: {
+  authority: CompanyJobAuthorityMode;
+  showCheckout: boolean;
+}) {
+  return input.authority === "legacy" && input.showCheckout;
+}
+
+export function companyScheduleLegacyPaymentQueryEnabled(input: {
+  authority: CompanyJobAuthorityMode;
+  selected: boolean;
+}) {
+  return input.authority === "legacy" && input.selected;
+}
+
 export function resolveCompanyFinancialMountedSurface(input: {
   session?: JobSyncNativeSession | null;
   sessionLoading?: boolean;

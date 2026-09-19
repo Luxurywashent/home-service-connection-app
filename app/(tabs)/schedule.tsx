@@ -46,6 +46,7 @@ import {
   canonicalJobId,
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   companyCanonicalReadError,
+  companyScheduleCheckoutMounted,
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
   resolveCompanyJobAuthority,
@@ -2393,6 +2394,12 @@ export default function ScheduleScreen() {
   const [isRefunding, setIsRefunding] = useState(false);
   const refundPaymentMutation = trpc.stripe.refundPayment.useMutation();
 
+  useEffect(() => {
+    if (!allowLegacyJobAuthority) {
+      setShowCheckout(false);
+    }
+  }, [allowLegacyJobAuthority]);
+
   // Upsell state
   const [showUpsellPanel, setShowUpsellPanel] = useState(false);
   const [upsellIds, setUpsellIds] = useState<string[]>([]);
@@ -3860,7 +3867,7 @@ export default function ScheduleScreen() {
 
   // ─── Refund Handler ─────────────────────────────────────────────────────────
   const handleRefund = async () => {
-    if (!selectedJob?.payment) return;
+    if (!allowLegacyJobAuthority || !selectedJob?.payment) return;
     const { payment } = selectedJob;
     const amountStr = payment.total.toFixed(2);
     Alert.alert(
@@ -4449,17 +4456,7 @@ export default function ScheduleScreen() {
                         ))}
                       </View>
                     )}
-                    {isJobSyncCompany ? (
-                      <View style={[s.paymentSummary, { backgroundColor: "#0a7ea418", borderColor: "#0a7ea444" }]}>
-                        <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 14 }}>
-                          {(selectedJob as Job & { paymentStatus?: string }).paymentStatus === "paid" ? "Paid" : (selectedJob as Job & { paymentStatus?: string }).paymentStatus === "partial" ? "Partially paid" : "Unpaid"} — ${(Number((selectedJob as Job & { balance?: number }).balance ?? selectedJob.price) || 0).toFixed(2)} due
-                        </Text>
-                        <Text style={{ color: "#0a7ea4", fontSize: 12, marginTop: 2 }}>
-                          Amount ${(selectedJob.price ?? 0).toFixed(2)} · Paid ${Number((selectedJob as Job & { paidTotal?: number }).paidTotal || 0).toFixed(2)}
-                        </Text>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Card collection is disabled for Company Jobs.</Text>
-                      </View>
-                    ) : !selectedJob.payment ? (
+                    {allowLegacyJobAuthority ? !selectedJob.payment ? (
                       <TouchableOpacity
                         onPress={() => {
                           checkoutJobRef.current = selectedJob;
@@ -4504,6 +4501,16 @@ export default function ScheduleScreen() {
                             )}
                           </TouchableOpacity>
                         )}
+                      </View>
+                    ) : (
+                      <View style={[s.paymentSummary, { backgroundColor: "#0a7ea418", borderColor: "#0a7ea444" }]}>
+                        <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 14 }}>
+                          {(selectedJob as Job & { paymentStatus?: string }).paymentStatus === "paid" ? "Paid" : (selectedJob as Job & { paymentStatus?: string }).paymentStatus === "partial" ? "Partially paid" : "Unpaid"} — ${(Number((selectedJob as Job & { balance?: number }).balance ?? selectedJob.price) || 0).toFixed(2)} due
+                        </Text>
+                        <Text style={{ color: "#0a7ea4", fontSize: 12, marginTop: 2 }}>
+                          Amount ${(selectedJob.price ?? 0).toFixed(2)} · Paid ${Number((selectedJob as Job & { paidTotal?: number }).paidTotal || 0).toFixed(2)}
+                        </Text>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Card collection is disabled for Company Jobs.</Text>
                       </View>
                     )}
                   </View>
@@ -6313,7 +6320,7 @@ export default function ScheduleScreen() {
       </Modal>
 
       {/* Checkout Modal - rendered at root level to avoid iOS nested-modal issue */}
-      {(checkoutJobRef.current ?? selectedJob) && showCheckout && (
+      {companyScheduleCheckoutMounted({ authority: companyAuthority, showCheckout }) && (checkoutJobRef.current ?? selectedJob) && (
         <CheckoutModal
           visible={showCheckout}
           job={(checkoutJobRef.current ?? selectedJob)!}

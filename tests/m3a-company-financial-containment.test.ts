@@ -5,7 +5,9 @@ import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
   COMPANY_LOCAL_FINANCIAL_MUTATIONS,
   COMPANY_PAYMENT_CONTROLS,
+  addJobLocalCustomerSearchEnabled,
   allowsLegacyFinancialAuthority,
+  companyAddJobUsesCanonicalCustomers,
   companyCanonicalListState,
   companyCustomerProfileMountsLocalFinancialActions,
   companyCustomersUseCanonicalRead,
@@ -14,6 +16,8 @@ import {
   companyLegacyTtpSettingsReachable,
   companyLocalFinancialMutationAllowed,
   companySavedCardsReachable,
+  companyScheduleCheckoutMounted,
+  companyScheduleLegacyPaymentQueryEnabled,
   forbidLegacyCompanyFinancialAuthority,
   resolveCompanyFinanceDisplay,
   resolveCompanyFinancialAuthority,
@@ -40,6 +44,8 @@ const companyProfileSource = readFileSync(new URL("../components/company-custome
 const invoicesSource = readFileSync(new URL("../app/(tabs)/admin-invoices.tsx", import.meta.url), "utf8");
 const unpaidSource = readFileSync(new URL("../app/(tabs)/admin-unpaid-jobs.tsx", import.meta.url), "utf8");
 const scheduleSource = readFileSync(new URL("../app/(tabs)/schedule.tsx", import.meta.url), "utf8");
+const adminScheduleSource = readFileSync(new URL("../app/(tabs)/admin-schedule.tsx", import.meta.url), "utf8");
+const addJobSource = readFileSync(new URL("../components/add-job-modal.tsx", import.meta.url), "utf8");
 const timesheetSource = readFileSync(new URL("../app/(tabs)/timesheet.tsx", import.meta.url), "utf8");
 const requestOffSource = readFileSync(new URL("../app/(tabs)/request-off.tsx", import.meta.url), "utf8");
 const clockHeaderSource = readFileSync(new URL("../components/header-clock-status.tsx", import.meta.url), "utf8");
@@ -319,6 +325,64 @@ describe("M3A Company financial containment", () => {
     expect(invoicesSource).toContain("enabled: allowLegacy");
     expect(unpaidSource).toContain("getJobSyncCompanyUnpaidJobs");
     expect(unpaidSource).toContain("Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.");
+  });
+
+  it("never enables Add Job listAll for Company or UNKNOWN authority", () => {
+    expect(companyAddJobUsesCanonicalCustomers("unknown")).toBe(true);
+    expect(companyAddJobUsesCanonicalCustomers("company")).toBe(true);
+    expect(companyAddJobUsesCanonicalCustomers("legacy")).toBe(false);
+    expect(addJobLocalCustomerSearchEnabled({ allowLegacyCustomerSearch: false, searchTerm: "casey" })).toBe(false);
+    expect(addJobLocalCustomerSearchEnabled({ allowLegacyCustomerSearch: true, searchTerm: "c" })).toBe(false);
+    expect(addJobLocalCustomerSearchEnabled({ allowLegacyCustomerSearch: true, searchTerm: "casey" })).toBe(true);
+    for (const mode of ["unknown", "company"] as const) {
+      expect(addJobLocalCustomerSearchEnabled({
+        allowLegacyCustomerSearch: !companyAddJobUsesCanonicalCustomers(mode),
+        searchTerm: "casey owner",
+      })).toBe(false);
+    }
+    expect(addJobSource).toContain("addJobLocalCustomerSearchEnabled");
+    expect(addJobSource).toContain("companyAddJobUsesCanonicalCustomers(companyAuthority)");
+    expect(addJobSource).toContain("allowLegacyCustomerSearch={allowLegacy}");
+    expect(addJobSource).not.toContain("companyCustomers={isJobSyncCompany ? companyCustomers : undefined}");
+    expect(adminScheduleSource).toContain("addJobLocalCustomerSearchEnabled");
+    expect(adminScheduleSource).toContain("companyAddJobUsesCanonicalCustomers(companyAuthority)");
+    expect(adminScheduleSource).toContain("allowLegacyCustomerSearch={allowLegacyJobAuthority}");
+    expect(adminScheduleSource).not.toContain("companyCustomers={isJobSyncCompany ? companyCustomers : undefined}");
+    expect(adminScheduleSource).not.toContain("enabled: !companyCustomers && searchTerm.length >= 2");
+    expect(addJobSource).not.toContain("enabled: !companyCustomers && searchTerm.length >= 2");
+  });
+
+  it("cannot execute Schedule legacy payment mutations or queries in Company or UNKNOWN", () => {
+    expect(companyScheduleCheckoutMounted({ authority: "unknown", showCheckout: true })).toBe(false);
+    expect(companyScheduleCheckoutMounted({ authority: "company", showCheckout: true })).toBe(false);
+    expect(companyScheduleCheckoutMounted({ authority: "legacy", showCheckout: true })).toBe(true);
+    expect(companyScheduleCheckoutMounted({ authority: "legacy", showCheckout: false })).toBe(false);
+    expect(companyScheduleLegacyPaymentQueryEnabled({ authority: "unknown", selected: true })).toBe(false);
+    expect(companyScheduleLegacyPaymentQueryEnabled({ authority: "company", selected: true })).toBe(false);
+    expect(companyScheduleLegacyPaymentQueryEnabled({ authority: "legacy", selected: true })).toBe(true);
+    expect(companyLocalFinancialMutationAllowed("unknown", "savedCards.chargeCard")).toBe(false);
+    expect(companyLocalFinancialMutationAllowed("company", "stripe.refundPayment")).toBe(false);
+    expect(companyLocalFinancialMutationAllowed("legacy", "stripe.refundPayment")).toBe(true);
+    expect(scheduleSource).toContain("companyScheduleCheckoutMounted({ authority: companyAuthority, showCheckout })");
+    expect(scheduleSource).toContain("{allowLegacyJobAuthority ? !selectedJob.payment ? (");
+    expect(scheduleSource).toContain("if (!allowLegacyJobAuthority || !selectedJob?.payment) return;");
+    expect(adminScheduleSource).toContain("companyScheduleLegacyPaymentQueryEnabled");
+    expect(adminScheduleSource).toContain("if (!allowLegacyJobAuthority || !selectedJob?.payment?.paymentIntentId) return;");
+    expect(adminScheduleSource).toContain("{selectedJob && allowLegacyJobAuthority && (");
+    expect(adminScheduleSource).toContain("visible={showChargeModal && allowLegacyJobAuthority}");
+    expect(adminScheduleSource).toContain("if (!allowLegacyJobAuthority) return;");
+  });
+
+  it("does not mount TTPProvider or initialize Stripe Terminal from the app tree", () => {
+    const layoutSource = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
+    const ttpSource = readFileSync(new URL("../lib/ttp-context.tsx", import.meta.url), "utf8");
+    expect(layoutSource).not.toContain("TTPProvider");
+    expect(ttpSource).not.toContain("@stripe/stripe-terminal");
+    expect(ttpSource).not.toContain("StripeTerminal");
+    expect(ttpSource).not.toContain("discoverReaders");
+    expect(ttpSource).not.toContain("connectionToken");
+    expect(ttpSource).not.toContain("PaymentIntent");
+    expect(companyFinanceSource).not.toContain("TTPSettingsPanel");
   });
 
   it("keeps M2 Clock / Timesheets / Time Off contracts intact", () => {
