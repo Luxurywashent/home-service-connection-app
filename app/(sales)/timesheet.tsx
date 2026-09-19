@@ -1,7 +1,15 @@
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, StyleSheet } from "react-native";
+import { CompanyAuthorityLoading } from "@/components/company-authority-state";
+import { CompanyTimesheetPanel } from "@/components/company-timesheet-panel";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimekeepingAuthority,
+  resolveCompanyTimekeepingAuthority,
+  usesCompanyTimekeepingAuthority,
+} from "@/lib/jobsync-company-authority";
 import { trpc } from "@/lib/trpc";
 import { useState, useMemo } from "react";
 import * as Haptics from "expo-haptics";
@@ -37,6 +45,21 @@ function formatDate(dateStr: string) {
 }
 
 export default function TimesheetScreen() {
+  const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const authority = resolveCompanyTimekeepingAuthority({ session, sessionLoading: jobSyncLoading });
+  if (authority === "unknown") {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Timesheets…" />;
+  }
+  if (usesCompanyTimekeepingAuthority(authority) && session?.token) {
+    return <CompanyTimesheetPanel token={session.token} role={session.user.role} />;
+  }
+  if (!allowsLegacyTimekeepingAuthority(authority)) {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Timesheets…" />;
+  }
+  return <LegacySalesTimesheetScreen />;
+}
+
+function LegacySalesTimesheetScreen() {
   const colors = useColors();
   const router = useRouter();
   const { employee } = useEmployeeAuth();

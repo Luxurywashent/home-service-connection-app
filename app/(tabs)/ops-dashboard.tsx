@@ -15,6 +15,8 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { allowsLegacyTimekeepingAuthority, resolveCompanyTimekeepingAuthority } from "@/lib/jobsync-company-authority";
 import { useEmployeePush } from "@/hooks/use-employee-push";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
@@ -164,9 +166,21 @@ function RepairRequestsSection({ colors }: { colors: any }) {
 
 // ─── Late Clock-Ins & Clock-Outs ──────────────────────────────────────────────
 function LateClockSection({ colors }: { colors: any }) {
+  const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const allowLegacy = allowsLegacyTimekeepingAuthority(resolveCompanyTimekeepingAuthority({ session, sessionLoading: jobSyncLoading }));
   const { data: records, isLoading } = trpc.timesheet.getTodayClockSummary.useQuery(undefined, {
+    enabled: allowLegacy,
     refetchInterval: 60000,
   });
+  if (!allowLegacy) {
+    return (
+      <View style={{ marginBottom: 28, paddingHorizontal: 4 }}>
+        <Text style={{ color: colors.muted, fontSize: 13 }}>
+          Late clock review uses Home Service Connected timesheets. Local Luxury Wash clock summaries stay on the legacy path.
+        </Text>
+      </View>
+    );
+  }
   const allRecords = (records as any[]) ?? [];
 
   const lateIns = allRecords.filter((r: any) => r.clockInTime && isLateClockIn(r.clockInTime));

@@ -9,6 +9,13 @@ import { CompanyMeetingBanner } from "@/components/company-meeting-banner";
 
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimekeepingAuthority,
+  resolveCompanyTimekeepingAuthority,
+  usesCompanyTimekeepingAuthority,
+} from "@/lib/jobsync-company-authority";
+import { getHomeServiceConnectedTimesheets, sumHomeServiceConnectedTimesheetHours } from "@/lib/jobsync-mobile-api";
 import { useBreakNotifications } from "@/hooks/use-break-notifications";
 import { useAfter5pmCheckIn } from "@/hooks/use-after-5pm-check-in";
 import { useEmployeePush } from "@/hooks/use-employee-push";
@@ -315,6 +322,10 @@ function TreasureChestReveal({ prizeName, prizeEmoji, onClose, colors }: {
 function DetailerDashboard() {
   const colors = useColors();
   const { employee, isSalesRep } = useEmployeeAuth();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const timekeepingAuthority = resolveCompanyTimekeepingAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const allowLegacyTimekeeping = allowsLegacyTimekeepingAuthority(timekeepingAuthority);
+  const isCompanyTimekeeping = usesCompanyTimekeepingAuthority(timekeepingAuthority);
   const router = useRouter();
 
   // Initialize break notifications
@@ -322,7 +333,7 @@ function DetailerDashboard() {
   useEmployeePush();
   
   // Initialize after 5 PM check-in
-  const { pendingClockCheck, respondToClockCheck, responding: responding5pm } = useAfter5pmCheckIn();
+  const { pendingClockCheck, respondToClockCheck, responding: responding5pm } = useAfter5pmCheckIn(allowLegacyTimekeeping);
   const [view, setView] = useState<"today" | "week" | "alltime">("today");
   const [showQuiz, setShowQuiz] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<"A" | "B" | "C" | "D" | null>(null);
@@ -401,8 +412,10 @@ function DetailerDashboard() {
       startDate: view === "today" ? weekRange.today : view === "week" ? weekRange.start : "2020-01-01",
       endDate: view === "today" ? weekRange.today : view === "week" ? weekRange.end : weekRange.today,
     },
-    { enabled: !!employee?.employeeId, refetchOnWindowFocus: false, refetchInterval: 60000 }
+    { enabled: allowLegacyTimekeeping && !!employee?.employeeId, refetchOnWindowFocus: false, refetchInterval: 60000 }
   );
+  const [companyHours, setCompanyHours] = useState<number | null>(null);
+  const [companyHoursError, setCompanyHoursError] = useState<string | null>(null);
 
   // Query completed schedule jobs to include their revenue in dashboard metrics
   const completedJobsQuery = trpc.jobs.completedForDetailer.useQuery(
@@ -433,8 +446,34 @@ function DetailerDashboard() {
   // Timesheet queries and mutations
   const clockStatusQuery = trpc.timesheet.getTodayStatus.useQuery(
     { employeeId: employee?.employeeId || "" },
-    { enabled: !!employee?.employeeId, refetchInterval: 60000, staleTime: 55000 }
+    { enabled: allowLegacyTimekeeping && !!employee?.employeeId, refetchInterval: 60000, staleTime: 55000 }
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isCompanyTimekeeping || !jobSyncSession?.token) {
+      setCompanyHours(null);
+      setCompanyHoursError(null);
+      return () => { cancelled = true; };
+    }
+    getHomeServiceConnectedTimesheets(jobSyncSession.token, {
+      start: view === "today" ? weekRange.today : view === "week" ? weekRange.start : "2020-01-01",
+      end: view === "today" ? weekRange.today : view === "week" ? weekRange.end : weekRange.today,
+    })
+      .then((records) => {
+        if (!cancelled) {
+          setCompanyHours(sumHomeServiceConnectedTimesheetHours(records));
+          setCompanyHoursError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCompanyHours(null);
+          setCompanyHoursError(error instanceof Error ? error.message : "Company hours are unavailable.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isCompanyTimekeeping, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
   const clockInMutation = trpc.timesheet.clockIn.useMutation();
   const clockOutMutation = trpc.timesheet.clockOut.useMutation();
 
@@ -508,7 +547,7 @@ function DetailerDashboard() {
       const tips = scheduleTips > 0 ? scheduleTips : manualTips;
       // Use clock_in_out_records as the authoritative source for hours (same as week/all-time).
       // daily_performance.hoursWorked can contain stale or estimated values — never use it for display.
-      const todayClockHours = clockHoursQuery.data?.totalHours ?? 0;
+      const todayClockHours = isCompanyTimekeeping ? (companyHours ?? 0) : (clockHoursQuery.data?.totalHours ?? 0);
       // Efficiency: total revenue / clock hours / $100 target (consistent with week/all-time)
       const todayEfficiency = todayClockHours > 0 ? (revenue / todayClockHours) / 100 * 100 : 0;
       return {
@@ -566,7 +605,7 @@ function DetailerDashboard() {
         totalTips += schedTips > 0 ? schedTips : manualTips;
       }
       // Use clock_in_out_records as the authoritative source for hours (never misses a session)
-      const clockHours = clockHoursQuery.data?.totalHours ?? 0;
+      const clockHours = isCompanyTimekeeping ? (companyHours ?? 0) : (clockHoursQuery.data?.totalHours ?? 0);
       // Efficiency (Option B): total revenue / total hours / $100 target
       // e.g. $800 / 8 hrs / $100 = 100%. Gives a single weighted rate across all time.
       const efficiency = clockHours > 0 ? (totalRevenue / clockHours) / 100 * 100 : 0;
@@ -578,7 +617,7 @@ function DetailerDashboard() {
         tips: totalTips,
       };
     }
-  }, [view, metricsQuery.data, completedJobsQuery.data, clockHoursQuery.data, weekRange.today]);
+  }, [view, metricsQuery.data, completedJobsQuery.data, clockHoursQuery.data, companyHours, isCompanyTimekeeping, weekRange.today]);
 
   const metrics = calculateMetrics;
 
@@ -956,7 +995,7 @@ function DetailerDashboard() {
                   <View style={{ flex: 1 }}>
                     <MetricCard
                       label="Hours"
-                      value={Number(metrics.hours).toFixed(1)}
+                      value={companyHoursError ? "—" : Number(metrics.hours).toFixed(1)}
                       unit="hrs"
                       icon="⏱️"
                       color="primary"
@@ -1084,7 +1123,7 @@ function DetailerDashboard() {
             </View>
 
             {/* Timecard Display */}
-            <TimecardDisplay />
+            {allowLegacyTimekeeping ? <TimecardDisplay /> : null}
 
             {/* Bonus Challenge Section — only show when challenge is active and NOT yet attempted */}
             {challenge && challenge.hasChallenge && !(challenge as any)?.alreadyAttempted && (

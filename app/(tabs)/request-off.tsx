@@ -1,8 +1,16 @@
 import { useState, useMemo } from "react";
 import { Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Platform } from "react-native";
+import { CompanyAuthorityLoading } from "@/components/company-authority-state";
+import { CompanyTimeOffPanel } from "@/components/company-time-off-panel";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimeOffAuthority,
+  resolveCompanyTimeOffAuthority,
+  usesCompanyTimeOffAuthority,
+} from "@/lib/jobsync-company-authority";
 import { trpc } from "@/lib/trpc";
 import { CalendarPicker } from "@/components/calendar-picker";
 
@@ -41,6 +49,21 @@ function getTomorrowStr() {
 const STATUS_COLORS: Record<string, string> = { pending: "#F59E0B", approved: "#22C55E", denied: "#EF4444" };
 
 export default function RequestOffScreen() {
+  const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const authority = resolveCompanyTimeOffAuthority({ session, sessionLoading: jobSyncLoading });
+  if (authority === "unknown") {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Time Off…" />;
+  }
+  if (usesCompanyTimeOffAuthority(authority) && session?.token) {
+    return <CompanyTimeOffPanel token={session.token} mode="request" />;
+  }
+  if (!allowsLegacyTimeOffAuthority(authority)) {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Time Off…" />;
+  }
+  return <LegacyRequestOffScreen />;
+}
+
+function LegacyRequestOffScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const utils = trpc.useUtils();

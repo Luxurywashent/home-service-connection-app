@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
 
-export function useAfter5pmCheckIn() {
+export function useAfter5pmCheckIn(enabled = true) {
   const { employee } = useEmployeeAuth();
   const [pendingNotification, setPendingNotification] = useState<{
     notificationId: string;
@@ -19,7 +19,7 @@ export function useAfter5pmCheckIn() {
   const pendingQuery = trpc.timesheet.getPendingClockCheck.useQuery(
     { employeeId: employee?.employeeId || "" },
     {
-      enabled: !!employee?.employeeId,
+      enabled: enabled && !!employee?.employeeId,
       refetchInterval: 60 * 1000, // every 60s
       refetchIntervalInBackground: false,
     }
@@ -38,7 +38,7 @@ export function useAfter5pmCheckIn() {
 
   const respond = useCallback(
     async (response: "still_working" | "clock_me_out") => {
-      if (!employee || !pendingNotification) return;
+      if (!enabled || !employee || !pendingNotification) return;
       setResponding(true);
       try {
         await respondMutation.mutateAsync({
@@ -54,7 +54,7 @@ export function useAfter5pmCheckIn() {
         setResponding(false);
       }
     },
-    [employee, pendingNotification, respondMutation]
+    [enabled, employee, pendingNotification, respondMutation]
   );
 
   return {

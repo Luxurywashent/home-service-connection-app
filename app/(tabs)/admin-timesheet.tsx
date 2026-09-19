@@ -3,8 +3,16 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   TextInput, Modal, Alert, Platform, Linking,
 } from "react-native";
+import { CompanyAuthorityLoading } from "@/components/company-authority-state";
+import { CompanyTimesheetPanel } from "@/components/company-timesheet-panel";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimekeepingAuthority,
+  resolveCompanyTimekeepingAuthority,
+  usesCompanyTimekeepingAuthority,
+} from "@/lib/jobsync-company-authority";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import { CalendarPicker } from "@/components/calendar-picker";
@@ -598,6 +606,21 @@ function TeamDashboard({ colors, onSelectMember }: { colors: any; onSelectMember
 }
 
 export default function AdminTimesheetScreen() {
+  const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const authority = resolveCompanyTimekeepingAuthority({ session, sessionLoading: jobSyncLoading });
+  if (authority === "unknown") {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Timesheets…" />;
+  }
+  if (usesCompanyTimekeepingAuthority(authority) && session?.token) {
+    return <CompanyTimesheetPanel token={session.token} role={session.user.role} showTeam showTimeOffLink={false} />;
+  }
+  if (!allowsLegacyTimekeepingAuthority(authority)) {
+    return <CompanyAuthorityLoading message="Confirming Company identity before Timesheets…" />;
+  }
+  return <LegacyAdminTimesheetScreen />;
+}
+
+function LegacyAdminTimesheetScreen() {
   const colors = useColors();
   const [viewMode, setViewMode] = useState<"dashboard" | "individual">("dashboard");
   const [weekOffset, setWeekOffset] = useState(0);

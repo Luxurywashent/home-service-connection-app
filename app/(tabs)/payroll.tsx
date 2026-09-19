@@ -7,10 +7,17 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import { CompanyAuthorityLoading, CompanyAuthorityMessage } from "@/components/company-authority-state";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimekeepingAuthority,
+  resolveCompanyTimekeepingAuthority,
+  usesCompanyTimekeepingAuthority,
+} from "@/lib/jobsync-company-authority";
 
 const DEFAULT_HOURLY_RATE = 17;
 const DEFAULT_UPSELL_BONUS_PCT = 40;
@@ -81,7 +88,7 @@ function PaystubCard({ period, employeeId, hourlyRate, upsellBonusPct, isExpande
   const hoursQuery = trpc.timesheet.getWeeklyHours.useQuery(
     { employeeId, startDate: period.startDate, endDate: period.endDate },
     { enabled: isExpanded }
-  );
+  ); // Legacy Luxury Wash payroll only. Company screens never mount this card.
 
   const perfQuery = trpc.performance.getDateRange.useQuery(
     { employeeId, startDate: period.startDate, endDate: period.endDate },
@@ -204,7 +211,34 @@ function Row({ label, value, color, bold, large }: { label: string; value: strin
 export default function PayrollScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const authority = resolveCompanyTimekeepingAuthority({ session, sessionLoading: jobSyncLoading });
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+
+  if (authority === "unknown") {
+    return (
+      <ScreenContainer edges={["left", "right"]}>
+        <CompanyAuthorityLoading message="Confirming Company identity before Payroll…" />
+      </ScreenContainer>
+    );
+  }
+  if (usesCompanyTimekeepingAuthority(authority)) {
+    return (
+      <ScreenContainer edges={["left", "right"]}>
+        <CompanyAuthorityMessage
+          title="Company payroll stays on Home Service Connected"
+          detail="Hours come from canonical clock records. Local Luxury Wash payroll estimates are not a second Company ledger."
+        />
+      </ScreenContainer>
+    );
+  }
+  if (!allowsLegacyTimekeepingAuthority(authority)) {
+    return (
+      <ScreenContainer edges={["left", "right"]}>
+        <CompanyAuthorityLoading message="Confirming Company identity before Payroll…" />
+      </ScreenContainer>
+    );
+  }
 
   const payPeriods = useMemo(() => generatePayPeriods(12), []);
 
