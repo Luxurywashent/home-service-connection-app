@@ -103,14 +103,109 @@ describe("Phase 1 — canonical Jobs / Schedule / AR / Unpaid", () => {
   });
 
   it("2. Job detail consumes canonical Job via GET company/jobs/:id", async () => {
-    const fetchMock = mockOk({ job: canonicalJob });
+    // Post-hardening detail is a SUPERSET: canonical list DTO fields + leftover detail aliases.
+    const detailSuperset = {
+      ...canonicalJob,
+      address: "1 Main St",
+      address_line1: "1 Main St",
+      technicianName: "Alex Tech",
+      assigned_to: "Alex Tech",
+      events: [],
+      payments: [],
+    };
+    const fetchMock = mockOk({ job: detailSuperset });
     try {
       const job = await getJobSyncCompanyJob("company-token", 44);
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/company/jobs/44");
       expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "GET" }));
-      expect(job).toMatchObject({ id: 44, paidTotal: 50, balance: 199.5 });
+      expect(job).toMatchObject({
+        id: 44,
+        addressLine1: "1 Main St",
+        assignedName: "Alex Tech",
+        customerName: "Casey Owner",
+        paidTotal: 50,
+        balance: 199.5,
+        paymentStatus: "partial",
+      });
       expect(scheduleSource).toContain("getJobSyncCompanyJob");
       expect(adminScheduleSource).toContain("getJobSyncCompanyJob");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("2b. Detail refresh merge preserves address, assignee, customer, schedule, and AR", async () => {
+    // Pre-fix getJobDetail shape (no addressLine1 / assignedName) — documents the wipe defect.
+    const rawDetailWithoutProjection = {
+      id: 44,
+      customerId: 8,
+      assignedUserId: 41,
+      title: "Window Cleaning",
+      serviceName: "Window Cleaning",
+      status: "scheduled",
+      scheduledStartAt: "2026-09-11T13:00:00.000Z",
+      scheduledEndAt: "2026-09-11T14:30:00.000Z",
+      updatedAt: "2026-09-11T12:00:00.000Z",
+      address: "1 Main St",
+      address_line1: "1 Main St",
+      city: "Mobile",
+      amount: 249.5,
+      paidTotal: 50,
+      refundTotal: 0,
+      appliedEstimateCredit: 0,
+      balance: 199.5,
+      paymentStatus: "partial",
+      customerName: "Casey Owner",
+      technicianName: "Alex Tech",
+      assigned_to: "Alex Tech",
+    };
+
+    const brokenFetch = mockOk({ job: rawDetailWithoutProjection });
+    try {
+      const broken = await getJobSyncCompanyJob("company-token", 44);
+      const brokenMapped = mapCanonicalJobToScheduleFields(broken, "crestview");
+      // Pre-fix server response would clear these after normalize.
+      expect(broken.addressLine1).toBeNull();
+      expect(broken.assignedName).toBeNull();
+      expect(brokenMapped.address).toBe("");
+      expect(brokenMapped.detailerName).toBeUndefined();
+    } finally {
+      brokenFetch.mockRestore();
+    }
+
+    // Post-fix projected detail (what jobsync projectMobileCompanyJob overlays).
+    const projectedDetail = {
+      ...rawDetailWithoutProjection,
+      addressLine1: "1 Main St",
+      assignedName: "Alex Tech",
+    };
+    const fetchMock = mockOk({ job: projectedDetail });
+    try {
+      const listMapped = mapCanonicalJobToScheduleFields(canonicalJob, "crestview");
+      const detail = await getJobSyncCompanyJob("company-token", 44);
+      const detailMapped = mapCanonicalJobToScheduleFields(detail, "crestview");
+      const merged = { ...listMapped, ...detailMapped, id: String(detail.id) };
+
+      expect(detail.addressLine1).toBe("1 Main St");
+      expect(detail.assignedName).toBe("Alex Tech");
+      expect(detail.customerName).toBe("Casey Owner");
+      expect(detail.scheduledStartAt).toBe("2026-09-11T13:00:00.000Z");
+      expect(detail.scheduledEndAt).toBe("2026-09-11T14:30:00.000Z");
+      expect(detail.amount).toBe(249.5);
+      expect(detail.paidTotal).toBe(50);
+      expect(detail.balance).toBe(199.5);
+      expect(detail.paymentStatus).toBe("partial");
+
+      expect(merged.address).toBe("1 Main St");
+      expect(merged.detailerName).toBe("Alex Tech");
+      expect(merged.assignedTo).toBe("jobsync-41");
+      expect(merged.firstName).toBe("Casey");
+      expect(merged.lastName).toBe("Owner");
+      expect(merged.price).toBe(249.5);
+      expect(merged.paidTotal).toBe(50);
+      expect(merged.balance).toBe(199.5);
+      expect(merged.paymentStatus).toBe("partial");
+      expect(merged._rawStatus).toBe("scheduled");
     } finally {
       fetchMock.mockRestore();
     }
