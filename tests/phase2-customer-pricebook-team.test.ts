@@ -11,7 +11,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   COMPANY_LOCAL_FINANCIAL_MUTATIONS,
   COMPANY_PAYMENT_CONTROLS,
-  COMPANY_PRICE_BOOK_WEB_AUTHORITY_NOTICE,
   companyPriceBookAllowsLocalMutation,
   companyPriceBookUsesCanonicalRead,
   companyTeamMemberUpdateOmitsClientRole,
@@ -285,7 +284,8 @@ describe("Phase 2 — Price Book", () => {
   it("12. Web price change is represented through the same canonical authority", () => {
     expect(apiSource).toContain('const COMPANY_PRICE_BOOK_PATH = "/api/mobile/v1/price-book"');
     expect(priceBookPanelSource).toContain("useCompanyPriceBook");
-    expect(priceBookPanelSource).toContain(COMPANY_PRICE_BOOK_WEB_AUTHORITY_NOTICE);
+    expect(priceBookPanelSource).toContain("COMPANY_PRICE_BOOK_WEB_AUTHORITY_NOTICE");
+    expect(authoritySource).toContain("COMPANY_PRICE_BOOK_WEB_AUTHORITY_NOTICE");
     expect(priceBookScreenSource).toContain("CompanyPriceBookPanel");
     expect(priceBookScreenSource).toContain("LegacyAdminPricebookScreen");
   });
@@ -367,8 +367,10 @@ describe("Phase 2 — Team Members", () => {
   it("17. Team member identity matches canonical assignment identity", () => {
     expect(employeesSource).toContain("jobsync-${member.id}");
     expect(adminScheduleSource).toContain("jobsync-");
-    expect(addJobSource).toContain("assignedUserId");
+    expect(adminScheduleSource).toContain("assignedUserId");
     expect(apiSource).toContain("assignedUserId");
+    expect(addJobSource).toContain("createJobSyncCompanyJob");
+    expect(addJobSource).toContain("priceBookServiceId");
   });
 
   it("18. Another Company's Team Member path stays company-scoped", async () => {
