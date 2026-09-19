@@ -9,6 +9,8 @@ import {
 } from "react-native";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
+import { CompanyCustomersPanel } from "@/components/company-customers-panel";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -77,6 +79,16 @@ function statusColor(status: string): string {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminCustomersScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Confirming Company identity before Customers…"
+      company={(token) => <CompanyCustomersPanel token={token} />}
+      legacy={() => <LegacyAdminCustomersScreen />}
+    />
+  );
+}
+
+function LegacyAdminCustomersScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
 

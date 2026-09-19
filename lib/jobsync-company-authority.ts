@@ -15,6 +15,9 @@ export const COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED =
 export const COMPANY_TIME_OFF_LEGACY_FALLTHROUGH_BLOCKED =
   "Company Time Off cannot use local time-off authority.";
 
+export const COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED =
+  "Company Finance, Customers, and payment surfaces cannot use local Luxury Wash financial authority.";
+
 export const COMPANY_PAYMENT_CONTROLS = {
   card: false,
   applePay: false,
@@ -100,6 +103,134 @@ export const allowsLegacyTimekeepingAuthority = allowsLegacyJobAuthority;
 export const resolveCompanyTimeOffAuthority = resolveCompanyJobAuthority;
 export const usesCompanyTimeOffAuthority = usesCompanyJobAuthority;
 export const allowsLegacyTimeOffAuthority = allowsLegacyJobAuthority;
+export const resolveCompanyFinancialAuthority = resolveCompanyJobAuthority;
+export const usesCompanyFinancialAuthority = usesCompanyJobAuthority;
+export const allowsLegacyFinancialAuthority = allowsLegacyJobAuthority;
+
+export type CompanyFinancialScreen = "loading" | "company" | "legacy";
+export type CompanyFinancialSurface =
+  | "customers"
+  | "customerProfile"
+  | "finance"
+  | "savedCards"
+  | "localStripe"
+  | "localEstimates"
+  | "tapToPaySettings"
+  | "localReceipts"
+  | "localPaymentMutations"
+  | "localFinanceWrites";
+
+export const COMPANY_LOCAL_FINANCIAL_MUTATIONS = [
+  "savedCards.chargeCard",
+  "savedCards.saveCard",
+  "savedCards.createSetupIntent",
+  "savedCards.deleteCard",
+  "savedCards.listCards",
+  "savedCards.list",
+  "stripe.createPaymentIntent",
+  "stripe.scanCard",
+  "stripe.refundPayment",
+  "stripe.listRefunds",
+  "jobs.markPaid",
+  "jobs.savePayment",
+  "jobs.reconcileFromStripe",
+  "jobs.sendReceipt",
+  "estimates.create",
+  "estimates.delete",
+  "estimates.listForCustomer",
+  "finance.createTransaction",
+  "finance.deleteTransaction",
+  "finance.getSummary",
+  "customers.listAll",
+] as const;
+
+export function resolveCompanyFinancialScreen(mode: CompanyJobAuthorityMode): CompanyFinancialScreen {
+  if (mode === "unknown") return "loading";
+  if (mode === "company") return "company";
+  return "legacy";
+}
+
+export function companyFinancialSurfaceMount(
+  mode: CompanyJobAuthorityMode,
+  surface: CompanyFinancialSurface,
+): "blocked" | "company-canonical" | "legacy" {
+  if (mode === "unknown") return "blocked";
+  if (mode === "legacy") return "legacy";
+  if (surface === "customers" || surface === "customerProfile" || surface === "finance") {
+    return "company-canonical";
+  }
+  return "blocked";
+}
+
+export function companyLocalFinancialMutationAllowed(mode: CompanyJobAuthorityMode, _mutation?: string) {
+  return mode === "legacy";
+}
+
+export function resolveCompanyFinancialMountedSurface(input: {
+  session?: JobSyncNativeSession | null;
+  sessionLoading?: boolean;
+}) {
+  const authority = resolveCompanyFinancialAuthority(input);
+  const screen = resolveCompanyFinancialScreen(authority);
+  const legacy = screen === "legacy";
+  const company = screen === "company";
+  return {
+    authority,
+    screen,
+    mountsLocalFinance: legacy,
+    mountsLocalCustomers: legacy,
+    mountsLocalCustomerProfile: legacy,
+    mountsSavedCards: legacy,
+    mountsLocalStripe: legacy,
+    mountsLocalEstimates: legacy,
+    mountsTapToPaySettings: legacy,
+    mountsLocalReceipts: legacy,
+    mountsLocalPaymentMutations: legacy,
+    mountsLocalFinanceWrites: legacy,
+    mountsCanonicalFinance: company,
+    mountsCanonicalCustomers: company,
+    mountsCanonicalCustomerProfile: company,
+  };
+}
+
+export function forbidLegacyCompanyFinancialAuthority(isCompanySession: boolean, action = "this financial action") {
+  if (isCompanySession) {
+    throw new Error(`${COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED} (${action})`);
+  }
+}
+
+export function companyFinanceUsesCanonicalAuthority(): true {
+  return true;
+}
+
+export function companyCustomersUseCanonicalRead(): true {
+  return true;
+}
+
+export function companyCustomerProfileMountsLocalFinancialActions(): false {
+  return false;
+}
+
+export function companySavedCardsReachable(): false {
+  return false;
+}
+
+export function companyLegacyTtpSettingsReachable(): false {
+  return false;
+}
+
+export function resolveCompanyFinanceDisplay(input: {
+  mode: CompanyJobAuthorityMode;
+  finance: { income: number | null } | null;
+  error: string | null;
+  loading: boolean;
+}): { state: "loading" | "error" | "ready"; finance: { income: number | null } | null } {
+  if (input.mode === "unknown" || input.loading) return { state: "loading", finance: null };
+  if (input.mode !== "company") return { state: "error", finance: null };
+  if (input.error) return { state: "error", finance: null };
+  if (!input.finance) return { state: "loading", finance: null };
+  return { state: "ready", finance: input.finance };
+}
 
 export function forbidLegacyCompanyTimekeeping(isCompanySession: boolean, action = "this Clock action") {
   if (isCompanySession) {

@@ -88,6 +88,8 @@ const COMPANY_SYNC_PATH = "/api/mobile/v1/sync";
 const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
 const COMPANY_INVOICES_PATH = "/api/mobile/v1/invoices";
 const COMPANY_UNPAID_JOBS_PATH = "/api/mobile/v1/payments/unpaid-jobs";
+const COMPANY_CUSTOMERS_PATH = "/api/mobile/v1/customers";
+const COMPANY_FINANCE_PATH = "/api/mobile/v1/finance";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
@@ -300,6 +302,40 @@ export type JobSyncCompanyUnpaidJob = {
   paymentStatus: string;
 };
 export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null };
+export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleYear: string | null;
+  doNotService: boolean | null;
+  preferredContact: string | null;
+  updatedAt: string | null;
+};
+export type JobSyncCompanyFinanceTransaction = {
+  id: string;
+  type: "income" | "expense" | string;
+  category: string;
+  amount: number;
+  description: string | null;
+  date: string | null;
+  source: string | null;
+};
+export type JobSyncCompanyFinanceSummary = {
+  income: number | null;
+  expenses: number | null;
+  netCashMovement: number | null;
+  collected: number | null;
+  outstanding: number | null;
+  bookedRevenue: number | null;
+  invoiceCount: number | null;
+  billedTotal: number | null;
+  collectedTotal: number | null;
+  openBalance: number | null;
+  pastDueBalance: number | null;
+  reportingMonth: string | null;
+  reportingTimezone: string | null;
+  transactions: JobSyncCompanyFinanceTransaction[];
+  definitions: Record<string, string>;
+};
 export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
 export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
 
@@ -375,12 +411,87 @@ function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer
 }
 
 export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
-  const payload = asRecord(await requestJson("/api/mobile/v1/customers", { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  const payload = asRecord(await requestJson(COMPANY_CUSTOMERS_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
   return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
 }
 
+function normalizeJobSyncCompanyCustomerDetail(value: unknown): JobSyncCompanyCustomerDetail | null {
+  const row = asRecord(value) ?? {};
+  const base = normalizeJobSyncCompanyCustomer(row);
+  if (!base) return null;
+  const vehicle = asRecord(row.vehicle) ?? {};
+  return {
+    ...base,
+    vehicleMake: firstString(row.vehicleMake, vehicle.make),
+    vehicleModel: firstString(row.vehicleModel, vehicle.model),
+    vehicleYear: firstString(row.vehicleYear, vehicle.year),
+    vehicleType: firstString(row.vehicleType, vehicle.type) ?? base.vehicleType,
+    doNotService: typeof row.doNotService === "boolean" ? row.doNotService : null,
+    preferredContact: firstString(row.preferredContact),
+    updatedAt: firstString(row.updatedAt),
+  };
+}
+
+export function normalizeJobSyncCompanyFinance(payload: unknown): JobSyncCompanyFinanceSummary {
+  const root = asRecord(payload) ?? {};
+  const finance = asRecord(root.finance) ?? (root.income != null || root.collected != null || root.bookedRevenue != null ? root : null);
+  if (!finance) {
+    throw new Error("Home Service Connected returned an invalid finance response.");
+  }
+  const hasCanonicalField = ["income", "expenses", "collected", "outstanding", "bookedRevenue", "billedTotal", "openBalance"]
+    .some((key) => finance[key] !== undefined && finance[key] !== null);
+  if (!hasCanonicalField) {
+    throw new Error("Home Service Connected returned an invalid finance response.");
+  }
+  const definitions = asRecord(finance.definitions) ?? {};
+  return {
+    income: nullableNumber(finance.income),
+    expenses: nullableNumber(finance.expenses),
+    netCashMovement: nullableNumber(finance.netCashMovement, finance.net),
+    collected: nullableNumber(finance.collected),
+    outstanding: nullableNumber(finance.outstanding),
+    bookedRevenue: nullableNumber(finance.bookedRevenue),
+    invoiceCount: nullableNumber(finance.invoiceCount),
+    billedTotal: nullableNumber(finance.billedTotal),
+    collectedTotal: nullableNumber(finance.collectedTotal),
+    openBalance: nullableNumber(finance.openBalance),
+    pastDueBalance: nullableNumber(finance.pastDueBalance),
+    reportingMonth: firstString(finance.reportingMonth),
+    reportingTimezone: firstString(finance.reportingTimezone),
+    transactions: (Array.isArray(finance.transactions) ? finance.transactions : []).flatMap((item) => {
+      const row = asRecord(item) ?? {};
+      const id = firstString(row.id) ?? "";
+      const amount = nullableNumber(row.amount);
+      if (!id || amount == null) return [];
+      return [{
+        id,
+        type: firstString(row.type) === "expense" ? "expense" : "income",
+        category: firstString(row.category) ?? "Uncategorized",
+        amount,
+        description: firstString(row.description),
+        date: firstString(row.date),
+        source: firstString(row.source),
+      }];
+    }),
+    definitions: Object.fromEntries(
+      Object.entries(definitions).flatMap(([key, value]) => typeof value === "string" && value.trim() ? [[key, value.trim()]] : []),
+    ),
+  };
+}
+
+export async function getJobSyncCompanyCustomer(token: string, customerId: number): Promise<JobSyncCompanyCustomerDetail> {
+  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}/${customerId}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  const customer = normalizeJobSyncCompanyCustomerDetail(payload.customer ?? payload);
+  if (!customer) throw new Error("Home Service Connected returned an invalid customer response.");
+  return customer;
+}
+
+export async function getJobSyncCompanyFinance(token: string): Promise<JobSyncCompanyFinanceSummary> {
+  return normalizeJobSyncCompanyFinance(await requestJson(COMPANY_FINANCE_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) }));
+}
+
 export async function createJobSyncCompanyCustomer(token: string, input: JobSyncCompanyCustomerCreateInput): Promise<JobSyncCompanyCustomer> {
-  const payload = asRecord(await requestJson("/api/mobile/v1/customers", {
+  const payload = asRecord(await requestJson(COMPANY_CUSTOMERS_PATH, {
     method: "POST",
     headers: createJobSyncBearerHeaders(token),
     body: JSON.stringify({
