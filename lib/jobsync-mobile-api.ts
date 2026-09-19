@@ -348,7 +348,16 @@ export type JobSyncCompanyFinanceSummary = {
   transactions: JobSyncCompanyFinanceTransaction[];
   definitions: Record<string, string>;
 };
-export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
+export type JobSyncCompanyJobCreateInput = {
+  customerId: number;
+  priceBookServiceId: number;
+  /** Canonical HSC vehicle tier key (`sedan`, `suv`, …). Server resolves amount. */
+  vehiclePriceKey?: string;
+  assignedUserId?: number;
+  scheduledStartAt: string;
+  scheduledEndAt?: string;
+  privateNotes?: string;
+};
 
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   const row = asRecord(value) ?? {};
@@ -557,14 +566,15 @@ export async function createJobSyncCompanyJob(token: string, input: JobSyncCompa
   const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, {
     method: "POST",
     headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({
+    body: JSON.stringify(sanitizeCompanyMutationBody({
       customerId: input.customerId,
       priceBookServiceId: input.priceBookServiceId,
+      ...(input.vehiclePriceKey?.trim() ? { vehiclePriceKey: input.vehiclePriceKey.trim() } : {}),
       ...(input.assignedUserId ? { assignedUserId: input.assignedUserId } : {}),
       scheduledStartAt: input.scheduledStartAt,
       ...(input.scheduledEndAt ? { scheduledEndAt: input.scheduledEndAt } : {}),
       ...(input.privateNotes?.trim() ? { privateNotes: input.privateNotes.trim() } : {}),
-    }),
+    })),
   })) ?? {};
   const job = normalizeJobSyncMobileJob(payload.job);
   if (!job) throw new Error("Home Service Connected returned an invalid Job response.");
@@ -577,9 +587,13 @@ function companyJobPath(jobId: number, suffix = "") {
 }
 
 export function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
-  const forbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
-  for (const key of forbidden) {
+  const identityForbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
+  const priceForbidden = ["amount", "unitPrice", "unit_price", "basePrice", "base_price"];
+  for (const key of identityForbidden) {
     if (key in body) throw new Error("Company identity must come from the authenticated Home Service Connected session.");
+  }
+  for (const key of priceForbidden) {
+    if (key in body) throw new Error("Job price must be resolved by Home Service Connected from the Company Price Book.");
   }
   return body;
 }

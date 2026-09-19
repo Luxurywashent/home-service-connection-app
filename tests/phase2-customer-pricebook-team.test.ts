@@ -266,12 +266,25 @@ describe("Phase 2 — Customers", () => {
 describe("Phase 2 — Price Book", () => {
   it("11. Mobile Price Book reads canonical Company Price Book", async () => {
     const fetchMock = mockOk({
-      services: [{ id: 501, name: "Window Cleaning", basePrice: 149, isActive: true, orderIndex: 0, description: "Exterior" }],
+      services: [{
+        id: 501,
+        name: "Window Cleaning",
+        basePrice: 0,
+        isActive: true,
+        orderIndex: 0,
+        description: "Exterior",
+        vehiclePrices: { sedan: 175, suv: 225 },
+      }],
     });
     try {
       const services = await getHomeServiceConnectedPriceBook("company-token");
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/price-book");
-      expect(services[0]).toMatchObject({ serviceId: "501", name: "Window Cleaning", basePrice: 149 });
+      expect(services[0]).toMatchObject({
+        serviceId: "501",
+        name: "Window Cleaning",
+        basePrice: 0,
+        vehiclePrices: { sedan: 175, suv: 225 },
+      });
       expect(companyPriceBookUsesCanonicalRead()).toBe(true);
       expect(scheduleSource).toContain("useCompanyPriceBook");
       expect(adminScheduleSource).toContain("useCompanyPriceBook");
@@ -307,7 +320,7 @@ describe("Phase 2 — Price Book", () => {
     expect(() => sanitizeCompanyMutationBody({ priceBookServiceId: 501, companyId: 22 })).toThrow(/authenticated/i);
   });
 
-  it("15. Job creation sends owned Price Book service ID without client companyId", async () => {
+  it("15. Job creation sends owned Price Book service ID and vehiclePriceKey without client companyId/amount", async () => {
     const fetchMock = mockOk({
       job: {
         id: 44,
@@ -318,11 +331,11 @@ describe("Phase 2 — Price Book", () => {
         status: "scheduled",
         scheduledStartAt: "2026-10-01T14:00:00.000Z",
         scheduledEndAt: "2026-10-01T15:00:00.000Z",
-        amount: 149,
+        amount: 175,
         paidTotal: 0,
         refundTotal: 0,
         appliedEstimateCredit: 0,
-        balance: 149,
+        balance: 175,
         paymentStatus: "unpaid",
         customerName: "Nia Wells",
         assignedName: null,
@@ -335,12 +348,16 @@ describe("Phase 2 — Price Book", () => {
       await createJobSyncCompanyJob("company-token", {
         customerId: 88,
         priceBookServiceId: 501,
+        vehiclePriceKey: "sedan",
         scheduledStartAt: "2026-10-01T14:00:00.000Z",
       });
       const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-      expect(body).toMatchObject({ customerId: 88, priceBookServiceId: 501 });
+      expect(body).toMatchObject({ customerId: 88, priceBookServiceId: 501, vehiclePriceKey: "sedan" });
       expect(body).not.toHaveProperty("companyId");
+      expect(body).not.toHaveProperty("amount");
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/company/jobs");
+      expect(() => sanitizeCompanyMutationBody({ customerId: 88, amount: 0.01 })).toThrow(/price/i);
+      expect(addJobSource).toContain("vehiclePriceKey: vehicleType");
     } finally {
       fetchMock.mockRestore();
     }
