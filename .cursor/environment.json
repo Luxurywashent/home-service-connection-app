@@ -1,0 +1,17 @@
+{
+  "name": "Home Service Connection (Expo mobile + backend)",
+  "user": "ubuntu",
+  "install": "bash scripts/cloud-agent-install.sh",
+  "start": "bash scripts/cloud-agent-start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "pnpm dev:server"
+    },
+    {
+      "name": "expo-web",
+      "command": "npx expo start --web --port 8081"
+    }
+  ],
+  "ports": [3000, 8081]
+}
