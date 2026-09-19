@@ -420,7 +420,7 @@ function companyJobPath(jobId: number, suffix = "") {
   return `${COMPANY_JOBS_PATH}/${jobId}${suffix}`;
 }
 
-function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
+export function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
   const forbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
   for (const key of forbidden) {
     if (key in body) throw new Error("Company identity must come from the authenticated Home Service Connected session.");

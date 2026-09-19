@@ -18,7 +18,15 @@ import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyUnpaidJobs } from "@/lib/jobsync-mobile-api";
-import { COMPANY_LEGACY_FALLTHROUGH_BLOCKED, unpaidJobFromCanonical } from "@/lib/jobsync-company-authority";
+import {
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  allowsLegacyJobAuthority,
+  companyCanonicalListState,
+  companyCanonicalReadError,
+  resolveCompanyJobAuthority,
+  unpaidJobFromCanonical,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type UnpaidJob = {
@@ -497,8 +505,10 @@ function JobCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminUnpaidJobsScreen() {
   const colors = useColors();
-  const { session: jobSyncSession } = useJobSyncAuth();
-  const isCompany = jobSyncSession?.portal === "company";
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const [selectedJob, setSelectedJob] = useState<UnpaidJob | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -507,8 +517,13 @@ export default function AdminUnpaidJobsScreen() {
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
 
-  const query = trpc.jobs.getUnpaid.useQuery({ includeInProgress: true }, { enabled: !isCompany });
+  const query = trpc.jobs.getUnpaid.useQuery({ includeInProgress: true }, { enabled: allowLegacy });
   const jobs: UnpaidJob[] = isCompany ? companyJobs : (query.data?.jobs ?? []) as UnpaidJob[];
+  const companyListState = companyCanonicalListState({
+    loading: companyLoading || companyAuthority === "unknown",
+    error: companyError,
+    itemCount: jobs.length,
+  });
 
   const loadCompanyUnpaid = useCallback(async () => {
     if (!isCompany) return;
@@ -524,7 +539,7 @@ export default function AdminUnpaidJobsScreen() {
       setCompanyError(null);
     } catch (error) {
       setCompanyJobs([]);
-      setCompanyError(error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+      setCompanyError(companyCanonicalReadError(error));
     } finally {
       setCompanyLoading(false);
     }
@@ -537,7 +552,7 @@ export default function AdminUnpaidJobsScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     if (isCompany) await loadCompanyUnpaid();
-    else await query.refetch();
+    else if (allowLegacy) await query.refetch();
     setRefreshing(false);
   };
 
@@ -633,14 +648,14 @@ export default function AdminUnpaidJobsScreen() {
         </View>
       </View>
 
-      {companyError && isCompany ? (
+      {isCompany && companyListState === "error" ? (
         <View style={styles.centered}>
           <Text style={[styles.emptySub, { color: colors.muted, textAlign: "center", paddingHorizontal: 24 }]}>{companyError}</Text>
         </View>
       ) : null}
 
       {/* Loading */}
-      {(isCompany ? companyLoading : query.isLoading) && (
+      {(isCompany ? companyListState === "loading" : query.isLoading) && (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#0a7ea4" />
           <Text style={[styles.loadingText, { color: colors.muted }]}>Loading unpaid jobs...</Text>
@@ -648,7 +663,7 @@ export default function AdminUnpaidJobsScreen() {
       )}
 
       {/* Empty */}
-      {!(isCompany ? companyLoading : query.isLoading) && filtered.length === 0 && (
+      {!(isCompany ? companyListState === "loading" || companyListState === "error" : query.isLoading) && filtered.length === 0 && (
         <View style={styles.centered}>
           <Text style={styles.emptyEmoji}>🎉</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -663,7 +678,7 @@ export default function AdminUnpaidJobsScreen() {
       )}
 
       {/* List */}
-      {!(isCompany ? companyLoading : query.isLoading) && filtered.length > 0 && (
+      {!(isCompany ? companyListState === "loading" || companyListState === "error" : query.isLoading) && filtered.length > 0 && (
         <FlatList
           windowSize={5}
           maxToRenderPerBatch={8}
@@ -689,7 +704,7 @@ export default function AdminUnpaidJobsScreen() {
         visible={!!selectedJob}
         onClose={() => setSelectedJob(null)}
         onMarkedPaid={() => { setSelectedJob(null); if (isCompany) void loadCompanyUnpaid(); else query.refetch(); }}
-        companyMode={isCompany}
+        companyMode={!allowLegacy}
       />
     </ScreenContainer>
   );

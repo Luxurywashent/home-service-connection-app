@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   COMPANY_PAYMENT_CONTROLS,
+  allowsLegacyJobAuthority,
   classifyStandaloneInvoicesUse,
   companyAssignedUserId,
+  companyCanonicalListState,
+  companyCanonicalReadError,
   companyScheduleDateTime,
   companyScheduleWritesLocalMirror,
   forbidLegacyCompanyJobAuthority,
@@ -13,7 +16,9 @@ import {
   isJobSyncCompanySession,
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
+  resolveCompanyJobAuthority,
   unpaidJobFromCanonical,
+  usesCompanyJobAuthority,
 } from "../lib/jobsync-company-authority";
 import {
   assignJobSyncCompanyJob,
@@ -22,6 +27,7 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
   rescheduleJobSyncCompanyJob,
+  sanitizeCompanyMutationBody,
   updateJobSyncCompanyJobStatus,
 } from "../lib/jobsync-mobile-api";
 
@@ -180,10 +186,10 @@ describe("M1 Company Jobs / Schedule / AR", () => {
 
     expect(classifyStandaloneInvoicesUse()).toMatchObject({ table: "standalone_invoices", classification: "C", companyUse: "isolated", secondJobReceivable: false });
     expect(invoicesSource).toContain("getJobSyncCompanyInvoices");
-    expect(invoicesSource).toContain("enabled: !isCompany");
+    expect(invoicesSource).toContain("enabled: allowLegacy");
     expect(invoicesSource).toContain("standaloneInvoices.list");
     expect(unpaidSource).toContain("getJobSyncCompanyUnpaidJobs");
-    expect(unpaidSource).toContain("enabled: !isCompany");
+    expect(unpaidSource).toContain("enabled: allowLegacy");
     expect(unpaidSource).toContain("companyMode");
   });
 
@@ -200,7 +206,7 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(apiSource).not.toContain("/api/mobile/v1/jobs/${jobId}/payments");
     expect(apiSource).not.toContain("recordJobSyncCompanyJobPayment");
     expect(scheduleSource).toContain("Card collection is disabled for Company Jobs.");
-    expect(adminScheduleSource).toContain("!selectedJob.payment && !isJobSyncCompany");
+    expect(adminScheduleSource).toContain("!selectedJob.payment && allowLegacyJobAuthority");
     expect(unpaidSource).toContain("Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.");
     expect(() => forbidLegacyCompanyJobAuthority(true, "savePayment")).toThrow(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
     expect(() => forbidLegacyCompanyJobAuthority(false, "savePayment")).not.toThrow();
@@ -208,11 +214,60 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(isJobSyncCompanySession({ token: "t", portal: "platform", user: { id: 1, name: "Owner", email: null, role: "owner" } })).toBe(false);
   });
 
+  it("classifies loading or missing Company identity as unknown and does not allow legacy Job authority", () => {
+    const loading = resolveCompanyJobAuthority({ session: null, sessionLoading: true });
+    const restoredCompany = resolveCompanyJobAuthority({
+      session: { token: "t", portal: "company", user: { id: 1, name: "Casey", email: null, role: "owner" } },
+      sessionLoading: false,
+    });
+    const platform = resolveCompanyJobAuthority({
+      session: { token: "t", portal: "platform", user: { id: 1, name: "Owner", email: null, role: "owner" } },
+      sessionLoading: false,
+    });
+    const loggedOut = resolveCompanyJobAuthority({ session: null, sessionLoading: false });
+    expect(loading).toBe("unknown");
+    expect(allowsLegacyJobAuthority(loading)).toBe(false);
+    expect(usesCompanyJobAuthority(loading)).toBe(false);
+    expect(restoredCompany).toBe("company");
+    expect(allowsLegacyJobAuthority(restoredCompany)).toBe(false);
+    expect(platform).toBe("legacy");
+    expect(loggedOut).toBe("legacy");
+    expect(companyCanonicalListState({ loading: false, error: "Home Service Connected took too long to respond.", itemCount: 0 })).toBe("error");
+    expect(companyCanonicalListState({ loading: false, error: null, itemCount: 0 })).toBe("empty");
+    expect(companyCanonicalReadError(new Error("canonical unavailable"))).toBe("canonical unavailable");
+    expect(scheduleSource).toContain("allowLegacyJobAuthority");
+    expect(adminScheduleSource).toContain("allowLegacyJobAuthority");
+    expect(invoicesSource).toContain("resolveCompanyJobAuthority");
+    expect(unpaidSource).toContain("companyListState === \"error\"");
+  });
+
+  it("does not convert a Company Jobs API failure into an empty list", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: { message: "Home Service Connected operations are temporarily unavailable." } }),
+    } as Response);
+    try {
+      await expect(getJobSyncCompanyJobs("company-token")).rejects.toThrow("Home Service Connected operations are temporarily unavailable.");
+      await expect(getJobSyncCompanyInvoices("company-token")).rejects.toThrow("Home Service Connected operations are temporarily unavailable.");
+      await expect(getJobSyncCompanyUnpaidJobs("company-token")).rejects.toThrow("Home Service Connected operations are temporarily unavailable.");
+    } finally {
+      fetchMock.mockRestore();
+    }
+    expect(companyCanonicalListState({ loading: false, error: "Home Service Connected operations are temporarily unavailable.", itemCount: 0 })).not.toBe("empty");
+  });
+
+  it("rejects client-supplied Company identity keys at runtime", () => {
+    expect(() => sanitizeCompanyMutationBody({ status: "en_route", companyId: 11 })).toThrow("Company identity must come from the authenticated Home Service Connected session.");
+    expect(() => sanitizeCompanyMutationBody({ assignedUserId: 41, role: "owner" })).toThrow("Company identity must come from the authenticated Home Service Connected session.");
+    expect(sanitizeCompanyMutationBody({ status: "en_route" })).toEqual({ status: "en_route" });
+  });
+
   it("preserves Company add-job, chat, clock, and roster contracts while disabling leftover local Job writes", () => {
     expect(addJobSource).toContain("createJobSyncCompanyJob");
-    expect(addJobSource).toContain("enabled: !isJobSyncCompany && !!selectedDate && !!selectedCity");
+    expect(addJobSource).toContain("enabled: allowLegacy && !!selectedDate && !!selectedCity");
     expect(scheduleSource).toContain('Alert.alert("Use Company Add Job"');
-    expect(scheduleSource).toContain("if (isJobSyncCompany) return;");
+    expect(scheduleSource).toContain("if (!allowLegacyJobAuthority) return;");
     expect(adminScheduleSource).toContain("createJobSyncCompanyJob");
     expect(adminScheduleSource).toContain("getJobSyncCompanyMembers");
     const chatSource = readFileSync(new URL("../lib/jobsync-mobile-api.ts", import.meta.url), "utf8");

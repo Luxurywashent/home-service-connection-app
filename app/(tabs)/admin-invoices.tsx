@@ -9,7 +9,15 @@ import { useColors } from "@/hooks/use-colors";
 import { StyleSheet } from "react-native";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyInvoices, type JobSyncCompanyInvoice } from "@/lib/jobsync-mobile-api";
-import { COMPANY_LEGACY_FALLTHROUGH_BLOCKED, invoicePresentationFromCanonicalJob } from "@/lib/jobsync-company-authority";
+import {
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  allowsLegacyJobAuthority,
+  companyCanonicalListState,
+  companyCanonicalReadError,
+  invoicePresentationFromCanonicalJob,
+  resolveCompanyJobAuthority,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LineItem { description: string; quantity: string; unitPrice: string }
@@ -34,8 +42,10 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminInvoicesScreen() {
   const colors = useColors();
-  const { session: jobSyncSession } = useJobSyncAuth();
-  const isCompany = jobSyncSession?.portal === "company";
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -43,7 +53,7 @@ export default function AdminInvoicesScreen() {
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
 
-  const { data: invoices = [], refetch, isLoading } = trpc.standaloneInvoices.list.useQuery({ search }, { enabled: !isCompany });
+  const { data: invoices = [], refetch, isLoading } = trpc.standaloneInvoices.list.useQuery({ search }, { enabled: allowLegacy });
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +78,7 @@ export default function AdminInvoicesScreen() {
       .catch((error) => {
         if (!cancelled) {
           setCompanyInvoices([]);
-          setCompanyError(error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+          setCompanyError(companyCanonicalReadError(error));
         }
       })
       .finally(() => {
@@ -102,7 +112,7 @@ export default function AdminInvoicesScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Invoices</Text>
-        {!isCompany && (
+        {allowLegacy && (
           <TouchableOpacity
             style={[styles.newBtn, { backgroundColor: colors.primary }]}
             onPress={() => setShowCreate(true)}
@@ -125,16 +135,16 @@ export default function AdminInvoicesScreen() {
       </View>
 
       {/* List */}
-      {isCompany ? (
-        companyLoading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={colors.primary} />
-          </View>
-        ) : companyError ? (
+      {companyAuthority === "unknown" || (isCompany && companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "loading") ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : isCompany ? (
+        companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "error" ? (
           <View style={styles.center}>
             <Text style={{ color: colors.muted, fontSize: 15, textAlign: "center", paddingHorizontal: 24 }}>{companyError}</Text>
           </View>
-        ) : companyFiltered.length === 0 ? (
+        ) : companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "empty" ? (
           <View style={styles.center}>
             <Text style={{ color: colors.muted, fontSize: 15 }}>No Company Job invoices</Text>
             <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8, textAlign: "center", paddingHorizontal: 24 }}>
@@ -201,7 +211,7 @@ export default function AdminInvoicesScreen() {
       )}
 
       {/* Create Modal */}
-      {!isCompany && showCreate && (
+      {allowLegacy && showCreate && (
         <CreateInvoiceModal
           colors={colors}
           onClose={() => setShowCreate(false)}
@@ -210,7 +220,7 @@ export default function AdminInvoicesScreen() {
       )}
 
       {/* Detail Modal */}
-      {!isCompany && selectedInvoice && (
+      {allowLegacy && selectedInvoice && (
         <InvoiceDetailModal
           invoice={selectedInvoice}
           colors={colors}

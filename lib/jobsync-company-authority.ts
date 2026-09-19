@@ -60,14 +60,42 @@ export type CompanyScheduleJobFields = {
   createdAt: string;
 };
 
+export type CompanyJobAuthorityMode = "company" | "legacy" | "unknown";
+
 export function isJobSyncCompanySession(session: JobSyncNativeSession | null | undefined): session is JobSyncNativeSession & { portal: "company"; token: string } {
   return session?.portal === "company" && Boolean(session.token);
+}
+
+export function resolveCompanyJobAuthority(input: {
+  session?: JobSyncNativeSession | null;
+  sessionLoading?: boolean;
+}): CompanyJobAuthorityMode {
+  if (input.sessionLoading) return "unknown";
+  return isJobSyncCompanySession(input.session) ? "company" : "legacy";
+}
+
+export function usesCompanyJobAuthority(mode: CompanyJobAuthorityMode) {
+  return mode === "company";
+}
+
+export function allowsLegacyJobAuthority(mode: CompanyJobAuthorityMode) {
+  return mode === "legacy";
 }
 
 export function forbidLegacyCompanyJobAuthority(isCompanySession: boolean, action = "this Job action") {
   if (isCompanySession) {
     throw new Error(`${COMPANY_LEGACY_FALLTHROUGH_BLOCKED} (${action})`);
   }
+}
+
+export function companyCanonicalListState(input: { loading: boolean; error: string | null; itemCount: number }): "loading" | "error" | "empty" | "ready" {
+  if (input.loading) return "loading";
+  if (input.error) return "error";
+  return input.itemCount === 0 ? "empty" : "ready";
+}
+
+export function companyCanonicalReadError(error: unknown) {
+  return error instanceof Error && error.message.trim() ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED;
 }
 
 export function companyScheduleWritesLocalMirror(): false {

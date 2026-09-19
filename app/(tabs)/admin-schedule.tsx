@@ -51,7 +51,17 @@ import {
   updateJobSyncCompanyJobStatus,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
-import { canonicalJobId, COMPANY_LEGACY_FALLTHROUGH_BLOCKED, companyAssignedUserId, companyScheduleDateTime, mapCanonicalJobToScheduleFields } from "@/lib/jobsync-company-authority";
+import {
+  allowsLegacyJobAuthority,
+  canonicalJobId,
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  companyAssignedUserId,
+  companyCanonicalReadError,
+  companyScheduleDateTime,
+  mapCanonicalJobToScheduleFields,
+  resolveCompanyJobAuthority,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import Constants from "expo-constants";
 
@@ -1304,9 +1314,11 @@ export default function AdminScheduleScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
-  const { session: jobSyncSession } = useJobSyncAuth();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const { revision: companySyncRevision } = useJobSyncSync();
-  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacyJobAuthority = allowsLegacyJobAuthority(companyAuthority);
   const companyPriceBook = useCompanyPriceBook();
   const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
   const [companyCustomersError, setCompanyCustomersError] = useState<string | null>(null);
@@ -1342,7 +1354,7 @@ export default function AdminScheduleScreen() {
     },
   });
   const performanceUpsertMutation = trpc.performance.upsert.useMutation();
-  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 300000 });
+  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 300000 });
   const pbServices = isJobSyncCompany ? companyPriceBook.services : localPbServices;
   // ── Schedule Blockers ──
   const blockerCreateMutation = trpc.scheduleBlockers.create.useMutation();
@@ -1474,6 +1486,7 @@ export default function AdminScheduleScreen() {
   const [adminPriceInput, setAdminPriceInput] = useState("");
   const [customerHistory, setCustomerHistory] = useState<Job[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [companyJobsError, setCompanyJobsError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
   const [selectedCity, setSelectedCity] = useState<CitySlug>("crestview");
@@ -1646,14 +1659,14 @@ export default function AdminScheduleScreen() {
   storageKeyRef.current = STORAGE_KEY;
 
   useEffect(() => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const key = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
     AsyncStorage.getItem(key).then((raw) => {
       if (raw) { try { setJobs(JSON.parse(raw)); } catch {} }
     });
     // Clear old shared cache key
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [currentEmployee?.employeeId, isJobSyncCompany]);
+  }, [allowLegacyJobAuthority, currentEmployee?.employeeId]);
 
   // Never hydrate a JobSync Company calendar from the legacy global location
   // endpoint. Its authenticated bearer roster is the single source of truth.
@@ -1687,9 +1700,13 @@ export default function AdminScheduleScreen() {
 
   // Sync all jobs (manual + online) from server DB when city changes or manual refresh
   useEffect(() => {
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       const token = jobSyncSession?.token;
-      if (!token) return;
+      if (!isJobSyncCompany || !token) {
+        setJobs([]);
+        setCompanyJobsError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+        return;
+      }
       const syncCompanyJobs = async () => {
         setIsSyncing(true);
         try {
@@ -1701,9 +1718,11 @@ export default function AdminScheduleScreen() {
             ...mapCanonicalJobToScheduleFields(job, selectedCity),
             email: undefined,
           }) as Job);
+          setCompanyJobsError(null);
           setJobs(mappedJobs);
-        } catch {
+        } catch (error) {
           setJobs([]);
+          setCompanyJobsError(companyCanonicalReadError(error));
         } finally { setIsSyncing(false); }
       };
       void syncCompanyJobs();
@@ -1878,7 +1897,7 @@ export default function AdminScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server by bookingId
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightBookingId)}`);
@@ -1950,10 +1969,10 @@ export default function AdminScheduleScreen() {
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
-    if (!isJobSyncCompany) {
+    if (allowLegacyJobAuthority) {
       AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
     }
-  }, [isJobSyncCompany]);
+  }, [allowLegacyJobAuthority]);
 
   const openAdd = () => {
     const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
@@ -2002,9 +2021,9 @@ export default function AdminScheduleScreen() {
 
   const saveAdminJob = async () => {
     if (!addFirstName.trim() || !addLastName.trim() || !addAddress.trim()) return;
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       try {
-        if (!jobSyncSession?.token) throw new Error("Your Company session has expired. Sign in again to create a Job.");
+        if (!isJobSyncCompany || !jobSyncSession?.token) throw new Error(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         const priceBookServiceId = Number(addPackageId);
         if (!Number.isSafeInteger(priceBookServiceId) || priceBookServiceId <= 0) throw new Error("Select an active Company Price Book service before creating this Job.");
         if (addAddonIds.length || addExtraVehicles.length || addCustomPrice.trim() || addDiscountInput.trim() || addRecurrenceRule?.type !== "none") {
@@ -2161,7 +2180,7 @@ export default function AdminScheduleScreen() {
   // adminSavePrivateNotes removed — now handled by PrivateNotesCard component
 
   const adminAddTag = async (job: Job, tag: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const trimmed = tag.trim();
     if (!trimmed) return;
     const newTags = [...(job.tags ?? []), trimmed];
@@ -2173,7 +2192,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminRemoveTag = async (job: Job, tag: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const newTags = (job.tags ?? []).filter((t) => t !== tag);
     const updated = { ...job, tags: newTags };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2182,7 +2201,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveTax = async (job: Job, taxStr: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const taxAmount = parseFloat(taxStr) || 0;
     const updated = { ...job, taxAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2192,7 +2211,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDiscount = async (job: Job, amountStr: string, code: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const inputVal = parseFloat(amountStr) || 0;
     // If percent mode, convert to dollar amount based on subtotal (price + upsells)
     const subtotalForDiscount = job.price + (job.upsellTotal ?? 0);
@@ -2208,7 +2227,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDeposit = async (job: Job, amountStr: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const depositAmount = parseFloat(amountStr) || 0;
     const updated = { ...job, depositAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2219,9 +2238,9 @@ export default function AdminScheduleScreen() {
 
   const adminSaveTime = async (job: Job, newStartHour: number, newEndHour: number, newDateStr: string, notifyCustomer = false) => {
     if (newEndHour <= newStartHour) return;
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       const jobId = canonicalJobId(job.id);
-      if (!jobId || !jobSyncSession?.token) {
+      if (!isJobSyncCompany || !jobId || !jobSyncSession?.token) {
         Alert.alert("Reschedule unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         return;
       }
@@ -2287,7 +2306,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSavePackage = async (job: Job, newPackageId: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const pkg = allJobPackages.find((p) => p.id === newPackageId);
     const vt = (job.vehicleType ?? "sedan") as VehicleType;
     const basePkgPrice = pkg ? (pkg.basePrice[vt] ?? job.price) : job.price;
@@ -2313,7 +2332,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSavePrice = async (job: Job, newPriceStr: string) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const newPrice = parseFloat(newPriceStr);
     if (isNaN(newPrice) || newPrice < 0) return;
     const updated = { ...job, price: newPrice, customPrice: newPrice };
@@ -2334,7 +2353,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminLoadCustomerHistory = async (job: Job) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     try {
       const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
       const res = await fetch(url);
@@ -2397,10 +2416,10 @@ export default function AdminScheduleScreen() {
         return { ...j, startHour: newStartHour, endHour: newEndHour, detailerName: newDetailerName, assignedTo: newAssignedTo };
       });
       const job = updated.find((j) => j.id === jobId);
-      if (job && isJobSyncCompany) {
+      if (job && !allowLegacyJobAuthority) {
         const canonicalId = canonicalJobId(job.id);
         const token = jobSyncSession?.token;
-        if (!canonicalId || !token) return prev;
+        if (!isJobSyncCompany || !canonicalId || !token) return prev;
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
         void Promise.all([
@@ -2455,10 +2474,10 @@ export default function AdminScheduleScreen() {
         return { ...j, endHour: clampedEnd };
       });
       const job = updated.find((j) => j.id === jobId);
-      if (job && isJobSyncCompany) {
+      if (job && !allowLegacyJobAuthority) {
         const canonicalId = canonicalJobId(job.id);
         const token = jobSyncSession?.token;
-        if (!canonicalId || !token) return prev;
+        if (!isJobSyncCompany || !canonicalId || !token) return prev;
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
         void rescheduleJobSyncCompanyJob(token, canonicalId, {
@@ -2588,6 +2607,9 @@ export default function AdminScheduleScreen() {
       {/* Header */}
       <View style={[s.header, { borderBottomColor: colors.border }]}>
         <Text style={[s.title, { color: colors.foreground }]}>Schedule</Text>
+        {isJobSyncCompany && companyJobsError ? (
+          <Text style={{ color: colors.muted, fontSize: 12, maxWidth: 180 }} numberOfLines={2}>{companyJobsError}</Text>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <TouchableOpacity
             onPress={goToToday}
@@ -3859,7 +3881,7 @@ export default function AdminScheduleScreen() {
                 {/* ── Reassign Section ── */}
 
                 {/* ── Collect Payment Button ── */}
-                {!selectedJob.payment && !isJobSyncCompany && (
+                {!selectedJob.payment && allowLegacyJobAuthority && (
                   <TouchableOpacity
                     onPress={() => setShowCheckout(true)}
                     activeOpacity={0.8}
@@ -3871,7 +3893,7 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* ── Send Invoice Button ── */}
-                {!isJobSyncCompany && (
+                {allowLegacyJobAuthority && (
                 <TouchableOpacity
                   onPress={() => {
                     const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
@@ -3893,7 +3915,7 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* ── Send Receipt Button (only when job has payment recorded) ── */}
-                {selectedJob.payment && !isJobSyncCompany && (
+                {selectedJob.payment && allowLegacyJobAuthority && (
                   <TouchableOpacity
                     onPress={async () => {
                       if (!selectedJob.email) {
@@ -3957,7 +3979,7 @@ export default function AdminScheduleScreen() {
                 </TouchableOpacity>
 
                 {/* Charge Card on File button — only shown when job is unpaid */}
-                {!selectedJob?.payment && !isJobSyncCompany && (
+                {!selectedJob?.payment && allowLegacyJobAuthority && (
                   <TouchableOpacity
                     onPress={() => {
                       const cards = (scheduleSavedCards as any[]) ?? [];
@@ -4002,9 +4024,9 @@ export default function AdminScheduleScreen() {
                           text: "Cancel Job",
                           style: "destructive",
                           onPress: async () => {
-                            if (isJobSyncCompany) {
+                            if (!allowLegacyJobAuthority) {
                               const jobId = canonicalJobId(selectedJob.id);
-                              if (!jobId || !jobSyncSession?.token) {
+                              if (!isJobSyncCompany || !jobId || !jobSyncSession?.token) {
                                 Alert.alert("Cancel unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
                                 return;
                               }

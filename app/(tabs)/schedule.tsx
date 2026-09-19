@@ -41,7 +41,16 @@ import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyJobs, getJobSyncCompanyMembers, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
-import { canonicalJobId, COMPANY_LEGACY_FALLTHROUGH_BLOCKED, mapCanonicalJobToScheduleFields, nextCanonicalJobStatus } from "@/lib/jobsync-company-authority";
+import {
+  allowsLegacyJobAuthority,
+  canonicalJobId,
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  companyCanonicalReadError,
+  mapCanonicalJobToScheduleFields,
+  nextCanonicalJobStatus,
+  resolveCompanyJobAuthority,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 import { COMPANY_SCHEDULE_HALF_HOUR_SLOTS, COMPANY_SCHEDULE_START_HOUR, companyScheduleInitialOffset, companyScheduleSlotIndex } from "@/lib/jobsync-schedule-window";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import { trpc } from "@/lib/trpc";
@@ -2264,15 +2273,17 @@ function PrivateNotesCard({
 export default function ScheduleScreen() {
   const colors = useColors();
   const { employee, loading: authLoading } = useEmployeeAuth();
-  const { session: jobSyncSession } = useJobSyncAuth();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const { revision: jobSyncRevision } = useJobSyncSync();
-  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacyJobAuthority = allowsLegacyJobAuthority(companyAuthority);
   const companyPriceBook = useCompanyPriceBook();
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
   const highlightJobHandledRef = useRef<string | null>(null);
   const utils = trpc.useUtils();
   // Price book loaded early so syncServerJobs closure can reference it
-  const { data: localPriceBookEarly } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const { data: localPriceBookEarly } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 60_000 });
   const _pbDataEarly = isJobSyncCompany ? companyPriceBook.services : localPriceBookEarly;
   const _schedPackages: PackageDef[] = _pbDataEarly && _pbDataEarly.length > 0
     ? _pbDataEarly.map((s) => {
@@ -2328,6 +2339,7 @@ export default function ScheduleScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [companyJobsError, setCompanyJobsError] = useState<string | null>(null);
   const [companyCalendarMembers, setCompanyCalendarMembers] = useState<JobSyncCompanyMember[]>([]);
   const [companyCalendarMembersLoading, setCompanyCalendarMembersLoading] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationSlug>(() => {
@@ -2663,14 +2675,14 @@ export default function ScheduleScreen() {
 
   useEffect(() => {
     if (authLoading || !employee?.employeeId) return; // Wait until we know WHO is logged in
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const key = `${STORAGE_KEY_BASE}_${employee.employeeId}`;
     AsyncStorage.getItem(key).then((raw) => {
       if (raw) { try { const parsed = JSON.parse(raw); jobsRef.current = parsed; setJobs(parsed); } catch {} }
     });
     // Also clear the old shared cache key so stale data doesn't persist
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [authLoading, employee?.employeeId, isJobSyncCompany]);
+  }, [allowLegacyJobAuthority, authLoading, employee?.employeeId]);
 
   // Keep jobsRef in sync with jobs state for use in nav callbacks
   useEffect(() => { jobsRef.current = jobs; }, [jobs]);
@@ -2678,7 +2690,7 @@ export default function ScheduleScreen() {
   const persistJobs = (updated: Job[]) => {
     jobsRef.current = updated;
     setJobs(updated);
-    if (!isJobSyncCompany) {
+    if (allowLegacyJobAuthority) {
       AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
     }
   };
@@ -2720,7 +2732,7 @@ export default function ScheduleScreen() {
 
   // Sync a single job to server (fire-and-forget, never blocks UI)
   const syncJobToServer = (job: Job) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     if (job.isOnlineBooking) return; // online bookings are already in DB
     // notifyCustomer: false — re-syncs (status updates, moves) should never send confirmation emails
     jobUpsertMutation.mutate({ ...jobToServerPayload(job), notifyCustomer: false });
@@ -2728,7 +2740,7 @@ export default function ScheduleScreen() {
 
   // Sync all manual jobs to server (used on initial load to catch up)
   const syncAllManualJobsToServer = (allJobs: Job[]) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const manual = allJobs.filter((j) => !j.isOnlineBooking);
     manual.forEach((job) => {
       // notifyCustomer: false — bulk re-syncs should never trigger emails
@@ -2741,9 +2753,10 @@ export default function ScheduleScreen() {
 
   // Sync server jobs (both manual + online) for the selected location into local state
   const syncServerJobs = async (location: LocationSlug, emp = employee) => {
-    if (isJobSyncCompany) {
-      if (!jobSyncSession?.token) {
+    if (!allowLegacyJobAuthority) {
+      if (!isJobSyncCompany || !jobSyncSession?.token) {
         setJobs([]);
+        setCompanyJobsError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         return;
       }
       try {
@@ -2755,9 +2768,11 @@ export default function ScheduleScreen() {
           ...mapCanonicalJobToScheduleFields(job, location),
           location: (job.city ? cityToSlug(job.city) : location) as LocationSlug,
         }) as Job);
+        setCompanyJobsError(null);
         setJobs(mappedCompanyJobs);
-      } catch {
+      } catch (error) {
         setJobs([]);
+        setCompanyJobsError(companyCanonicalReadError(error));
       }
       return;
     }
@@ -3054,7 +3069,7 @@ export default function ScheduleScreen() {
 
   // Sync online bookings from the server for the selected location
   const syncOnlineBookings = async (location: LocationSlug) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     setIsSyncingBookings(true);
     try {
       // Detailers must NOT use the unfiltered /api/booking/list endpoint — it returns ALL
@@ -3226,7 +3241,7 @@ export default function ScheduleScreen() {
       return;
     }
     // Job not in local cache yet — fetch from server
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightJobId)}`);
@@ -3324,8 +3339,8 @@ export default function ScheduleScreen() {
   };
 
   const saveJob = () => {
-    if (isJobSyncCompany) {
-      Alert.alert("Use Company Add Job", "Company Jobs must be created from the Price Book Add Job flow.");
+    if (!allowLegacyJobAuthority) {
+      Alert.alert("Use Company Add Job", isJobSyncCompany ? "Company Jobs must be created from the Price Book Add Job flow." : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
       return;
     }
     if (!firstName.trim() || !lastName.trim() || !address.trim()) return;
@@ -3431,10 +3446,10 @@ export default function ScheduleScreen() {
   };
 
   const advanceStatus = (job: Job) => {
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       const jobId = canonicalJobId(job.id);
       const nextStatus = nextCanonicalJobStatus((job as Job & { _rawStatus?: string })._rawStatus);
-      if (!jobId || !nextStatus || !jobSyncSession?.token) {
+      if (!isJobSyncCompany || !jobId || !nextStatus || !jobSyncSession?.token) {
         Alert.alert("Status unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         return;
       }
@@ -3491,9 +3506,9 @@ export default function ScheduleScreen() {
   };
 
   const deleteJob = (id: string) => {
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       const jobId = canonicalJobId(id);
-      if (!jobId || !jobSyncSession?.token) {
+      if (!isJobSyncCompany || !jobId || !jobSyncSession?.token) {
         Alert.alert("Delete unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         return;
       }
@@ -3531,7 +3546,7 @@ export default function ScheduleScreen() {
   // ─── Enhanced Job Detail Helpers ────────────────────────────────────────────
 
   const loadCustomerHistory = async (job: Job) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     if (!job.phone && !job.email) return;
     setCustomerHistoryLoading(true);
     try {
@@ -3549,7 +3564,7 @@ export default function ScheduleScreen() {
   };
 
   const saveJobTags = async (job: Job, newTags: string[]) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     setSavingMeta(true);
     const tagsJson = JSON.stringify(newTags);
     persistJobs(jobs.map((j) => j.id === job.id ? { ...j, tags: newTags } : j));
@@ -3562,7 +3577,7 @@ export default function ScheduleScreen() {
   // savePrivateNotes removed — now handled by PrivateNotesCard component (per-author notes)
 
   const saveTaxAmount = async (job: Job, taxAmt: number) => {
-    if (isJobSyncCompany) return;
+    if (!allowLegacyJobAuthority) return;
     setSavingMeta(true);
     persistJobs(jobs.map((j) => j.id === job.id ? { ...j, taxAmount: taxAmt } : j));
     setSelectedJob((prev) => prev ? { ...prev, taxAmount: taxAmt } : prev);
@@ -3764,7 +3779,7 @@ export default function ScheduleScreen() {
   };
 
   const handlePaymentComplete = (payment: PaymentRecord) => {
-    if (isJobSyncCompany) {
+    if (!allowLegacyJobAuthority) {
       Alert.alert("Payments unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
       setShowCheckout(false);
       return;
@@ -3806,7 +3821,7 @@ export default function ScheduleScreen() {
       });
     }
     // Push revenue + tips to daily performance record so dashboard updates automatically
-    if (employee && !isJobSyncCompany) {
+    if (employee && allowLegacyJobAuthority) {
       const jobDate = getWeekDates(job.weekOffset)[job.dayIndex];
       const dateStr = localDateStr(jobDate);
       // Use the same record ID format as syncPerformanceFromJobs on the server (underscores, no dashes in date)
@@ -4028,9 +4043,9 @@ export default function ScheduleScreen() {
   const myJobSlug = employee?.city ? cityToSlug(employee.city) : "crestview";
   const isAdminRole = employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office";
   const isCompanyCalendarManager = isJobSyncCompany && (jobSyncSession?.user.role === "owner" || jobSyncSession?.user.role === "dispatcher");
-  const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole && !isJobSyncCompany, staleTime: 300000 });
+  const { data: detailerList, isLoading: detailersLoading } = trpc.employee.listDetailers.useQuery(undefined, { enabled: isAdminRole && allowLegacyJobAuthority, staleTime: 300000 });
   // Price book for New Job form
-  const { data: localPbData } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const { data: localPbData } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 60_000 });
   const pbData = isJobSyncCompany ? companyPriceBook.services : localPbData;
   const allJobPackages: PackageDef[] = pbData && pbData.length > 0
     ? pbData.map((s) => {
@@ -4100,9 +4115,12 @@ export default function ScheduleScreen() {
             )}
           </View>
         </View>
+        {isJobSyncCompany && companyJobsError ? (
+          <Text style={{ color: colors.muted, fontSize: 13, paddingHorizontal: 16, paddingVertical: 8 }}>{companyJobsError}</Text>
+        ) : null}
 
         {/* Location Selector — only shown for admins; detailers see their own city label */}
-        {(employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office") && !isJobSyncCompany ? (
+        {(employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office") && allowLegacyJobAuthority ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
