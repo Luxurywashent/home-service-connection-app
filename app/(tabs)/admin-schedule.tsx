@@ -3871,7 +3871,8 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* ── Send Invoice Button ── */}
-                {!isJobSyncCompany && <TouchableOpacity>
+                {!isJobSyncCompany && (
+                <TouchableOpacity
                   onPress={() => {
                     const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
@@ -3888,7 +3889,8 @@ export default function AdminScheduleScreen() {
                 >
                   <Text style={{ fontSize: 18 }}>📧</Text>
                   <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 16 }}>Send Invoice</Text>
-                </TouchableOpacity>}
+                </TouchableOpacity>
+                )}
 
                 {/* ── Send Receipt Button (only when job has payment recorded) ── */}
                 {selectedJob.payment && !isJobSyncCompany && (
@@ -3921,7 +3923,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Send Remaining Balance Button (only when partial payment exists) ── */}
                 {(() => {
-                  if (!selectedJob.payment) return null;
+                  if (isJobSyncCompany || !selectedJob.payment) return null;
                   const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                   const remaining = Math.max(0, jobTotal - selectedJob.payment.total);
                   if (remaining <= 0.01) return null;
