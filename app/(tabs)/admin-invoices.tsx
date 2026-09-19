@@ -245,6 +245,7 @@ export default function AdminInvoicesScreen() {
               </View>
               <Text style={{ color: colors.muted, marginBottom: 12 }}>{selectedCompanyInvoice.customerName} · {selectedCompanyInvoice.serviceName}</Text>
               <CompanyCollectPayment
+                key={selectedCompanyInvoice.jobId}
                 token={jobSyncSession.token}
                 jobId={selectedCompanyInvoice.jobId}
                 role={jobSyncSession.user.role}

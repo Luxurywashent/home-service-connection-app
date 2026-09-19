@@ -13,12 +13,13 @@ import { useColors } from "@/hooks/use-colors";
 import { type CompanyJobAuthorityMode } from "@/lib/jobsync-company-authority";
 import {
   COMPANY_PAYMENT_REFRESH_FAILED,
+  manualPaymentRequestFingerprint,
+  nextManualPaymentIdempotencyKey,
   nextManualPaymentRefreshState,
   resolveCompanyPaymentActions,
 } from "@/lib/jobsync-company-payment";
 import {
   createJobSyncCompanyJobCheckout,
-  createManualPaymentIdempotencyKey,
   getJobSyncCompanyJob,
   getJobSyncCompanyJobPayments,
   recordJobSyncCompanyJobPayment,
@@ -30,7 +31,7 @@ import {
 
 const METHOD_OPTIONS: { id: JobSyncManualPaymentMethod; label: string; detail: string }[] = [
   { id: "cash", label: "Cash", detail: "Record cash collected" },
-  { id: "card", label: "Card", detail: "Record a card payment already collected outside this app" },
+  { id: "card", label: "Card — collected externally", detail: "Record a card payment already collected outside this app. This does not charge a card through Stripe." },
   { id: "other", label: "Other", detail: "Check, transfer, or another supported external method" },
 ];
 
@@ -79,6 +80,10 @@ export function CompanyCollectPayment({
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const requestFingerprintRef = useRef<string | null>(null);
+  const paymentAcceptedRef = useRef(false);
+  const submittingRef = useRef(false);
+  const lastJobIdRef = useRef(jobId);
 
   const mounted = authority === "company";
 
@@ -108,6 +113,17 @@ export function CompanyCollectPayment({
   }, [jobId, token]);
 
   useEffect(() => {
+    if (lastJobIdRef.current === jobId) return;
+    lastJobIdRef.current = jobId;
+    idempotencyKeyRef.current = null;
+    requestFingerprintRef.current = null;
+    paymentAcceptedRef.current = false;
+    setNotice(null);
+    setMethod("cash");
+    setAmountText("");
+  }, [jobId]);
+
+  useEffect(() => {
     if (!mounted) {
       setLoading(false);
       return;
@@ -135,29 +151,46 @@ export function CompanyCollectPayment({
   }, [loadCanonical, onCanonicalRefresh]);
 
   const recordPayment = useCallback(async () => {
-    if (submitting || !actions.canRecordManual) return;
+    if (submittingRef.current || submitting || !actions.canRecordManual) return;
     const amountValue = Number(amountText);
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setNotice("Enter a payment greater than $0.00.");
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setNotice(null);
-    idempotencyKeyRef.current ??= createManualPaymentIdempotencyKey();
+    const fingerprint = manualPaymentRequestFingerprint({ jobId, amount: amountValue, method });
+    idempotencyKeyRef.current = nextManualPaymentIdempotencyKey({
+      existingKey: idempotencyKeyRef.current,
+      jobId,
+      previousJobId: lastJobIdRef.current,
+      fingerprint,
+      previousFingerprint: requestFingerprintRef.current,
+      paymentAccepted: paymentAcceptedRef.current,
+    });
+    requestFingerprintRef.current = fingerprint;
+    lastJobIdRef.current = jobId;
     try {
       await recordJobSyncCompanyJobPayment(token, jobId, {
         amount: amountValue,
         method,
         idempotencyKey: idempotencyKeyRef.current,
       });
+      paymentAcceptedRef.current = true;
       const refreshed = await refreshAfterWrite();
       const state = nextManualPaymentRefreshState({ paymentAccepted: true, refreshSucceeded: refreshed });
       if (state === "recorded-refresh-failed") setNotice(COMPANY_PAYMENT_REFRESH_FAILED);
       else setNotice("Payment recorded.");
-      if (refreshed) idempotencyKeyRef.current = null;
+      if (refreshed) {
+        idempotencyKeyRef.current = null;
+        requestFingerprintRef.current = null;
+        paymentAcceptedRef.current = false;
+      }
     } catch (recordError) {
       setNotice(recordError instanceof Error ? recordError.message : "Payment could not be recorded.");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [actions.canRecordManual, amountText, jobId, method, refreshAfterWrite, submitting, token]);

@@ -19,6 +19,8 @@ import {
   COMPANY_PAYMENT_REFRESH_FAILED,
   createCanonicalCheckoutRequest,
   createCanonicalManualPaymentRequest,
+  manualPaymentRequestFingerprint,
+  nextManualPaymentIdempotencyKey,
   nextManualPaymentRefreshState,
   resolveCompanyPaymentActions,
   shouldResubmitManualPaymentAfterRefreshFailure,
@@ -205,6 +207,52 @@ describe("M3B manual payment", () => {
     expect(collectSource).toContain("COMPANY_PAYMENT_REFRESH_FAILED");
     expect(collectSource).toContain("idempotencyKeyRef");
   });
+
+  it("rotates the idempotency key when the Job changes or the payload changes before acceptance", () => {
+    const first = nextManualPaymentIdempotencyKey({
+      existingKey: "hsc-m3b-manual:job-501",
+      jobId: 501,
+      previousJobId: 501,
+      fingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 40, method: "cash" }),
+      previousFingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 40, method: "cash" }),
+      paymentAccepted: false,
+      createKey: () => "should-not-rotate",
+    });
+    expect(first).toBe("hsc-m3b-manual:job-501");
+
+    const switchedJob = nextManualPaymentIdempotencyKey({
+      existingKey: "hsc-m3b-manual:job-501",
+      jobId: 502,
+      previousJobId: 501,
+      fingerprint: manualPaymentRequestFingerprint({ jobId: 502, amount: 40, method: "cash" }),
+      previousFingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 40, method: "cash" }),
+      paymentAccepted: false,
+      createKey: () => "hsc-m3b-manual:job-502",
+    });
+    expect(switchedJob).toBe("hsc-m3b-manual:job-502");
+
+    const changedAmount = nextManualPaymentIdempotencyKey({
+      existingKey: "hsc-m3b-manual:job-501",
+      jobId: 501,
+      previousJobId: 501,
+      fingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 75, method: "cash" }),
+      previousFingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 40, method: "cash" }),
+      paymentAccepted: false,
+      createKey: () => "hsc-m3b-manual:job-501-75",
+    });
+    expect(changedAmount).toBe("hsc-m3b-manual:job-501-75");
+
+    const keepAfterAccepted = nextManualPaymentIdempotencyKey({
+      existingKey: "hsc-m3b-manual:job-501",
+      jobId: 501,
+      previousJobId: 501,
+      fingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 75, method: "cash" }),
+      previousFingerprint: manualPaymentRequestFingerprint({ jobId: 501, amount: 40, method: "cash" }),
+      paymentAccepted: true,
+      createKey: () => "should-not-rotate-after-accept",
+    });
+    expect(keepAfterAccepted).toBe("hsc-m3b-manual:job-501");
+  });
 });
 
 describe("M3B Checkout and history", () => {
@@ -277,6 +325,12 @@ describe("M3B shared entry points and refresh", () => {
     expect(adminScheduleSource).toContain("CompanyCollectPayment");
     expect(unpaidSource).toContain("CompanyCollectPayment");
     expect(invoicesSource).toContain("CompanyCollectPayment");
+    expect(unpaidSource).toContain("authority={companyAuthority}");
+    expect(unpaidSource).not.toContain('authority="company"');
+    expect(collectSource).toContain("Card — collected externally");
+    expect(collectSource).toContain("This does not charge a card through Stripe.");
+    expect(scheduleSource).toContain("key={canonicalJobId(selectedJob.id)!}");
+    expect(adminScheduleSource).toContain("key={canonicalJobId(selectedJob.id)!}");
     expect(scheduleSource).toContain("refreshCompanyData({ force: true })");
     expect(adminScheduleSource).toContain("refreshCompanyData({ force: true })");
     expect(unpaidSource).toContain("refreshCompanyData({ force: true })");

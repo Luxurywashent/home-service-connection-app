@@ -64,6 +64,33 @@ export function shouldResubmitManualPaymentAfterRefreshFailure() {
   return false;
 }
 
+export function manualPaymentRequestFingerprint(input: {
+  jobId: number;
+  amount: number;
+  method: string;
+}) {
+  return `${input.jobId}:${input.method}:${Number(input.amount).toFixed(2)}`;
+}
+
+export function nextManualPaymentIdempotencyKey(input: {
+  existingKey: string | null | undefined;
+  jobId: number;
+  previousJobId?: number | null;
+  fingerprint: string;
+  previousFingerprint?: string | null;
+  paymentAccepted: boolean;
+  createKey?: () => string;
+}) {
+  const rotateForNewJob = input.previousJobId != null && input.previousJobId !== input.jobId;
+  const rotateForChangedPayload = Boolean(input.previousFingerprint)
+    && input.previousFingerprint !== input.fingerprint
+    && !input.paymentAccepted;
+  if (rotateForNewJob || rotateForChangedPayload || !input.existingKey) {
+    return (input.createKey ?? createManualPaymentIdempotencyKey)();
+  }
+  return input.existingKey;
+}
+
 export function companyPaymentHistoryIsCanonicalOnly(mode: CompanyJobAuthorityMode) {
   return mode === "company";
 }

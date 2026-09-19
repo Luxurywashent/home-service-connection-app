@@ -29,6 +29,7 @@ import {
   resolveCompanyJobAuthority,
   unpaidJobFromCanonical,
   usesCompanyJobAuthority,
+  type CompanyJobAuthorityMode,
 } from "@/lib/jobsync-company-authority";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ function JobDetailModal({
   companyMode = false,
   companyToken,
   companyRole,
+  companyAuthority = "unknown",
   onCompanyRefresh,
 }: {
   job: UnpaidJob | null;
@@ -101,6 +103,7 @@ function JobDetailModal({
   companyMode?: boolean;
   companyToken?: string | null;
   companyRole?: string;
+  companyAuthority?: CompanyJobAuthorityMode;
   onCompanyRefresh?: () => Promise<void> | void;
 }) {
   const colors = useColors();
@@ -304,12 +307,13 @@ function JobDetailModal({
           {/* Mark as Paid */}
           <Text style={[styles.actionsTitle, { color: colors.foreground }]}>Record Payment</Text>
           {companyMode ? (
-            companyToken && job && canonicalJobId(job.jobId) ? (
+            usesCompanyJobAuthority(companyAuthority) && companyToken && job && canonicalJobId(job.jobId) ? (
               <CompanyCollectPayment
+                key={canonicalJobId(job.jobId)!}
                 token={companyToken}
                 jobId={canonicalJobId(job.jobId)!}
                 role={companyRole || "technician"}
-                authority="company"
+                authority={companyAuthority}
                 amount={Number((job as UnpaidJob & { amount?: number }).amount ?? job.balanceDue)}
                 paidTotal={Number((job as UnpaidJob & { paidTotal?: number }).paidTotal || 0)}
                 balance={job.balanceDue}
@@ -728,6 +732,7 @@ export default function AdminUnpaidJobsScreen() {
         companyMode={!allowLegacy}
         companyToken={jobSyncSession?.token}
         companyRole={jobSyncSession?.user.role}
+        companyAuthority={companyAuthority}
         onCompanyRefresh={async () => {
           invalidateCanonicalSurfaces();
           await refreshCompanyData({ force: true });

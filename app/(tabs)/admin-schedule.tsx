@@ -3711,6 +3711,7 @@ export default function AdminScheduleScreen() {
                 {isJobSyncCompany && jobSyncSession?.token && selectedJob && canonicalJobId(selectedJob.id) ? (
                   <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
                     <CompanyCollectPayment
+                      key={canonicalJobId(selectedJob.id)!}
                       token={jobSyncSession.token}
                       jobId={canonicalJobId(selectedJob.id)!}
                       role={jobSyncSession.user.role}

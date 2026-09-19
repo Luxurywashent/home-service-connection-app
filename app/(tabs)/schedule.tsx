@@ -4506,6 +4506,7 @@ export default function ScheduleScreen() {
                     ) : (
                       isJobSyncCompany && jobSyncSession?.token && canonicalJobId(selectedJob.id) ? (
                         <CompanyCollectPayment
+                          key={canonicalJobId(selectedJob.id)!}
                           token={jobSyncSession.token}
                           jobId={canonicalJobId(selectedJob.id)!}
                           role={jobSyncSession.user.role}
