@@ -52,12 +52,15 @@ import {
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
 import {
+  addJobLocalCustomerSearchEnabled,
   allowsLegacyJobAuthority,
   canonicalJobId,
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  companyAddJobUsesCanonicalCustomers,
   companyAssignedUserId,
   companyCanonicalReadError,
   companyScheduleDateTime,
+  companyScheduleLegacyPaymentQueryEnabled,
   mapCanonicalJobToScheduleFields,
   resolveCompanyJobAuthority,
   usesCompanyJobAuthority,
@@ -1072,6 +1075,7 @@ function CustomerSearchField({
   setShowDropdown,
   onSelect,
   companyCustomers,
+  allowLegacyCustomerSearch = false,
 }: {
   colors: any;
   value: string;
@@ -1080,6 +1084,7 @@ function CustomerSearchField({
   setShowDropdown: (v: boolean) => void;
   onSelect: (c: { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }) => void;
   companyCustomers?: JobSyncCompanyCustomer[];
+  allowLegacyCustomerSearch?: boolean;
 }) {
   const [query, setQuery] = React.useState(value);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1087,7 +1092,7 @@ function CustomerSearchField({
 
   const { data: results = [] } = trpc.customers.listAll.useQuery(
     { search: searchTerm },
-    { enabled: !companyCustomers && searchTerm.length >= 2, staleTime: 10_000 }
+    { enabled: addJobLocalCustomerSearchEnabled({ allowLegacyCustomerSearch, searchTerm }), staleTime: 10_000 }
   );
   const visibleResults = companyCustomers
     ? companyCustomers
@@ -1427,7 +1432,7 @@ export default function AdminScheduleScreen() {
     : "";
   const { data: scheduleSavedCards, refetch: refetchScheduleCards } = trpc.savedCards.list.useQuery(
     { customerKey: scheduleCustomerKey },
-    { enabled: !!scheduleCustomerKey && showChargeModal }
+    { enabled: companyScheduleLegacyPaymentQueryEnabled({ authority: companyAuthority, selected: !!scheduleCustomerKey && showChargeModal }) }
   );
   const scheduleChargeCardMutation = trpc.savedCards.chargeCard.useMutation({
     onSuccess: (data) => {
@@ -1449,7 +1454,7 @@ export default function AdminScheduleScreen() {
   const refundMutation = trpc.stripe.refundPayment.useMutation();
   const { data: refundHistory = [] } = trpc.stripe.listRefunds.useQuery(
     { jobId: selectedJob?.id },
-    { enabled: !!selectedJob?.id && !!selectedJob?.payment?.paymentIntentId }
+    { enabled: companyScheduleLegacyPaymentQueryEnabled({ authority: companyAuthority, selected: !!selectedJob?.id && !!selectedJob?.payment?.paymentIntentId }) }
   );
   const [invoiceMethod, setInvoiceMethod] = useState<"email" | "sms">("email");
   const [invoiceSending, setInvoiceSending] = useState(false);
@@ -1458,6 +1463,14 @@ export default function AdminScheduleScreen() {
   const [invoiceOverrideContact, setInvoiceOverrideContact] = useState<string>("");
   const [sendingJobReceipt, setSendingJobReceipt] = useState(false);
   const sendJobReceiptMutation = trpc.jobs.sendReceipt.useMutation();
+
+  useEffect(() => {
+    if (!allowLegacyJobAuthority) {
+      setShowCheckout(false);
+      setShowChargeModal(false);
+      setShowRefundModal(false);
+    }
+  }, [allowLegacyJobAuthority]);
   // Enhanced job detail state
   const [adminPrivateNotes, setAdminPrivateNotes] = useState("");
   const [adminEditingNotes, setAdminEditingNotes] = useState(false);
@@ -3640,7 +3653,7 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 {/* ── Payment Detail Card ── */}
-                {selectedJob.payment ? (
+                {selectedJob.payment && allowLegacyJobAuthority ? (
                   <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                       <Text style={{ fontSize: 16 }}>💳</Text>
@@ -3743,7 +3756,7 @@ export default function AdminScheduleScreen() {
                         <TouchableOpacity
                           disabled={refundLoading || !refundAmount || parseFloat(refundAmount) <= 0}
                           onPress={async () => {
-                            if (!selectedJob?.payment?.paymentIntentId) return;
+                            if (!allowLegacyJobAuthority || !selectedJob?.payment?.paymentIntentId) return;
                             const cents = Math.round(parseFloat(refundAmount) * 100);
                             const maxCents = Math.round((selectedJob.payment.total ?? 0) * 100);
                             if (cents > maxCents) {
@@ -5026,7 +5039,7 @@ export default function AdminScheduleScreen() {
         ) : null}
 
         {/* Checkout overlay — rendered inside the job detail Modal to avoid stacked-modal iOS touch issues */}
-        {selectedJob && (
+        {selectedJob && allowLegacyJobAuthority && (
           <AdminCheckoutModal
             visible={showCheckout}
             job={selectedJob}
@@ -5116,7 +5129,8 @@ export default function AdminScheduleScreen() {
                     setSelectedCompanyCustomerId(c.id ?? null);
                     setShowCustomerDropdown(false);
                   }}
-                  companyCustomers={isJobSyncCompany ? companyCustomers : undefined}
+                  companyCustomers={companyAddJobUsesCanonicalCustomers(companyAuthority) ? companyCustomers : undefined}
+                  allowLegacyCustomerSearch={allowLegacyJobAuthority}
                 />
                 {isJobSyncCompany && companyCustomersError ? <Text style={{ color: colors.error, fontSize: 12, marginBottom: 8 }}>{companyCustomersError}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>
@@ -5949,7 +5963,7 @@ export default function AdminScheduleScreen() {
 
       {/* ─── Charge Card on File Modal ────────────────────────────────────────────────────────────────────────────────── */}
       <Modal
-        visible={showChargeModal}
+        visible={showChargeModal && allowLegacyJobAuthority}
         transparent
         animationType="slide"
         onRequestClose={() => { if (!chargingCard) setShowChargeModal(false); }}
@@ -6043,6 +6057,7 @@ export default function AdminScheduleScreen() {
                         text: "Charge",
                         style: "default",
                         onPress: () => {
+                          if (!allowLegacyJobAuthority) return;
                           setChargingCard(true);
                           scheduleChargeCardMutation.mutate({
                             stripeCustomerId: card.stripeCustomerId,

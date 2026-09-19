@@ -5,9 +5,12 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { CompanyAuthorityMessage } from "@/components/company-authority-state";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED } from "@/lib/jobsync-company-authority";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 
@@ -28,7 +31,28 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: "#EF4444",
 };
 
+function CompanyExpensesUnavailable() {
+  return (
+    <ScreenContainer edges={["left", "right"]} className="flex-1">
+      <CompanyAuthorityMessage
+        title="Company expenses are unavailable"
+        detail={`${COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED} Local expense writes stay on the Luxury Wash path.`}
+      />
+    </ScreenContainer>
+  );
+}
+
 export default function ExpensesScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Confirming Company identity before Expenses…"
+      company={() => <CompanyExpensesUnavailable />}
+      legacy={() => <LegacyExpensesScreen />}
+    />
+  );
+}
+
+function LegacyExpensesScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const [showForm, setShowForm] = useState(false);

@@ -10,7 +10,9 @@ import {
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
   assignJobSyncCompanyJob,
+  getJobSyncCompanyCustomer,
   getJobSyncCompanyCustomers,
+  getJobSyncCompanyFinance,
   getJobSyncCompanyInvoices,
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
@@ -347,6 +349,26 @@ describe("JobSync mobile API contract", () => {
       expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/customers");
       expect(fetchMock.mock.calls[1][0]).toContain("/api/mobile/v1/customers");
       expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))).toEqual({ firstName: "New", lastName: "Customer", email: "new@example.com" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reads a Company customer and FinanceService projection without inventing zeros on failure", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ customer: { id: 8, firstName: "Casey", lastName: "Owner", email: "casey@example.com" } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ finance: { income: 10, expenses: 4, collected: 8, outstanding: 2, bookedRevenue: 12 } }) } as Response)
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: { message: "Home Service Connected operations are temporarily unavailable." } }) } as Response);
+    try {
+      await expect(getJobSyncCompanyCustomer("company-token", 8)).resolves.toMatchObject({ id: 8, name: "Casey Owner" });
+      await expect(getJobSyncCompanyFinance("company-token")).resolves.toMatchObject({ income: 10, collected: 8, outstanding: 2 });
+      await expect(getJobSyncCompanyFinance("company-token")).rejects.toThrow("Home Service Connected operations are temporarily unavailable.");
+      expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/customers/8");
+      expect(String(fetchMock.mock.calls[0][0])).not.toContain("companyId");
+      expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/finance");
+      expect(String(fetchMock.mock.calls[1][0])).not.toContain("companyId");
+      expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
+      expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
     } finally {
       fetchMock.mockRestore();
     }

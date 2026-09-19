@@ -15,6 +15,8 @@ import {
 } from "react-native";
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "expo-router";
+import { CompanyCustomersPanel } from "@/components/company-customers-panel";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -52,6 +54,16 @@ function fmtDate(dateStr: string | null | undefined): string {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function SalesCustomersScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Confirming Company identity before Customers…"
+      company={(token) => <CompanyCustomersPanel token={token} />}
+      legacy={() => <LegacySalesCustomersScreen />}
+    />
+  );
+}
+
+function LegacySalesCustomersScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const [search, setSearch] = useState("");

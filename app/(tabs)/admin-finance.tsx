@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import React from "react";
+import { CompanyFinancePanel } from "@/components/company-finance-panel";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { TTPSettingsPanel } from "@/components/ttp-settings-panel";
 import { useEmployeeAuth as useAuth } from "@/lib/auth-context";
 import {
@@ -732,6 +734,16 @@ function FeedCard({ emoji, title, subtitle, value, valueColor, onPress }: {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminFinanceScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Confirming Company identity before Finance…"
+      company={(token) => <CompanyFinancePanel token={token} />}
+      legacy={() => <LegacyAdminFinanceScreen />}
+    />
+  );
+}
+
+function LegacyAdminFinanceScreen() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "transactions" | "reports" | "balance" | "vendors" | "settings" | "statements" | "reconcile" | "expenses">("dashboard");
   const [period, setPeriod] = useState<"day" | "week" | "month">("month");
   const [txFilter, setTxFilter] = useState<"all" | "income" | "expense" | "missing">("all");

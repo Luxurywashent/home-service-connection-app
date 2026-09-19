@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import { useState, useMemo, useEffect } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { CompanyCustomerProfilePanel } from "@/components/company-customer-profile-panel";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -61,6 +63,16 @@ function statusColor(status: string): string {
 type TabKey = "profile" | "jobs" | "attachments" | "estimates" | "notes";
 
 export default function AdminCustomerProfileScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Confirming Company identity before Customer profile…"
+      company={(token) => <CompanyCustomerProfilePanel token={token} />}
+      legacy={() => <LegacyAdminCustomerProfileScreen />}
+    />
+  );
+}
+
+function LegacyAdminCustomerProfileScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const router = useRouter();
