@@ -4504,7 +4504,7 @@ export default function ScheduleScreen() {
                         )}
                       </View>
                     ) : (
-                      {isJobSyncCompany && jobSyncSession?.token && canonicalJobId(selectedJob.id) ? (
+                      isJobSyncCompany && jobSyncSession?.token && canonicalJobId(selectedJob.id) ? (
                         <CompanyCollectPayment
                           token={jobSyncSession.token}
                           jobId={canonicalJobId(selectedJob.id)!}
@@ -4530,7 +4530,7 @@ export default function ScheduleScreen() {
                           </Text>
                           <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Card collection is disabled for Company Jobs.</Text>
                         </View>
-                      )}
+                      )
                     )}
                   </View>
 
