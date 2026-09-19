@@ -17,10 +17,13 @@ import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { CompanyCollectPayment } from "@/components/company-collect-payment";
 import { getJobSyncCompanyUnpaidJobs } from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   allowsLegacyJobAuthority,
+  canonicalJobId,
   companyCanonicalListState,
   companyCanonicalReadError,
   resolveCompanyJobAuthority,
@@ -87,12 +90,18 @@ function JobDetailModal({
   onClose,
   onMarkedPaid,
   companyMode = false,
+  companyToken,
+  companyRole,
+  onCompanyRefresh,
 }: {
   job: UnpaidJob | null;
   visible: boolean;
   onClose: () => void;
   onMarkedPaid: () => void;
   companyMode?: boolean;
+  companyToken?: string | null;
+  companyRole?: string;
+  onCompanyRefresh?: () => Promise<void> | void;
 }) {
   const colors = useColors();
   const reconcileMutation = trpc.jobs.reconcileFromStripe.useMutation({
@@ -295,14 +304,25 @@ function JobDetailModal({
           {/* Mark as Paid */}
           <Text style={[styles.actionsTitle, { color: colors.foreground }]}>Record Payment</Text>
           {companyMode ? (
-            <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.infoCardValue, { color: colors.foreground, fontWeight: "600", fontSize: 14 }]}>
-                Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.
-              </Text>
-              <Text style={[styles.infoCardSub, { color: colors.muted }]}>
-                Amount, paid, and balance come from the canonical Job. Payment collection is a later phase.
-              </Text>
-            </View>
+            companyToken && job && canonicalJobId(job.jobId) ? (
+              <CompanyCollectPayment
+                token={companyToken}
+                jobId={canonicalJobId(job.jobId)!}
+                role={companyRole || "technician"}
+                authority="company"
+                amount={Number((job as UnpaidJob & { amount?: number }).amount ?? job.balanceDue)}
+                paidTotal={Number((job as UnpaidJob & { paidTotal?: number }).paidTotal || 0)}
+                balance={job.balanceDue}
+                paymentStatus={(job as UnpaidJob & { paymentStatus?: string }).paymentStatus || job.status}
+                onCanonicalRefresh={onCompanyRefresh}
+              />
+            ) : (
+              <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.infoCardValue, { color: colors.foreground, fontWeight: "600", fontSize: 14 }]}>
+                  Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.
+                </Text>
+              </View>
+            )
           ) : (
           <>
           <TouchableOpacity
@@ -506,6 +526,7 @@ function JobCard({
 export default function AdminUnpaidJobsScreen() {
   const colors = useColors();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const { revision: companySyncRevision, refreshCompanyData, invalidateCanonicalSurfaces } = useJobSyncSync();
   const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
   const isCompany = usesCompanyJobAuthority(companyAuthority);
   const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
@@ -547,7 +568,7 @@ export default function AdminUnpaidJobsScreen() {
 
   useEffect(() => {
     void loadCompanyUnpaid();
-  }, [loadCompanyUnpaid]);
+  }, [companySyncRevision, loadCompanyUnpaid]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -705,6 +726,13 @@ export default function AdminUnpaidJobsScreen() {
         onClose={() => setSelectedJob(null)}
         onMarkedPaid={() => { setSelectedJob(null); if (isCompany) void loadCompanyUnpaid(); else query.refetch(); }}
         companyMode={!allowLegacy}
+        companyToken={jobSyncSession?.token}
+        companyRole={jobSyncSession?.user.role}
+        onCompanyRefresh={async () => {
+          invalidateCanonicalSurfaces();
+          await refreshCompanyData({ force: true });
+          await loadCompanyUnpaid();
+        }}
       />
     </ScreenContainer>
   );

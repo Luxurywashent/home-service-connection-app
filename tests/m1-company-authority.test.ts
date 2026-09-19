@@ -203,9 +203,9 @@ describe("M1 Company Jobs / Schedule / AR", () => {
       refunds: false,
       recordPayment: false,
     });
-    expect(apiSource).not.toContain("/api/mobile/v1/jobs/${jobId}/payments");
-    expect(apiSource).not.toContain("recordJobSyncCompanyJobPayment");
-    expect(scheduleSource).toContain("Card collection is disabled for Company Jobs.");
+    expect(apiSource).toContain("recordJobSyncCompanyJobPayment");
+    expect(apiSource).toContain("sanitizeCompanyPaymentBody");
+    expect(scheduleSource).toContain("CompanyCollectPayment");
     expect(adminScheduleSource).toContain("!selectedJob.payment && allowLegacyJobAuthority");
     expect(unpaidSource).toContain("Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.");
     expect(() => forbidLegacyCompanyJobAuthority(true, "savePayment")).toThrow(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
