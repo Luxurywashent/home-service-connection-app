@@ -12,6 +12,7 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import {
   allowsLegacyTimekeepingAuthority,
+  resolveCompanyDisplayedHours,
   resolveCompanyTimekeepingAuthority,
   usesCompanyTimekeepingAuthority,
 } from "@/lib/jobsync-company-authority";
@@ -547,7 +548,13 @@ function DetailerDashboard() {
       const tips = scheduleTips > 0 ? scheduleTips : manualTips;
       // Use clock_in_out_records as the authoritative source for hours (same as week/all-time).
       // daily_performance.hoursWorked can contain stale or estimated values — never use it for display.
-      const todayClockHours = isCompanyTimekeeping ? (companyHours ?? 0) : (clockHoursQuery.data?.totalHours ?? 0);
+      const displayedHours = resolveCompanyDisplayedHours({
+        mode: timekeepingAuthority,
+        companyHours,
+        companyHoursError,
+        legacyHours: clockHoursQuery.data?.totalHours ?? null,
+      });
+      const todayClockHours = displayedHours.hours ?? 0;
       // Efficiency: total revenue / clock hours / $100 target (consistent with week/all-time)
       const todayEfficiency = todayClockHours > 0 ? (revenue / todayClockHours) / 100 * 100 : 0;
       return {
@@ -605,7 +612,13 @@ function DetailerDashboard() {
         totalTips += schedTips > 0 ? schedTips : manualTips;
       }
       // Use clock_in_out_records as the authoritative source for hours (never misses a session)
-      const clockHours = isCompanyTimekeeping ? (companyHours ?? 0) : (clockHoursQuery.data?.totalHours ?? 0);
+      const displayedHours = resolveCompanyDisplayedHours({
+        mode: timekeepingAuthority,
+        companyHours,
+        companyHoursError,
+        legacyHours: clockHoursQuery.data?.totalHours ?? null,
+      });
+      const clockHours = displayedHours.hours ?? 0;
       // Efficiency (Option B): total revenue / total hours / $100 target
       // e.g. $800 / 8 hrs / $100 = 100%. Gives a single weighted rate across all time.
       const efficiency = clockHours > 0 ? (totalRevenue / clockHours) / 100 * 100 : 0;
@@ -617,7 +630,7 @@ function DetailerDashboard() {
         tips: totalTips,
       };
     }
-  }, [view, metricsQuery.data, completedJobsQuery.data, clockHoursQuery.data, companyHours, isCompanyTimekeeping, weekRange.today]);
+  }, [view, metricsQuery.data, completedJobsQuery.data, clockHoursQuery.data, companyHours, companyHoursError, timekeepingAuthority, weekRange.today]);
 
   const metrics = calculateMetrics;
 
@@ -995,7 +1008,14 @@ function DetailerDashboard() {
                   <View style={{ flex: 1 }}>
                     <MetricCard
                       label="Hours"
-                      value={companyHoursError ? "—" : Number(metrics.hours).toFixed(1)}
+                      value={resolveCompanyDisplayedHours({
+                        mode: timekeepingAuthority,
+                        companyHours,
+                        companyHoursError,
+                        legacyHours: clockHoursQuery.data?.totalHours ?? null,
+                      }).state === "ready"
+                        ? Number(metrics.hours).toFixed(1)
+                        : "—"}
                       unit="hrs"
                       icon="⏱️"
                       color="primary"

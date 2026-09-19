@@ -13,6 +13,7 @@ import {
   companyTimesheetsWriteLocalLedger,
   forbidLegacyCompanyTimeOff,
   forbidLegacyCompanyTimekeeping,
+  resolveCompanyDisplayedHours,
   resolveCompanyTimeOffAuthority,
   resolveCompanyTimekeepingAuthority,
   usesCompanyTimeOffAuthority,
@@ -24,8 +25,10 @@ import {
   createHomeServiceConnectedTimeOff,
   getHomeServiceConnectedTeamTimeSummary,
   getHomeServiceConnectedTimeOff,
+  getHomeServiceConnectedTimeState,
   getHomeServiceConnectedTimesheets,
   normalizeHomeServiceConnectedTimeOffList,
+  normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedTimesheets,
   reviewHomeServiceConnectedTimeOff,
   sanitizeCompanyMutationBody,
@@ -62,6 +65,87 @@ function mockOk(body: unknown) {
 }
 
 describe("M2 Company Clock / Timesheets / Time Off", () => {
+  it("reads the published JobSync /time/current payload without treating clocked-in as clocked-out", async () => {
+    expect(normalizeHomeServiceConnectedTimeState({
+      entry: { id: 11, clockIn: "2026-09-19T13:00:00.000Z", clockOut: null, breakStart: null, breakEnd: null, totalHours: null },
+      activeBreak: false,
+      today: { date: "2026-09-19", elapsedMinutes: 12, breakMinutes: 0 },
+      allowedActions: ["break_start", "clock_out"],
+    })).toEqual({
+      isClockedIn: true,
+      clockInAt: "2026-09-19T13:00:00.000Z",
+      activeBreak: null,
+    });
+    expect(normalizeHomeServiceConnectedTimeState({
+      entry: { id: 11, clockIn: "2026-09-19T13:00:00.000Z", clockOut: null, breakStart: "2026-09-19T15:00:00.000Z", breakEnd: null, totalHours: null },
+      activeBreak: true,
+      allowedActions: ["break_end", "clock_out"],
+    })).toMatchObject({
+      isClockedIn: true,
+      clockInAt: "2026-09-19T13:00:00.000Z",
+      activeBreak: { isActive: true, startedAt: "2026-09-19T15:00:00.000Z" },
+    });
+    expect(normalizeHomeServiceConnectedTimeState({
+      entry: null,
+      activeBreak: false,
+      today: { date: "2026-09-19", elapsedMinutes: 0, breakMinutes: 0 },
+      allowedActions: ["clock_in"],
+    })).toEqual({
+      isClockedIn: false,
+      clockInAt: null,
+      activeBreak: null,
+    });
+
+    const fetchMock = mockOk({
+      entry: { id: 11, clockIn: "2026-09-19T13:00:00.000Z", clockOut: null, breakStart: null, breakEnd: null, totalHours: null },
+      activeBreak: false,
+      allowedActions: ["break_start", "clock_out"],
+    });
+    try {
+      const state = await getHomeServiceConnectedTimeState("company-token");
+      expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/time/current");
+      expect(state.isClockedIn).toBe(true);
+      expect(state.clockInAt).toBe("2026-09-19T13:00:00.000Z");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not treat unknown auth or Company hour fetch failure as a legitimate zero-hour result", () => {
+    expect(resolveCompanyDisplayedHours({
+      mode: "unknown",
+      companyHours: null,
+      companyHoursError: null,
+      legacyHours: 8,
+    })).toEqual({ state: "loading", hours: null });
+    expect(resolveCompanyDisplayedHours({
+      mode: "company",
+      companyHours: null,
+      companyHoursError: null,
+      legacyHours: 8,
+    })).toEqual({ state: "loading", hours: null });
+    expect(resolveCompanyDisplayedHours({
+      mode: "company",
+      companyHours: null,
+      companyHoursError: "Home Service Connected operations are temporarily unavailable.",
+      legacyHours: 8,
+    })).toEqual({ state: "error", hours: null });
+    expect(resolveCompanyDisplayedHours({
+      mode: "company",
+      companyHours: 0,
+      companyHoursError: null,
+      legacyHours: 8,
+    })).toEqual({ state: "ready", hours: 0 });
+    expect(resolveCompanyDisplayedHours({
+      mode: "legacy",
+      companyHours: null,
+      companyHoursError: null,
+      legacyHours: 8,
+    })).toEqual({ state: "ready", hours: 8 });
+    expect(allowsLegacyTimekeepingAuthority("unknown")).toBe(false);
+    expect(homeSource).toContain("resolveCompanyDisplayedHours");
+  });
+
   it("uses canonical JobSync clock-in and clock-out bearer paths without client identity", async () => {
     const fetchMock = mockOk({ entry: { id: 11, clockIn: "2026-09-19T13:00:00.000Z" } });
     try {

@@ -135,6 +135,21 @@ export function companyCanonicalListState(input: { loading: boolean; error: stri
   return input.itemCount === 0 ? "empty" : "ready";
 }
 
+export function resolveCompanyDisplayedHours(input: {
+  mode: CompanyJobAuthorityMode;
+  companyHours: number | null;
+  companyHoursError: string | null;
+  legacyHours: number | null;
+}): { state: "loading" | "error" | "ready"; hours: number | null } {
+  if (input.mode === "unknown") return { state: "loading", hours: null };
+  if (input.mode === "company") {
+    if (input.companyHoursError) return { state: "error", hours: null };
+    if (input.companyHours == null) return { state: "loading", hours: null };
+    return { state: "ready", hours: input.companyHours };
+  }
+  return { state: "ready", hours: input.legacyHours ?? 0 };
+}
+
 export function companyCanonicalReadError(error: unknown) {
   return error instanceof Error && error.message.trim() ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED;
 }

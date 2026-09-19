@@ -1209,16 +1209,55 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   const root = asRecord(payload);
   const data = firstRecord(root?.data, root) ?? {};
   const time = firstRecord(data.time, data.current, data.state, data.status, data) ?? {};
-  const entry = firstRecord(time.activeEntry, time.activeShift, time.activeTimesheet, time.timeEntry, data.activeEntry, data.activeShift, data.activeTimesheet, data.timeEntry);
-  const activeBreak = firstRecord(time.activeBreak, data.activeBreak, entry?.activeBreak, entry?.break);
+  const entry = firstRecord(
+    time.entry,
+    time.activeEntry,
+    time.activeShift,
+    time.activeTimesheet,
+    time.timeEntry,
+    data.entry,
+    data.activeEntry,
+    data.activeShift,
+    data.activeTimesheet,
+    data.timeEntry,
+  );
+  const rawBreak = time.activeBreak ?? data.activeBreak ?? entry?.activeBreak ?? entry?.break;
+  const activeBreak = asRecord(rawBreak);
   const status = firstString(time.status, time.clockStatus, data.status, data.clockStatus, entry?.status);
-  const clockInAt = firstString(time.clockInAt, time.clockInTime, data.clockInAt, data.clockInTime, entry?.clockInAt, entry?.clockInTime, entry?.startedAt);
-  const isClockedIn = booleanState(time.isClockedIn) || booleanState(data.isClockedIn) || booleanState(status) || Boolean(entry) || Boolean(clockInAt);
-  const breakActive = Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime);
+  const clockInAt = firstString(
+    time.clockInAt,
+    time.clockInTime,
+    time.clockIn,
+    data.clockInAt,
+    data.clockInTime,
+    data.clockIn,
+    entry?.clockInAt,
+    entry?.clockInTime,
+    entry?.clockIn,
+    entry?.startedAt,
+  );
+  const clockOutAt = firstString(entry?.clockOut, entry?.clockOutAt, entry?.clock_out, time.clockOut, data.clockOut);
+  const allowedActions = Array.isArray(time.allowedActions)
+    ? time.allowedActions
+    : Array.isArray(data.allowedActions)
+      ? data.allowedActions
+      : [];
+  const allowedClockedIn = allowedActions.includes("clock_out") || allowedActions.includes("break_start") || allowedActions.includes("break_end");
+  const hasOpenEntry = Boolean(entry && !clockOutAt);
+  const isClockedIn = booleanState(time.isClockedIn)
+    || booleanState(data.isClockedIn)
+    || booleanState(status)
+    || hasOpenEntry
+    || allowedClockedIn;
+  const breakFlag = rawBreak === true || rawBreak === 1 || rawBreak === "1" || rawBreak === "true";
+  const breakActive = breakFlag
+    || allowedActions.includes("break_end")
+    || Boolean(firstString(entry?.breakStart, entry?.break_start) && !firstString(entry?.breakEnd, entry?.break_end))
+    || (Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime));
   return {
     isClockedIn,
     clockInAt,
-    activeBreak: activeBreak ? { isActive: breakActive, startedAt: firstString(activeBreak.startedAt, activeBreak.breakStartTime, activeBreak.startTime) } : null,
+    activeBreak: breakActive ? { isActive: true, startedAt: firstString(activeBreak?.startedAt, activeBreak?.breakStartTime, activeBreak?.startTime, entry?.breakStart, entry?.break_start) } : null,
   };
 }
 
