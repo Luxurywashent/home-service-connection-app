@@ -94,6 +94,16 @@ export function CompanyClockStatus({ token }: { token: string }) {
   }, [refresh]);
 
   if (loading) return <ActivityIndicator color={colors.primary} size="small" />;
+  if (error && !state) {
+    return (
+      <View style={{ alignItems: "flex-end", maxWidth: 220 }}>
+        <Text style={{ color: colors.error, fontSize: 11, textAlign: "right" }}>{error}</Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => { setLoading(true); void refresh(); }} style={{ marginTop: 6 }}>
+          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const isClockedIn = state?.isClockedIn === true || activeShiftRecovery;
   const isOnBreak = state?.activeBreak?.isActive === true || activeBreakRecovery;

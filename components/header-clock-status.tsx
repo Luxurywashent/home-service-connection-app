@@ -11,6 +11,11 @@ import { CompanyClockStatus } from "./company-clock-status";
 import { EndBreakConfirmationModal } from "./end-break-confirmation-modal";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "./location-disclosure-modal";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  allowsLegacyTimekeepingAuthority,
+  resolveCompanyTimekeepingAuthority,
+  usesCompanyTimekeepingAuthority,
+} from "@/lib/jobsync-company-authority";
 
 function formatElapsedTime(startTime: Date | null): string {
   if (!startTime) return "00:00:00";
@@ -26,9 +31,16 @@ function formatElapsedTime(startTime: Date | null): string {
 }
 
 export function HeaderClockStatus() {
-  const { session } = useJobSyncAuth();
-  if (session?.portal === "company") {
+  const { session, isLoading } = useJobSyncAuth();
+  const authority = resolveCompanyTimekeepingAuthority({ session, sessionLoading: isLoading });
+  if (authority === "unknown") {
+    return <ActivityIndicator color="#0a7ea4" size="small" />;
+  }
+  if (usesCompanyTimekeepingAuthority(authority) && session?.token) {
     return <CompanyClockStatus token={session.token} />;
+  }
+  if (!allowsLegacyTimekeepingAuthority(authority)) {
+    return <ActivityIndicator color="#0a7ea4" size="small" />;
   }
   return <LegacyHeaderClockStatus />;
 }

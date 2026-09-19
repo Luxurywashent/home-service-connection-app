@@ -95,6 +95,9 @@ const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
 const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
 const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
+const TIME_TIMESHEETS_PATH = "/api/mobile/v1/time/timesheets";
+const TIME_TEAM_SUMMARY_PATH = "/api/mobile/v1/time/team-summary";
+const TIME_OFF_PATH = "/api/mobile/v1/time-off";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
 const COMPANY_CHAT_DIRECT_PATH = "/api/mobile/v1/chat/direct";
@@ -422,6 +425,26 @@ function companyJobPath(jobId: number, suffix = "") {
 
 export function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
   const forbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
+  for (const key of forbidden) {
+    if (key in body) throw new Error("Company identity must come from the authenticated Home Service Connected session.");
+  }
+  return body;
+}
+
+export function sanitizeCompanyTimeMutationBody(body: Record<string, unknown>) {
+  const forbidden = [
+    "companyId",
+    "company_id",
+    "role",
+    "ownerId",
+    "owner_id",
+    "employeeId",
+    "employee_id",
+    "userId",
+    "user_id",
+    "memberUserId",
+    "member_user_id",
+  ];
   for (const key of forbidden) {
     if (key in body) throw new Error("Company identity must come from the authenticated Home Service Connected session.");
   }
@@ -772,6 +795,60 @@ export type HomeServiceConnectedTimeState = {
   clockInAt: string | null;
   activeBreak: { isActive: boolean; startedAt: string | null } | null;
 };
+
+export type HomeServiceConnectedTimesheetRecord = {
+  id: number;
+  memberName: string;
+  date: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+  totalHours: number | null;
+};
+
+export type HomeServiceConnectedTeamTimeMember = {
+  id: number;
+  memberId: string | null;
+  name: string;
+  availability: string;
+  clockedIn: boolean;
+  clockIn: string | null;
+  todayHours: number;
+};
+
+export type HomeServiceConnectedTimeOffRequest = {
+  id: number;
+  userId: number;
+  memberName: string;
+  startDate: string;
+  endDate: string;
+  hoursRequested: number;
+  requestType: string;
+  reason: string | null;
+  status: string;
+  reviewerNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string | null;
+};
+
+export type HomeServiceConnectedTimeOffList = {
+  canReview: boolean;
+  requests: HomeServiceConnectedTimeOffRequest[];
+};
+
+export type HomeServiceConnectedTimeOffReview = {
+  success: boolean;
+  requestId: number;
+  status: string;
+  approved: boolean;
+  coveredJobIds: number[];
+  inFieldJobIds: number[];
+  coveredCount: number;
+  inFieldCount: number;
+};
+
+export type HomeServiceConnectedTimeOffRequestType = "vacation" | "sick" | "personal" | "other";
 
 export type HomeServiceConnectedPriceBookService = {
   serviceId: string;
@@ -1132,16 +1209,55 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   const root = asRecord(payload);
   const data = firstRecord(root?.data, root) ?? {};
   const time = firstRecord(data.time, data.current, data.state, data.status, data) ?? {};
-  const entry = firstRecord(time.activeEntry, time.activeShift, time.activeTimesheet, time.timeEntry, data.activeEntry, data.activeShift, data.activeTimesheet, data.timeEntry);
-  const activeBreak = firstRecord(time.activeBreak, data.activeBreak, entry?.activeBreak, entry?.break);
+  const entry = firstRecord(
+    time.entry,
+    time.activeEntry,
+    time.activeShift,
+    time.activeTimesheet,
+    time.timeEntry,
+    data.entry,
+    data.activeEntry,
+    data.activeShift,
+    data.activeTimesheet,
+    data.timeEntry,
+  );
+  const rawBreak = time.activeBreak ?? data.activeBreak ?? entry?.activeBreak ?? entry?.break;
+  const activeBreak = asRecord(rawBreak);
   const status = firstString(time.status, time.clockStatus, data.status, data.clockStatus, entry?.status);
-  const clockInAt = firstString(time.clockInAt, time.clockInTime, data.clockInAt, data.clockInTime, entry?.clockInAt, entry?.clockInTime, entry?.startedAt);
-  const isClockedIn = booleanState(time.isClockedIn) || booleanState(data.isClockedIn) || booleanState(status) || Boolean(entry) || Boolean(clockInAt);
-  const breakActive = Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime);
+  const clockInAt = firstString(
+    time.clockInAt,
+    time.clockInTime,
+    time.clockIn,
+    data.clockInAt,
+    data.clockInTime,
+    data.clockIn,
+    entry?.clockInAt,
+    entry?.clockInTime,
+    entry?.clockIn,
+    entry?.startedAt,
+  );
+  const clockOutAt = firstString(entry?.clockOut, entry?.clockOutAt, entry?.clock_out, time.clockOut, data.clockOut);
+  const allowedActions = Array.isArray(time.allowedActions)
+    ? time.allowedActions
+    : Array.isArray(data.allowedActions)
+      ? data.allowedActions
+      : [];
+  const allowedClockedIn = allowedActions.includes("clock_out") || allowedActions.includes("break_start") || allowedActions.includes("break_end");
+  const hasOpenEntry = Boolean(entry && !clockOutAt);
+  const isClockedIn = booleanState(time.isClockedIn)
+    || booleanState(data.isClockedIn)
+    || booleanState(status)
+    || hasOpenEntry
+    || allowedClockedIn;
+  const breakFlag = rawBreak === true || rawBreak === 1 || rawBreak === "1" || rawBreak === "true";
+  const breakActive = breakFlag
+    || allowedActions.includes("break_end")
+    || Boolean(firstString(entry?.breakStart, entry?.break_start) && !firstString(entry?.breakEnd, entry?.break_end))
+    || (Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime));
   return {
     isClockedIn,
     clockInAt,
-    activeBreak: activeBreak ? { isActive: breakActive, startedAt: firstString(activeBreak.startedAt, activeBreak.breakStartTime, activeBreak.startTime) } : null,
+    activeBreak: breakActive ? { isActive: true, startedAt: firstString(activeBreak?.startedAt, activeBreak?.breakStartTime, activeBreak?.startTime, entry?.breakStart, entry?.break_start) } : null,
   };
 }
 
@@ -1168,4 +1284,187 @@ export function startHomeServiceConnectedBreak(token: string) {
 
 export function endHomeServiceConnectedBreak(token: string) {
   return performHomeServiceConnectedTimeAction(token, TIME_BREAK_END_PATH);
+}
+
+export function normalizeHomeServiceConnectedTimesheetRecord(value: unknown): HomeServiceConnectedTimesheetRecord | null {
+  const record = asRecord(value);
+  const id = firstNumber(record?.id, record?.recordId);
+  if (!id) return null;
+  return {
+    id,
+    memberName: firstString(record?.memberName, record?.fullName, record?.full_name) ?? "Team Member",
+    date: firstString(record?.date, record?.workDate, record?.work_date) ?? "",
+    clockIn: firstString(record?.clockIn, record?.clock_in, record?.clockInAt),
+    clockOut: firstString(record?.clockOut, record?.clock_out, record?.clockOutAt),
+    breakStart: firstString(record?.breakStart, record?.break_start),
+    breakEnd: firstString(record?.breakEnd, record?.break_end),
+    totalHours: nullableNumber(record?.totalHours, record?.total_hours),
+  };
+}
+
+export function normalizeHomeServiceConnectedTimesheets(payload: unknown): HomeServiceConnectedTimesheetRecord[] {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const records = Array.isArray(data.records) ? data.records : Array.isArray(root?.records) ? root.records : [];
+  return records.flatMap((value) => {
+    const record = normalizeHomeServiceConnectedTimesheetRecord(value);
+    return record ? [record] : [];
+  });
+}
+
+export function normalizeHomeServiceConnectedTeamTimeSummary(payload: unknown): HomeServiceConnectedTeamTimeMember[] {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const members = Array.isArray(data.members) ? data.members : Array.isArray(root?.members) ? root.members : [];
+  return members.flatMap((value) => {
+    const member = asRecord(value);
+    const id = firstNumber(member?.id, member?.userId);
+    const name = firstString(member?.name, member?.fullName, member?.memberName);
+    if (!id || !name) return [];
+    return [{
+      id,
+      memberId: firstString(member?.memberId, member?.member_id),
+      name,
+      availability: firstString(member?.availability) ?? "available",
+      clockedIn: booleanState(member?.clockedIn) || Boolean(firstString(member?.clockIn, member?.clock_in)),
+      clockIn: firstString(member?.clockIn, member?.clock_in),
+      todayHours: nullableNumber(member?.todayHours, member?.today_hours) ?? 0,
+    }];
+  });
+}
+
+export function normalizeHomeServiceConnectedTimeOffRequest(value: unknown): HomeServiceConnectedTimeOffRequest | null {
+  const request = asRecord(value);
+  const id = firstNumber(request?.id, request?.requestId);
+  if (!id) return null;
+  return {
+    id,
+    userId: firstNumber(request?.userId, request?.user_id) ?? 0,
+    memberName: firstString(request?.memberName, request?.member_name, request?.fullName) ?? "Team Member",
+    startDate: firstString(request?.startDate, request?.start_date) ?? "",
+    endDate: firstString(request?.endDate, request?.end_date) ?? "",
+    hoursRequested: nullableNumber(request?.hoursRequested, request?.hours_requested) ?? 0,
+    requestType: firstString(request?.requestType, request?.request_type) ?? "other",
+    reason: firstString(request?.reason),
+    status: firstString(request?.status, request?.requestStatus, request?.request_status) ?? "pending",
+    reviewerNote: firstString(request?.reviewerNote, request?.reviewer_note),
+    reviewedAt: firstString(request?.reviewedAt, request?.reviewed_at),
+    createdAt: firstString(request?.createdAt, request?.created_at),
+  };
+}
+
+export function normalizeHomeServiceConnectedTimeOffList(payload: unknown): HomeServiceConnectedTimeOffList {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const requests = Array.isArray(data.requests) ? data.requests : Array.isArray(root?.requests) ? root.requests : [];
+  return {
+    canReview: data.canReview === true || root?.canReview === true,
+    requests: requests.flatMap((value) => {
+      const request = normalizeHomeServiceConnectedTimeOffRequest(value);
+      return request ? [request] : [];
+    }),
+  };
+}
+
+export function normalizeHomeServiceConnectedTimeOffReview(payload: unknown): HomeServiceConnectedTimeOffReview {
+  const root = asRecord(payload) ?? {};
+  const ids = (value: unknown) => Array.isArray(value)
+    ? value.flatMap((item) => {
+      const id = firstNumber(item);
+      return id ? [id] : [];
+    })
+    : [];
+  const coveredJobIds = ids(root.coveredJobIds);
+  const inFieldJobIds = ids(root.inFieldJobIds);
+  return {
+    success: root.success !== false,
+    requestId: firstNumber(root.requestId) ?? 0,
+    status: firstString(root.status) ?? "pending",
+    approved: root.approved === true || firstString(root.status) === "approved",
+    coveredJobIds,
+    inFieldJobIds,
+    coveredCount: nullableNumber(root.coveredCount) ?? coveredJobIds.length,
+    inFieldCount: nullableNumber(root.inFieldCount) ?? inFieldJobIds.length,
+  };
+}
+
+function timeRangeQuery(input?: { start?: string; end?: string; memberId?: number }) {
+  const params = new URLSearchParams();
+  if (input?.start) params.set("start", input.start);
+  if (input?.end) params.set("end", input.end);
+  if (input?.memberId && Number.isSafeInteger(input.memberId) && input.memberId > 0) {
+    params.set("memberId", String(input.memberId));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getHomeServiceConnectedTimesheets(
+  token: string,
+  input?: { start?: string; end?: string; memberId?: number },
+) {
+  const payload = await requestJson(`${TIME_TIMESHEETS_PATH}${timeRangeQuery(input)}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeHomeServiceConnectedTimesheets(payload);
+}
+
+export async function getHomeServiceConnectedTeamTimeSummary(token: string) {
+  const payload = await requestJson(TIME_TEAM_SUMMARY_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeHomeServiceConnectedTeamTimeSummary(payload);
+}
+
+export async function getHomeServiceConnectedTimeOff(token: string) {
+  const payload = await requestJson(TIME_OFF_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeHomeServiceConnectedTimeOffList(payload);
+}
+
+export async function createHomeServiceConnectedTimeOff(token: string, input: {
+  startDate: string;
+  endDate: string;
+  hoursRequested: number;
+  requestType: HomeServiceConnectedTimeOffRequestType;
+  reason?: string;
+}) {
+  return requestJson(TIME_OFF_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyTimeMutationBody({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      hoursRequested: input.hoursRequested,
+      requestType: input.requestType,
+      ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+    })),
+  });
+}
+
+export async function reviewHomeServiceConnectedTimeOff(
+  token: string,
+  requestId: number,
+  input: { status: "approved" | "denied"; reviewerNote?: string },
+) {
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) {
+    throw new Error("A valid Company Time Off request ID is required.");
+  }
+  const payload = await requestJson(`${TIME_OFF_PATH}/${encodeURIComponent(String(requestId))}/review`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyTimeMutationBody({
+      status: input.status,
+      ...(input.reviewerNote?.trim() ? { reviewerNote: input.reviewerNote.trim() } : {}),
+    })),
+  });
+  return normalizeHomeServiceConnectedTimeOffReview(payload);
+}
+
+export function sumHomeServiceConnectedTimesheetHours(records: HomeServiceConnectedTimesheetRecord[]) {
+  return records.reduce((sum, record) => sum + (record.totalHours ?? 0), 0);
 }

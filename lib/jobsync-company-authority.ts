@@ -9,6 +9,12 @@ import type {
 export const COMPANY_LEGACY_FALLTHROUGH_BLOCKED =
   "Company Jobs cannot use local schedule, invoice, or payment authority.";
 
+export const COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED =
+  "Company Clock and Timesheets cannot use local timekeeping authority.";
+
+export const COMPANY_TIME_OFF_LEGACY_FALLTHROUGH_BLOCKED =
+  "Company Time Off cannot use local time-off authority.";
+
 export const COMPANY_PAYMENT_CONTROLS = {
   card: false,
   applePay: false,
@@ -88,10 +94,60 @@ export function forbidLegacyCompanyJobAuthority(isCompanySession: boolean, actio
   }
 }
 
+export const resolveCompanyTimekeepingAuthority = resolveCompanyJobAuthority;
+export const usesCompanyTimekeepingAuthority = usesCompanyJobAuthority;
+export const allowsLegacyTimekeepingAuthority = allowsLegacyJobAuthority;
+export const resolveCompanyTimeOffAuthority = resolveCompanyJobAuthority;
+export const usesCompanyTimeOffAuthority = usesCompanyJobAuthority;
+export const allowsLegacyTimeOffAuthority = allowsLegacyJobAuthority;
+
+export function forbidLegacyCompanyTimekeeping(isCompanySession: boolean, action = "this Clock action") {
+  if (isCompanySession) {
+    throw new Error(`${COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED} (${action})`);
+  }
+}
+
+export function forbidLegacyCompanyTimeOff(isCompanySession: boolean, action = "this Time Off action") {
+  if (isCompanySession) {
+    throw new Error(`${COMPANY_TIME_OFF_LEGACY_FALLTHROUGH_BLOCKED} (${action})`);
+  }
+}
+
+export function companyClockUsesCanonicalAuthority(): true {
+  return true;
+}
+
+export function companyTimesheetsWriteLocalLedger(): false {
+  return false;
+}
+
+export function companyTimeOffWritesLocalRecord(): false {
+  return false;
+}
+
+export function companyTimeOffDuplicatesScheduleConflictLogic(): false {
+  return false;
+}
+
 export function companyCanonicalListState(input: { loading: boolean; error: string | null; itemCount: number }): "loading" | "error" | "empty" | "ready" {
   if (input.loading) return "loading";
   if (input.error) return "error";
   return input.itemCount === 0 ? "empty" : "ready";
+}
+
+export function resolveCompanyDisplayedHours(input: {
+  mode: CompanyJobAuthorityMode;
+  companyHours: number | null;
+  companyHoursError: string | null;
+  legacyHours: number | null;
+}): { state: "loading" | "error" | "ready"; hours: number | null } {
+  if (input.mode === "unknown") return { state: "loading", hours: null };
+  if (input.mode === "company") {
+    if (input.companyHoursError) return { state: "error", hours: null };
+    if (input.companyHours == null) return { state: "loading", hours: null };
+    return { state: "ready", hours: input.companyHours };
+  }
+  return { state: "ready", hours: input.legacyHours ?? 0 };
 }
 
 export function companyCanonicalReadError(error: unknown) {

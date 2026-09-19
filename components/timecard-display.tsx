@@ -2,15 +2,21 @@ import { View, Text } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { allowsLegacyTimekeepingAuthority, resolveCompanyTimekeepingAuthority } from "@/lib/jobsync-company-authority";
 
 export function TimecardDisplay() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session, isLoading } = useJobSyncAuth();
+  const allowLegacy = allowsLegacyTimekeepingAuthority(resolveCompanyTimekeepingAuthority({ session, sessionLoading: isLoading }));
 
   const breaksQuery = trpc.timesheet.getTodayBreaks.useQuery(
     { employeeId: employee?.employeeId || "" },
-    { enabled: !!employee?.employeeId, refetchInterval: 60000, refetchOnWindowFocus: false }
+    { enabled: allowLegacy && !!employee?.employeeId, refetchInterval: 60000, refetchOnWindowFocus: false }
   );
+
+  if (!allowLegacy) return null;
 
   const breaks = breaksQuery.data ?? [];
   const takenBreaks = breaks.filter((b) => b.status === "taken").length;
