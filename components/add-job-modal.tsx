@@ -401,7 +401,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
   // ── Detailer availability ──
   const { data: existingJobsForDate } = trpc.jobs.listByLocation.useQuery(
     { location: selectedCity, startDate: selectedDate, endDate: selectedDate },
-    { enabled: !!selectedDate && !!selectedCity }
+    { enabled: !isJobSyncCompany && !!selectedDate && !!selectedCity }
   );
 
   const blockedHoursByDetailer = React.useMemo(() => {

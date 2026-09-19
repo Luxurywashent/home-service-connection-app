@@ -86,6 +86,8 @@ const SESSION_PATH = "/api/mobile/v1/auth/session";
 const PASSWORD_RESET_REQUEST_PATH = "/api/mobile/v1/auth/password-reset/request";
 const COMPANY_SYNC_PATH = "/api/mobile/v1/sync";
 const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
+const COMPANY_INVOICES_PATH = "/api/mobile/v1/invoices";
+const COMPANY_UNPAID_JOBS_PATH = "/api/mobile/v1/payments/unpaid-jobs";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
@@ -249,7 +251,51 @@ export function createJobSyncBearerHeaders(token: string) {
 
 export type JobSyncSyncChange = { id: number; updatedAt?: string | null; createdAt?: string | null };
 export type JobSyncIncrementalSync = { since: string; generatedAt: string; changes: Record<string, JobSyncSyncChange[]> };
-export type JobSyncMobileJob = { id: number; customerId: number; assignedUserId: number | null; title: string; serviceName: string; status: string; scheduledStartAt: string | null; scheduledEndAt: string | null; updatedAt: string | null; addressLine1: string | null; city: string | null; amount: number; customerName: string; assignedName: string | null };
+export type JobSyncCanonicalJobStatus = "draft" | "scheduled" | "en_route" | "on_site" | "completed" | "follow_up" | "cancelled";
+export type JobSyncPaymentStatus = "unpaid" | "partial" | "paid" | "refunded";
+export type JobSyncMobileJob = {
+  id: number;
+  customerId: number;
+  assignedUserId: number | null;
+  title: string;
+  serviceName: string;
+  status: string;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  updatedAt: string | null;
+  addressLine1: string | null;
+  city: string | null;
+  amount: number;
+  paidTotal: number;
+  refundTotal: number;
+  appliedEstimateCredit: number;
+  balance: number;
+  paymentStatus: string;
+  customerName: string;
+  assignedName: string | null;
+};
+export type JobSyncCompanyInvoice = {
+  id: number;
+  customerId: number | null;
+  customerName: string;
+  title: string;
+  serviceName: string;
+  status: string;
+  paymentStatus: string;
+  scheduledStartAt: string | null;
+  total: number;
+  paid: number;
+  balance: number;
+};
+export type JobSyncCompanyUnpaidJob = {
+  id: number;
+  title: string;
+  customerName: string;
+  amount: number;
+  paidTotal: number;
+  balance: number;
+  paymentStatus: string;
+};
 export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null };
 export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
 export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
@@ -271,6 +317,11 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
     addressLine1: firstString(row.addressLine1),
     city: firstString(row.city),
     amount: Number(row.amount || 0),
+    paidTotal: Number(row.paidTotal || 0),
+    refundTotal: Number(row.refundTotal || 0),
+    appliedEstimateCredit: Number(row.appliedEstimateCredit || 0),
+    balance: Number(row.balance ?? row.amount ?? 0),
+    paymentStatus: firstString(row.paymentStatus) ?? "unpaid",
     customerName: firstString(row.customerName) ?? "",
     assignedName: firstString(row.assignedName),
   };
@@ -362,6 +413,112 @@ export async function createJobSyncCompanyJob(token: string, input: JobSyncCompa
   const job = normalizeJobSyncMobileJob(payload.job);
   if (!job) throw new Error("Home Service Connected returned an invalid Job response.");
   return job;
+}
+
+function companyJobPath(jobId: number, suffix = "") {
+  if (!Number.isSafeInteger(jobId) || jobId <= 0) throw new Error("A valid Company Job ID is required.");
+  return `${COMPANY_JOBS_PATH}/${jobId}${suffix}`;
+}
+
+function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
+  const forbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
+  for (const key of forbidden) {
+    if (key in body) throw new Error("Company identity must come from the authenticated Home Service Connected session.");
+  }
+  return body;
+}
+
+export async function getJobSyncCompanyJob(token: string, jobId: number): Promise<JobSyncMobileJob> {
+  const payload = asRecord(await requestJson(companyJobPath(jobId), { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  const job = normalizeJobSyncMobileJob(payload.job ?? payload);
+  if (!job) throw new Error("Home Service Connected returned an invalid Job response.");
+  return job;
+}
+
+export async function updateJobSyncCompanyJobStatus(token: string, jobId: number, input: { status: JobSyncCanonicalJobStatus; expectedUpdatedAt?: string }) {
+  const payload = asRecord(await requestJson(companyJobPath(jobId, "/status"), {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyMutationBody({
+      status: input.status,
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    })),
+  })) ?? {};
+  return { success: payload.success === true, status: firstString(payload.status) ?? input.status };
+}
+
+export async function assignJobSyncCompanyJob(token: string, jobId: number, input: { assignedUserId: number | null; expectedUpdatedAt?: string }) {
+  const payload = asRecord(await requestJson(companyJobPath(jobId, "/assignment"), {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyMutationBody({
+      assignedUserId: input.assignedUserId,
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    })),
+  })) ?? {};
+  return { success: payload.success === true, assignedUserId: nullableNumber(payload.assignedUserId) };
+}
+
+export async function rescheduleJobSyncCompanyJob(token: string, jobId: number, input: { scheduledStartAt: string; scheduledEndAt?: string | null; expectedUpdatedAt?: string }) {
+  const payload = asRecord(await requestJson(companyJobPath(jobId, "/schedule"), {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyMutationBody({
+      scheduledStartAt: input.scheduledStartAt,
+      ...(input.scheduledEndAt !== undefined ? { scheduledEndAt: input.scheduledEndAt } : {}),
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    })),
+  })) ?? {};
+  return {
+    success: payload.success === true,
+    jobId: firstNumber(payload.jobId) ?? jobId,
+    scheduledStartAt: firstString(payload.scheduledStartAt) ?? input.scheduledStartAt,
+    scheduledEndAt: firstString(payload.scheduledEndAt) ?? input.scheduledEndAt ?? null,
+  };
+}
+
+function normalizeJobSyncCompanyInvoice(value: unknown): JobSyncCompanyInvoice | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    customerId: Number.isSafeInteger(Number(row.customerId)) ? Number(row.customerId) : null,
+    customerName: firstString(row.customerName) ?? "",
+    title: firstString(row.title) ?? "",
+    serviceName: firstString(row.serviceName) ?? "",
+    status: firstString(row.status) ?? "scheduled",
+    paymentStatus: firstString(row.paymentStatus) ?? "unpaid",
+    scheduledStartAt: firstString(row.scheduledStartAt),
+    total: Number(row.total || 0),
+    paid: Number(row.paid || 0),
+    balance: Number(row.balance || 0),
+  };
+}
+
+function normalizeJobSyncCompanyUnpaidJob(value: unknown): JobSyncCompanyUnpaidJob | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    title: firstString(row.title) ?? "",
+    customerName: firstString(row.customerName) ?? "",
+    amount: Number(row.amount || 0),
+    paidTotal: Number(row.paidTotal || 0),
+    balance: Number(row.balance || 0),
+    paymentStatus: firstString(row.paymentStatus) ?? "unpaid",
+  };
+}
+
+export async function getJobSyncCompanyInvoices(token: string): Promise<JobSyncCompanyInvoice[]> {
+  const payload = asRecord(await requestJson(COMPANY_INVOICES_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.invoices) ? payload.invoices : []).map(normalizeJobSyncCompanyInvoice).filter((invoice): invoice is JobSyncCompanyInvoice => Boolean(invoice));
+}
+
+export async function getJobSyncCompanyUnpaidJobs(token: string): Promise<JobSyncCompanyUnpaidJob[]> {
+  const payload = asRecord(await requestJson(COMPANY_UNPAID_JOBS_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncCompanyUnpaidJob).filter((job): job is JobSyncCompanyUnpaidJob => Boolean(job));
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {

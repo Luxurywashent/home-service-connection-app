@@ -41,13 +41,17 @@ import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
 import {
+  assignJobSyncCompanyJob,
   createJobSyncCompanyCustomer,
   createJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
+  rescheduleJobSyncCompanyJob,
+  updateJobSyncCompanyJobStatus,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
+import { canonicalJobId, COMPANY_LEGACY_FALLTHROUGH_BLOCKED, companyAssignedUserId, companyScheduleDateTime, mapCanonicalJobToScheduleFields } from "@/lib/jobsync-company-authority";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import Constants from "expo-constants";
 
@@ -1642,13 +1646,14 @@ export default function AdminScheduleScreen() {
   storageKeyRef.current = STORAGE_KEY;
 
   useEffect(() => {
+    if (isJobSyncCompany) return;
     const key = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
     AsyncStorage.getItem(key).then((raw) => {
       if (raw) { try { setJobs(JSON.parse(raw)); } catch {} }
     });
     // Clear old shared cache key
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [currentEmployee?.employeeId]);
+  }, [currentEmployee?.employeeId, isJobSyncCompany]);
 
   // Never hydrate a JobSync Company calendar from the legacy global location
   // endpoint. Its authenticated bearer roster is the single source of truth.
@@ -1692,15 +1697,13 @@ export default function AdminScheduleScreen() {
           const start = new Date(today); start.setDate(today.getDate() - 365);
           const end = new Date(today); end.setDate(today.getDate() + 365);
           const serverJobs = await getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() });
-          const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => {
-            const scheduled = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
-            const endAt = job.scheduledEndAt ? new Date(job.scheduledEndAt) : new Date(scheduled.getTime() + 60 * 60 * 1000);
-            const dayIndex = (scheduled.getDay() + 6) % 7;
-            const todayMonday = new Date(); todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7); todayMonday.setHours(0, 0, 0, 0);
-            const scheduledMonday = new Date(scheduled); scheduledMonday.setDate(scheduled.getDate() - dayIndex); scheduledMonday.setHours(0, 0, 0, 0);
-            return { id: String(job.id), location: job.city || selectedCity, firstName: job.customerName.split(" ")[0] || "", lastName: job.customerName.split(" ").slice(1).join(" "), email: undefined, phone: "", address: job.addressLine1 || "", serviceTitle: job.serviceName || job.title, serviceDescription: job.title, price: job.amount, startHour: scheduled.getHours() + scheduled.getMinutes() / 60, endHour: endAt.getHours() + endAt.getMinutes() / 60, dayIndex, weekOffset: Math.round((scheduledMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)), status: (job.status === "completed" ? "finished" : job.status === "on_site" ? "started" : "scheduled") as JobStatus, _rawStatus: job.status, detailerName: job.assignedName || undefined, assignedTo: job.assignedUserId ? `jobsync-${job.assignedUserId}` : undefined, createdAt: scheduled.toISOString() } as Job;
-          });
+          const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => ({
+            ...mapCanonicalJobToScheduleFields(job, selectedCity),
+            email: undefined,
+          }) as Job);
           setJobs(mappedJobs);
+        } catch {
+          setJobs([]);
         } finally { setIsSyncing(false); }
       };
       void syncCompanyJobs();
@@ -1947,8 +1950,10 @@ export default function AdminScheduleScreen() {
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
-    AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
-  }, []);
+    if (!isJobSyncCompany) {
+      AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
+    }
+  }, [isJobSyncCompany]);
 
   const openAdd = () => {
     const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
@@ -2156,6 +2161,7 @@ export default function AdminScheduleScreen() {
   // adminSavePrivateNotes removed — now handled by PrivateNotesCard component
 
   const adminAddTag = async (job: Job, tag: string) => {
+    if (isJobSyncCompany) return;
     const trimmed = tag.trim();
     if (!trimmed) return;
     const newTags = [...(job.tags ?? []), trimmed];
@@ -2167,6 +2173,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminRemoveTag = async (job: Job, tag: string) => {
+    if (isJobSyncCompany) return;
     const newTags = (job.tags ?? []).filter((t) => t !== tag);
     const updated = { ...job, tags: newTags };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2175,6 +2182,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveTax = async (job: Job, taxStr: string) => {
+    if (isJobSyncCompany) return;
     const taxAmount = parseFloat(taxStr) || 0;
     const updated = { ...job, taxAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2184,6 +2192,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDiscount = async (job: Job, amountStr: string, code: string) => {
+    if (isJobSyncCompany) return;
     const inputVal = parseFloat(amountStr) || 0;
     // If percent mode, convert to dollar amount based on subtotal (price + upsells)
     const subtotalForDiscount = job.price + (job.upsellTotal ?? 0);
@@ -2199,6 +2208,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDeposit = async (job: Job, amountStr: string) => {
+    if (isJobSyncCompany) return;
     const depositAmount = parseFloat(amountStr) || 0;
     const updated = { ...job, depositAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2209,6 +2219,23 @@ export default function AdminScheduleScreen() {
 
   const adminSaveTime = async (job: Job, newStartHour: number, newEndHour: number, newDateStr: string, notifyCustomer = false) => {
     if (newEndHour <= newStartHour) return;
+    if (isJobSyncCompany) {
+      const jobId = canonicalJobId(job.id);
+      if (!jobId || !jobSyncSession?.token) {
+        Alert.alert("Reschedule unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+        return;
+      }
+      try {
+        await rescheduleJobSyncCompanyJob(jobSyncSession.token, jobId, {
+          scheduledStartAt: companyScheduleDateTime(newDateStr, newStartHour),
+          scheduledEndAt: companyScheduleDateTime(newDateStr, newEndHour),
+        });
+        forceSync();
+      } catch (error) {
+        Alert.alert("Job not rescheduled", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+      }
+      return;
+    }
     // Recalculate weekOffset and dayIndex for the new date
     const newDate = parseLocalDate(newDateStr);
     // Mon-based day index: 0=Mon…6=Sun
@@ -2260,6 +2287,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSavePackage = async (job: Job, newPackageId: string) => {
+    if (isJobSyncCompany) return;
     const pkg = allJobPackages.find((p) => p.id === newPackageId);
     const vt = (job.vehicleType ?? "sedan") as VehicleType;
     const basePkgPrice = pkg ? (pkg.basePrice[vt] ?? job.price) : job.price;
@@ -2285,6 +2313,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSavePrice = async (job: Job, newPriceStr: string) => {
+    if (isJobSyncCompany) return;
     const newPrice = parseFloat(newPriceStr);
     if (isNaN(newPrice) || newPrice < 0) return;
     const updated = { ...job, price: newPrice, customPrice: newPrice };
@@ -2368,6 +2397,24 @@ export default function AdminScheduleScreen() {
         return { ...j, startHour: newStartHour, endHour: newEndHour, detailerName: newDetailerName, assignedTo: newAssignedTo };
       });
       const job = updated.find((j) => j.id === jobId);
+      if (job && isJobSyncCompany) {
+        const canonicalId = canonicalJobId(job.id);
+        const token = jobSyncSession?.token;
+        if (!canonicalId || !token) return prev;
+        const jobDate = getWeekDates(weekOffset)[job.dayIndex];
+        const dateStr = localDateStr(jobDate);
+        void Promise.all([
+          rescheduleJobSyncCompanyJob(token, canonicalId, {
+            scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour),
+            scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour),
+          }),
+          assignJobSyncCompanyJob(token, canonicalId, { assignedUserId: companyAssignedUserId(job.assignedTo) }),
+        ]).then(() => forceSync()).catch((error) => {
+          Alert.alert("Schedule not updated", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+          forceSync();
+        });
+        return updated;
+      }
       if (job) {
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
@@ -2398,7 +2445,7 @@ export default function AdminScheduleScreen() {
       }
       return updated;
     });
-  }, [weekOffset, selectedCity, jobUpsertMutation, jobReassignMutation]);
+  }, [weekOffset, selectedCity, jobUpsertMutation, jobReassignMutation, isJobSyncCompany, jobSyncSession?.token]);
 
   const handleResizeAdminJob = useCallback((jobId: string, newEndHour: number) => {
     setJobs((prev) => {
@@ -2408,6 +2455,21 @@ export default function AdminScheduleScreen() {
         return { ...j, endHour: clampedEnd };
       });
       const job = updated.find((j) => j.id === jobId);
+      if (job && isJobSyncCompany) {
+        const canonicalId = canonicalJobId(job.id);
+        const token = jobSyncSession?.token;
+        if (!canonicalId || !token) return prev;
+        const jobDate = getWeekDates(weekOffset)[job.dayIndex];
+        const dateStr = localDateStr(jobDate);
+        void rescheduleJobSyncCompanyJob(token, canonicalId, {
+          scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour),
+          scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour),
+        }).then(() => forceSync()).catch((error) => {
+          Alert.alert("Schedule not updated", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+          forceSync();
+        });
+        return updated;
+      }
       if (job) {
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
@@ -2434,7 +2496,7 @@ export default function AdminScheduleScreen() {
       }
       return updated;
     });
-  }, [weekOffset, selectedCity, jobUpsertMutation]);
+  }, [weekOffset, selectedCity, jobUpsertMutation, isJobSyncCompany, jobSyncSession?.token]);
 
   const weekDates = getWeekDates(weekOffset);
   const selectedDate = weekDates[selectedDay];
@@ -3797,7 +3859,7 @@ export default function AdminScheduleScreen() {
                 {/* ── Reassign Section ── */}
 
                 {/* ── Collect Payment Button ── */}
-                {!selectedJob.payment && (
+                {!selectedJob.payment && !isJobSyncCompany && (
                   <TouchableOpacity
                     onPress={() => setShowCheckout(true)}
                     activeOpacity={0.8}
@@ -3809,7 +3871,7 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* ── Send Invoice Button ── */}
-                <TouchableOpacity
+                {!isJobSyncCompany && <TouchableOpacity>
                   onPress={() => {
                     const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
@@ -3826,10 +3888,10 @@ export default function AdminScheduleScreen() {
                 >
                   <Text style={{ fontSize: 18 }}>📧</Text>
                   <Text style={{ color: "#0a7ea4", fontWeight: "700", fontSize: 16 }}>Send Invoice</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>}
 
                 {/* ── Send Receipt Button (only when job has payment recorded) ── */}
-                {selectedJob.payment && (
+                {selectedJob.payment && !isJobSyncCompany && (
                   <TouchableOpacity
                     onPress={async () => {
                       if (!selectedJob.email) {
@@ -3893,7 +3955,7 @@ export default function AdminScheduleScreen() {
                 </TouchableOpacity>
 
                 {/* Charge Card on File button — only shown when job is unpaid */}
-                {!selectedJob?.payment && (
+                {!selectedJob?.payment && !isJobSyncCompany && (
                   <TouchableOpacity
                     onPress={() => {
                       const cards = (scheduleSavedCards as any[]) ?? [];
@@ -3938,6 +4000,21 @@ export default function AdminScheduleScreen() {
                           text: "Cancel Job",
                           style: "destructive",
                           onPress: async () => {
+                            if (isJobSyncCompany) {
+                              const jobId = canonicalJobId(selectedJob.id);
+                              if (!jobId || !jobSyncSession?.token) {
+                                Alert.alert("Cancel unavailable", COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+                                return;
+                              }
+                              try {
+                                await updateJobSyncCompanyJobStatus(jobSyncSession.token, jobId, { status: "cancelled" });
+                                setSelectedJob(null);
+                                forceSync();
+                              } catch (error) {
+                                Alert.alert("Job not cancelled", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+                              }
+                              return;
+                            }
                             await jobCancelMutation.mutateAsync({ jobId: selectedJob.id });
                             setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: "cancelled" } : j));
                             setSelectedJob(null);
@@ -3954,7 +4031,7 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* Revert to Pending button — only for finished/completed jobs, keeps paid flag */}
-                {(selectedJob?.status === "finished" || selectedJob?.status === "completed") && (
+                {!isJobSyncCompany && (selectedJob?.status === "finished" || selectedJob?.status === "completed") && (
                   <TouchableOpacity
                     onPress={() => {
                       if (!selectedJob) return;
@@ -3996,7 +4073,7 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* Delete Job button — completely removes from all views */}
-                <TouchableOpacity
+                {!isJobSyncCompany && <TouchableOpacity
                   onPress={() => {
                     if (!selectedJob) return;
                     if (selectedJob.recurrenceParentId) {
@@ -4070,7 +4147,7 @@ export default function AdminScheduleScreen() {
                 >
                   <Text style={{ fontSize: 16 }}>🗑️</Text>
                   <Text style={{ color: colors.error, fontWeight: "700", fontSize: 15 }}>Delete Job</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>}
                 {/* Cancel Recurring Job button — only shown for recurring jobs */}
                 {selectedJob?.recurrenceParentId && (
                   <TouchableOpacity
