@@ -34,6 +34,12 @@ export const STANDALONE_INVOICE_CLASSIFICATION = {
   meaning: "legacy Luxury Wash standalone billing",
   companyUse: "isolated",
   secondJobReceivable: false,
+  /**
+   * Authority boundary (Phase 1):
+   * - Job receivables/invoices/unpaid = canonical jobsync Job AR (fs_jobs + PaymentService)
+   * - standalone_invoices = non-Job / Luxury Wash legacy only; never created for HSC Company Job balances
+   */
+  jobArAuthority: "jobsync PaymentService over fs_jobs",
 } as const;
 
 export type CompanyScheduleJobFields = {
