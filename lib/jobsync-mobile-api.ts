@@ -72,11 +72,12 @@ export type JobSyncCompanyRoster = {
 export type JobSyncCompanyMemberUpdateInput = {
   firstName: string;
   lastName: string;
-  role: JobSyncCompanyRole;
   email?: string;
   phone?: string;
   city?: string;
   availability?: "available" | "busy" | "off_duty";
+  /** Canonical role change path — maps to company_team_positions; never send bare `role`. */
+  positionId?: number;
 };
 
 const DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com";
@@ -310,6 +311,17 @@ export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
   preferredContact: string | null;
   updatedAt: string | null;
 };
+export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
+export type JobSyncCompanyCustomerUpdateInput = {
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+};
 export type JobSyncCompanyFinanceTransaction = {
   id: string;
   type: "income" | "expense" | string;
@@ -336,7 +348,6 @@ export type JobSyncCompanyFinanceSummary = {
   transactions: JobSyncCompanyFinanceTransaction[];
   definitions: Record<string, string>;
 };
-export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
 export type JobSyncCompanyJobCreateInput = { customerId: number; priceBookServiceId: number; assignedUserId?: number; scheduledStartAt: string; scheduledEndAt?: string; privateNotes?: string };
 
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
@@ -494,7 +505,7 @@ export async function createJobSyncCompanyCustomer(token: string, input: JobSync
   const payload = asRecord(await requestJson(COMPANY_CUSTOMERS_PATH, {
     method: "POST",
     headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({
+    body: JSON.stringify(sanitizeCompanyMutationBody({
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
       ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
@@ -504,9 +515,40 @@ export async function createJobSyncCompanyCustomer(token: string, input: JobSync
       ...(input.region?.trim() ? { region: input.region.trim() } : {}),
       ...(input.postalCode?.trim() ? { postalCode: input.postalCode.trim() } : {}),
       ...(input.vehicleType?.trim() ? { vehicleType: input.vehicleType.trim() } : {}),
-    }),
+    })),
   })) ?? {};
-  const customer = normalizeJobSyncCompanyCustomer(payload.customer);
+  const customer = normalizeJobSyncCompanyCustomer(payload.customer) ?? normalizeJobSyncCompanyCustomerDetail(payload.customer);
+  if (!customer) throw new Error("Home Service Connected returned an invalid customer response.");
+  return customer;
+}
+
+export function createJobSyncCompanyCustomerUpdatePayload(input: JobSyncCompanyCustomerUpdateInput) {
+  return sanitizeCompanyMutationBody({
+    firstName: input.firstName.trim(),
+    lastName: input.lastName.trim(),
+    ...(input.email !== undefined ? { email: input.email?.trim() ? input.email.trim().toLowerCase() : null } : {}),
+    ...(input.phone !== undefined ? { phone: input.phone?.trim() ? input.phone.trim() : null } : {}),
+    ...(input.addressLine1 !== undefined ? { addressLine1: input.addressLine1?.trim() ? input.addressLine1.trim() : null } : {}),
+    ...(input.city !== undefined ? { city: input.city?.trim() ? input.city.trim() : null } : {}),
+    ...(input.region !== undefined ? { region: input.region?.trim() ? input.region.trim() : null } : {}),
+    ...(input.postalCode !== undefined ? { postalCode: input.postalCode?.trim() ? input.postalCode.trim() : null } : {}),
+  });
+}
+
+export async function updateJobSyncCompanyCustomer(
+  token: string,
+  customerId: number,
+  input: JobSyncCompanyCustomerUpdateInput,
+): Promise<JobSyncCompanyCustomerDetail> {
+  if (!Number.isSafeInteger(customerId) || customerId <= 0) {
+    throw new Error("A valid Home Service Connected customer ID is required.");
+  }
+  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}/${customerId}`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(createJobSyncCompanyCustomerUpdatePayload(input)),
+  })) ?? {};
+  const customer = normalizeJobSyncCompanyCustomerDetail(payload.customer ?? payload);
   if (!customer) throw new Error("Home Service Connected returned an invalid customer response.");
   return customer;
 }
@@ -656,15 +698,18 @@ export async function getJobSyncCompanyUnpaidJobs(token: string): Promise<JobSyn
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
-  return {
+  // Never send `role` — RBAC is server-derived from membership / positionId.
+  return sanitizeCompanyMutationBody({
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
-    role: input.role,
     ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.city?.trim() ? { city: input.city.trim() } : {}),
     ...(input.availability ? { availability: input.availability } : {}),
-  };
+    ...(typeof input.positionId === "number" && Number.isSafeInteger(input.positionId) && input.positionId > 0
+      ? { positionId: input.positionId }
+      : {}),
+  });
 }
 
 function normalizeCompanyRole(value: string | null): JobSyncCompanyRole | null {
