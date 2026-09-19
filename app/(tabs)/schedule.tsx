@@ -40,7 +40,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJobs, getJobSyncCompanyMembers, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJob, getJobSyncCompanyJobs, getJobSyncCompanyMembers, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
 import {
   allowsLegacyJobAuthority,
   canonicalJobId,
@@ -2558,6 +2558,22 @@ export default function ScheduleScreen() {
   useEffect(() => {
     setCustomerHistoryJobs([]);
     setAddrPhotos([]);
+    // Company Job detail always refreshes from canonical HSC Job AR — never local schedule_jobs.
+    if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
+      const id = canonicalJobId(selectedJob.id);
+      const token = jobSyncSession.token;
+      const fallbackLocation = selectedLocation || selectedJob.location || "crestview";
+      if (id) {
+        getJobSyncCompanyJob(token, id)
+          .then((canonical) => {
+            const mapped = mapCanonicalJobToScheduleFields(canonical, fallbackLocation) as Job;
+            setSelectedJob((prev) => (prev && prev.id === String(id) ? { ...prev, ...mapped, id: String(id) } : prev));
+            setJobs((prev) => prev.map((job) => (job.id === String(id) ? { ...job, ...mapped, id: String(id) } : job)));
+          })
+          .catch(() => { /* keep list-mapped fields if detail refresh fails */ });
+      }
+      return;
+    }
     if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       loadCustomerHistory(selectedJob);
     }

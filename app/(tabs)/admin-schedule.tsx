@@ -45,6 +45,7 @@ import {
   createJobSyncCompanyCustomer,
   createJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
+  getJobSyncCompanyJob,
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
   rescheduleJobSyncCompanyJob,
@@ -2395,6 +2396,22 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     setCustomerHistory([]);
     setAddressPhotos([]);
+    // Company Job detail refreshes from canonical HSC Job AR (same record web uses).
+    if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
+      const id = canonicalJobId(selectedJob.id);
+      const token = jobSyncSession.token;
+      const fallbackLocation = selectedCity || selectedJob.location || "crestview";
+      if (id) {
+        getJobSyncCompanyJob(token, id)
+          .then((canonical) => {
+            const mapped = mapCanonicalJobToScheduleFields(canonical, fallbackLocation) as Job;
+            setSelectedJob((prev) => (prev && prev.id === String(id) ? { ...prev, ...mapped, id: String(id) } : prev));
+            setJobs((prev) => prev.map((job) => (job.id === String(id) ? { ...job, ...mapped, id: String(id) } : job)));
+          })
+          .catch(() => { /* keep list-mapped fields if detail refresh fails */ });
+      }
+      return;
+    }
     if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
       adminLoadCustomerHistory(selectedJob);
     }
