@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   Modal, FlatList, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -7,6 +7,17 @@ import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { StyleSheet } from "react-native";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyInvoices, type JobSyncCompanyInvoice } from "@/lib/jobsync-mobile-api";
+import {
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  allowsLegacyJobAuthority,
+  companyCanonicalListState,
+  companyCanonicalReadError,
+  invoicePresentationFromCanonicalJob,
+  resolveCompanyJobAuthority,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LineItem { description: string; quantity: string; unitPrice: string }
@@ -31,11 +42,50 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminInvoicesScreen() {
   const colors = useColors();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [companyInvoices, setCompanyInvoices] = useState<JobSyncCompanyInvoice[]>([]);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
-  const { data: invoices = [], refetch, isLoading } = trpc.standaloneInvoices.list.useQuery({ search });
+  const { data: invoices = [], refetch, isLoading } = trpc.standaloneInvoices.list.useQuery({ search }, { enabled: allowLegacy });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isCompany) {
+      setCompanyInvoices([]);
+      setCompanyError(null);
+      return () => { cancelled = true; };
+    }
+    if (!jobSyncSession?.token) {
+      setCompanyInvoices([]);
+      setCompanyError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+      return () => { cancelled = true; };
+    }
+    setCompanyLoading(true);
+    getJobSyncCompanyInvoices(jobSyncSession.token)
+      .then((rows) => {
+        if (!cancelled) {
+          setCompanyInvoices(rows);
+          setCompanyError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCompanyInvoices([]);
+          setCompanyError(companyCanonicalReadError(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isCompany, jobSyncSession?.token]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return invoices;
@@ -46,17 +96,30 @@ export default function AdminInvoicesScreen() {
     );
   }, [invoices, search]);
 
+  const companyFiltered = useMemo(() => {
+    const rows = companyInvoices.map(invoicePresentationFromCanonicalJob);
+    if (!search.trim()) return rows;
+    const q = search.toLowerCase();
+    return rows.filter((inv) =>
+      inv.customerName.toLowerCase().includes(q) ||
+      inv.serviceName.toLowerCase().includes(q) ||
+      String(inv.jobId).includes(q)
+    );
+  }, [companyInvoices, search]);
+
   return (
     <ScreenContainer edges={["left", "right"]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Invoices</Text>
-        <TouchableOpacity
-          style={[styles.newBtn, { backgroundColor: colors.primary }]}
-          onPress={() => setShowCreate(true)}
-        >
-          <Text style={styles.newBtnText}>+ New Invoice</Text>
-        </TouchableOpacity>
+        {allowLegacy && (
+          <TouchableOpacity
+            style={[styles.newBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setShowCreate(true)}
+          >
+            <Text style={styles.newBtnText}>+ New Invoice</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search */}
@@ -72,7 +135,54 @@ export default function AdminInvoicesScreen() {
       </View>
 
       {/* List */}
-      {isLoading ? (
+      {companyAuthority === "unknown" || (isCompany && companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "loading") ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : isCompany ? (
+        companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "error" ? (
+          <View style={styles.center}>
+            <Text style={{ color: colors.muted, fontSize: 15, textAlign: "center", paddingHorizontal: 24 }}>{companyError}</Text>
+          </View>
+        ) : companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "empty" ? (
+          <View style={styles.center}>
+            <Text style={{ color: colors.muted, fontSize: 15 }}>No Company Job invoices</Text>
+            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8, textAlign: "center", paddingHorizontal: 24 }}>
+              Job invoices come from canonical Job balances. Standalone invoices stay on the Luxury Wash path.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            windowSize={5}
+            maxToRenderPerBatch={8}
+            initialNumToRender={10}
+            data={companyFiltered}
+            keyExtractor={(item) => String(item.jobId)}
+            contentContainerStyle={{ padding: 16, gap: 12 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.85}>
+                <View style={styles.cardRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardName, { color: colors.foreground }]}>{item.customerName || "Customer"}</Text>
+                    <Text style={[styles.cardNum, { color: colors.muted }]}>Job #{item.jobId} · {item.serviceName}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.cardAmount, { color: colors.foreground }]}>${item.amount.toFixed(2)}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: (item.paymentStatus === "paid" ? "#22C55E" : item.paymentStatus === "partial" ? "#F59E0B" : "#0a7ea4") + "22" }]}>
+                      <Text style={[styles.statusText, { color: item.paymentStatus === "paid" ? "#22C55E" : item.paymentStatus === "partial" ? "#F59E0B" : "#0a7ea4" }]}>
+                        {item.paymentStatus === "paid" ? "Paid" : item.paymentStatus === "partial" ? "Partial" : "Unpaid"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={[styles.dueText, { color: colors.muted }]}>
+                  Paid ${item.amountPaid.toFixed(2)} · Due ${item.balanceDue.toFixed(2)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        )
+      ) : isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -101,7 +211,7 @@ export default function AdminInvoicesScreen() {
       )}
 
       {/* Create Modal */}
-      {showCreate && (
+      {allowLegacy && showCreate && (
         <CreateInvoiceModal
           colors={colors}
           onClose={() => setShowCreate(false)}
@@ -110,7 +220,7 @@ export default function AdminInvoicesScreen() {
       )}
 
       {/* Detail Modal */}
-      {selectedInvoice && (
+      {allowLegacy && selectedInvoice && (
         <InvoiceDetailModal
           invoice={selectedInvoice}
           colors={colors}

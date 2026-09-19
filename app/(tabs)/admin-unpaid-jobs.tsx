@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,17 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyUnpaidJobs } from "@/lib/jobsync-mobile-api";
+import {
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  allowsLegacyJobAuthority,
+  companyCanonicalListState,
+  companyCanonicalReadError,
+  resolveCompanyJobAuthority,
+  unpaidJobFromCanonical,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type UnpaidJob = {
@@ -75,11 +86,13 @@ function JobDetailModal({
   visible,
   onClose,
   onMarkedPaid,
+  companyMode = false,
 }: {
   job: UnpaidJob | null;
   visible: boolean;
   onClose: () => void;
   onMarkedPaid: () => void;
+  companyMode?: boolean;
 }) {
   const colors = useColors();
   const reconcileMutation = trpc.jobs.reconcileFromStripe.useMutation({
@@ -281,7 +294,17 @@ function JobDetailModal({
 
           {/* Mark as Paid */}
           <Text style={[styles.actionsTitle, { color: colors.foreground }]}>Record Payment</Text>
-
+          {companyMode ? (
+            <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.infoCardValue, { color: colors.foreground, fontWeight: "600", fontSize: 14 }]}>
+                Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.
+              </Text>
+              <Text style={[styles.infoCardSub, { color: colors.muted }]}>
+                Amount, paid, and balance come from the canonical Job. Payment collection is a later phase.
+              </Text>
+            </View>
+          ) : (
+          <>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: "#7C3AED" }]}
             onPress={() => reconcileMutation.mutate({ jobId: job.jobId })}
@@ -365,6 +388,8 @@ function JobDetailModal({
                 {sendingReceipt ? "Sending Receipt..." : "🧾  Send Receipt to Customer"}
               </Text>
             </TouchableOpacity>
+          )}
+          </>
           )}
 
           {/* Follow-Up Actions */}
@@ -480,17 +505,54 @@ function JobCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminUnpaidJobsScreen() {
   const colors = useColors();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const [selectedJob, setSelectedJob] = useState<UnpaidJob | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "in_progress" | "confirmed">("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [companyJobs, setCompanyJobs] = useState<UnpaidJob[]>([]);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
-  const query = trpc.jobs.getUnpaid.useQuery({ includeInProgress: true });
-  const jobs: UnpaidJob[] = (query.data?.jobs ?? []) as UnpaidJob[];
+  const query = trpc.jobs.getUnpaid.useQuery({ includeInProgress: true }, { enabled: allowLegacy });
+  const jobs: UnpaidJob[] = isCompany ? companyJobs : (query.data?.jobs ?? []) as UnpaidJob[];
+  const companyListState = companyCanonicalListState({
+    loading: companyLoading || companyAuthority === "unknown",
+    error: companyError,
+    itemCount: jobs.length,
+  });
+
+  const loadCompanyUnpaid = useCallback(async () => {
+    if (!isCompany) return;
+    if (!jobSyncSession?.token) {
+      setCompanyJobs([]);
+      setCompanyError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+      return;
+    }
+    setCompanyLoading(true);
+    try {
+      const rows = await getJobSyncCompanyUnpaidJobs(jobSyncSession.token);
+      setCompanyJobs(rows.map(unpaidJobFromCanonical));
+      setCompanyError(null);
+    } catch (error) {
+      setCompanyJobs([]);
+      setCompanyError(companyCanonicalReadError(error));
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, [isCompany, jobSyncSession?.token]);
+
+  useEffect(() => {
+    void loadCompanyUnpaid();
+  }, [loadCompanyUnpaid]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await query.refetch();
+    if (isCompany) await loadCompanyUnpaid();
+    else if (allowLegacy) await query.refetch();
     setRefreshing(false);
   };
 
@@ -516,12 +578,18 @@ export default function AdminUnpaidJobsScreen() {
     Linking.openURL(`tel:${phone}`);
   }, []);
 
-  const STATUS_FILTERS: { key: typeof filterStatus; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "completed", label: "Completed" },
-    { key: "in_progress", label: "In Progress" },
-    { key: "confirmed", label: "Confirmed" },
-  ];
+  const STATUS_FILTERS: { key: string; label: string }[] = isCompany
+    ? [
+        { key: "all", label: "All" },
+        { key: "unpaid", label: "Unpaid" },
+        { key: "partial", label: "Partial" },
+      ]
+    : [
+        { key: "all", label: "All" },
+        { key: "completed", label: "Completed" },
+        { key: "in_progress", label: "In Progress" },
+        { key: "confirmed", label: "Confirmed" },
+      ];
 
   return (
     <ScreenContainer containerClassName="bg-background">
@@ -580,8 +648,14 @@ export default function AdminUnpaidJobsScreen() {
         </View>
       </View>
 
+      {isCompany && companyListState === "error" ? (
+        <View style={styles.centered}>
+          <Text style={[styles.emptySub, { color: colors.muted, textAlign: "center", paddingHorizontal: 24 }]}>{companyError}</Text>
+        </View>
+      ) : null}
+
       {/* Loading */}
-      {query.isLoading && (
+      {(isCompany ? companyListState === "loading" : query.isLoading) && (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#0a7ea4" />
           <Text style={[styles.loadingText, { color: colors.muted }]}>Loading unpaid jobs...</Text>
@@ -589,7 +663,7 @@ export default function AdminUnpaidJobsScreen() {
       )}
 
       {/* Empty */}
-      {!query.isLoading && filtered.length === 0 && (
+      {!(isCompany ? companyListState === "loading" || companyListState === "error" : query.isLoading) && filtered.length === 0 && (
         <View style={styles.centered}>
           <Text style={styles.emptyEmoji}>🎉</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -604,7 +678,7 @@ export default function AdminUnpaidJobsScreen() {
       )}
 
       {/* List */}
-      {!query.isLoading && filtered.length > 0 && (
+      {!(isCompany ? companyListState === "loading" || companyListState === "error" : query.isLoading) && filtered.length > 0 && (
         <FlatList
           windowSize={5}
           maxToRenderPerBatch={8}
@@ -629,7 +703,8 @@ export default function AdminUnpaidJobsScreen() {
         job={selectedJob}
         visible={!!selectedJob}
         onClose={() => setSelectedJob(null)}
-        onMarkedPaid={() => { setSelectedJob(null); query.refetch(); }}
+        onMarkedPaid={() => { setSelectedJob(null); if (isCompany) void loadCompanyUnpaid(); else query.refetch(); }}
+        companyMode={!allowLegacy}
       />
     </ScreenContainer>
   );

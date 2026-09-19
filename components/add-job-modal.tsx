@@ -36,6 +36,12 @@ import {
   getJobSyncCompanyMembers,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
+import {
+  COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
+  allowsLegacyJobAuthority,
+  resolveCompanyJobAuthority,
+  usesCompanyJobAuthority,
+} from "@/lib/jobsync-company-authority";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -302,15 +308,17 @@ interface AddJobModalProps {
 export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
   const colors = useColors();
   const { employee: currentEmployee } = useEmployeeAuth();
-  const { session: jobSyncSession } = useJobSyncAuth();
-  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
+  const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
+  const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const companyPriceBook = useCompanyPriceBook();
   const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
   const [companyCustomersError, setCompanyCustomersError] = useState<string | null>(null);
   const [selectedCompanyCustomerId, setSelectedCompanyCustomerId] = useState<number | null>(null);
 
   // Company sessions use only their active Home Service Connected Price Book.
-  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: !isJobSyncCompany, staleTime: 60_000 });
+  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacy, staleTime: 60_000 });
   const pbServices = isJobSyncCompany ? companyPriceBook.services : localPbServices;
   const allJobPackages: PackageDef[] = pbServices.length > 0
     ? pbServices.map((s: any) => {
@@ -401,7 +409,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
   // ── Detailer availability ──
   const { data: existingJobsForDate } = trpc.jobs.listByLocation.useQuery(
     { location: selectedCity, startDate: selectedDate, endDate: selectedDate },
-    { enabled: !!selectedDate && !!selectedCity }
+    { enabled: allowLegacy && !!selectedDate && !!selectedCity }
   );
 
   const blockedHoursByDetailer = React.useMemo(() => {
@@ -615,8 +623,8 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
     };
 
     try {
-      if (isJobSyncCompany) {
-        if (!jobSyncSession?.token) throw new Error("Your Company session has expired. Sign in again to create a Job.");
+      if (!allowLegacy) {
+        if (!isJobSyncCompany || !jobSyncSession?.token) throw new Error(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
         const priceBookServiceId = Number(packageId);
         if (!Number.isSafeInteger(priceBookServiceId) || priceBookServiceId <= 0) {
           throw new Error("Select an active Company Price Book service before creating this Job.");

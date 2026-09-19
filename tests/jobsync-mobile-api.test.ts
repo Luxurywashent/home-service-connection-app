@@ -9,8 +9,13 @@ import {
   createJobSyncPasswordResetRequestPayload,
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
+  assignJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
+  getJobSyncCompanyInvoices,
   getJobSyncCompanyJobs,
+  getJobSyncCompanyUnpaidJobs,
+  rescheduleJobSyncCompanyJob,
+  updateJobSyncCompanyJobStatus,
   resolveJobSyncBaseUrl,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
@@ -296,6 +301,37 @@ describe("JobSync mobile API contract", () => {
       expect(fetchMock.mock.calls[0][0]).toContain("/api/mobile/v1/company/jobs");
       expect(request).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }));
       expect(JSON.parse(String((request as RequestInit).body))).toEqual({ customerId: 8, priceBookServiceId: 501, assignedUserId: 41, scheduledStartAt: "2026-09-11T13:00:00.000Z", privateNotes: "Gate code in CRM" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("patches Company Job schedule, assignment, and status through canonical bearer routes", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, status: "en_route", assignedUserId: 41, jobId: 45, scheduledStartAt: "2026-09-11T15:00:00.000Z" }),
+    } as Response);
+    try {
+      await updateJobSyncCompanyJobStatus("company-token", 45, { status: "en_route" });
+      await assignJobSyncCompanyJob("company-token", 45, { assignedUserId: 41 });
+      await rescheduleJobSyncCompanyJob("company-token", 45, { scheduledStartAt: "2026-09-11T15:00:00.000Z" });
+      expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/company/jobs/45/status");
+      expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/company/jobs/45/assignment");
+      expect(String(fetchMock.mock.calls[2][0])).toContain("/api/mobile/v1/company/jobs/45/schedule");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reads Company invoices and unpaid Jobs from canonical Job AR endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ invoices: [{ id: 45, customerName: "Test Customer", title: "Window Cleaning", serviceName: "Window Cleaning", paymentStatus: "unpaid", total: 249.5, paid: 0, balance: 249.5 }] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ jobs: [{ id: 45, title: "Window Cleaning", customerName: "Test Customer", amount: 249.5, paidTotal: 0, balance: 249.5, paymentStatus: "unpaid" }] }) } as Response);
+    try {
+      await expect(getJobSyncCompanyInvoices("company-token")).resolves.toMatchObject([{ id: 45, total: 249.5, balance: 249.5 }]);
+      await expect(getJobSyncCompanyUnpaidJobs("company-token")).resolves.toMatchObject([{ id: 45, balance: 249.5 }]);
+      expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/invoices");
+      expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/payments/unpaid-jobs");
     } finally {
       fetchMock.mockRestore();
     }
