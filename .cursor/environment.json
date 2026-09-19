@@ -6,7 +6,7 @@
   "terminals": [
     {
       "name": "backend",
-      "command": "cd /agent/repos/home-service-connection-app && pnpm dev:server"
+      "command": "cd /agent/repos/home-service-connection-app && bash scripts/cloud-agent-start.sh && pnpm dev:server"
     },
     {
       "name": "expo-web",
