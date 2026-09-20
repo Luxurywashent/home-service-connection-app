@@ -34,6 +34,39 @@ export const COMPANY_PAYMENT_CONTROLS = {
   recordPayment: false,
 } as const;
 
+export const CANONICAL_MANUAL_PAYMENT_METHODS = ["cash", "card", "other"] as const;
+export const CANONICAL_MANUAL_PAYMENT_JOB_STATUSES = ["completed"] as const;
+export const CANONICAL_CHECKOUT_JOB_STATUSES = ["scheduled", "en_route", "on_site", "completed", "follow_up"] as const;
+
+export function companyCanonicalPaymentWriterMounted(mode: CompanyJobAuthorityMode) {
+  return mode === "company";
+}
+
+export function companyCanonicalPaymentWriterAllowed(
+  mode: CompanyJobAuthorityMode,
+  role: string | null | undefined,
+) {
+  return mode === "company" && (role === "owner" || role === "dispatcher");
+}
+
+export function companyCanRecordCanonicalManualPayment(input: {
+  mode: CompanyJobAuthorityMode;
+  role: string | null | undefined;
+  jobStatus: string | null | undefined;
+}) {
+  return companyCanonicalPaymentWriterAllowed(input.mode, input.role)
+    && CANONICAL_MANUAL_PAYMENT_JOB_STATUSES.includes(input.jobStatus as typeof CANONICAL_MANUAL_PAYMENT_JOB_STATUSES[number]);
+}
+
+export function companyCanOpenCanonicalCheckout(input: {
+  mode: CompanyJobAuthorityMode;
+  role: string | null | undefined;
+  jobStatus: string | null | undefined;
+}) {
+  return companyCanonicalPaymentWriterAllowed(input.mode, input.role)
+    && CANONICAL_CHECKOUT_JOB_STATUSES.includes(input.jobStatus as typeof CANONICAL_CHECKOUT_JOB_STATUSES[number]);
+}
+
 export const STANDALONE_INVOICE_CLASSIFICATION = {
   table: "standalone_invoices",
   classification: "C",

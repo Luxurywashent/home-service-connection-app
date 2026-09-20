@@ -8,7 +8,9 @@ import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import { StyleSheet } from "react-native";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { CompanyCollectPayment } from "@/components/company-collect-payment";
 import { getJobSyncCompanyInvoices, type JobSyncCompanyInvoice } from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   allowsLegacyJobAuthority,
@@ -43,12 +45,14 @@ const STATUS_LABELS: Record<InvoiceStatus, string> = {
 export default function AdminInvoicesScreen() {
   const colors = useColors();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const { revision: companySyncRevision, refreshCompanyData, invalidateCanonicalSurfaces } = useJobSyncSync();
   const companyAuthority = resolveCompanyJobAuthority({ session: jobSyncSession, sessionLoading: jobSyncLoading });
   const isCompany = usesCompanyJobAuthority(companyAuthority);
   const allowLegacy = allowsLegacyJobAuthority(companyAuthority);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [selectedCompanyInvoice, setSelectedCompanyInvoice] = useState<ReturnType<typeof invoicePresentationFromCanonicalJob> | null>(null);
   const [companyInvoices, setCompanyInvoices] = useState<JobSyncCompanyInvoice[]>([]);
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -85,7 +89,7 @@ export default function AdminInvoicesScreen() {
         if (!cancelled) setCompanyLoading(false);
       });
     return () => { cancelled = true; };
-  }, [isCompany, jobSyncSession?.token]);
+  }, [companySyncRevision, isCompany, jobSyncSession?.token]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return invoices;
@@ -160,7 +164,7 @@ export default function AdminInvoicesScreen() {
             keyExtractor={(item) => String(item.jobId)}
             contentContainerStyle={{ padding: 16, gap: 12 }}
             renderItem={({ item }) => (
-              <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.85}>
+              <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} activeOpacity={0.85} onPress={() => setSelectedCompanyInvoice(item)}>
                 <View style={styles.cardRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.cardName, { color: colors.foreground }]}>{item.customerName || "Customer"}</Text>
@@ -227,6 +231,40 @@ export default function AdminInvoicesScreen() {
           onClose={() => setSelectedInvoice(null)}
           onUpdated={() => { setSelectedInvoice(null); refetch(); }}
         />
+      )}
+
+      {isCompany && selectedCompanyInvoice && jobSyncSession?.token && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setSelectedCompanyInvoice(null)}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: "88%" }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800" }}>Job #{selectedCompanyInvoice.jobId}</Text>
+                <TouchableOpacity onPress={() => setSelectedCompanyInvoice(null)}>
+                  <Text style={{ color: colors.primary, fontWeight: "700" }}>Close</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ color: colors.muted, marginBottom: 12 }}>{selectedCompanyInvoice.customerName} · {selectedCompanyInvoice.serviceName}</Text>
+              <ScrollView>
+                <CompanyCollectPayment
+                  key={selectedCompanyInvoice.jobId}
+                  token={jobSyncSession.token}
+                  jobId={selectedCompanyInvoice.jobId}
+                  role={jobSyncSession.user.role}
+                  authority={companyAuthority}
+                  amount={selectedCompanyInvoice.amount}
+                  paidTotal={selectedCompanyInvoice.amountPaid}
+                  balance={selectedCompanyInvoice.balanceDue}
+                  paymentStatus={selectedCompanyInvoice.paymentStatus}
+                  jobStatus={selectedCompanyInvoice.status}
+                  onCanonicalRefresh={async () => {
+                    invalidateCanonicalSurfaces();
+                    await refreshCompanyData({ force: true });
+                  }}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       )}
     </ScreenContainer>
   );
