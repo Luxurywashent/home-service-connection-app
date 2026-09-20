@@ -586,6 +586,133 @@ function companyJobPath(jobId: number, suffix = "") {
   return `${COMPANY_JOBS_PATH}/${jobId}${suffix}`;
 }
 
+function companyOperationalJobPath(jobId: number, suffix = "") {
+  if (!Number.isSafeInteger(jobId) || jobId <= 0) throw new Error("A valid Company Job ID is required.");
+  return `/api/mobile/v1/jobs/${jobId}${suffix}`;
+}
+
+export function sanitizeCompanyPaymentBody(body: Record<string, unknown>) {
+  const forbidden = [
+    "companyId",
+    "company_id",
+    "role",
+    "ownerId",
+    "owner_id",
+    "stripeAccountId",
+    "connectedAccountId",
+    "stripe_account_id",
+    "stripe_connect_account_id",
+  ];
+  for (const key of forbidden) {
+    if (key in body) throw new Error("Company identity and Stripe account must come from the authenticated Home Service Connected session.");
+  }
+  return body;
+}
+
+export function createManualPaymentIdempotencyKey() {
+  const entropy = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return `hsc-m3b-manual:${entropy}`.slice(0, 128);
+}
+
+export type JobSyncManualPaymentMethod = "cash" | "card" | "other";
+export type JobSyncCompanyJobPayment = {
+  id: number;
+  method: string;
+  status: string;
+  amount: number;
+  createdAt: string | null;
+};
+export type JobSyncRecordedJobPayment = {
+  jobId: number;
+  paymentId: number | null;
+  amount: number;
+  method: string;
+  paidTotal: number;
+  refundTotal: number;
+  appliedEstimateCredit: number;
+  balance: number;
+  paymentStatus: string;
+  duplicate: boolean;
+};
+export type JobSyncJobCheckout = {
+  url: string | null;
+  amountCents: number;
+  attemptId: number;
+  attemptStatus: string;
+  checkoutState: string;
+  reused: boolean;
+};
+
+function normalizeJobSyncCompanyJobPayment(value: unknown): JobSyncCompanyJobPayment | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    method: firstString(row.method) ?? "",
+    status: firstString(row.status) ?? "",
+    amount: Number(row.amount || 0),
+    createdAt: firstString(row.createdAt),
+  };
+}
+
+export async function getJobSyncCompanyJobPayments(token: string, jobId: number): Promise<JobSyncCompanyJobPayment[]> {
+  const payload = asRecord(await requestJson(companyOperationalJobPath(jobId, "/payments"), {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  })) ?? {};
+  return (Array.isArray(payload.payments) ? payload.payments : []).map(normalizeJobSyncCompanyJobPayment).filter((payment): payment is JobSyncCompanyJobPayment => Boolean(payment));
+}
+
+export async function recordJobSyncCompanyJobPayment(token: string, jobId: number, input: {
+  amount: number;
+  method: JobSyncManualPaymentMethod;
+  idempotencyKey: string;
+}): Promise<JobSyncRecordedJobPayment> {
+  const payload = asRecord(await requestJson(companyOperationalJobPath(jobId, "/payments"), {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyPaymentBody({
+      amount: input.amount,
+      method: input.method,
+      idempotencyKey: input.idempotencyKey,
+    })),
+  })) ?? {};
+  const payment = asRecord(payload.payment) ?? payload;
+  return {
+    jobId: firstNumber(payment.jobId) ?? jobId,
+    paymentId: firstNumber(payment.paymentId),
+    amount: Number(payment.amount || input.amount),
+    method: firstString(payment.method) ?? input.method,
+    paidTotal: Number(payment.paidTotal || 0),
+    refundTotal: Number(payment.refundTotal || 0),
+    appliedEstimateCredit: Number(payment.appliedEstimateCredit || 0),
+    balance: Number(payment.balance || 0),
+    paymentStatus: firstString(payment.paymentStatus) ?? "",
+    duplicate: payment.duplicate === true,
+  };
+}
+
+export async function createJobSyncCompanyJobCheckout(token: string, jobId: number): Promise<JobSyncJobCheckout> {
+  const payload = asRecord(await requestJson(companyOperationalJobPath(jobId, "/checkout"), {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyPaymentBody({})),
+  })) ?? {};
+  const checkout = asRecord(payload.checkout) ?? payload;
+  if (checkout.stripeAccountId != null || checkout.connectedAccountId != null) {
+    throw new Error("Company Checkout cannot accept a client-supplied Stripe account.");
+  }
+  return {
+    url: firstString(checkout.url),
+    amountCents: Number(checkout.amountCents || 0),
+    attemptId: firstNumber(checkout.attemptId) ?? 0,
+    attemptStatus: firstString(checkout.attemptStatus) ?? "",
+    checkoutState: firstString(checkout.checkoutState) ?? "",
+    reused: checkout.reused === true,
+  };
+}
+
 export function sanitizeCompanyMutationBody(body: Record<string, unknown>) {
   const identityForbidden = ["companyId", "company_id", "role", "ownerId", "owner_id"];
   const priceForbidden = ["amount", "unitPrice", "unit_price", "basePrice", "base_price"];

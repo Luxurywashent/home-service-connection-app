@@ -388,7 +388,7 @@ describe("Phase 1 — canonical Jobs / Schedule / AR / Unpaid", () => {
     expect(authoritySource).toContain("legacy Luxury Wash standalone billing");
   });
 
-  it("14. Payment execution remains disabled for Company sessions", () => {
+  it("14. Local payment execution remains disabled; canonical collection is the only Company writer", () => {
     expect(COMPANY_PAYMENT_CONTROLS).toEqual({
       card: false,
       applePay: false,
@@ -398,7 +398,7 @@ describe("Phase 1 — canonical Jobs / Schedule / AR / Unpaid", () => {
       refunds: false,
       recordPayment: false,
     });
-    expect(apiSource).not.toContain("recordJobSyncCompanyJobPayment");
+    expect(apiSource).toContain("recordJobSyncCompanyJobPayment");
     expect(unpaidSource).toContain("Card, Apple Pay, Tap to Pay, and local mark-paid stay disabled.");
     expect(scheduleSource).toContain("Card collection is disabled for Company Jobs.");
     expect(() => forbidLegacyCompanyJobAuthority(true, "savePayment")).toThrow();
