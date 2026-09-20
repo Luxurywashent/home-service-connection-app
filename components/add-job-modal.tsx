@@ -636,6 +636,9 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
         if (addonIds.length || extraVehicles.length || priceOverridden || computedDiscount > 0 || recurrenceRule?.type !== "none") {
           throw new Error("Company Jobs currently support one active Price Book service per Job. Add additional services in the Company Price Book before scheduling.");
         }
+        if (!vehicleType) {
+          throw new Error("Select a vehicle type so Home Service Connected can price this Job from the Company Price Book.");
+        }
         const customer = selectedCompanyCustomerId
           ? { id: selectedCompanyCustomerId }
           : await createJobSyncCompanyCustomer(jobSyncSession.token, {
@@ -652,6 +655,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
         const job = await createJobSyncCompanyJob(jobSyncSession.token, {
           customerId: customer.id,
           priceBookServiceId,
+          vehiclePriceKey: vehicleType,
           scheduledStartAt: start.toISOString(),
           scheduledEndAt: end.toISOString(),
           privateNotes: jobNotes,

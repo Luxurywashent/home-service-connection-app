@@ -67,24 +67,28 @@ describe("JobSync mobile API contract", () => {
     expect(sync.changes.messages).toEqual([{ id: 77, updatedAt: null, createdAt: "2026-09-15T12:00:40.000Z" }]);
   });
 
-  it("normalizes an authorized Company member update payload", () => {
+  it("normalizes an authorized Company member update payload without client role", () => {
     expect(createJobSyncCompanyMemberUpdatePayload({
       firstName: " Alex ",
       lastName: " Smith ",
       email: " ALEX@EXAMPLE.COM ",
       phone: " 555-0100 ",
       city: " Niceville ",
-      role: "technician",
       availability: "available",
+      positionId: 12,
     })).toEqual({
       firstName: "Alex",
       lastName: "Smith",
       email: "alex@example.com",
       phone: "555-0100",
       city: "Niceville",
-      role: "technician",
       availability: "available",
+      positionId: 12,
     });
+    expect(createJobSyncCompanyMemberUpdatePayload({
+      firstName: "Alex",
+      lastName: "Smith",
+    })).not.toHaveProperty("role");
   });
 
   it("extracts a bearer token from supported login response envelopes", () => {

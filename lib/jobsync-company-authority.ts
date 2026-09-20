@@ -18,6 +18,12 @@ export const COMPANY_TIME_OFF_LEGACY_FALLTHROUGH_BLOCKED =
 export const COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED =
   "Company Finance, Customers, and payment surfaces cannot use local Luxury Wash financial authority.";
 
+export const COMPANY_PRICE_BOOK_LEGACY_FALLTHROUGH_BLOCKED =
+  "Company Price Book cannot use local Luxury Wash price book authority.";
+
+export const COMPANY_PRICE_BOOK_WEB_AUTHORITY_NOTICE =
+  "Create, edit, activate, and deactivate services on the Home Service Connected web Price Book. Mobile reads the same canonical catalog for Job creation.";
+
 export const COMPANY_PAYMENT_CONTROLS = {
   card: false,
   applePay: false,
@@ -148,6 +154,14 @@ export const COMPANY_LOCAL_FINANCIAL_MUTATIONS = [
   "finance.deleteTransaction",
   "finance.getSummary",
   "customers.listAll",
+  "pricebook.upsert",
+  "pricebook.delete",
+  "pricebook.toggleActive",
+  "pricebook.reorder",
+  "pricebook.uploadServiceImage",
+  "employee.create",
+  "employee.update",
+  "employee.deactivate",
 ] as const;
 
 export function resolveCompanyFinancialScreen(mode: CompanyJobAuthorityMode): CompanyFinancialScreen {
@@ -235,6 +249,22 @@ export function companyFinanceUsesCanonicalAuthority(): true {
 }
 
 export function companyCustomersUseCanonicalRead(): true {
+  return true;
+}
+
+export function companyPriceBookUsesCanonicalRead(): true {
+  return true;
+}
+
+export function companyPriceBookAllowsLocalMutation(mode: CompanyJobAuthorityMode) {
+  return mode === "legacy";
+}
+
+export function companyTeamMembersUseCanonicalRead(): true {
+  return true;
+}
+
+export function companyTeamMemberUpdateOmitsClientRole(): true {
   return true;
 }
 

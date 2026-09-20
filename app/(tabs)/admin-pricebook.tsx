@@ -25,6 +25,8 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
+import { CompanyFinancialGate } from "@/components/company-financial-gate";
+import { CompanyPriceBookPanel } from "@/components/company-price-book-panel";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
 import * as Haptics from "expo-haptics";
@@ -331,7 +333,7 @@ function ServiceSheet({
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export default function AdminPricebookScreen() {
+function LegacyAdminPricebookScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
   const router = useRouter();
@@ -583,6 +585,16 @@ export default function AdminPricebookScreen() {
         onSave={handleSave}
       />
     </ScreenContainer>
+  );
+}
+
+export default function AdminPricebookScreen() {
+  return (
+    <CompanyFinancialGate
+      loadingMessage="Loading Company Price Book…"
+      company={(token) => <CompanyPriceBookPanel token={token} />}
+      legacy={() => <LegacyAdminPricebookScreen />}
+    />
   );
 }
 

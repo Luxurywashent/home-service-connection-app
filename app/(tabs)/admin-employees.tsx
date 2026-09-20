@@ -338,7 +338,6 @@ export default function AdminEmployeesScreen() {
         await updateJobSyncCompanyMember(token, memberId, {
           firstName: nameParts[0],
           lastName: nameParts.slice(1).join(" "),
-          role: jobSyncRoleForNativeMember(editData.role),
           email: editData.email,
           phone: editData.phoneNumber,
           city: editData.city,
@@ -818,22 +817,31 @@ export default function AdminEmployeesScreen() {
 
                     <View style={{ marginBottom: 20 }}>
                       <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Role</Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                        {(isJobSyncCompany ? roles.filter((role) => ["detailer", "admin", "operations_manager"].includes(role.value)) : roles).map((r) => (
-                          <TouchableOpacity
-                            key={r.value}
-                            onPress={() => setEditData({ ...editData, role: r.value })}
-                            activeOpacity={0.7}
-                            style={{
-                              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                              backgroundColor: editData.role === r.value ? colors.primary : colors.surface,
-                              borderWidth: 1, borderColor: editData.role === r.value ? colors.primary : colors.border,
-                            }}
-                          >
-                            <Text style={{ fontSize: 13, fontWeight: "600", color: editData.role === r.value ? "#FFF" : colors.foreground }}>{r.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                      {isJobSyncCompany ? (
+                        <View style={{ backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{roleLabel(editData.role)}</Text>
+                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
+                            Access role is server-derived from Company membership. Job title/position changes use Home Service Connected web or the positions API — mobile cannot grant owner/dispatcher/technician through this form.
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {roles.map((r) => (
+                            <TouchableOpacity
+                              key={r.value}
+                              onPress={() => setEditData({ ...editData, role: r.value })}
+                              activeOpacity={0.7}
+                              style={{
+                                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                                backgroundColor: editData.role === r.value ? colors.primary : colors.surface,
+                                borderWidth: 1, borderColor: editData.role === r.value ? colors.primary : colors.border,
+                              }}
+                            >
+                              <Text style={{ fontSize: 13, fontWeight: "600", color: editData.role === r.value ? "#FFF" : colors.foreground }}>{r.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
                     </View>
 
                     {/* Custom Work Days — only shown for detailers */}
