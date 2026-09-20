@@ -169,6 +169,9 @@ const config: ExpoConfig = {
   },
   extra: {
     googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+    eas: {
+      projectId: "e6614385-618a-460d-a650-06ae63b97563",
+    },
   },
 };
 
