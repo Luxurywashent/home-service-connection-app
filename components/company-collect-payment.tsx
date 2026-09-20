@@ -218,6 +218,10 @@ export function CompanyCollectPayment({
     const statusBeforeReturn = job ? canonicalJobArSnapshot(job).paymentStatus : displayStatus;
     try {
       const checkout = await createJobSyncCompanyJobCheckout(token, jobId);
+      if (!checkout.url) {
+        setNotice("A secure Checkout link is not available for this Job.");
+        return;
+      }
       await openHostedCheckoutUrl(checkout.url);
       if (shouldMarkJobPaidFromCheckoutBrowserReturn()) {
         throw new Error("Checkout return cannot mark a Job paid.");
