@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
-import { Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Platform } from "react-native";
+import { useState, useMemo, useEffect } from "react";
+import { Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { createHomeServiceConnectedTimeOff, getHomeServiceConnectedTimeOff, type HomeServiceConnectedTimeOffRequest } from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
 import { CalendarPicker } from "@/components/calendar-picker";
 
@@ -43,20 +45,44 @@ const STATUS_COLORS: Record<string, string> = { pending: "#F59E0B", approved: "#
 export default function RequestOffScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isCompanySession = jobSyncSession?.portal === "company";
   const utils = trpc.useUtils();
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [requestType, setRequestType] = useState<"vacation" | "sick" | "personal" | "other">("vacation");
   const [showPolicy, setShowPolicy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [activeCalendar, setActiveCalendar] = useState<"start" | "end" | null>(null);
+  const [companyRequests, setCompanyRequests] = useState<HomeServiceConnectedTimeOffRequest[]>([]);
+  const [companyRequestsLoading, setCompanyRequestsLoading] = useState(false);
+
+  const loadCompanyRequests = async () => {
+    if (!isCompanySession || !jobSyncSession?.token) return;
+    setCompanyRequestsLoading(true);
+    try {
+      setCompanyRequests(await getHomeServiceConnectedTimeOff(jobSyncSession.token));
+    } catch {
+      setCompanyRequests([]);
+    } finally {
+      setCompanyRequestsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // This effect synchronizes request history with the authenticated Company session.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadCompanyRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCompanySession, jobSyncSession?.token]);
 
   const { data: requests, isLoading } = trpc.timeOff.getForEmployee.useQuery(
     { employeeId: employee?.employeeId ?? "" },
-    { enabled: !!employee }
+    { enabled: !!employee && !isCompanySession }
   );
 
   const createMutation = trpc.timeOff.create.useMutation({
@@ -65,11 +91,24 @@ export default function RequestOffScreen() {
       setStartDate("");
       setEndDate("");
       setReason("");
+      setRequestType("vacation");
       setActiveCalendar(null);
       setSubmitSuccess(true);
       setTimeout(() => setSubmitSuccess(false), 3000);
     },
   });
+
+  const legacyRequests = useMemo(() => (requests ?? []).map((request) => ({
+    requestId: String(request.requestId),
+    startDate: request.startDate,
+    endDate: request.endDate,
+    totalDaysRequested: request.totalDaysRequested,
+    daysNoticeGiven: request.daysNoticeGiven,
+    status: request.status,
+    reason: request.reason ?? null,
+    managerNote: request.managerNote ?? null,
+  })), [requests]);
+  const displayRequests = isCompanySession ? companyRequests : legacyRequests;
 
   const validation = useMemo(() => {
     if (!startDate || !endDate) return null;
@@ -84,6 +123,25 @@ export default function RequestOffScreen() {
     setSubmitting(true);
     setSubmitError("");
     try {
+      if (isCompanySession) {
+        if (!jobSyncSession?.token) throw new Error("Your Home Service Connected session is unavailable.");
+        await createHomeServiceConnectedTimeOff(jobSyncSession.token, {
+          startDate,
+          endDate,
+          hoursRequested: validation.days * 8,
+          requestType,
+          reason: reason.trim() || undefined,
+        });
+        await loadCompanyRequests();
+        setStartDate("");
+        setEndDate("");
+        setReason("");
+        setRequestType("vacation");
+        setActiveCalendar(null);
+        setSubmitSuccess(true);
+        setTimeout(() => setSubmitSuccess(false), 3000);
+        return;
+      }
       const requestId = `TOR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       await createMutation.mutateAsync({
         requestId,
@@ -98,7 +156,7 @@ export default function RequestOffScreen() {
         policyMessage: validation.message,
       });
     } catch (e: any) {
-      setSubmitError("Failed to submit request. Please try again.");
+      setSubmitError(e instanceof Error ? e.message : "Failed to submit request. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -238,6 +296,35 @@ export default function RequestOffScreen() {
           )}
         </View>
 
+        {/* Request Type */}
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Request Type</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {([
+              ["vacation", "Vacation"],
+              ["sick", "Sick"],
+              ["personal", "Personal"],
+              ["other", "Other"],
+            ] as const).map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                onPress={() => setRequestType(value)}
+                activeOpacity={0.7}
+                style={{
+                  backgroundColor: requestType === value ? colors.primary : colors.surface,
+                  borderColor: requestType === value ? colors.primary : colors.border,
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 16,
+                  paddingVertical: 9,
+                }}
+              >
+                <Text style={{ color: requestType === value ? "#FFF" : colors.foreground, fontWeight: "700", fontSize: 13 }}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Validation Display */}
         {validation && (
           <View style={{
@@ -288,7 +375,9 @@ export default function RequestOffScreen() {
 
         {submitSuccess && (
           <View style={{ backgroundColor: colors.success + "15", borderRadius: 8, padding: 12, marginBottom: 14 }}>
-            <Text style={{ color: colors.success, fontSize: 14, textAlign: "center", fontWeight: "600" }}>Request submitted successfully!</Text>
+            <Text style={{ color: colors.success, fontSize: 14, textAlign: "center", fontWeight: "600" }}>
+              {isCompanySession ? "Request submitted to your Company administrator." : "Request submitted successfully!"}
+            </Text>
           </View>
         )}
 
@@ -314,12 +403,12 @@ export default function RequestOffScreen() {
 
         {/* Request History */}
         <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Request History</Text>
-        {isLoading ? (
+        {(isLoading || companyRequestsLoading) ? (
           <ActivityIndicator color={colors.primary} />
-        ) : (requests ?? []).length === 0 ? (
+        ) : displayRequests.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 14 }}>No previous requests</Text>
         ) : (
-          (requests ?? []).map((req) => (
+          displayRequests.map((req) => (
             <View key={req.requestId} style={{
               backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,
               borderWidth: 1, borderColor: colors.border,

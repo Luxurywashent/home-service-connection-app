@@ -79,6 +79,7 @@ const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
 const COMPANY_CHAT_DIRECT_PATH = "/api/mobile/v1/chat/direct";
 const COMPANY_PRICE_BOOK_PATH = "/api/mobile/v1/price-book";
+const COMPANY_TIME_OFF_PATH = "/api/mobile/v1/time-off";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -422,6 +423,63 @@ export type HomeServiceConnectedTimeState = {
   clockInAt: string | null;
   activeBreak: { isActive: boolean; startedAt: string | null } | null;
 };
+
+export type HomeServiceConnectedTimeOffRequest = {
+  requestId: string;
+  startDate: string;
+  endDate: string;
+  totalDaysRequested: number;
+  daysNoticeGiven: number;
+  status: "pending" | "approved" | "denied";
+  reason: string | null;
+  managerNote: string | null;
+};
+
+function normalizeHomeServiceConnectedTimeOffRequest(value: unknown): HomeServiceConnectedTimeOffRequest | null {
+  const request = asRecord(value);
+  if (!request) return null;
+  const id = firstString(request.requestId, firstNumber(request.id, request.request_id)?.toString());
+  const startDate = firstString(request.startDate, request.start_date);
+  const endDate = firstString(request.endDate, request.end_date);
+  const status = firstString(request.status, request.requestStatus, request.request_status)?.toLowerCase();
+  if (!id || !startDate || !endDate || !status || !["pending", "approved", "denied"].includes(status)) return null;
+  return {
+    requestId: id,
+    startDate: startDate.slice(0, 10),
+    endDate: endDate.slice(0, 10),
+    totalDaysRequested: nullableNumber(request.totalDaysRequested) ?? ((nullableNumber(request.hoursRequested, request.hours_requested) ?? 0) / 8),
+    daysNoticeGiven: nullableNumber(request.daysNoticeGiven, request.days_notice_given) ?? 0,
+    status: status as HomeServiceConnectedTimeOffRequest["status"],
+    reason: firstString(request.reason),
+    managerNote: firstString(request.managerNote, request.reviewerNote, request.reviewer_note),
+  };
+}
+
+export function normalizeHomeServiceConnectedTimeOff(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const requests = Array.isArray(data.requests) ? data.requests : Array.isArray(root?.requests) ? root.requests : [];
+  return requests.map(normalizeHomeServiceConnectedTimeOffRequest).filter((request): request is HomeServiceConnectedTimeOffRequest => Boolean(request));
+}
+
+export async function getHomeServiceConnectedTimeOff(token: string) {
+  const payload = await requestJson(COMPANY_TIME_OFF_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+  return normalizeHomeServiceConnectedTimeOff(payload);
+}
+
+export async function createHomeServiceConnectedTimeOff(token: string, input: { startDate: string; endDate: string; hoursRequested: number; requestType: "vacation" | "sick" | "personal" | "other"; reason?: string }) {
+  return requestJson(COMPANY_TIME_OFF_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      hoursRequested: input.hoursRequested,
+      requestType: input.requestType,
+      ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+    }),
+  });
+}
 
 export type HomeServiceConnectedPriceBookService = {
   serviceId: string;

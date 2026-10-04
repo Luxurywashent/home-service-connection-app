@@ -10,6 +10,7 @@ import {
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
   normalizeHomeServiceConnectedTimeState,
+  normalizeHomeServiceConnectedTimeOff,
   normalizeHomeServiceConnectedChatGroups,
   normalizeHomeServiceConnectedCommunityCategories,
   normalizeHomeServiceConnectedCommunityPosts,
@@ -150,6 +151,24 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeHomeServiceConnectedTimeState({
       activeShift: { startedAt: "2026-08-16T13:00:00Z", status: "active" },
     }).isClockedIn).toBe(true);
+  });
+
+  it("normalizes Company time-off requests for employee history", () => {
+    expect(normalizeHomeServiceConnectedTimeOff({
+      requests: [
+        { id: 7, startDate: "2026-10-12T00:00:00.000Z", endDate: "2026-10-13", hoursRequested: 16, status: "pending", reason: "Family", reviewerNote: null },
+        { id: 8, startDate: "2026-10-20", endDate: "2026-10-20", status: "cancelled" },
+      ],
+    })).toEqual([{
+      requestId: "7",
+      startDate: "2026-10-12",
+      endDate: "2026-10-13",
+      totalDaysRequested: 2,
+      daysNoticeGiven: 0,
+      status: "pending",
+      reason: "Family",
+      managerNote: null,
+    }]);
   });
 
   it("normalizes active Company-managed chat groups and excludes archived groups", () => {
