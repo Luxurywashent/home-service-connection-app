@@ -40,10 +40,10 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { NavigationMapModal } from "@/components/navigation-map-modal";
 
 // ─── Service Catalog ──────────────────────────────────────────────────────────
 
@@ -290,7 +290,7 @@ const ADDONS: AddonDef[] = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type JobStatus = "scheduled" | "on_my_way" | "arrived" | "started" | "finished";
+type JobStatus = JobProgressStatus;
 type PaymentMethod = "credit_debit" | "apple_pay" | "tap_to_pay" | "cash" | "check" | "other";
 
 interface PaymentRecord {
@@ -343,9 +343,11 @@ interface Job {
   basePrice?: number; // original price before any upsells (set on first upsell save, never changes)
   detailerName?: string; // name of the detailer assigned to this job
   travelStartedAt?: string; // ISO timestamp when ON MY WAY was tapped
+  onMyWayAt?: string;       // persisted server milestone for ON MY WAY
   arrivedAt?: string;       // ISO timestamp when ARRIVED was tapped (travel ends)
   jobStartedAt?: string;    // ISO timestamp when job timer started (= arrivedAt)
   jobFinishedAt?: string;   // ISO timestamp when FINISH was tapped
+  finishedAt?: string;      // persisted server milestone for FINISH
   // Vehicle inspection
   inspection?: VehicleInspection;
   // Enhanced job detail fields
@@ -557,15 +559,9 @@ const STATUS_LABELS: Record<JobStatus, string> = {
   arrived: "Arrived",
   started: "In Progress",
   finished: "Finished",
+  cancelled: "Cancelled",
 };
 
-const STATUS_NEXT: Record<JobStatus, JobStatus | null> = {
-  scheduled: "on_my_way",
-  on_my_way: "arrived",
-  arrived: "finished",
-  started: "finished",
-  finished: null,
-};
 
 const STATUS_COLOR: Record<JobStatus, string> = {
   scheduled: "#3B82F6",
@@ -573,6 +569,7 @@ const STATUS_COLOR: Record<JobStatus, string> = {
   arrived: "#8B5CF6",
   started: "#10B981",
   finished: "#6B7280",
+  cancelled: "#EF4444",
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -2309,8 +2306,6 @@ export default function ScheduleScreen() {
   const [lateDelayMinutes, setLateDelayMinutes] = useState(30);
   const [lateCustomMinutes, setLateCustomMinutes] = useState('');
   const [lateNotifiedJobIds, setLateNotifiedJobIds] = useState<Set<string>>(new Set());
-  const [navVisible, setNavVisible] = useState(false);
-  const [navJob, setNavJob] = useState<Job | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -2466,9 +2461,6 @@ export default function ScheduleScreen() {
   const [inspDiagramTab, setInspDiagramTab] = useState<"exterior" | "interior">("exterior");
   const [inspNotes, setInspNotes] = useState("");
   // Enhanced job detail state
-  const [showCustomerHistory, setShowCustomerHistory] = useState(true);
-  const [customerHistoryJobs, setCustomerHistoryJobs] = useState<any[]>([]);
-  const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [editingPrivateNotes, setEditingPrivateNotes] = useState(false);
@@ -2500,11 +2492,7 @@ export default function ScheduleScreen() {
 
   // Auto-load customer history whenever a job is selected
   useEffect(() => {
-    setCustomerHistoryJobs([]);
     setAddrPhotos([]);
-    if (selectedJob && (selectedJob.phone || selectedJob.email)) {
-      loadCustomerHistory(selectedJob);
-    }
     if (selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddrPhotos(photos)).catch(() => {});
@@ -2772,7 +2760,11 @@ export default function ScheduleScreen() {
           endHour: sj.endHour != null ? parseFloat(String(sj.endHour)) : 10,
           dayIndex: dayOfWeek,
           weekOffset: wOffset,
-          status: (sj.status === "completed" ? "finished" : sj.status === "in_progress" ? "started" : sj.status === "cancelled" ? "cancelled" : "scheduled") as JobStatus,
+          status: restoreJobProgressStatus(sj.status, {
+            onMyWayAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+            arrivedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+            finishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
+          }),
           _rawStatus: sj.status,
           notes: sj.notes || undefined,
               detailerName: sj.assignedTo || undefined,
@@ -2796,9 +2788,12 @@ export default function ScheduleScreen() {
           upsellQtys: sj.upsellQtys ? (() => { try { return JSON.parse(sj.upsellQtys); } catch { return {}; } })() : {},
           additionalVehicles: sj.additionalVehicles ? (() => { try { return JSON.parse(sj.additionalVehicles); } catch { return []; } })() : [],
           photoUrls: sj.photoUrls ? (() => { try { const p = JSON.parse(sj.photoUrls); return Array.isArray(p) ? p : []; } catch { return []; } })() : [],
-          onMyWayAt: sj.onMyWayAt ? String(sj.onMyWayAt) : null,
-          arrivedAt: sj.arrivedAt ? String(sj.arrivedAt) : null,
-          finishedAt: sj.finishedAt ? String(sj.finishedAt) : null,
+          travelStartedAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+          onMyWayAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+          arrivedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+          jobStartedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+          jobFinishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
+          finishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
           createdAt: sj.createdAt ? new Date(sj.createdAt).toISOString() : new Date().toISOString(),
           // Map server payment fields so paid jobs show correctly (no red ring)
           payment: sj.paymentMethod && sj.paymentPaidAt ? {
@@ -3203,7 +3198,17 @@ export default function ScheduleScreen() {
           endHour: sj.endHour != null ? parseFloat(String(sj.endHour)) : 10,
           dayIndex: dayOfWeek,
           weekOffset: wOffset,
-          status: (sj.status === "completed" ? "finished" : sj.status === "in_progress" ? "started" : "scheduled") as JobStatus,
+          status: restoreJobProgressStatus(sj.status, {
+            onMyWayAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+            arrivedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+            finishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
+          }),
+          travelStartedAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+          onMyWayAt: sj.onMyWayAt ? String(sj.onMyWayAt) : undefined,
+          arrivedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+          jobStartedAt: sj.arrivedAt ? String(sj.arrivedAt) : undefined,
+          jobFinishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
+          finishedAt: sj.finishedAt ? String(sj.finishedAt) : undefined,
           notes: sj.notes || undefined,
           vehicleType: resolveVehicleType(sj.vehicleType),
           packageId: resolvePackageId(sj.packageType) || undefined,
@@ -3367,51 +3372,54 @@ export default function ScheduleScreen() {
   };
 
   const advanceStatus = (job: Job) => {
-    const next = STATUS_NEXT[job.status];
-    if (!next) return;
     const now = new Date().toISOString();
-    const timestamps: Partial<Job> = {};
-    if (next === "on_my_way") { timestamps.travelStartedAt = now; startLocationSharing(job); stampTimestampMutation.mutate({ jobId: job.id, field: "onMyWayAt", timestamp: now }); setNavJob(job); }
-    if (next === "arrived")   { timestamps.arrivedAt = now; timestamps.jobStartedAt = now; stopLocationSharing(job.id); stampTimestampMutation.mutate({ jobId: job.id, field: "arrivedAt", timestamp: now }); }
-    if (next === "finished")  { timestamps.jobFinishedAt = now; if (!job.jobStartedAt) timestamps.jobStartedAt = now; stopLocationSharing(job.id); stampTimestampMutation.mutate({ jobId: job.id, field: "finishedAt", timestamp: now }); }
-    const updatedJob = { ...job, status: next, ...timestamps };
-    const updated = jobs.map((j) => j.id === job.id ? updatedJob : j);
+    const transition = getJobProgressTransition(job.status, now);
+    if (!transition) return;
+
+    const timestamps = transition.nextStatus === "finished" && !job.jobStartedAt
+      ? { ...transition.timestamps, jobStartedAt: now }
+      : transition.timestamps;
+    const updatedJob = { ...job, status: transition.nextStatus, ...timestamps };
+    const updated = jobs.map((item) => item.id === job.id ? updatedJob : item);
     persistJobs(updated);
-    if (next === "on_my_way") {
-      // Close job detail modal first — iOS cannot show two Modals simultaneously.
-      // After dismiss animation, open the navigation modal.
-      setSelectedJob(null);
-      setShowUpsellPanel(false);
-      setUpsellIds([]);
-      setUpsellQtys({});
-      setTimeout(() => setNavVisible(true), 400);
-    } else {
-      setSelectedJob(updatedJob);
+    setSelectedJob(updatedJob);
+
+    // Progress is saved first so the card reacts immediately. GPS/tracking is a
+    // best-effort companion to the On My Way milestone and cannot hide that update.
+    if (transition.nextStatus === "on_my_way") {
+      void startLocationSharing(updatedJob);
     }
-    // Sync status to server DB
-    // Update schedule_jobs for any job with a real DB ID.
-    // NOTE: online_ jobs ARE in schedule_jobs (mirrored from online_bookings) — include them.
-    // Only portal_ bookings use a separate path (portalBookingStatusMutation).
+    if (transition.nextStatus === "arrived" || transition.nextStatus === "finished") {
+      stopLocationSharing(job.id);
+    }
+
+    if (timestamps.onMyWayAt) {
+      stampTimestampMutation.mutate({ jobId: job.id, field: "onMyWayAt", timestamp: timestamps.onMyWayAt });
+    }
+    if (timestamps.arrivedAt) {
+      stampTimestampMutation.mutate({ jobId: job.id, field: "arrivedAt", timestamp: timestamps.arrivedAt });
+    }
+    if (timestamps.finishedAt) {
+      stampTimestampMutation.mutate({ jobId: job.id, field: "finishedAt", timestamp: timestamps.finishedAt });
+    }
+
+    // The local service stores detailed travel milestones as timestamps and uses
+    // confirmed/in-progress/completed for the durable lifecycle status.
     if (!job.id.startsWith("portal_")) {
-      const serverStatus = next === "finished" ? "completed" : next === "started" ? "in_progress" : "confirmed";
-      jobStatusMutation.mutate({ jobId: job.id, status: serverStatus as "confirmed" | "in_progress" | "completed" | "cancelled" | "pending" });
+      jobStatusMutation.mutate({ jobId: job.id, status: transition.serverStatus });
     }
-    // For portal bookings (id starts with "portal_"), also update the customer_bookings status
-    // so the customer sees the live status in their portal
     if (job.id.startsWith("portal_") && job.bookingId) {
       const portalStatus =
-        next === "on_my_way" ? "en_route" :
-        next === "arrived"   ? "arrived" :
-        next === "started"   ? "in_progress" :
-        next === "finished"  ? "completed" : "confirmed";
+        transition.nextStatus === "on_my_way" ? "en_route" :
+        transition.nextStatus === "arrived" ? "arrived" : "completed";
       portalBookingStatusMutation.mutate({ bookingRef: job.bookingId, status: portalStatus as any });
-      // Also update schedule_jobs status so push notifications and review emails fire for portal bookings.
-      // The schedule_jobs mirror record shares the same portal_ job ID.
-      const serverStatus = next === "finished" ? "completed" : next === "started" ? "in_progress" : next === "arrived" ? "in_progress" : "confirmed";
-      jobStatusMutation.mutate({ jobId: job.id, status: serverStatus as "confirmed" | "in_progress" | "completed" | "cancelled" | "pending" });
+      jobStatusMutation.mutate({ jobId: job.id, status: transition.serverStatus });
+    }
+
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
-
   const deleteJob = (id: string) => {
     const jobToDelete = jobs.find((j) => j.id === id);
     Alert.alert("Delete Job", "Are you sure?", [
@@ -3430,23 +3438,6 @@ export default function ScheduleScreen() {
   };
 
   // ─── Enhanced Job Detail Helpers ────────────────────────────────────────────
-
-  const loadCustomerHistory = async (job: Job) => {
-    if (!job.phone && !job.email) return;
-    setCustomerHistoryLoading(true);
-    try {
-      const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      // tRPC v11 wraps response data in .result.data.json
-      const jobs = data?.result?.data?.json ?? data?.result?.data ?? [];
-      setCustomerHistoryJobs(jobs);
-    } catch {
-      setCustomerHistoryJobs([]);
-    } finally {
-      setCustomerHistoryLoading(false);
-    }
-  };
 
   const saveJobTags = async (job: Job, newTags: string[]) => {
     setSavingMeta(true);
@@ -4510,47 +4501,6 @@ export default function ScheduleScreen() {
                       )}
                     </View>
 
-                    {/* Customer History row */}
-                    <TouchableOpacity
-                      onPress={() => setShowCustomerHistory(prev => !prev)}
-                      style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Text style={{ fontSize: 16 }}>🕐</Text>
-                        <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>Customer History</Text>
-                      </View>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        {customerHistoryLoading ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
-                        ) : (
-                          <Text style={{ color: colors.muted, fontSize: 14 }}>{customerHistoryJobs.length > 0 ? customerHistoryJobs.length : ""}</Text>
-                        )}
-                        <Text style={{ color: colors.muted, fontSize: 18 }}>{showCustomerHistory ? "∧" : ">"}</Text>
-                      </View>
-                    </TouchableOpacity>
-                    {showCustomerHistory && (
-                      <View style={{ marginTop: 8, gap: 6 }}>
-                        {customerHistoryLoading ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
-                        ) : customerHistoryJobs.length === 0 ? (
-                          <Text style={{ color: colors.muted, fontSize: 13 }}>No previous jobs found for this customer.</Text>
-                        ) : (
-                          customerHistoryJobs.map((hj: any, idx: number) => (
-                            <View key={idx} style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border }}>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{hj.packageType || hj.serviceDescription || "Detail Service"}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 12 }}>{hj.date}</Text>
-                              </View>
-                              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{hj.vehicleType ? `${hj.vehicleType}` : ""}{hj.vehicleYear ? ` ${hj.vehicleYear}` : ""}{hj.vehicleMake ? ` ${hj.vehicleMake}` : ""}{hj.vehicleModel ? ` ${hj.vehicleModel}` : ""}</Text>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
-                                <Text style={{ color: hj.status === "completed" ? "#22C55E" : colors.muted, fontSize: 12, fontWeight: "600" }}>{hj.status?.toUpperCase()}</Text>
-                                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700" }}>${parseFloat(hj.totalPrice || "0").toFixed(2)}</Text>
-                              </View>
-                            </View>
-                          ))
-                        )}
-                      </View>
-                    )}
                   </View>
 
                   {/* ─── Job Schedule Card ─── */}
@@ -4961,55 +4911,6 @@ export default function ScheduleScreen() {
                     )}
                   </View>
 
-                  {/* ─── Vehicle Inspection Section ─── */}
-                  {(() => {
-                    const hasInspection = !!selectedJob.inspection;
-                    return hasInspection ? (
-                      <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <Text style={[s.sectionLabel, { color: colors.muted }]}>🔍 VEHICLE INSPECTION</Text>
-                          <TouchableOpacity
-                            onPress={() => openInspection(selectedJob)}
-                            style={{ backgroundColor: "#10B981", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
-                            activeOpacity={0.75}
-                          >
-                            <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "700" }}>✓ View / Edit</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <View style={{ gap: 4 }}>
-                          {(() => {
-                            const poorItems = INSP_CATEGORIES.filter(c => selectedJob.inspection!.ratings[c.id] === "poor");
-                            const allZones = [...(selectedJob.inspection!.exteriorZones ?? []), ...(selectedJob.inspection!.interiorZones ?? [])];
-                            const hasDamage = poorItems.length > 0 || allZones.length > 0;
-                            return (
-                              <>
-                                {hasDamage ? (
-                                  <Text style={{ color: "#EF4444", fontSize: 12 }}>⚠️ Needs Attention — {poorItems.length} poor rating{poorItems.length !== 1 ? "s" : ""}{allZones.length > 0 ? `, ${allZones.length} damage zone${allZones.length !== 1 ? "s" : ""}` : ""}</Text>
-                                ) : (
-                                  <Text style={{ color: "#10B981", fontSize: 12 }}>✓ All items rated Good or N/A</Text>
-                                )}
-                                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>By {selectedJob.inspection!.inspectedBy} · {new Date(selectedJob.inspection!.completedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</Text>
-                              </>
-                            );
-                          })()}
-                        </View>
-                      </View>
-                    ) : (
-                      <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                        <TouchableOpacity
-                          onPress={() => openInspection(selectedJob)}
-                          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                          activeOpacity={0.7}
-                        >
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <Text style={{ fontSize: 16 }}>🔍</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>Vehicle Inspection</Text>
-                          </View>
-                          <Text style={{ color: colors.primary, fontSize: 22, fontWeight: "300" }}>+</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })()}
                   {/* ─── Lead Source Card ─── */}
                   {selectedJob.leadSource ? (
                     <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -6193,85 +6094,6 @@ export default function ScheduleScreen() {
           }}
         />
       )}
-
-      {/* In-app navigation modal */}
-      <NavigationMapModal
-        visible={navVisible}
-        destination={navJob?.address ?? ""}
-        jobName={navJob ? `${navJob.firstName} ${navJob.lastName}`.trim() : undefined}
-        apiKey={process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""}
-        jobId={navJob?.id}
-        detailerName={employee?.fullName ?? undefined}
-        onArrive={() => {
-          setNavVisible(false);
-          const jobId = navJob?.id;
-          setNavJob(null);
-          if (jobId) {
-            const now = new Date().toISOString();
-            // Use jobsRef to get the latest job state (navJob snapshot may be stale)
-            const liveJob = jobsRef.current.find((j) => j.id === jobId) ?? navJob!;
-            const timestamps: Partial<Job> = { arrivedAt: now, jobStartedAt: now };
-            stopLocationSharing(jobId);
-            stampTimestampMutation.mutate({ jobId, field: "arrivedAt", timestamp: now });
-            const updatedJob = { ...liveJob, status: "arrived" as JobStatus, ...timestamps };
-            const updated = jobsRef.current.map((j) => j.id === jobId ? updatedJob : j);
-            persistJobs(updated);
-            // online_ jobs ARE in schedule_jobs — only portal_ uses a separate path
-            if (!jobId.startsWith("portal_")) {
-              jobStatusMutation.mutate({ jobId, status: "confirmed" });
-            }
-            if (jobId.startsWith("portal_") && liveJob.bookingId) {
-              portalBookingStatusMutation.mutate({ bookingRef: liveJob.bookingId, status: "arrived" as any });
-            }
-            // Reopen job detail after nav modal has fully dismissed
-            setTimeout(() => setSelectedJob(updatedJob), 350);
-          }
-        }}
-        onClose={() => {
-          const jobId = navJob?.id;
-          const liveJob = jobId ? jobsRef.current.find((j) => j.id === jobId) ?? navJob : null;
-          // Ask detailer if they've arrived before closing navigation
-          Alert.alert(
-            "Close Navigation",
-            "Have you arrived at the customer's location?",
-            [
-              {
-                text: "Not Yet",
-                style: "cancel",
-                onPress: () => {
-                  // Just close the nav modal — keep location sharing running
-                  setNavVisible(false);
-                  setNavJob(null);
-                  if (liveJob) setTimeout(() => setSelectedJob(liveJob), 350);
-                },
-              },
-              {
-                text: "Yes, Arrived",
-                onPress: () => {
-                  setNavVisible(false);
-                  setNavJob(null);
-                  if (jobId && liveJob) {
-                    const now = new Date().toISOString();
-                    const timestamps: Partial<Job> = { arrivedAt: now, jobStartedAt: now };
-                    stopLocationSharing(jobId);
-                    stampTimestampMutation.mutate({ jobId, field: "arrivedAt", timestamp: now });
-                    const updatedJob = { ...liveJob, status: "arrived" as JobStatus, ...timestamps };
-                    const updated = jobsRef.current.map((j) => j.id === jobId ? updatedJob : j);
-                    persistJobs(updated);
-                    if (!jobId.startsWith("portal_")) {
-                      jobStatusMutation.mutate({ jobId, status: "confirmed" });
-                    }
-                    if (jobId.startsWith("portal_") && liveJob.bookingId) {
-                      portalBookingStatusMutation.mutate({ bookingRef: liveJob.bookingId, status: "arrived" as any });
-                    }
-                    setTimeout(() => setSelectedJob(updatedJob), 350);
-                  }
-                },
-              },
-            ]
-          );
-        }}
-      />
 
       {/* Full-screen Address Photo Viewer */}
       {viewingAddrPhoto && (

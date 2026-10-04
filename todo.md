@@ -2,6 +2,11 @@
 
 ## JobSync Platform Integration
 
+- [x] Complete authorized Phase 1 blocker remediation: Company Jobs writes and tenant acceptance, password-reset end-to-end, stacked API integration, legacy migration/feature-gap inventories, SDK and security review, test cleanup, validation-only CI, and a final no-merge audit.
+- [ ] Execute the approved non-production Phase 1 JobSync and Home Service Connection reconciliation: preserve comparison workspaces, build capability branches and the 26-file matrix, migrate only verified unsafe legacy runtime/configuration paths, validate, and open review-only PRs without merging, deploying, publishing, rebasing, modifying production, or starting Phase 2.
+- [x] Complete a read-only final pre-merge audit of Jobsync PR #5 and Home Service Connection PRs #1–#5, including architecture, legacy dependency, tenant isolation, stacked-base, and validation findings; do not merge, deploy, publish, rebase, push, or modify production.
+- [ ] Determine the non-destructive method to attach this Manus project to the existing Luxurywashent/home-service-connection-app repository without creating, pushing, merging, deploying, or modifying code.
+- [ ] Verify GitHub access and open the five approved review-only mobile pull requests with their approved stacked bases; do not merge, deploy, publish, rebase, squash, force-push, alter production, or begin Phase 2.
 - [x] Review and merge the supplied Home Service Connected mobile Team Chat parity package without replacing newer mobile integrations.
 - [ ] Verify Community, Direct Messages, group membership changes, and group archiving on an authenticated Company device session.
 - [x] Deliver a ready-to-paste Home Service Connected web-project prompt for the shared secure password-reset implementation.
@@ -3274,3 +3279,8 @@
 - [ ] Add a dedicated Employee ID and PIN sign-in path for administrator access and verify Adrian Miller’s credentials through it.
 - [x] Prevent employee session storage failures from blocking a successful administrator login redirect.
 - [ ] Record and verify the completed App Store Connect connection for Home Service Connection.
+
+- [ ] Synchronize the approved merged GitHub mobile main branch into the Home Service Connection Manus workspace without publishing or overwriting GitHub.
+- [ ] Verify the approved merged JobSync main branch exposes the Phase 1 Company Jobs and password-reset contracts in preview only.
+- [ ] Run the requested focused Home Service Connection preview smoke test for Company login, customers, Calendar, jobs, Add Job, Price Book, roster, Team Chat, password reset, tenant isolation, and Luxury Wash runtime isolation.
+- [ ] Complete one final read-only pre-merge audit of mobile reconciliation PRs #1–#5, covering combined-stack compatibility, active Luxury Wash runtime dependencies, HSC API configuration, validations, and the safe stacked merge sequence.
