@@ -40,6 +40,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
@@ -4276,6 +4277,23 @@ export default function ScheduleScreen() {
                         </TouchableOpacity>
                       ))}
                     </View>
+                    {shouldShowCollectPayment(selectedJob.payment) && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          checkoutJobRef.current = selectedJob;
+                          // Close job detail first — iOS cannot stack two Modals reliably.
+                          setSelectedJob(null);
+                          setShowUpsellPanel(false);
+                          setUpsellIds([]);
+                          setUpsellQtys({});
+                          setTimeout(() => setShowCheckout(true), 350);
+                        }}
+                        style={[s.payBtn, { backgroundColor: "#22C55E" }]}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={s.payBtnText}>💳  Collect Payment  ·  ${calculateJobCollectionAmount(selectedJob.price, selectedJob.upsellTotal, selectedJob.discountAmount).toFixed(2)}</Text>
+                      </TouchableOpacity>
+                    )}
                     {/* Running Late button — shown for all active today jobs */}
                     {selectedJob.status !== "finished" && (
                       <TouchableOpacity
@@ -4310,23 +4328,7 @@ export default function ScheduleScreen() {
                         ))}
                       </View>
                     )}
-                    {!selectedJob.payment ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          checkoutJobRef.current = selectedJob;
-                          // Close job detail first — iOS cannot stack two modals reliably
-                          setSelectedJob(null);
-                          setShowUpsellPanel(false);
-                          setUpsellIds([]);
-                          setUpsellQtys({});
-                          setTimeout(() => setShowCheckout(true), 350);
-                        }}
-                        style={[s.payBtn, { backgroundColor: "#22C55E" }]}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={s.payBtnText}>💳  Collect Payment  ·  ${Math.max(0, (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0)).toFixed(2)}</Text>
-                      </TouchableOpacity>
-                    ) : (
+                    {selectedJob.payment && (
                       <View>
                         <View style={[s.paymentSummary, { backgroundColor: selectedJob.payment.refundedAt ? "#EF444418" : "#22C55E18", borderColor: selectedJob.payment.refundedAt ? "#EF444444" : "#22C55E44" }]}>
                           {selectedJob.payment.refundedAt ? (

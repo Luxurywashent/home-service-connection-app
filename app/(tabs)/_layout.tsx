@@ -189,7 +189,7 @@ export default function TabLayout() {
           options={{
             title: "Payroll",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="dollarsign.circle.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/payroll",
+            href: null, // Payroll is not currently offered in the mobile app.
           }}
         />
         <Tabs.Screen

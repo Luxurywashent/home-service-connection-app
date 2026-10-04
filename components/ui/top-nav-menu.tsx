@@ -45,7 +45,6 @@ const DETAILER_ITEMS: MenuItem[] = [
   { label: "Schedule",   icon: "📅", route: "/schedule" },
   { label: "Team Chat",  icon: "💬", route: "/chat" },
   { label: "Alerts",     icon: "🔔", route: "/notifications" },
-  { label: "Payroll",    icon: "💰", route: "/payroll" },
   { label: "Training",   icon: "📚", route: "/training" },
   { label: "Repairs",    icon: "🔧", route: "/repair-request" },
   { label: "Expenses",   icon: "🧾", route: "/expenses" },
