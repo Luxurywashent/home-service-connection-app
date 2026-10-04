@@ -1,14 +1,12 @@
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { ChatUnreadBanner } from "@/components/chat-unread-banner";
 import { JobEventBanner } from "@/components/job-event-banner";
-import { useColors } from "@/hooks/use-colors";
 import { useRouter, usePathname } from "expo-router";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
 import { HeaderClockStatus } from "@/components/header-clock-status";
 
@@ -29,7 +27,6 @@ const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Fleet",        icon: "🚐",  route: "/admin-fleet-map" },
   { label: "Team Chat",    icon: "💬",  route: "/chat" },
   { label: "Timesheets",   icon: "⏱️",  route: "/admin-timesheet" },
-  { label: "Finance",      icon: "💵",  route: "/admin-finance" },
   { label: "Invoices",     icon: "🧾",  route: "/admin-invoices" },
   { label: "Unpaid Jobs",  icon: "💸",  route: "/admin-unpaid-jobs" },
   { label: "Customers",    icon: "👤",  route: "/admin-customers" },
@@ -99,7 +96,6 @@ const SALES_ITEMS: MenuItem[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
-  const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();

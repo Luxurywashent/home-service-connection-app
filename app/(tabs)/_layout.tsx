@@ -467,7 +467,7 @@ export default function TabLayout() {
           options={{
             title: "Finance",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="dollarsign.circle.fill" color={color} />,
-            href: isAdmin ? ("/(tabs)/admin-finance" as any) : null,
+            href: null,
           }}
         />
         {/* Phase C: Booking Pipeline */}

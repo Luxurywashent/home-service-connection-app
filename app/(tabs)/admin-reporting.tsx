@@ -1,7 +1,6 @@
 /**
  * Admin Reporting Screen
  * - Date range picker: Today / This Week / This Month / Last Month / Custom
- * - Location filter: All / Crestview / Niceville / Destin / FWB / Pensacola
  * - Revenue summary cards (total revenue, avg per job, tips, upsells)
  * - Time on job metrics (avg hours, total hours)
  * - Package breakdown table (jobs, revenue, avg hours per package)
@@ -103,16 +102,6 @@ function getRange(key: RangeKey, customFrom?: string, customTo?: string): { from
   }
 }
 
-// ─── Location Options ─────────────────────────────────────────────────────────
-const LOCATION_OPTIONS = [
-  { slug: "",           label: "All Locations" },
-  { slug: "crestview",  label: "Crestview" },
-  { slug: "niceville",  label: "Niceville" },
-  { slug: "destin",     label: "Destin" },
-  { slug: "fwb",        label: "Fort Walton Beach" },
-  { slug: "pensacola",  label: "Pensacola" },
-];
-
 // ─── Bar Chart ────────────────────────────────────────────────────────────────
 function RevenueBarChart({ data, colors }: { data: { date: string; revenue: number; jobs: number }[]; colors: any }) {
   const screenWidth = Dimensions.get("window").width;
@@ -194,8 +183,6 @@ function SectionHeader({ title, colors }: { title: string; colors: any }) {
 export default function AdminReportingScreen() {
   const colors = useColors();
   const [rangeKey, setRangeKey] = useState<RangeKey>("week");
-  const [locationSlug, setLocationSlug] = useState("");
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showCustomPicker, setShowCustomPicker] = useState(false);
   const [customFrom, setCustomFrom] = useState<string | undefined>(undefined);
   const [customTo, setCustomTo] = useState<string | undefined>(undefined);
@@ -203,37 +190,36 @@ export default function AdminReportingScreen() {
   const [customStep, setCustomStep] = useState<"from" | "to">("from");
 
   const range = useMemo(() => getRange(rangeKey, customFrom, customTo), [rangeKey, customFrom, customTo]);
-  const locationLabel = LOCATION_OPTIONS.find((o) => o.slug === locationSlug)?.label ?? "All Locations";
 
   // ── tRPC Queries ────────────────────────────────────────────────────────────
   const summaryQ = trpc.reporting.getSummary.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
   const packageQ = trpc.reporting.getPackageBreakdown.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
   const detailerQ = trpc.reporting.getDetailerStats.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
   const trendQ = trpc.reporting.getDailyTrend.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
   const driveTimeQ = trpc.reporting.getDriveTimeStats.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
-  // Only fetch city breakdown when All Locations is selected
+  // Reporting is consolidated across Company locations.
   const cityBreakdownQ = trpc.reporting.getCityBreakdown.useQuery(
     { startDate: range.from, endDate: range.to },
-    { staleTime: 60_000, enabled: !locationSlug }
+    { staleTime: 60_000 }
   );
   // Booked Revenue — queries by job creation date
   const bookedQ = trpc.reporting.getBookedRevenue.useQuery(
-    { startDate: range.from, endDate: range.to, location: locationSlug || undefined },
+    { startDate: range.from, endDate: range.to },
     { staleTime: 60_000 }
   );
   // Portal analytics — all-time, not date-range filtered
@@ -338,35 +324,6 @@ export default function AdminReportingScreen() {
             </View>
           </View>
         </Modal>
-
-        {/* ── Location Filter ── */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-          <TouchableOpacity
-            onPress={() => setShowLocationPicker(!showLocationPicker)}
-            style={[styles.locationBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Text style={[styles.locationBtnText, { color: colors.foreground }]}>📍 {locationLabel}</Text>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>{showLocationPicker ? "▲" : "▼"}</Text>
-          </TouchableOpacity>
-          {showLocationPicker && (
-            <View style={[styles.locationDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              {LOCATION_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.slug}
-                  onPress={() => { setLocationSlug(opt.slug); setShowLocationPicker(false); }}
-                  style={[styles.locationOption, { borderBottomColor: colors.border }]}
-                >
-                  <Text style={[styles.locationOptionText, {
-                    color: locationSlug === opt.slug ? colors.primary : colors.foreground,
-                    fontWeight: locationSlug === opt.slug ? "700" : "400",
-                  }]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
 
         {/* ── Date Range Label ── */}
         <Text style={[styles.rangeLabel, { color: colors.muted }]}>
@@ -573,8 +530,8 @@ export default function AdminReportingScreen() {
               )
             )}
 
-            {/* ── Performance by City (All Locations only) ── */}
-            {!locationSlug && cityBreakdown.length > 1 && (
+            {/* ── Performance by City ── */}
+            {cityBreakdown.length > 1 && (
               <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
                 <SectionHeader title="Performance by City" colors={colors} />
                 {/* Bar chart: revenue per city */}
@@ -801,7 +758,7 @@ export default function AdminReportingScreen() {
                 <Text style={{ fontSize: 40 }}>📊</Text>
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Jobs Found</Text>
                 <Text style={[styles.emptySubtitle, { color: colors.muted }]}>
-                  No jobs scheduled for this period{locationSlug ? ` in ${locationLabel}` : ""}.
+                  No jobs scheduled for this period.
                 </Text>
               </View>
             )}
@@ -840,33 +797,6 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  locationBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  locationBtnText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  locationDropdown: {
-    borderRadius: 10,
-    borderWidth: 1,
-    marginTop: 4,
-    overflow: "hidden",
-  },
-  locationOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-  },
-  locationOptionText: {
-    fontSize: 14,
   },
   rangeLabel: {
     fontSize: 12,
