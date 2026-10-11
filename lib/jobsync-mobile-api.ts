@@ -25,6 +25,7 @@ export type JobSyncNativeSession = {
 
 export type JobSyncFeatureAccess = {
   features: Record<string, boolean>;
+  mobileTabs: Record<string, boolean>;
   mobile: {
     finance: boolean;
     invoices: boolean;
@@ -936,8 +937,10 @@ export function normalizeJobSyncFeatureAccess(payload: unknown): JobSyncFeatureA
     return key ? [[key, item?.isEnabled === true]] : [];
   }));
   const mobile = asRecord(root?.mobile) ?? {};
+  const rawMobileTabs = asRecord(root?.mobileTabs) ?? {};
   return {
     features,
+    mobileTabs: Object.fromEntries(Object.entries(rawMobileTabs).flatMap(([key, value]) => typeof value === "boolean" ? [[key, value]] : [])),
     mobile: {
       finance: mobile.finance === true,
       invoices: mobile.invoices === true,
@@ -950,6 +953,15 @@ export async function getJobSyncCompanyFeatureAccess(token: string) {
   const payload = await requestJson(COMPANY_FEATURE_ACCESS_PATH, {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncFeatureAccess(payload);
+}
+
+export async function updateJobSyncMobileTabAccess(token: string, key: string, isEnabled: boolean) {
+  const payload = await requestJson(COMPANY_FEATURE_ACCESS_PATH, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ key, isEnabled }),
   });
   return normalizeJobSyncFeatureAccess(payload);
 }

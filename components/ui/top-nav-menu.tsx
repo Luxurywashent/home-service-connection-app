@@ -11,6 +11,7 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
 import { HeaderClockStatus } from "@/components/header-clock-status";
+import { mobileTabKeyForRoute, useMobileTabAccess } from "@/lib/mobile-tab-access";
 
 export interface TopNavMenuProps {
   onMenuToggle?: (isOpen: boolean) => void;
@@ -101,13 +102,18 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const insets = useSafeAreaInsets();
   const { logout, isAdmin, isOpsManager, isSalesRep, employee: currentEmployee } = useEmployeeAuth();
   const { logout: logoutJobSync, session: jobSyncSession } = useJobSyncAuth();
+  const { isVisible } = useMobileTabAccess();
   const [isOpen, setIsOpen] = useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
   const signedInCompanyName = jobSyncSession?.portal === "company"
     ? (jobSyncSession.company?.name ?? "Home Service Connection")
     : "Home Service Connection";
 
-  const allItems = isOpsManager ? OPS_MANAGER_ITEMS : isAdmin ? ADMIN_ALL_ITEMS : isSalesRep ? SALES_ITEMS : DETAILER_ITEMS;
+  const allItems = (isOpsManager ? OPS_MANAGER_ITEMS : isAdmin ? ADMIN_ALL_ITEMS : isSalesRep ? SALES_ITEMS : DETAILER_ITEMS)
+    .filter((item) => {
+      const key = mobileTabKeyForRoute(item.route);
+      return !key || isVisible(key);
+    });
   const { data: chatUnread } = trpc.chat.getUnreadCount.useQuery(
     { employeeId: currentEmployee?.employeeId ?? "" },
     { enabled: !!currentEmployee?.employeeId, refetchInterval: 15_000, staleTime: 5_000 }
