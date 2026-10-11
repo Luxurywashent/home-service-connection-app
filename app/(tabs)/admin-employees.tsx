@@ -306,6 +306,7 @@ export default function AdminEmployeesScreen() {
       fullName: profile?.name ?? selectedEmp.fullName,
       email: profile?.email ?? selectedEmp.email ?? "",
       phoneNumber: profile?.phone ?? selectedEmp.phoneNumber ?? "",
+      hireDate: profile?.hireDate ?? selectedEmp.hireDate ?? "",
       city: isJobSyncCompany ? profile?.city ?? "" : selectedEmp.city ?? "",
       role: profile ? nativeRoleForJobSyncMember(profile.role) : selectedEmp.role,
       pin: "",
@@ -341,6 +342,7 @@ export default function AdminEmployeesScreen() {
           email: editData.email,
           phone: editData.phoneNumber,
           city: editData.city,
+          hireDate: editData.hireDate,
         });
         const roster = await getJobSyncCompanyMembers(token, companyId);
         setCompanyMembers(roster.members);
@@ -745,6 +747,7 @@ export default function AdminEmployeesScreen() {
                     <EditField label="Full Name" value={editData.fullName} onChangeText={(t: string) => setEditData({ ...editData, fullName: t })} colors={colors} />
                     <EditField label="Email" value={editData.email} onChangeText={(t: string) => setEditData({ ...editData, email: t })} colors={colors} keyboardType="email-address" autoCapitalize="none" />
                     <EditField label="Phone" value={editData.phoneNumber} onChangeText={(t: string) => setEditData({ ...editData, phoneNumber: t })} colors={colors} keyboardType="phone-pad" />
+                    <EditField label="Hire Date" value={editData.hireDate ?? ""} onChangeText={(t: string) => setEditData({ ...editData, hireDate: t.replace(/[^0-9-]/g, "").substring(0, 10) })} colors={colors} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                     {isJobSyncCompany ? (
                       <View style={{ marginBottom: 16 }}>
                         <EditField label="City" value={editData.city} onChangeText={(t: string) => setEditData({ ...editData, city: t })} colors={colors} />

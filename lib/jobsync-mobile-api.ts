@@ -75,6 +75,7 @@ export type JobSyncCompanyMemberUpdateInput = {
   email?: string;
   phone?: string;
   city?: string;
+  hireDate?: string;
   availability?: "available" | "busy" | "off_duty";
   /** Canonical role change path — maps to company_team_positions; never send bare `role`. */
   positionId?: number;
@@ -884,6 +885,7 @@ export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMem
     ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.city?.trim() ? { city: input.city.trim() } : {}),
+    ...(input.hireDate?.trim() ? { hireDate: input.hireDate.trim() } : {}),
     ...(input.availability ? { availability: input.availability } : {}),
     ...(typeof input.positionId === "number" && Number.isSafeInteger(input.positionId) && input.positionId > 0
       ? { positionId: input.positionId }
