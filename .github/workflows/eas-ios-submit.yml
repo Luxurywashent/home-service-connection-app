@@ -1,0 +1,59 @@
+name: Home Service Connection iOS submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: EAS iOS build ID to submit
+        required: true
+        default: 381939ee-ce7a-4ab7-a538-7a0a2f731bb4
+        type: string
+      profile:
+        description: EAS submission profile
+        required: true
+        default: testflight
+        type: choice
+        options:
+          - testflight
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: Submit existing iOS build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Expo project
+        run: |
+          npx expo install --check
+          npx expo-doctor
+
+      - name: Submit existing EAS iOS build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_NO_VCS: "1"
+        run: |
+          test -n "$EXPO_TOKEN"
+          npx eas-cli@latest submit \
+            --platform ios \
+            --profile "${{ inputs.profile }}" \
+            --id "${{ inputs.build_id }}" \
+            --non-interactive
