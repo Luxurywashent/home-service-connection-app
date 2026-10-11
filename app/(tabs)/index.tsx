@@ -1,6 +1,5 @@
 import { ActivityIndicator, Animated, ScrollView, Text, TouchableOpacity, View, Platform, Modal } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
-import { TrainingSection } from "@/components/training-section";
 import { WeatherForecast } from "@/components/weather-forecast";
 import { TimecardDisplay } from "@/components/timecard-display";
 import { NotificationBanner } from "@/components/notification-banner";
@@ -1214,10 +1213,6 @@ function DetailerDashboard() {
               <WeatherForecast city={employee?.city ?? null} />
             </View>
 
-            {/* Training Section */}
-            <View style={{ paddingHorizontal: 20 }}>
-              <TrainingSection colors={colors} />
-            </View>
           </>
         )}
       </ScrollView>

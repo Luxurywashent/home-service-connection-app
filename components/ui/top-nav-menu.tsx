@@ -46,7 +46,6 @@ const DETAILER_ITEMS: MenuItem[] = [
   { label: "Team Chat",  icon: "💬", route: "/chat" },
   { label: "Alerts",     icon: "🔔", route: "/notifications" },
   { label: "Payroll",    icon: "💰", route: "/payroll" },
-  { label: "Training",   icon: "📚", route: "/training" },
   { label: "Repairs",    icon: "🔧", route: "/repair-request" },
   { label: "Expenses",   icon: "🧾", route: "/expenses" },
   { label: "EOD Check",  icon: "✅", route: "/eod-checklist" },
