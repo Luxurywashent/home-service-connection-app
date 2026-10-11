@@ -53,6 +53,7 @@ import {
   usesCompanyJobAuthority,
 } from "@/lib/jobsync-company-authority";
 import { CompanyCollectPayment } from "@/components/company-collect-payment";
+import { JobLocationMap } from "@/components/job-location-map";
 import { COMPANY_SCHEDULE_HALF_HOUR_SLOTS, COMPANY_SCHEDULE_START_HOUR, companyScheduleInitialOffset, companyScheduleSlotIndex } from "@/lib/jobsync-schedule-window";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import { trpc } from "@/lib/trpc";
@@ -4340,11 +4341,7 @@ export default function ScheduleScreen() {
                   {/* ─── Street View Hero ─── */}
                   {selectedJob.address ? (
                     <View style={{ position: "relative", height: 320, marginBottom: 0 }}>
-                     <Image
-                         source={{ uri: `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(selectedJob.address)}&fov=90&pitch=10&key=${(Constants.expoConfig?.extra?.googleMapsApiKey as string) || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || ""}` }}
-                         style={{ width: "100%", height: 320 }}
-                         resizeMode="cover"
-                       />
+                      <JobLocationMap address={selectedJob.address} height={320} />
                       {/* Gradient overlay for readability */}
                       <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 60 }} />
                       {/* Close button */}

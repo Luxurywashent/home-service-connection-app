@@ -39,6 +39,7 @@ import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { CompanyCollectPayment } from "@/components/company-collect-payment";
+import { JobLocationMap } from "@/components/job-location-map";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
 import {
@@ -2833,11 +2834,7 @@ export default function AdminScheduleScreen() {
                 {/* ─── Street View Hero ─── */}
                 {selectedJob.address ? (
                   <View style={{ position: "relative", height: 320 }}>
-                    <Image
-                      source={{ uri: `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(selectedJob.address)}&fov=90&pitch=10&key=${(Constants.expoConfig?.extra?.googleMapsApiKey as string) || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || ""}` }}
-                      style={{ width: "100%", height: 320 }}
-                      resizeMode="cover"
-                    />
+                    <JobLocationMap address={selectedJob.address} height={320} />
                     {/* Back button */}
                     <TouchableOpacity
                       onPress={() => { setSelectedJob(null); setShowReassignPicker(false); }}
