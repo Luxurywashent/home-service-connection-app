@@ -84,9 +84,6 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
     <ScreenContainer edges={["left", "right"]} className="flex-1">
       <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
         <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "800" }}>Customers</Text>
-        <Text style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-          Home Service Connected customers. Lifetime value and local Luxury Wash records stay off this list.
-        </Text>
       </View>
 
       <View style={{
@@ -123,7 +120,7 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
           padding: 12,
         }}>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800" }}>{customers.length}</Text>
-          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Canonical customers</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Customers</Text>
         </View>
       ) : null}
 
@@ -162,7 +159,6 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
           ListEmptyComponent={
             <CompanyAuthorityMessage
               title={search.trim() ? "No customers match your search" : "No Company customers"}
-              detail="This empty list came from Home Service Connected, not the local Luxury Wash customer table."
             />
           }
           renderItem={({ item }) => (

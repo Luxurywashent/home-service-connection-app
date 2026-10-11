@@ -4,11 +4,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { CompanyAuthorityLoading, CompanyAuthorityMessage } from "@/components/company-authority-state";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import {
-  COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
-  resolveCompanyFinanceDisplay,
-} from "@/lib/jobsync-company-authority";
+import { companyCanonicalReadError, resolveCompanyFinanceDisplay } from "@/lib/jobsync-company-authority";
 import { getJobSyncCompanyFinance, type JobSyncCompanyFinanceSummary } from "@/lib/jobsync-mobile-api";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 
@@ -86,9 +82,6 @@ export function CompanyFinancePanel({ token }: { token: string }) {
       >
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "800" }}>Finance</Text>
-          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 4 }}>
-            Canonical Home Service Connected FinanceService projection. Local ledger writes, balance-sheet math, and Tap to Pay settings stay unmounted.
-          </Text>
           {display.state === "ready" && finance?.reportingMonth ? (
             <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>
               Reporting month {finance.reportingMonth}{finance.reportingTimezone ? ` · ${finance.reportingTimezone}` : ""}
@@ -100,8 +93,8 @@ export function CompanyFinancePanel({ token }: { token: string }) {
           <CompanyAuthorityLoading message="Loading Company Finance…" />
         ) : display.state === "error" ? (
           <CompanyAuthorityMessage
-            title="Company Finance is unavailable"
-            detail={error ?? COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED}
+            title="Finance unavailable"
+            detail={error ?? "Please try again later."}
           />
         ) : finance ? (
           <>
@@ -120,7 +113,7 @@ export function CompanyFinancePanel({ token }: { token: string }) {
 
             {finance.invoiceCount != null ? (
               <Text style={{ color: colors.muted, fontSize: 12, marginHorizontal: 16, marginTop: 12 }}>
-                {finance.invoiceCount} canonical job invoice{finance.invoiceCount === 1 ? "" : "s"}
+                {finance.invoiceCount} invoice{finance.invoiceCount === 1 ? "" : "s"}
               </Text>
             ) : null}
 
@@ -129,7 +122,7 @@ export function CompanyFinancePanel({ token }: { token: string }) {
               {finance.transactions.length === 0 ? (
                 <CompanyAuthorityMessage
                   title="No finance transactions"
-                  detail="This empty list came from Home Service Connected FinanceService, not a local zero."
+                  detail="No transactions to show."
                 />
               ) : (
                 finance.transactions.map((row) => (
@@ -160,8 +153,8 @@ export function CompanyFinancePanel({ token }: { token: string }) {
           </>
         ) : (
           <CompanyAuthorityMessage
-            title="Company Finance is unavailable"
-            detail={COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED}
+            title="Finance unavailable"
+            detail="Please try again later."
           />
         )}
       </ScrollView>

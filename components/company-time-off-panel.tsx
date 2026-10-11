@@ -39,7 +39,9 @@ function daysInclusive(start: string, end: string) {
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return "-";
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const date = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function tomorrowStr() {
@@ -121,7 +123,7 @@ export function CompanyTimeOffPanel({
       setStartDate("");
       setEndDate("");
       setReason("");
-      setSubmitSuccess("Request submitted to Home Service Connected.");
+      setSubmitSuccess("Request submitted.");
       await refresh();
     } catch (requestError) {
       setSubmitError(companyCanonicalReadError(requestError));
@@ -142,7 +144,7 @@ export function CompanyTimeOffPanel({
       const coverage = result.approved
         ? ` Coverage updated for ${result.coveredCount} scheduled job(s); ${result.inFieldCount} in-field job(s) stayed assigned.`
         : "";
-      setReviewMessage(`${status === "approved" ? "Approved" : "Denied"} through Home Service Connected.${coverage}`);
+      setReviewMessage(`${status === "approved" ? "Approved" : "Denied"}.${coverage}`);
       setSelected(null);
       setReviewerNote("");
       await refresh();
@@ -159,9 +161,6 @@ export function CompanyTimeOffPanel({
         <View style={{ marginBottom: 16, marginTop: 8 }}>
           <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "800" }}>
             {mode === "review" ? "Time Off" : "Request Time Off"}
-          </Text>
-          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>
-            Requests, approvals, and denials use Home Service Connected. Schedule coverage stays on the canonical Time Off authority.
           </Text>
         </View>
 
@@ -251,7 +250,6 @@ export function CompanyTimeOffPanel({
         ) : listState === "empty" ? (
           <CompanyAuthorityMessage
             title={mode === "review" ? "No requests in this filter" : "No Time Off requests"}
-            detail="This empty list came from Home Service Connected, not a local time-off table."
           />
         ) : (
           <View style={{ gap: 10 }}>
@@ -323,9 +321,6 @@ export function CompanyTimeOffPanel({
               <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "800" }}>{selected.memberName}</Text>
               <Text style={{ color: colors.muted, fontSize: 14, marginTop: 8 }}>
                 {formatDate(selected.startDate)} - {formatDate(selected.endDate)}
-              </Text>
-              <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>
-                Approval uses the same Home Service Connected coverage authority as web Time Off. Mobile does not calculate schedule conflicts.
               </Text>
               <TextInput
                 value={reviewerNote}

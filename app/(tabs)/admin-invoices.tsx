@@ -151,9 +151,6 @@ export default function AdminInvoicesScreen() {
         ) : companyCanonicalListState({ loading: companyLoading, error: companyError, itemCount: companyFiltered.length }) === "empty" ? (
           <View style={styles.center}>
             <Text style={{ color: colors.muted, fontSize: 15 }}>No Company Job invoices</Text>
-            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8, textAlign: "center", paddingHorizontal: 24 }}>
-              Job invoices come from canonical Job balances. Standalone invoices stay on the Luxury Wash path.
-            </Text>
           </View>
         ) : (
           <FlatList

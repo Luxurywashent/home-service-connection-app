@@ -10,7 +10,6 @@ import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
-import { COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED } from "@/lib/jobsync-company-authority";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 
@@ -36,7 +35,7 @@ function CompanyExpensesUnavailable() {
     <ScreenContainer edges={["left", "right"]} className="flex-1">
       <CompanyAuthorityMessage
         title="Company expenses are unavailable"
-        detail={`${COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED} Local expense writes stay on the Luxury Wash path.`}
+        detail="Expenses are not available for this account."
       />
     </ScreenContainer>
   );

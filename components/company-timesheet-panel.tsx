@@ -6,10 +6,7 @@ import { CompanyAuthorityLoading, CompanyAuthorityMessage, companyTimeListState 
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
-import {
-  COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
-} from "@/lib/jobsync-company-authority";
+import { companyCanonicalReadError } from "@/lib/jobsync-company-authority";
 import {
   getHomeServiceConnectedTeamTimeSummary,
   getHomeServiceConnectedTimesheets,
@@ -112,9 +109,6 @@ export function CompanyTimesheetPanel({
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
           <Text style={{ color: colors.foreground, fontSize: 28, fontWeight: "800" }}>Timesheet</Text>
-          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>
-            Hours come from Home Service Connected clock records. Company mode does not keep a second timesheet ledger.
-          </Text>
         </View>
 
         {showTimeOffLink ? (
@@ -136,7 +130,6 @@ export function CompanyTimesheetPanel({
               <Text style={{ fontSize: 22 }}>🗓️</Text>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>Request Time Off</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Uses canonical Home Service Connected Time Off</Text>
               </View>
               <Text style={{ color: colors.muted, fontSize: 20 }}>›</Text>
             </TouchableOpacity>
@@ -159,7 +152,7 @@ export function CompanyTimesheetPanel({
             <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" }}>Weekly Hours</Text>
             <Text style={{ color: colors.primary, fontSize: 40, fontWeight: "800" }}>{listState === "error" ? "—" : totalHours.toFixed(2)}</Text>
             <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>
-              {selectedMember ? `${selectedMember.name} · canonical clock records` : "canonical clock records"}
+              {selectedMember ? selectedMember.name : "Total hours"}
             </Text>
           </View>
         </View>
@@ -202,18 +195,15 @@ export function CompanyTimesheetPanel({
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 10 }}>
-              Time edits and approvals stay on the Home Service Connected Timesheets screen. Mobile Company mode does not create a second edit rule set.
-            </Text>
           </View>
         ) : null}
 
         {listState === "loading" ? (
           <CompanyAuthorityLoading message="Loading Company timesheets…" />
         ) : listState === "error" ? (
-          <CompanyAuthorityMessage title="Company timesheets are unavailable" detail={error ?? COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED} />
+          <CompanyAuthorityMessage title="Timesheets unavailable" detail={error ?? "Please try again later."} />
         ) : listState === "empty" ? (
-          <CompanyAuthorityMessage title="No clock records for this week" detail="This empty list came from Home Service Connected, not a local timesheet table." />
+          <CompanyAuthorityMessage title="No clock records for this week" />
         ) : (
           <View style={{ gap: 12, paddingHorizontal: 20 }}>
             {records.map((record) => (

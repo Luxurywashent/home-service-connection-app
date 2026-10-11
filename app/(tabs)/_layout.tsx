@@ -181,7 +181,7 @@ export default function TabLayout() {
           options={{
             title: "Alerts",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="bell.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/notifications",
+            href: null,
           }}
         />
         <Tabs.Screen
@@ -189,7 +189,7 @@ export default function TabLayout() {
           options={{
             title: "Payroll",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="dollarsign.circle.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/payroll",
+            href: null,
           }}
         />
         <Tabs.Screen
@@ -221,7 +221,7 @@ export default function TabLayout() {
           options={{
             title: "Repairs",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="wrench.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/repair-request",
+            href: null,
           }}
         />
         <Tabs.Screen
@@ -300,7 +300,7 @@ export default function TabLayout() {
           options={{
             title: "Alerts",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="bell.fill" color={color} />,
-            href: isAdmin ? "/(tabs)/admin-alerts" : null,
+            href: null,
           }}
         />
         <Tabs.Screen
