@@ -13,7 +13,8 @@ import { CompanyCustomersPanel } from "@/components/company-customers-panel";
 import { CompanyFinancialGate } from "@/components/company-financial-gate";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { trpc } from "@/lib/trpc";
+import { getJobSyncCompanyCustomers } from "@/lib/jobsync-mobile-api";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 
@@ -91,9 +92,13 @@ export default function AdminCustomersScreen() {
 function LegacyAdminCustomersScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
+  const { session } = useJobSyncAuth();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
   const router = useRouter();
 
   // Debounce search input so we don't fire a request on every keystroke
@@ -102,33 +107,34 @@ function LegacyAdminCustomersScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // ── Queries ──
-  const {
-    data: customers = [],
-    isLoading,
-    refetch,
-    isRefetching,
-  } = trpc.customers.listAll.useQuery(
-    { search: debouncedSearch },
-    {
-      // Always re-fetch when search term changes — don't use stale cache for search results
-      staleTime: debouncedSearch ? 0 : 10 * 60 * 1000,
-      // Don't show previous results while new search is loading
-      placeholderData: debouncedSearch ? undefined : (prev: any) => prev,
+  const loadCustomers = useCallback(async (refresh = false) => {
+    if (!session?.token) return;
+    if (refresh) setIsRefetching(true); else setIsLoading(true);
+    try {
+      const rows = await getJobSyncCompanyCustomers(session.token, debouncedSearch);
+      setCustomers(rows.map((row) => ({
+        customerId: String(row.id), fullName: row.name, phone: row.phone, email: row.email,
+        address: row.addressLine1, city: row.city, lifetimeValue: 0, jobCount: 0,
+        lastServiceDate: null, firstServiceDate: null, source: "manual",
+      })));
+    } finally {
+      setIsLoading(false);
+      setIsRefetching(false);
     }
-  );
+  }, [debouncedSearch, session?.token]);
+  useEffect(() => { void loadCustomers(); }, [loadCustomers]);
 
   // ── Filtered list (sorted A–Z by name) ──
   // Server already filters by search; sort client-side for display
   const filtered = useMemo(() => {
-    return [...(customers as Customer[])].sort((a, b) =>
+    return [...customers].sort((a, b) =>
       a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" })
     );
   }, [customers]);
 
   // ── Stats ──
   const totalLifetime = useMemo(
-    () => (customers as Customer[]).reduce((s, c) => s + (c.lifetimeValue ?? 0), 0),
+    () => customers.reduce((s, c) => s + (c.lifetimeValue ?? 0), 0),
     [customers]
   );
 
@@ -199,7 +205,7 @@ function LegacyAdminCustomersScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>All Customers</Text>
         <Text style={styles.headerSub}>
-          {(customers as Customer[]).length.toLocaleString()} records · {fmtCurrency(totalLifetime)} total
+          {customers.length.toLocaleString()} records · {fmtCurrency(totalLifetime)} total
         </Text>
       </View>
 
@@ -220,7 +226,7 @@ function LegacyAdminCustomersScreen() {
       {/* Stats row */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{(customers as Customer[]).length}</Text>
+        <Text style={styles.statValue}>{customers.length}</Text>
           <Text style={styles.statLabel}>Total Customers</Text>
         </View>
         <View style={styles.statCard}>
@@ -251,7 +257,7 @@ function LegacyAdminCustomersScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => loadCustomers(true)}
               tintColor={colors.primary}
             />
           }

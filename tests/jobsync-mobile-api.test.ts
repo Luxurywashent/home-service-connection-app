@@ -282,6 +282,32 @@ describe("JobSync mobile API contract", () => {
       fetchMock.mockRestore();
     }
   });
+  it("fetches Company customers through the authenticated searchable endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ customers: [{ id: 51, firstName: "Ruby", lastName: "Abac", name: "Ruby Abac", phone: "8505550100" }] }),
+    } as Response);
+    try {
+      const customers = await getJobSyncCompanyCustomers("company-token", "Ruby Abac");
+      expect(customers).toEqual([{ id: 51, firstName: "Ruby", lastName: "Abac", name: "Ruby Abac", email: null, phone: "8505550100", addressLine1: null, city: null, region: null, postalCode: null, vehicleType: null, updatedAt: null }]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/customers?search=Ruby%20Abac");
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer company-token" } });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  it("normalizes the Company unpaid-job balance endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ jobs: [{ id: 72, title: "Full service", customerName: "Test Customer", amount: "180.00", paidTotal: "50.00", balance: "130.00", paymentStatus: "partial" }] }),
+    } as Response);
+    try {
+      await expect(getJobSyncUnpaidJobs("company-token")).resolves.toEqual([{ id: 72, title: "Full service", customerName: "Test Customer", amount: 180, paidTotal: 50, balance: 130, paymentStatus: "partial" }]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/payments/unpaid-jobs");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
   it("rejects Luxury Wash API overrides and resolves the canonical HSC production origin", () => {
     expect(resolveJobSyncBaseUrl(undefined)).toBe("https://www.homeserviceconnected.com");
     expect(resolveJobSyncBaseUrl("https://www.homeserviceconnected.com/")).toBe("https://www.homeserviceconnected.com");

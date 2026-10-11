@@ -838,6 +838,44 @@ export async function getJobSyncCompanyUnpaidJobs(token: string): Promise<JobSyn
   return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncCompanyUnpaidJob).filter((job): job is JobSyncCompanyUnpaidJob => Boolean(job));
 }
 
+export async function getJobSyncCompanyCustomers(token: string, search?: string): Promise<JobSyncMobileCustomer[]> {
+  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.customers) ? payload.customers : []).map((item) => {
+    const row = asRecord(item) ?? {};
+    return {
+      id: Number(row.id),
+      firstName: firstString(row.firstName) ?? "",
+      lastName: firstString(row.lastName) ?? "",
+      name: firstString(row.name) ?? "",
+      email: firstString(row.email),
+      phone: firstString(row.phone),
+      addressLine1: firstString(row.addressLine1),
+      city: firstString(row.city),
+      region: firstString(row.region),
+      postalCode: firstString(row.postalCode),
+      vehicleType: firstString(row.vehicleType),
+      updatedAt: firstString(row.updatedAt),
+    };
+  }).filter((customer) => Number.isSafeInteger(customer.id) && customer.id > 0);
+}
+
+export async function getJobSyncUnpaidJobs(token: string): Promise<JobSyncMobileUnpaidJob[]> {
+  const payload = asRecord(await requestJson(COMPANY_UNPAID_JOBS_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+  return (Array.isArray(payload.jobs) ? payload.jobs : []).map((item) => {
+    const row = asRecord(item) ?? {};
+    return {
+      id: Number(row.id),
+      title: firstString(row.title) ?? "",
+      customerName: firstString(row.customerName),
+      amount: nullableNumber(row.amount) ?? 0,
+      paidTotal: nullableNumber(row.paidTotal) ?? 0,
+      balance: nullableNumber(row.balance) ?? 0,
+      paymentStatus: firstString(row.paymentStatus) ?? "unpaid",
+    };
+  }).filter((job) => Number.isSafeInteger(job.id) && job.id > 0);
+}
+
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
   // Never send `role` — RBAC is server-derived from membership / positionId.
   return sanitizeCompanyMutationBody({
