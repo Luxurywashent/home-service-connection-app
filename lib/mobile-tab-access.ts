@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import {
   getJobSyncCompanyFeatureAccess,
-  updateJobSyncMobileTabAccess,
 } from "@/lib/jobsync-mobile-api";
 
 export const MOBILE_TAB_DEFINITIONS = [
@@ -55,7 +54,6 @@ export function mobileTabKeyForRoute(route: string): MobileTabKey | null {
 export function useMobileTabAccess() {
   const { session } = useJobSyncAuth();
   const token = session?.portal === "company" ? session.token : null;
-  const isAdmin = session?.portal === "company" && ["owner", "admin"].includes(String(session.user.role));
   const [tabs, setTabs] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(Boolean(token));
   const [error, setError] = useState<string | null>(null);
@@ -80,21 +78,8 @@ export function useMobileTabAccess() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const updateTab = useCallback(async (key: MobileTabKey, isEnabled: boolean) => {
-    if (!token || !isAdmin) throw new Error("Only Company admins can change mobile tab visibility.");
-    setTabs((current) => ({ ...current, [key]: isEnabled }));
-    try {
-      const access = await updateJobSyncMobileTabAccess(token, key, isEnabled);
-      setTabs(access.mobileTabs);
-      setError(null);
-    } catch (cause) {
-      setTabs((current) => ({ ...current, [key]: !isEnabled }));
-      throw cause;
-    }
-  }, [isAdmin, token]);
-
   const isVisible = useCallback((key: string) => tabs[key] !== false, [tabs]);
   const visibleTabs = useMemo(() => MOBILE_TAB_DEFINITIONS.filter((tab) => isVisible(tab.key)), [isVisible]);
 
-  return { tabs, visibleTabs, isVisible, updateTab, refresh, isAdmin, isLoading, error };
+  return { tabs, visibleTabs, isVisible, refresh, isLoading, error };
 }

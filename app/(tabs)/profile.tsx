@@ -8,7 +8,6 @@ import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
 import { useThemeContext } from "@/lib/theme-provider";
 import type { ColorScheme } from "@/constants/theme";
-import { MOBILE_TAB_DEFINITIONS, useMobileTabAccess, type MobileTabKey } from "@/lib/mobile-tab-access";
 
 const PROJECTED_PAYCHECK_VISIBILITY_KEY = "hsc_projected_paycheck_visible";
 
@@ -23,8 +22,6 @@ export default function ProfileScreen() {
   const [pinError, setPinError] = useState("");
   const [pinSuccess, setPinSuccess] = useState(false);
   const [showProjectedPaycheck, setShowProjectedPaycheck] = useState(true);
-  const { tabs: mobileTabs, updateTab, isLoading: mobileTabsLoading, error: mobileTabsError } = useMobileTabAccess();
-  const [mobileTabSaving, setMobileTabSaving] = useState<MobileTabKey | null>(null);
 
   const resetPinMutation = trpc.employee.resetPin.useMutation();
   useEffect(() => {
@@ -132,42 +129,6 @@ export default function ProfileScreen() {
                 <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFF", alignSelf: showProjectedPaycheck ? "flex-end" : "flex-start" }} />
               </View>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {isAdmin && (
-          <View style={{ marginBottom: 24 }}>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Mobile tab access
-            </Text>
-            <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
-              Choose which navigation tabs are available to this Company account. Changes sync to every signed-in profile in this Company.
-            </Text>
-            <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, overflow: "hidden" }}>
-              {MOBILE_TAB_DEFINITIONS.map((tab, index) => {
-                const enabled = mobileTabs[tab.key] !== false;
-                const saving = mobileTabSaving === tab.key;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    disabled={mobileTabsLoading || saving}
-                    onPress={async () => {
-                      setMobileTabSaving(tab.key);
-                      try { await updateTab(tab.key, !enabled); } catch (cause) { Alert.alert("Could not update tab", cause instanceof Error ? cause.message : "Please try again."); }
-                      finally { setMobileTabSaving(null); }
-                    }}
-                    activeOpacity={0.8}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: index === MOBILE_TAB_DEFINITIONS.length - 1 ? 0 : 1, borderBottomColor: colors.border, opacity: saving ? 0.55 : 1 }}
-                  >
-                    <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>{tab.label}</Text>
-                    <View style={{ width: 48, height: 28, borderRadius: 16, backgroundColor: enabled ? colors.primary : colors.border, padding: 3, justifyContent: "center" }}>
-                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFF", alignSelf: enabled ? "flex-end" : "flex-start" }} />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {mobileTabsError ? <Text style={{ color: colors.error, fontSize: 12, marginTop: 8 }}>{mobileTabsError}</Text> : null}
           </View>
         )}
 

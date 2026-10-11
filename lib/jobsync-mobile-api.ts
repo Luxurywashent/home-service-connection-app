@@ -957,15 +957,6 @@ export async function getJobSyncCompanyFeatureAccess(token: string) {
   return normalizeJobSyncFeatureAccess(payload);
 }
 
-export async function updateJobSyncMobileTabAccess(token: string, key: string, isEnabled: boolean) {
-  const payload = await requestJson(COMPANY_FEATURE_ACCESS_PATH, {
-    method: "PATCH",
-    headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ key, isEnabled }),
-  });
-  return normalizeJobSyncFeatureAccess(payload);
-}
-
 export async function getJobSyncMobileSession(token: string) {
   const payload = await requestJson(SESSION_PATH, {
     method: "GET",
