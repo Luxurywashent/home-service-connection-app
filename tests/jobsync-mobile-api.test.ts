@@ -16,6 +16,7 @@ import {
   getJobSyncCompanyInvoices,
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
+  getJobSyncUnpaidJobs,
   rescheduleJobSyncCompanyJob,
   updateJobSyncCompanyJobStatus,
   resolveJobSyncBaseUrl,
