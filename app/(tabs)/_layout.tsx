@@ -63,6 +63,8 @@ const COMPANY_ADMIN_HIDDEN_ROUTES = [
   "/admin-promotions",
   "/admin-rewards",
   "/admin-points",
+  "/admin-schedule",
+  "/schedule",
   "/admin-efficiency",
   "/ops-qc",
 ] as const;
@@ -101,7 +103,7 @@ export default function TabLayout() {
   }, [jobSyncLoading, jobSyncSession?.portal, loading, nativeJobSyncEmployee, router]);
 
   useEffect(() => {
-    if (loading || jobSyncLoading || !isAdmin || isOpsManager) return;
+    if (loading || jobSyncLoading || !isAdmin) return;
     const isHiddenAdminRoute = COMPANY_ADMIN_HIDDEN_ROUTES.some(
       (route) => pathname === route || pathname.startsWith(`${route}/`),
     );

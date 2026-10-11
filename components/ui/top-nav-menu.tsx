@@ -26,7 +26,6 @@ interface MenuItem {
 // ─── Admin menu — all features ────────────────────────────────────────────────
 const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Dashboard",    icon: "👥",  route: "/admin-dashboard" },
-  { label: "Schedule",     icon: "📅",  route: "/admin-schedule" },
   { label: "Team Chat",    icon: "💬",  route: "/chat" },
   { label: "Timesheets",   icon: "⏱️",  route: "/admin-timesheet" },
   { label: "Finance",      icon: "💵",  route: "/admin-finance" },
@@ -58,7 +57,6 @@ const OPS_MANAGER_ITEMS: MenuItem[] = [
   { label: "Site Inspect",  icon: "🔍", route: "/ops-inspection" },
   { label: "Van Checklist", icon: "🚐", route: "/ops-van-checklist" },
   { label: "Fleet Map",     icon: "🗺️", route: "/admin-fleet-map" },
-  { label: "Schedule",      icon: "📅", route: "/admin-schedule" },
   { label: "Timesheets",    icon: "⏱️", route: "/admin-timesheet" },
   { label: "Training",      icon: "📚", route: "/admin-training" },
   { label: "Door Hangers",  icon: "🚪", route: "/admin-door-hangers" },
