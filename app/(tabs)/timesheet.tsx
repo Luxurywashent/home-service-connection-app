@@ -141,9 +141,6 @@ function LegacyTimesheetScreen() {
               <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 2 }}>
                 Request Time Off
               </Text>
-              <Text style={{ fontSize: 12, color: colors.muted }}>
-                Submit a time-off request for approval
-              </Text>
             </View>
             <Text style={{ fontSize: 20, color: colors.muted }}>›</Text>
           </TouchableOpacity>
