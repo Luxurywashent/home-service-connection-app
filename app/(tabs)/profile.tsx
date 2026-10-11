@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
@@ -7,6 +8,8 @@ import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
 import { useThemeContext } from "@/lib/theme-provider";
 import type { ColorScheme } from "@/constants/theme";
+
+const PROJECTED_PAYCHECK_VISIBILITY_KEY = "hsc_projected_paycheck_visible";
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -18,8 +21,14 @@ export default function ProfileScreen() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinSuccess, setPinSuccess] = useState(false);
+  const [showProjectedPaycheck, setShowProjectedPaycheck] = useState(true);
 
   const resetPinMutation = trpc.employee.resetPin.useMutation();
+  useEffect(() => {
+    AsyncStorage.getItem(PROJECTED_PAYCHECK_VISIBILITY_KEY).then((value) => {
+      if (value !== null) setShowProjectedPaycheck(value !== "false");
+    }).catch(() => {});
+  }, []);
 
   // Van assignment (detailers only)
   const { data: vanAssignment, isLoading: vanLoading } = trpc.fleet.getVanAssignment.useQuery(
@@ -97,6 +106,31 @@ export default function ProfileScreen() {
             ))}
           </View>
         </View>
+
+        {isAdmin && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Dashboard visibility
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const next = !showProjectedPaycheck;
+                setShowProjectedPaycheck(next);
+                AsyncStorage.setItem(PROJECTED_PAYCHECK_VISIBILITY_KEY, String(next)).catch(() => {});
+              }}
+              activeOpacity={0.8}
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 14 }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>Projected paycheck</Text>
+                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>Show this card on the mobile dashboard</Text>
+              </View>
+              <View style={{ width: 48, height: 28, borderRadius: 16, backgroundColor: showProjectedPaycheck ? colors.primary : colors.border, padding: 3, justifyContent: "center" }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFF", alignSelf: showProjectedPaycheck ? "flex-end" : "flex-start" }} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Avatar + Name */}
         <View style={{ alignItems: "center", marginBottom: 28 }}>

@@ -28,6 +28,9 @@ import { PremiumButton } from "@/components/ui/premium-button";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const PROJECTED_PAYCHECK_VISIBILITY_KEY = "hsc_projected_paycheck_visible";
 
 function toCST(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -320,6 +323,12 @@ function TreasureChestReveal({ prizeName, prizeEmoji, onClose, colors }: {
 
 // Inner component — only rendered for confirmed detailers (no role guard needed here).
 function DetailerDashboard() {
+  const [showProjectedPaycheck, setShowProjectedPaycheck] = useState(true);
+  useEffect(() => {
+    AsyncStorage.getItem(PROJECTED_PAYCHECK_VISIBILITY_KEY).then((value) => {
+      if (value !== null) setShowProjectedPaycheck(value !== "false");
+    }).catch(() => {});
+  }, []);
   const colors = useColors();
   const { employee, isSalesRep } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
@@ -938,57 +947,6 @@ function DetailerDashboard() {
               />
             </View>
 
-            {/* Accountability Points Card */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-              <View
-                style={{
-                  borderRadius: 16,
-                  padding: 16,
-                  borderWidth: 2,
-                  borderColor: myBonusEligible ? (myCurrentPoints >= 8 ? colors.success : colors.warning) : colors.error,
-                  backgroundColor: myBonusEligible ? (myCurrentPoints >= 8 ? colors.success + "10" : colors.warning + "10") : colors.error + "12",
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
-                      Accountability Points · This Week
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                      <Text style={{ fontSize: 36, fontWeight: "900", color: myBonusEligible ? (myCurrentPoints >= 8 ? colors.success : colors.warning) : colors.error }}>
-                        {myCurrentPoints % 1 === 0 ? myCurrentPoints : myCurrentPoints.toFixed(1)}
-                      </Text>
-                      <Text style={{ fontSize: 16, fontWeight: "600", color: colors.muted }}>/10</Text>
-                    </View>
-                    {/* Progress bar */}
-                    <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, marginTop: 8, marginBottom: 6 }}>
-                      <View style={{
-                        height: 6, borderRadius: 3,
-                        backgroundColor: myBonusEligible ? (myCurrentPoints >= 8 ? colors.success : colors.warning) : colors.error,
-                        width: `${Math.min(100, (myCurrentPoints / 10) * 100)}%`,
-                      }} />
-                    </View>
-                    <Text style={{ fontSize: 12, color: myBonusEligible ? colors.muted : colors.error, fontWeight: myBonusEligible ? "400" : "700" }}>
-                      {myBonusEligible
-                        ? myCurrentPoints >= 8
-                          ? "Great standing — bonus eligible ✅"
-                          : "At risk — stay above 7 to keep your bonus ⚠️"
-                        : "Below 7 pts — bonus money ineligible this week 🚫"}
-                    </Text>
-                  </View>
-                  {/* Big badge */}
-                  <View style={{
-                    marginLeft: 16,
-                    width: 64, height: 64, borderRadius: 32,
-                    backgroundColor: myBonusEligible ? (myCurrentPoints >= 8 ? colors.success : colors.warning) : colors.error,
-                    alignItems: "center", justifyContent: "center",
-                  }}>
-                    <Text style={{ fontSize: 28 }}>{myBonusEligible ? (myCurrentPoints >= 8 ? "⭐" : "⚠️") : "🚫"}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
             {/* Key Metrics Grid */}
             <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
               <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -1028,7 +986,6 @@ function DetailerDashboard() {
                       const rawUpsell = weeklyUpsellTotal;
                       const goal = WEEKLY_UPSELL_GOAL;
                       const pct = Math.min(rawUpsell / goal, 1);
-                      const bonus = metrics.upsells; // 40% of raw upsell
                       const goalReached = rawUpsell >= goal;
                       return (
                         <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: goalReached ? colors.success : colors.border, minHeight: 110, justifyContent: "space-between", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
@@ -1046,9 +1003,8 @@ function DetailerDashboard() {
                           <View style={{ height: 5, backgroundColor: colors.border, borderRadius: 3, overflow: "hidden", marginBottom: 6 }}>
                             <View style={{ height: 5, width: `${Math.round(pct * 100)}%` as any, backgroundColor: goalReached ? colors.success : "#FFB800", borderRadius: 3 }} />
                           </View>
-                          {/* Bonus earned */}
                           <Text style={{ fontSize: 11, color: goalReached ? colors.success : colors.muted, fontWeight: "600" }}>
-                            {goalReached ? `🎉 Bonus: $${bonus.toFixed(2)}` : `Bonus earned: $${bonus.toFixed(2)}`}
+                            {goalReached ? "Goal reached" : "Upsells this week"}
                           </Text>
                         </View>
                       );
@@ -1066,7 +1022,7 @@ function DetailerDashboard() {
               </View>
             </View>
 
-            {/* Projected Paycheck */}
+            {showProjectedPaycheck && (
             <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
               <View
                 style={{
@@ -1104,6 +1060,7 @@ function DetailerDashboard() {
               </View>
             </View>
 
+            )}
             {/* EOD Checklist Button */}
             <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
               <TouchableOpacity
