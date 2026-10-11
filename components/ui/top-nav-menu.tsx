@@ -38,6 +38,7 @@ const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "EOD Review",    icon: "✅",  route: "/admin-eod-review" },
   { label: "Reporting",     icon: "📈",  route: "/admin-reporting" },
   { label: "Price Book",    icon: "💰",  route: "/admin-pricebook" },
+  { label: "Settings",      icon: "⚙️",  route: "/profile" },
 ];
 
 const DETAILER_ITEMS: MenuItem[] = [
@@ -79,6 +80,7 @@ const OPS_MANAGER_ITEMS: MenuItem[] = [
   { label: "Request Off",   icon: "📆", route: "/request-off" },
     { label: "Accountability", icon: "📌",  route: "/admin-points" },
   { label: "QC",             icon: "✅",  route: "/ops-qc" },
+  { label: "Settings",      icon: "⚙️",  route: "/profile" },
 ];
 const SALES_ITEMS: MenuItem[] = [
   { label: "Dashboard",  icon: "📊", route: "/(sales)/dashboard" },

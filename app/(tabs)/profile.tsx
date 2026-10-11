@@ -5,10 +5,13 @@ import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
+import { useThemeContext } from "@/lib/theme-provider";
+import type { ColorScheme } from "@/constants/theme";
 
 export default function ProfileScreen() {
   const colors = useColors();
   const { employee, logout, isAdmin } = useEmployeeAuth();
+  const { colorScheme, setColorScheme } = useThemeContext();
   const router = useRouter();
   const [showPinReset, setShowPinReset] = useState(false);
   const [newPin, setNewPin] = useState("");
@@ -64,7 +67,35 @@ export default function ProfileScreen() {
     <ScreenContainer edges={["left", "right"]} className="px-5">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={{ marginTop: 8, marginBottom: 24 }}>
-          <Text style={{ fontSize: 24, fontWeight: "800", color: colors.foreground }}>Profile</Text>
+          <Text style={{ fontSize: 24, fontWeight: "800", color: colors.foreground }}>{isAdmin ? "Settings" : "Profile"}</Text>
+        </View>
+
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Appearance
+          </Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {(["light", "dark"] as ColorScheme[]).map((scheme) => (
+              <TouchableOpacity
+                key={scheme}
+                onPress={() => setColorScheme(scheme)}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  backgroundColor: colorScheme === scheme ? colors.primary : colors.surface,
+                  borderColor: colorScheme === scheme ? colors.primary : colors.border,
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  paddingVertical: 13,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: colorScheme === scheme ? "#FFF" : colors.foreground, fontSize: 15, fontWeight: "700" }}>
+                  {scheme === "light" ? "☀ Light" : "☾ Dark"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Avatar + Name */}

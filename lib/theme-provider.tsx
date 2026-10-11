@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
 
@@ -10,9 +11,9 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const THEME_STORAGE_KEY = "hsc_mobile_appearance";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Force dark mode only
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>("dark");
 
   const applyScheme = useCallback((scheme: ColorScheme) => {
@@ -29,12 +30,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const setColorScheme = useCallback(() => {
-    // Dark mode is locked - no theme switching
-  }, []);
+  const setColorScheme = useCallback((scheme: ColorScheme) => {
+    setColorSchemeState(scheme);
+    applyScheme(scheme);
+    AsyncStorage.setItem(THEME_STORAGE_KEY, scheme).catch(() => {});
+  }, [applyScheme]);
 
   useEffect(() => {
+    let active = true;
     applyScheme("dark");
+    AsyncStorage.getItem(THEME_STORAGE_KEY).then((stored) => {
+      if (!active || (stored !== "light" && stored !== "dark")) return;
+      setColorSchemeState(stored);
+      applyScheme(stored);
+    }).catch(() => {});
+    return () => { active = false; };
   }, [applyScheme]);
 
   const themeVariables = useMemo(
@@ -55,12 +65,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      colorScheme: "dark" as const,
+      colorScheme,
       setColorScheme,
     }),
-    [setColorScheme],
+    [colorScheme, setColorScheme],
   );
-  console.log(value, themeVariables)
 
   return (
     <ThemeContext.Provider value={value}>
