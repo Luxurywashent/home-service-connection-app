@@ -460,9 +460,6 @@ function LegacyAdminPricebookScreen() {
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} showsVerticalScrollIndicator={false}>
-          <Text style={[s.hint, { color: colors.muted }]}>
-            {services.length} service{services.length !== 1 ? "s" : ""} · Use ▲ ▼ to reorder · Tap to edit
-          </Text>
           {services.map((svc, index) => (
             <View
               key={svc.serviceId}
