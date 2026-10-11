@@ -1696,11 +1696,13 @@ export default function AdminScheduleScreen() {
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
         if (cancelled) return;
-        const teamLanes: DetailerEntry[] = roster.members.map((member, index) => ({
-          employeeId: `jobsync-${member.id}`,
-          name: member.name,
-          color: DETAILER_COLORS[index % DETAILER_COLORS.length],
-        }));
+        const teamLanes: DetailerEntry[] = roster.members
+          .filter((member) => member.calendarEligible)
+          .map((member, index) => ({
+            employeeId: `jobsync-${member.id}`,
+            name: member.name,
+            color: DETAILER_COLORS[index % DETAILER_COLORS.length],
+          }));
         setDynamicDetailers({ [selectedCity]: teamLanes });
       })
       .catch(() => {

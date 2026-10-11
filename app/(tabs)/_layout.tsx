@@ -63,8 +63,6 @@ const COMPANY_ADMIN_HIDDEN_ROUTES = [
   "/admin-promotions",
   "/admin-rewards",
   "/admin-points",
-  "/admin-schedule",
-  "/schedule",
   "/admin-efficiency",
   "/ops-qc",
 ] as const;
