@@ -33,7 +33,8 @@
     "production": {
       "ios": {
         "appleId": "adrian@luxurywashonwheels.com",
-        "appleTeamId": "2G8C7Y3QC6"
+        "appleTeamId": "2G8C7Y3QC6",
+        "ascAppId": "6800959195"
       }
     },
     "testflight": {
