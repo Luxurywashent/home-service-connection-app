@@ -26,7 +26,6 @@ interface MenuItem {
 const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Dashboard",    icon: "👥",  route: "/admin-dashboard" },
   { label: "Schedule",     icon: "📅",  route: "/admin-schedule" },
-  { label: "Fleet",        icon: "🚐",  route: "/admin-fleet-map" },
   { label: "Team Chat",    icon: "💬",  route: "/chat" },
   { label: "Timesheets",   icon: "⏱️",  route: "/admin-timesheet" },
   { label: "Finance",      icon: "💵",  route: "/admin-finance" },
