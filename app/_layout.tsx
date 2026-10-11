@@ -356,6 +356,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <AuthProvider>
           <JobSyncAuthProvider>
+          <ThemeProvider>
           <JobSyncSyncProvider>
           <InvestorAuthProvider>
           <CustomerProvider>
@@ -378,6 +379,7 @@ export default function RootLayout() {
           </CustomerProvider>
           </InvestorAuthProvider>
           </JobSyncSyncProvider>
+          </ThemeProvider>
           </JobSyncAuthProvider>
           </AuthProvider>
           <StatusBar style="auto" />
@@ -390,23 +392,19 @@ export default function RootLayout() {
 
   if (shouldOverrideSafeArea) {
     return (
-      <ThemeProvider>
-        <SafeAreaProvider initialMetrics={providerInitialMetrics}>
-          <SafeAreaFrameContext.Provider value={frame}>
-            <SafeAreaInsetsContext.Provider value={insets}>
-              {content}
-            </SafeAreaInsetsContext.Provider>
-          </SafeAreaFrameContext.Provider>
-        </SafeAreaProvider>
-      </ThemeProvider>
+      <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+        <SafeAreaFrameContext.Provider value={frame}>
+          <SafeAreaInsetsContext.Provider value={insets}>
+            {content}
+          </SafeAreaInsetsContext.Provider>
+        </SafeAreaFrameContext.Provider>
+      </SafeAreaProvider>
     );
   }
 
   return (
     <LocationProvider>
-      <ThemeProvider>
-        <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
-      </ThemeProvider>
+      <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
     </LocationProvider>
   );
 }

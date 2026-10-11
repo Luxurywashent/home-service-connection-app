@@ -4,11 +4,13 @@ import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { getNativeEmployeeSession, useJobSyncAuth } from "@/lib/jobsync-auth-context";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const colors = useColors();
   const { loginCompany } = useJobSyncAuth();
   const { login: establishNativeRole, logout: logoutLegacyEmployee } = useEmployeeAuth();
   const [email, setEmail] = useState("");
@@ -54,18 +56,18 @@ export default function LoginScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.container}>
-            <View style={styles.logoSection}>
-              <View style={styles.logoBox}><Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" /></View>
-              <Text style={styles.appName}>Home Service Connection</Text>
+              <View style={styles.logoSection}>
+              <View style={[styles.logoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}><Image source={require("../assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" /></View>
+              <Text style={[styles.appName, { color: colors.foreground }]}>Home Service Connection</Text>
             </View>
 
-            <View style={styles.formCard}>
-              <Text style={styles.formTitle}>Sign In</Text>
-              <Text style={styles.formDescription}>Sign in to your Home Service Connection Company workspace.</Text>
-              <View><Text style={styles.fieldLabel}>Email</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="you@company.com" placeholderTextColor="#71829B" style={styles.input} /></View>
-              <View><Text style={styles.fieldLabel}>Password</Text><View><TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={handleLogin} placeholder="Enter your password" placeholderTextColor="#71829B" returnKeyType="done" style={[styles.input, styles.passwordInput]} /><Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} onPress={() => setShowPassword((current) => !current)} style={styles.eyeButton}><MaterialIcons color="#94A3B8" name={showPassword ? "visibility-off" : "visibility"} size={20} /></Pressable></View></View>
-              <Pressable accessibilityRole="link" accessibilityLabel="Forgot password" onPress={() => router.push("/forgot-password" as any)} hitSlop={8}><Text style={styles.forgotPassword}>Forgot password?</Text></Pressable>
-              {error ? <View style={styles.errorBox}><MaterialIcons color="#F87171" name="error-outline" size={18} /><Text style={styles.errorText}>{error}</Text></View> : null}
+            <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.formTitle, { color: colors.foreground }]}>Sign In</Text>
+              <Text style={[styles.formDescription, { color: colors.muted }]}>Sign in to your Home Service Connection Company workspace.</Text>
+              <View><Text style={[styles.fieldLabel, { color: colors.muted }]}>Email</Text><TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="you@company.com" placeholderTextColor={colors.muted} style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]} /></View>
+              <View><Text style={[styles.fieldLabel, { color: colors.muted }]}>Password</Text><View><TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={handleLogin} placeholder="Enter your password" placeholderTextColor={colors.muted} returnKeyType="done" style={[styles.input, styles.passwordInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]} /><Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} onPress={() => setShowPassword((current) => !current)} style={styles.eyeButton}><MaterialIcons color={colors.muted} name={showPassword ? "visibility-off" : "visibility"} size={20} /></Pressable></View></View>
+              <Pressable accessibilityRole="link" accessibilityLabel="Forgot password" onPress={() => router.push("/forgot-password" as any)} hitSlop={8}><Text style={[styles.forgotPassword, { color: colors.primary }]}>Forgot password?</Text></Pressable>
+              {error ? <View style={[styles.errorBox, { backgroundColor: `${colors.error}18`, borderColor: colors.error }]}><MaterialIcons color={colors.error} name="error-outline" size={18} /><Text style={[styles.errorText, { color: colors.error }]}>{error}</Text></View> : null}
               <Pressable accessibilityRole="button" disabled={loading} onPress={handleLogin} style={({ pressed }) => [styles.signInButton, (pressed || loading) && styles.signInButtonPressed]}>{loading ? <Text style={styles.signInText}>Verifying securely…</Text> : <><Text style={styles.signInText}>Sign in to the app</Text><MaterialIcons color="#FFFFFF" name="arrow-forward" size={19} /></>}</Pressable>
             </View>
           </View>
