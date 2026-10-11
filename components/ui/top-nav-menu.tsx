@@ -26,7 +26,6 @@ interface MenuItem {
 const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "Dashboard",    icon: "👥",  route: "/admin-dashboard" },
   { label: "Schedule",     icon: "📅",  route: "/admin-schedule" },
-  { label: "Fleet",        icon: "🚐",  route: "/admin-fleet-map" },
   { label: "Team Chat",    icon: "💬",  route: "/chat" },
   { label: "Timesheets",   icon: "⏱️",  route: "/admin-timesheet" },
   { label: "Finance",      icon: "💵",  route: "/admin-finance" },
@@ -38,6 +37,7 @@ const ADMIN_ALL_ITEMS: MenuItem[] = [
   { label: "EOD Review",    icon: "✅",  route: "/admin-eod-review" },
   { label: "Reporting",     icon: "📈",  route: "/admin-reporting" },
   { label: "Price Book",    icon: "💰",  route: "/admin-pricebook" },
+  { label: "Settings",      icon: "⚙️",  route: "/profile" },
 ];
 
 const DETAILER_ITEMS: MenuItem[] = [
@@ -46,7 +46,6 @@ const DETAILER_ITEMS: MenuItem[] = [
   { label: "Team Chat",  icon: "💬", route: "/chat" },
   { label: "Alerts",     icon: "🔔", route: "/notifications" },
   { label: "Payroll",    icon: "💰", route: "/payroll" },
-  { label: "Training",   icon: "📚", route: "/training" },
   { label: "Repairs",    icon: "🔧", route: "/repair-request" },
   { label: "Expenses",   icon: "🧾", route: "/expenses" },
   { label: "EOD Check",  icon: "✅", route: "/eod-checklist" },
@@ -79,6 +78,7 @@ const OPS_MANAGER_ITEMS: MenuItem[] = [
   { label: "Request Off",   icon: "📆", route: "/request-off" },
     { label: "Accountability", icon: "📌",  route: "/admin-points" },
   { label: "QC",             icon: "✅",  route: "/ops-qc" },
+  { label: "Settings",      icon: "⚙️",  route: "/profile" },
 ];
 const SALES_ITEMS: MenuItem[] = [
   { label: "Dashboard",  icon: "📊", route: "/(sales)/dashboard" },

@@ -4,6 +4,8 @@ import { Text, View, ScrollView, FlatList, ActivityIndicator, Modal, TouchableOp
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyJobs } from "@/lib/jobsync-mobile-api";
 import { useEmployeePush } from "@/hooks/use-employee-push";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
@@ -90,6 +92,7 @@ const markerStyles = StyleSheet.create({
 export default function AdminDashboard() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
+  const { session: jobSyncSession } = useJobSyncAuth();
   const router = useRouter();
   // Register push token so admins receive job and chat notifications
   useEmployeePush();
@@ -98,26 +101,57 @@ export default function AdminDashboard() {
 
   // State for day/week toggle
   const [period, setPeriod] = useState<"day" | "week">("day");
+  const [canonicalWeekJobs, setCanonicalWeekJobs] = useState<any[]>([]);
+  const [canonicalJobsLoading, setCanonicalJobsLoading] = useState(false);
 
   // Queries
-  const { data: detailers, isLoading: loadingDetailers } = trpc.employee.listDetailers.useQuery();
+  const { data: detailers, isLoading: loadingDetailers } = trpc.employee.listDetailers.useQuery(undefined, { enabled: !jobSyncSession });
   const { data: leaderboard } = trpc.salesPerformance.getLeaderboard.useQuery(
     { date: today },
-    { staleTime: 60000, refetchInterval: 60000 }
+    { staleTime: 60000, refetchInterval: 60000, enabled: !jobSyncSession }
   );
-  const { data: weekPerf, isLoading: loadingPerf } = trpc.performance.getAllDateRange.useQuery({ startDate: start, endDate: end });
-  const { data: alerts } = trpc.alerts.getSummary.useQuery();
-  const { data: portalUnreadData } = trpc.portalInbox.unreadCount.useQuery(undefined, { refetchInterval: 30000 });
-  const { data: portalThreadsData } = trpc.portalInbox.listThreads.useQuery(undefined, { refetchInterval: 30000 });
+  const { data: weekPerf, isLoading: loadingPerf } = trpc.performance.getAllDateRange.useQuery({ startDate: start, endDate: end }, { enabled: !jobSyncSession });
+  const { data: alerts } = trpc.alerts.getSummary.useQuery(undefined, { enabled: !jobSyncSession });
+  const { data: portalUnreadData } = trpc.portalInbox.unreadCount.useQuery(undefined, { refetchInterval: 30000, enabled: !jobSyncSession });
+  const { data: portalThreadsData } = trpc.portalInbox.listThreads.useQuery(undefined, { refetchInterval: 30000, enabled: !jobSyncSession });
   const firstUnreadThread = (portalThreadsData as any[] ?? []).find((t: any) => t.unreadCount > 0) ?? null;
   const portalUnreadCount = portalUnreadData?.count ?? 0;
   const { data: weekJobs } = trpc.jobs.listAll.useQuery(
     { startDate: start, endDate: end },
-    { staleTime: 60000 }
+    { staleTime: 60000, enabled: !jobSyncSession }
   );
   const { data: vans } = trpc.location.getActive.useQuery(undefined, {
     refetchInterval: 30000,
+    enabled: !jobSyncSession,
   });
+  useEffect(() => {
+    if (!jobSyncSession?.token) {
+      setCanonicalWeekJobs([]);
+      return;
+    }
+    let cancelled = false;
+    setCanonicalJobsLoading(true);
+    getJobSyncCompanyJobs(jobSyncSession.token, { start: `${start}T00:00:00.000Z`, end: `${end}T23:59:59.999Z` })
+      .then((jobs) => {
+        if (cancelled) return;
+        setCanonicalWeekJobs(jobs.map((job) => ({
+          ...job,
+          date: job.scheduledStartAt?.slice(0, 10) ?? null,
+          assignedTo: job.assignedName ?? "",
+          totalPrice: job.amount,
+          upsellTotal: 0,
+          discountAmount: 0,
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setCanonicalWeekJobs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCanonicalJobsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [end, jobSyncSession?.token, start]);
+  const dashboardJobs = jobSyncSession ? canonicalWeekJobs : (weekJobs as any[] | undefined);
   // Note: We'll fetch break data from detailers' timesheet status instead
   // const { data: timesheets } = trpc.timesheet.getWeeklyLogs.useQuery(
   //   { startDate: start, endDate: end },
@@ -126,9 +160,9 @@ export default function AdminDashboard() {
 
   // Calculate metrics
   const metrics = useMemo(() => {
-    if (!weekJobs) return { revenue: 0, upsellPercentage: 0, totalUpsells: 0, jobsWithUpsells: 0, totalJobs: 0 };
+    if (!dashboardJobs) return { revenue: 0, upsellPercentage: 0, totalUpsells: 0, jobsWithUpsells: 0, totalJobs: 0 };
 
-    const jobs = (weekJobs as any[]).filter(j =>
+    const jobs = dashboardJobs.filter(j =>
       ['confirmed', 'in_progress', 'completed'].includes(j.status) &&
       j.assignedTo && j.assignedTo.trim() !== ''
     );
@@ -160,12 +194,12 @@ export default function AdminDashboard() {
     const upsellPercentage = totalJobs > 0 ? (jobsWithUpsells / totalJobs) * 100 : 0;
 
     return { revenue, upsellPercentage, totalUpsells, jobsWithUpsells, totalJobs };
-  }, [weekJobs, period, today]);
+  }, [dashboardJobs, period, today]);
 
   // Break alerts feature - will be implemented with timesheet API integration
   const breakAlerts: any[] = [];
 
-  const isLoading = loadingDetailers || loadingPerf;
+  const isLoading = jobSyncSession ? canonicalJobsLoading : loadingDetailers || loadingPerf;
 
   return (
     <ScreenContainer edges={["left", "right"]} className="px-5">

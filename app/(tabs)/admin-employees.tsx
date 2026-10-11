@@ -56,6 +56,18 @@ function formatDate(dateStr: string | null | undefined) {
   const d = new Date(dateStr + "T12:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+function formatEditDate(dateStr: string | null | undefined) {
+  if (!dateStr) return "";
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : dateStr;
+}
+function toApiDate(dateStr: string | null | undefined) {
+  const value = dateStr?.trim() ?? "";
+  if (!value) return "";
+  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return value;
+  return `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+}
 
 function formatWorkDays(days: string[]) {
   const labels: Record<string, string> = { sun: "Sun", mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat" };
@@ -306,6 +318,7 @@ export default function AdminEmployeesScreen() {
       fullName: profile?.name ?? selectedEmp.fullName,
       email: profile?.email ?? selectedEmp.email ?? "",
       phoneNumber: profile?.phone ?? selectedEmp.phoneNumber ?? "",
+      hireDate: formatEditDate(profile?.hireDate ?? selectedEmp.hireDate),
       city: isJobSyncCompany ? profile?.city ?? "" : selectedEmp.city ?? "",
       role: profile ? nativeRoleForJobSyncMember(profile.role) : selectedEmp.role,
       pin: "",
@@ -324,6 +337,7 @@ export default function AdminEmployeesScreen() {
     if (!editData.fullName?.trim()) { setEditError("Name is required"); return; }
     const nameParts = editData.fullName.trim().split(/\s+/);
     if (isJobSyncCompany && nameParts.length < 2) { setEditError("Enter both a first and last name."); return; }
+    if (editData.hireDate && !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(editData.hireDate)) { setEditError("Hire date must use MM/DD/YYYY."); return; }
     if (editData.pin && editData.pin.length < 4) { setEditError("PIN must be at least 4 digits"); return; }
     setEditSaving(true);
     setEditError("");
@@ -341,6 +355,7 @@ export default function AdminEmployeesScreen() {
           email: editData.email,
           phone: editData.phoneNumber,
           city: editData.city,
+          hireDate: toApiDate(editData.hireDate),
         });
         const roster = await getJobSyncCompanyMembers(token, companyId);
         setCompanyMembers(roster.members);
@@ -745,6 +760,7 @@ export default function AdminEmployeesScreen() {
                     <EditField label="Full Name" value={editData.fullName} onChangeText={(t: string) => setEditData({ ...editData, fullName: t })} colors={colors} />
                     <EditField label="Email" value={editData.email} onChangeText={(t: string) => setEditData({ ...editData, email: t })} colors={colors} keyboardType="email-address" autoCapitalize="none" />
                     <EditField label="Phone" value={editData.phoneNumber} onChangeText={(t: string) => setEditData({ ...editData, phoneNumber: t })} colors={colors} keyboardType="phone-pad" />
+                    <EditField label="Hire Date" value={editData.hireDate ?? ""} onChangeText={(t: string) => setEditData({ ...editData, hireDate: t.replace(/[^0-9/]/g, "").substring(0, 10) })} colors={colors} placeholder="MM/DD/YYYY" keyboardType="numbers-and-punctuation" />
                     {isJobSyncCompany ? (
                       <View style={{ marginBottom: 16 }}>
                         <EditField label="City" value={editData.city} onChangeText={(t: string) => setEditData({ ...editData, city: t })} colors={colors} />

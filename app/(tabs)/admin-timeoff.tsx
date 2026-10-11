@@ -150,13 +150,7 @@ function LegacyAdminTimeOffScreen() {
                 <Text style={{ fontSize: 13, color: colors.foreground }}>
                   {formatDate(item.startDate)} - {formatDate(item.endDate)}
                 </Text>
-                <View style={{ flexDirection: "row", gap: 16, marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>{item.totalDaysRequested} day(s)</Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>{item.daysNoticeGiven} days notice</Text>
-                  <Text style={{ fontSize: 12, color: item.policyValid === "yes" ? colors.success : colors.error, fontWeight: "600" }}>
-                    {item.policyValid === "yes" ? "Policy ✓" : "Policy ✗"}
-                  </Text>
-                </View>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{item.totalDaysRequested} day(s)</Text>
               </TouchableOpacity>
             );
           }}
@@ -182,20 +176,7 @@ function LegacyAdminTimeOffScreen() {
                   <View style={{ gap: 8, marginBottom: 24 }}>
                     <InfoRow label="Dates" value={`${formatDate(selectedReq.startDate)} - ${formatDate(selectedReq.endDate)}`} colors={colors} />
                     <InfoRow label="Total Days" value={String(selectedReq.totalDaysRequested)} colors={colors} />
-                    <InfoRow label="Notice Given" value={`${selectedReq.daysNoticeGiven} days`} colors={colors} />
-                    <InfoRow label="Policy" value={selectedReq.policyValid === "yes" ? "Meets requirements" : "Does not meet requirements"} colors={colors} />
                     {selectedReq.reason && <InfoRow label="Reason" value={selectedReq.reason} colors={colors} />}
-                  </View>
-
-                  {/* Policy Validation Display */}
-                  <View style={{
-                    backgroundColor: selectedReq.policyValid === "yes" ? colors.success + "10" : colors.error + "10",
-                    borderRadius: 12, padding: 14, marginBottom: 20,
-                    borderWidth: 1, borderColor: selectedReq.policyValid === "yes" ? colors.success + "30" : colors.error + "30",
-                  }}>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: selectedReq.policyValid === "yes" ? colors.success : colors.error }}>
-                      {selectedReq.policyMessage ?? (selectedReq.policyValid === "yes" ? "Meets policy" : "Does not meet policy")}
-                    </Text>
                   </View>
 
                   {selectedReq.status === "pending" ? (

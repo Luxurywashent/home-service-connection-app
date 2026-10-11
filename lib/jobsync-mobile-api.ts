@@ -75,6 +75,7 @@ export type JobSyncCompanyMemberUpdateInput = {
   email?: string;
   phone?: string;
   city?: string;
+  hireDate?: string;
   availability?: "available" | "busy" | "off_duty";
   /** Canonical role change path — maps to company_team_positions; never send bare `role`. */
   positionId?: number;
@@ -302,7 +303,7 @@ export type JobSyncCompanyUnpaidJob = {
   balance: number;
   paymentStatus: string;
 };
-export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null };
+export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null; updatedAt: string | null };
 export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
   vehicleMake: string | null;
   vehicleModel: string | null;
@@ -427,11 +428,13 @@ function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer
     region: firstString(row.region),
     postalCode: firstString(row.postalCode),
     vehicleType: firstString(row.vehicleType),
+    updatedAt: firstString(row.updatedAt),
   };
 }
 
-export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
-  const payload = asRecord(await requestJson(COMPANY_CUSTOMERS_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
+export async function getJobSyncCompanyCustomers(token: string, search?: string): Promise<JobSyncCompanyCustomer[]> {
+  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
   return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
 }
 
@@ -838,6 +841,8 @@ export async function getJobSyncCompanyUnpaidJobs(token: string): Promise<JobSyn
   return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncCompanyUnpaidJob).filter((job): job is JobSyncCompanyUnpaidJob => Boolean(job));
 }
 
+export const getJobSyncUnpaidJobs = getJobSyncCompanyUnpaidJobs;
+
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
   // Never send `role` — RBAC is server-derived from membership / positionId.
   return sanitizeCompanyMutationBody({
@@ -846,6 +851,7 @@ export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMem
     ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.city?.trim() ? { city: input.city.trim() } : {}),
+    ...(input.hireDate?.trim() ? { hireDate: input.hireDate.trim() } : {}),
     ...(input.availability ? { availability: input.availability } : {}),
     ...(typeof input.positionId === "number" && Number.isSafeInteger(input.positionId) && input.positionId > 0
       ? { positionId: input.positionId }
