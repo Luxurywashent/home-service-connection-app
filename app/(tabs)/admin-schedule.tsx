@@ -40,7 +40,12 @@ import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
-import { getJobSyncCompanyMembers } from "@/lib/jobsync-mobile-api";
+import {
+  getJobSyncCompanyJobs,
+  getJobSyncCompanyMembers,
+  getJobSyncCompanySettings,
+} from "@/lib/jobsync-mobile-api";
+import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
@@ -1635,13 +1640,76 @@ export default function AdminScheduleScreen() {
     return () => { cancelled = true; };
   }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id, selectedCity, syncKey]);
 
-  // Sync all jobs (manual + online) from server DB when city changes or manual refresh
+  // Company sessions render the shared Company Job records only. Times are converted
+  // from the API instants using the Company's configured timezone, never the device timezone.
   useEffect(() => {
     if (isJobSyncCompany) {
-      setJobs([]);
-      setIsSyncing(false);
-      return;
+      const token = jobSyncSession?.token;
+      if (!token) {
+        return;
+      }
+      let cancelled = false;
+      const syncCompanyJobs = async () => {
+        setIsSyncing(true);
+        try {
+          const [serverJobs, companySettings] = await Promise.all([
+            getJobSyncCompanyJobs(token),
+            getJobSyncCompanySettings(token).catch(() => ({ timezone: "America/Chicago" })),
+          ]);
+          const companyTimezone = companySettings.timezone;
+          const mappedJobs = serverJobs.flatMap((job) => {
+            if (job.status === "cancelled") return [];
+            const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
+            if (!slot) return [];
+            const position = companyCalendarWeekPosition(slot.date, new Date(), companyTimezone);
+            const customerParts = job.customerName.split(" ").filter(Boolean);
+            const status: JobStatus = job.status === "completed"
+              ? "finished"
+              : job.status === "en_route"
+                ? "on_my_way"
+                : job.status === "on_site"
+                  ? "started"
+                  : "scheduled";
+            return [{
+              id: String(job.id),
+              // A Company calendar has one authenticated workspace, not legacy city partitions.
+              location: selectedCity,
+              firstName: customerParts[0] || "",
+              lastName: customerParts.slice(1).join(" "),
+              email: undefined,
+              phone: "",
+              address: job.addressLine1 || "",
+              serviceTitle: job.serviceName || job.title || "Service",
+              serviceDescription: job.title || job.serviceName || "",
+              price: job.amount,
+              startHour: slot.startHour,
+              endHour: slot.endHour,
+              dayIndex: position.dayIndex,
+              weekOffset: position.weekOffset,
+              status,
+              _rawStatus: job.status,
+              detailerName: job.assignedName || undefined,
+              assignedTo: job.assignedUserId ? `jobsync-${job.assignedUserId}` : undefined,
+              createdAt: job.updatedAt || job.scheduledStartAt || new Date().toISOString(),
+              tags: [],
+              taxAmount: 0,
+              discountAmount: 0,
+              depositAmount: 0,
+              upsellTotal: 0,
+              additionalVehicles: [],
+            } as Job];
+          });
+          if (!cancelled) setJobs(mappedJobs);
+        } catch {
+          // Keep the last confirmed Company calendar visible while offline.
+        } finally {
+          if (!cancelled) setIsSyncing(false);
+        }
+      };
+      void syncCompanyJobs();
+      return () => { cancelled = true; };
     }
+
     const syncServerJobs = async () => {
       setIsSyncing(true);
       try {
@@ -1765,7 +1833,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [isJobSyncCompany, selectedCity, syncKey]);
+  }, [isJobSyncCompany, jobSyncSession?.token, selectedCity, syncKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(

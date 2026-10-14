@@ -69,7 +69,9 @@ export type JobSyncCompanyMemberUpdateInput = {
 const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
+const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const COMPANY_SETTINGS_PATH = "/api/mobile/v1/company/settings";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
 const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
@@ -123,7 +125,7 @@ function nullableNumber(...values: unknown[]) {
 
 function stringList(value: unknown) {
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string" && item.trim()).map((item) => item.trim());
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
   }
   if (typeof value === "string" && value.trim()) {
     return value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -212,6 +214,87 @@ export function createJobSyncMobileLoginPayload(input: { accountType: JobSyncAcc
 
 export function createJobSyncBearerHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+export type JobSyncMobileJob = {
+  id: number;
+  customerId: number;
+  assignedUserId: number | null;
+  title: string;
+  serviceName: string;
+  status: string;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  updatedAt: string | null;
+  addressLine1: string | null;
+  city: string | null;
+  amount: number;
+  customerName: string;
+  assignedName: string | null;
+};
+
+export type JobSyncCompanySettings = {
+  id: number;
+  name: string;
+  timezone: string;
+};
+
+function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
+  const row = asRecord(value) ?? {};
+  const id = Number(row.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return {
+    id,
+    customerId: Number(row.customerId),
+    assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
+    title: firstString(row.title) ?? "",
+    serviceName: firstString(row.serviceName) ?? "",
+    status: firstString(row.status) ?? "scheduled",
+    scheduledStartAt: firstString(row.scheduledStartAt),
+    scheduledEndAt: firstString(row.scheduledEndAt),
+    updatedAt: firstString(row.updatedAt),
+    addressLine1: firstString(row.addressLine1),
+    city: firstString(row.city),
+    amount: Number(row.amount || 0),
+    customerName: firstString(row.customerName) ?? "",
+    assignedName: firstString(row.assignedName),
+  };
+}
+
+export function normalizeJobSyncCompanySettings(payload: unknown): JobSyncCompanySettings | null {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const company = firstRecord(data.company, root?.company) ?? {};
+  const id = nullableNumber(company.id, company.companyId);
+  const name = firstString(company.name, company.companyName);
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    timezone: firstString(company.timezone, company.timeZone) ?? "America/Chicago",
+  };
+}
+
+export async function getJobSyncCompanyJobs(token: string, range?: { start?: string; end?: string }): Promise<JobSyncMobileJob[]> {
+  const search = new URLSearchParams();
+  if (range?.start) search.set("start", range.start);
+  if (range?.end) search.set("end", range.end);
+  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  })) ?? {};
+  return (Array.isArray(payload.jobs) ? payload.jobs : [])
+    .map(normalizeJobSyncMobileJob)
+    .filter((job): job is JobSyncMobileJob => Boolean(job));
+}
+
+export async function getJobSyncCompanySettings(token: string): Promise<JobSyncCompanySettings> {
+  const settings = normalizeJobSyncCompanySettings(await requestJson(COMPANY_SETTINGS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  }));
+  if (!settings) throw new Error("Home Service Connected returned invalid Company settings.");
+  return settings;
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {

@@ -40,6 +40,8 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyJobs, getJobSyncCompanySettings } from "@/lib/jobsync-mobile-api";
+import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
 import { trpc } from "@/lib/trpc";
@@ -2689,7 +2691,61 @@ export default function ScheduleScreen() {
   // Sync server jobs (both manual + online) for the selected location into local state
   const syncServerJobs = async (location: LocationSlug, emp = employee) => {
     if (isJobSyncCompany) {
-      setJobs([]);
+      const token = jobSyncSession?.token;
+      if (!token) {
+        setJobs([]);
+        return;
+      }
+      try {
+        const [companyJobs, companySettings] = await Promise.all([
+          getJobSyncCompanyJobs(token),
+          getJobSyncCompanySettings(token).catch(() => ({ timezone: "America/Chicago" })),
+        ]);
+        const companyTimezone = companySettings.timezone;
+        const mappedCompanyJobs = companyJobs.flatMap((job) => {
+          if (job.status === "cancelled") return [];
+          const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
+          if (!slot) return [];
+          const position = companyCalendarWeekPosition(slot.date, new Date(), companyTimezone);
+          const customerParts = job.customerName.split(" ").filter(Boolean);
+          const status: JobStatus = job.status === "completed"
+            ? "finished"
+            : job.status === "en_route"
+              ? "on_my_way"
+              : job.status === "on_site"
+                ? "started"
+                : "scheduled";
+          return [{
+            id: String(job.id),
+            location,
+            firstName: customerParts[0] || "",
+            lastName: customerParts.slice(1).join(" "),
+            email: "",
+            phone: "",
+            address: job.addressLine1 || "",
+            serviceTitle: job.serviceName || job.title || "Service",
+            serviceDescription: job.title || job.serviceName || "",
+            price: job.amount,
+            startHour: slot.startHour,
+            endHour: slot.endHour,
+            dayIndex: position.dayIndex,
+            weekOffset: position.weekOffset,
+            status,
+            _rawStatus: job.status,
+            detailerName: job.assignedName || undefined,
+            createdAt: job.updatedAt || job.scheduledStartAt || new Date().toISOString(),
+            tags: [],
+            taxAmount: 0,
+            discountAmount: 0,
+            depositAmount: 0,
+            upsellTotal: 0,
+            additionalVehicles: [],
+          } as Job];
+        });
+        setJobs(mappedCompanyJobs);
+      } catch {
+        // Preserve the last confirmed Company schedule while offline.
+      }
       return;
     }
     try {

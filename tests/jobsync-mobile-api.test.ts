@@ -15,6 +15,7 @@ import {
   normalizeHomeServiceConnectedCommunityCategories,
   normalizeHomeServiceConnectedCommunityPosts,
   normalizeHomeServiceConnectedPriceBook,
+  normalizeJobSyncCompanySettings,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -215,7 +216,7 @@ describe("JobSync mobile API contract", () => {
     ]);
   });
 
-  it("normalizes only active Company Price Book services and preserves web service IDs", () => {
+  it("normalizes active Company Price Book services and preserves web service IDs", () => {
     expect(normalizeHomeServiceConnectedPriceBook({
       services: [
         { service_id: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: "[\"Wash\",\"Vacuum\"]", vehicle_prices: "{\"sedan\":180,\"suv\":220}", image_url_pb: "https://cdn.example.com/full.png", sort_order_pb: 2, is_active_pb: "yes" },
@@ -226,5 +227,11 @@ describe("JobSync mobile API contract", () => {
       { serviceId: "svc-basic", name: "Basic Service", emoji: "🛠️", description: "", features: ["Exterior"], vehiclePrices: { sedan: 120 }, imageUrl: null, sortOrder: 1, serviceTypeId: null },
       { serviceId: "svc-full", name: "Full Service", emoji: "🛠️", description: "Complete service", features: ["Wash", "Vacuum"], vehiclePrices: { sedan: 180, suv: 220 }, imageUrl: "https://cdn.example.com/full.png", sortOrder: 2, serviceTypeId: null },
     ]);
+  });
+
+  it("normalizes the Company-owned timezone used to render scheduled jobs", () => {
+    expect(normalizeJobSyncCompanySettings({
+      company: { id: 9, name: "Lawn Sharks", timezone: "America/Chicago" },
+    })).toEqual({ id: 9, name: "Lawn Sharks", timezone: "America/Chicago" });
   });
 });
