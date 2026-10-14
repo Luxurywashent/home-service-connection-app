@@ -1280,8 +1280,9 @@ export default function AdminScheduleScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
-  const { session: jobSyncSession } = useJobSyncAuth();
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const hasJobSyncEmployee = currentEmployee?.sessionSource === "jobsync";
   const companyPriceBook = useCompanyPriceBook();
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
@@ -1490,6 +1491,7 @@ export default function AdminScheduleScreen() {
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
   const [syncKey, setSyncKey] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [companyCalendarError, setCompanyCalendarError] = useState<string | null>(null);
   // Dynamic detailers — fetched from server so new hires appear automatically
   const [dynamicDetailers, setDynamicDetailers] = useState<Record<string, DetailerEntry[]>>({});
   const [detailersLoaded, setDetailersLoaded] = useState<Record<string, boolean>>({});
@@ -1601,13 +1603,20 @@ export default function AdminScheduleScreen() {
   storageKeyRef.current = STORAGE_KEY;
 
   useEffect(() => {
+    // Never show records stored by an earlier local calendar session in a
+    // Company workspace. Company jobs are bearer-scoped and must come from
+    // the authoritative mobile endpoint on every screen entry.
+    if (isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading) {
+      void Promise.resolve().then(() => setJobs([]));
+      return;
+    }
     const key = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
     AsyncStorage.getItem(key).then((raw) => {
       if (raw) { try { setJobs(JSON.parse(raw)); } catch {} }
     });
     // Clear old shared cache key
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [currentEmployee?.employeeId]);
+  }, [currentEmployee?.employeeId, hasJobSyncEmployee, isJobSyncCompany, jobSyncLoading]);
 
   // Never hydrate a JobSync Company calendar from the legacy global location
   // endpoint. Its authenticated bearer roster is the single source of truth.
@@ -1642,14 +1651,18 @@ export default function AdminScheduleScreen() {
   // Company sessions render the shared Company Job records only. Times are converted
   // from the API instants using the Company's configured timezone, never the device timezone.
   useEffect(() => {
+    if (jobSyncLoading) return;
     if (isJobSyncCompany) {
       const token = jobSyncSession?.token;
       if (!token) {
+        void Promise.resolve().then(() => setJobs([]));
         return;
       }
       let cancelled = false;
       const syncCompanyJobs = async () => {
         setIsSyncing(true);
+        setCompanyCalendarError(null);
+        setJobs([]);
         try {
           const [serverJobs, companySettings] = await Promise.all([
             getJobSyncCompanyJobs(token),
@@ -1700,7 +1713,11 @@ export default function AdminScheduleScreen() {
           });
           if (!cancelled) setJobs(mappedJobs);
         } catch {
-          // Keep the last confirmed Company calendar visible while offline.
+          // Do not present a cached legacy schedule as current Company data.
+          if (!cancelled) {
+            setJobs([]);
+            setCompanyCalendarError("Could not refresh the Company calendar. Check your connection and tap Refresh.");
+          }
         } finally {
           if (!cancelled) setIsSyncing(false);
         }
@@ -1832,7 +1849,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [isJobSyncCompany, jobSyncSession?.token, selectedCity, syncKey]);
+  }, [isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedCity, syncKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
@@ -2404,7 +2421,10 @@ export default function AdminScheduleScreen() {
     label: isJobSyncCompany
       ? (jobSyncSession?.company?.name ?? "Company schedule")
       : (CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity),
-    detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [],
+    // A Company roster must never fall back to legacy city placeholders.
+    detailers: isJobSyncCompany || hasJobSyncEmployee
+      ? (dynamicDetailers[selectedCity] ?? [])
+      : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []),
   };
   const currentScheduleLabel = cityConfig.label;
 
@@ -2526,12 +2546,17 @@ export default function AdminScheduleScreen() {
             style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center", opacity: cityConfig.detailers.length === 0 ? 0.35 : 1 }}
           >
             <Text style={{ color: "#FFF", fontSize: 22, fontWeight: "300", lineHeight: 28 }}>+</Text>
-          </TouchableOpacity>
+	          </TouchableOpacity>
 
-        </View>
-      </View>
+	        </View>
+	      </View>
+	      {isJobSyncCompany && companyCalendarError ? (
+	        <View style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.warning + "18", borderBottomWidth: 1, borderBottomColor: colors.warning + "55" }}>
+	          <Text style={{ color: colors.warning, fontSize: 13, fontWeight: "600" }}>{companyCalendarError}</Text>
+	        </View>
+	      ) : null}
 
-      {/* Detailer legend for dual-lane cities */}
+	      {/* Detailer legend for dual-lane cities */}
       {cityConfig.detailers.length > 1 && (
         <View style={{ flexDirection: "row", gap: 16, paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
           {cityConfig.detailers.map((det, i) => (

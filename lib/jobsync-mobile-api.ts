@@ -66,7 +66,10 @@ export type JobSyncCompanyMemberUpdateInput = {
   availability?: "available" | "busy" | "off_duty";
 };
 
-const DEFAULT_JOBSYNC_BASE_URL = "https://jobwash-veysiubh.manus.space";
+// Company mobile traffic must use the canonical Home Service Connected origin.
+// The named legacy host currently proxies the same backend, but it must not be
+// required by a shipped Company session.
+const DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
 const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
@@ -160,6 +163,9 @@ async function requestJson(path: string, init: RequestInit) {
   try {
     const response = await fetch(`${getJobSyncBaseUrl()}${path}`, {
       ...init,
+      // Schedule, roster, and time state are live operational data. Never let
+      // a native HTTP cache replay a prior Company response as current data.
+      cache: "no-store",
       signal: controller.signal,
       headers: {
         Accept: "application/json",

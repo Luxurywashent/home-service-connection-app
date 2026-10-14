@@ -2249,10 +2249,11 @@ function PrivateNotesCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ScheduleScreen() {
-  const colors = useColors();
-  const { employee, loading: authLoading } = useEmployeeAuth();
-  const { session: jobSyncSession } = useJobSyncAuth();
-  const isJobSyncCompany = jobSyncSession?.portal === "company";
+	const colors = useColors();
+	const { employee, loading: authLoading } = useEmployeeAuth();
+	const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+	const isJobSyncCompany = jobSyncSession?.portal === "company";
+	const hasJobSyncEmployee = employee?.sessionSource === "jobsync";
   const companyPriceBook = useCompanyPriceBook();
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
   const highlightJobHandledRef = useRef<string | null>(null);
@@ -2316,8 +2317,9 @@ export default function ScheduleScreen() {
     // Will be overridden by employee city in useEffect below
     return "crestview";
   });
-  const [isSyncingBookings, setIsSyncingBookings] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+	const [isSyncingBookings, setIsSyncingBookings] = useState(false);
+	const [isRefreshing, setIsRefreshing] = useState(false);
+	const [companyCalendarError, setCompanyCalendarError] = useState<string | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showServiceWizard, setShowServiceWizard] = useState(false);
@@ -2617,13 +2619,22 @@ export default function ScheduleScreen() {
 
   useEffect(() => {
     if (authLoading || !employee?.employeeId) return; // Wait until we know WHO is logged in
+    // Company jobs are bearer-scoped. Do not hydrate them from records that a
+    // prior local-session calendar wrote to AsyncStorage.
+    if (isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading) {
+      void Promise.resolve().then(() => {
+        jobsRef.current = [];
+        setJobs([]);
+      });
+      return;
+    }
     const key = `${STORAGE_KEY_BASE}_${employee.employeeId}`;
     AsyncStorage.getItem(key).then((raw) => {
       if (raw) { try { const parsed = JSON.parse(raw); jobsRef.current = parsed; setJobs(parsed); } catch {} }
     });
     // Also clear the old shared cache key so stale data doesn't persist
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [authLoading, employee?.employeeId]);
+  }, [authLoading, employee?.employeeId, hasJobSyncEmployee, isJobSyncCompany, jobSyncLoading]);
 
   // Keep jobsRef in sync with jobs state for use in nav callbacks
   useEffect(() => { jobsRef.current = jobs; }, [jobs]);
@@ -2689,15 +2700,18 @@ export default function ScheduleScreen() {
   const selectedDate = weekDates[selectedDay];
 
   // Sync server jobs (both manual + online) for the selected location into local state
-  const syncServerJobs = async (location: LocationSlug, emp = employee) => {
-    if (isJobSyncCompany) {
+	const syncServerJobs = async (location: LocationSlug, emp = employee) => {
+	  if (jobSyncLoading) return;
+	  if (isJobSyncCompany) {
       const token = jobSyncSession?.token;
       if (!token) {
         setJobs([]);
         return;
       }
-      try {
-        const [companyJobs, companySettings] = await Promise.all([
+	    try {
+	      setCompanyCalendarError(null);
+	      setJobs([]);
+	      const [companyJobs, companySettings] = await Promise.all([
           getJobSyncCompanyJobs(token),
           getJobSyncCompanySettings(token).catch(() => ({ timezone: "America/Chicago" })),
         ]);
@@ -2743,8 +2757,11 @@ export default function ScheduleScreen() {
           } as Job];
         });
         setJobs(mappedCompanyJobs);
-      } catch {
-        // Preserve the last confirmed Company schedule while offline.
+	    } catch {
+	      // A stale local record is worse than an explicit unavailable state:
+	      // it can make a customer job appear at the wrong time.
+	      setJobs([]);
+	      setCompanyCalendarError("Could not refresh the Company schedule. Check your connection and tap Refresh.");
       }
       return;
     }
@@ -3162,15 +3179,15 @@ export default function ScheduleScreen() {
     if (slug !== selectedLocation) {
       setSelectedLocation(slug);
     }
-    // Pass employee explicitly so syncServerJobs never reads a stale closure value
-    syncServerJobs(slug, employee);
-  }, [authLoading, employee?.employeeId]);
+	  // Pass employee explicitly so syncServerJobs never reads a stale closure value
+	  syncServerJobs(slug, employee);
+	}, [authLoading, employee?.employeeId, isJobSyncCompany, jobSyncLoading, jobSyncSession?.token]);
   // Also sync whenever admin manually changes the selected location
   useEffect(() => {
-    if (!authLoading && (employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office")) {
-      syncServerJobs(selectedLocation, employee);
-    }
-  }, [selectedLocation]);
+	  if (!authLoading && (employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office")) {
+	    syncServerJobs(selectedLocation, employee);
+	  }
+	}, [isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedLocation]);
 
   // ── Auto-refresh: 30-second polling for detailers ──────────────────────────
   // Silently re-syncs every 30 seconds while the screen is mounted.
@@ -3184,11 +3201,11 @@ export default function ScheduleScreen() {
       ? (employee.city ? cityToSlug(employee.city) : selectedLocation)
       : selectedLocation;
     const intervalMs = isDetailer ? 10_000 : 15_000; // detailers: 10s, admins: 15s
-    const intervalId = setInterval(() => {
-      syncServerJobs(slug, employee);
-    }, intervalMs);
-    return () => clearInterval(intervalId);
-  }, [authLoading, employee?.employeeId, employee?.role, employee?.city, selectedLocation]);
+	  const intervalId = setInterval(() => {
+	    syncServerJobs(slug, employee);
+	  }, intervalMs);
+	  return () => clearInterval(intervalId);
+	}, [authLoading, employee?.employeeId, employee?.role, employee?.city, isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedLocation]);
 
   // ── Auto-refresh: app comes back to foreground ────────────────────────────
   // Immediately re-syncs when the detailer switches back to the app.
@@ -3201,9 +3218,9 @@ export default function ScheduleScreen() {
       if (nextState === "active") {
         syncServerJobs(slug, employee);
       }
-    });
-    return () => subscription.remove();
-  }, [authLoading, employee?.employeeId, employee?.role, employee?.city, selectedLocation]);
+	  });
+	  return () => subscription.remove();
+	}, [authLoading, employee?.employeeId, employee?.role, employee?.city, isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedLocation]);
 
 
   // ── Deep link: open specific job from push notification tap ──────────────
@@ -4038,10 +4055,15 @@ export default function ScheduleScreen() {
                 <Text style={s.addBtnText}>+</Text>
               </TouchableOpacity>
             )}
-          </View>
-        </View>
+	          </View>
+	        </View>
+	        {isJobSyncCompany && companyCalendarError ? (
+	          <View style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.warning + "18", borderBottomWidth: 1, borderBottomColor: colors.warning + "55" }}>
+	            <Text style={{ color: colors.warning, fontSize: 13, fontWeight: "600" }}>{companyCalendarError}</Text>
+	          </View>
+	        ) : null}
 
-        {/* Location Selector — only shown for admins; detailers see their own city label */}
+	        {/* Location Selector — only shown for admins; detailers see their own city label */}
         {(employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office") && !isJobSyncCompany ? (
           <ScrollView
             horizontal

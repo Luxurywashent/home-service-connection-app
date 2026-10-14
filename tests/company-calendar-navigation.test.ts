@@ -24,4 +24,26 @@ describe("Company calendar and customer navigation", () => {
     expect(handleBack).toContain("router.back();");
     expect(handleBack).not.toContain("router.replace");
   });
+
+  it("never replays local schedule cache for a Company session", () => {
+    const adminSchedule = readProjectSource("app/(tabs)/admin-schedule.tsx");
+    const technicianSchedule = readProjectSource("app/(tabs)/schedule.tsx");
+
+    expect(adminSchedule).toContain('sessionSource === "jobsync"');
+    expect(adminSchedule).toContain("authoritative mobile endpoint");
+    expect(adminSchedule).toContain("setJobs([]);");
+    expect(technicianSchedule).toContain('sessionSource === "jobsync"');
+    expect(technicianSchedule).toContain("Do not hydrate");
+    expect(technicianSchedule).toContain("setJobs([]);");
+  });
+
+  it("uses only the authoritative Company API and configured Company timezone", () => {
+    const mobileApi = readProjectSource("lib/jobsync-mobile-api.ts");
+    const eas = readProjectSource("eas.json");
+
+    expect(mobileApi).toContain('DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com"');
+    expect(mobileApi).toContain('cache: "no-store"');
+    expect(eas).toContain('"EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://www.homeserviceconnected.com"');
+    expect(eas).toContain('"EXPO_PUBLIC_API_BASE_URL": "https://www.homeserviceconnected.com"');
+  });
 });
