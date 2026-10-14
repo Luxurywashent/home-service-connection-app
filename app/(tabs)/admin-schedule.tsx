@@ -1367,8 +1367,6 @@ export default function AdminScheduleScreen() {
     : isJobSyncCompany ? [] : PACKAGES;
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const [showReassignPicker, setShowReassignPicker] = useState(false);
-  const [showMoveCityPicker, setShowMoveCityPicker] = useState(false);
-  const [movingToCity, setMovingToCity] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [showInvoiceSheet, setShowInvoiceSheet] = useState(false);
   // ── Charge Card on File state ──
@@ -3843,17 +3841,6 @@ export default function AdminScheduleScreen() {
                   );
                 })()}
 
-                {/* Move to City button */}
-                <TouchableOpacity
-                  onPress={() => setShowMoveCityPicker(true)}
-                  activeOpacity={0.8}
-                  style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary + "18", borderWidth: 1, borderColor: colors.primary + "55", borderRadius: 12, paddingVertical: 12 }}
-                >
-                  <Text style={{ fontSize: 16 }}>🏙️</Text>
-                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 15 }}>Move to City</Text>
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>({CITY_LIST.find(c => c.slug === (selectedJob?.location ?? selectedCity))?.label ?? selectedJob?.location ?? selectedCity})</Text>
-                </TouchableOpacity>
-
                 {/* Charge Card on File button — only shown when job is unpaid */}
                 {!selectedJob?.payment && (
                   <TouchableOpacity
@@ -4202,82 +4189,6 @@ export default function AdminScheduleScreen() {
                   <Text style={{ color: "#fff", fontWeight: "700" }}>{savingAddress ? "Saving..." : "Save Address"}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
-        )}
-
-        {/* Move to City Overlay */}
-        {showMoveCityPicker && selectedJob && (
-          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}>
-            <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: "100%" }}>
-              <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>🏙️ Move to City</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Select the city calendar to move this job to. The job will be removed from the current city and appear in the new one.</Text>
-              <View style={{ gap: 8, marginBottom: 20 }}>
-                {CITY_LIST.map((city) => {
-                  const isCurrent = city.slug === (selectedJob.location ?? selectedCity);
-                  return (
-                    <TouchableOpacity
-                      key={city.slug}
-                      onPress={async () => {
-                        if (isCurrent || movingToCity) return;
-                        setMovingToCity(true);
-                        try {
-                          // Compute date string from weekOffset + dayIndex
-                          const today = new Date();
-                          const monday = new Date(today);
-                          monday.setDate(today.getDate() - (today.getDay() + 6) % 7);
-                          monday.setHours(0, 0, 0, 0);
-                          const d = new Date(monday);
-                          d.setDate(monday.getDate() + selectedJob.weekOffset * 7 + selectedJob.dayIndex);
-                          const dateStr = d.toISOString().slice(0, 10);
-                          // Map local UI status back to server enum
-                          const statusMap: Record<string, string> = { scheduled: "confirmed", started: "in_progress", finished: "completed" };
-                          const serverStatus = statusMap[selectedJob.status] || selectedJob.status;
-                          await jobUpsertMutation.mutateAsync({
-                            jobId: selectedJob.id,
-                            location: city.slug,
-                            date: dateStr,
-                            timeSlot: `${formatHour(selectedJob.startHour)} - ${formatHour(selectedJob.endHour)}`,
-                            startHour: selectedJob.startHour,
-                            endHour: selectedJob.endHour,
-                            customerName: `${selectedJob.firstName} ${selectedJob.lastName}`.trim(),
-                            customerPhone: selectedJob.phone,
-                            customerEmail: selectedJob.email,
-                            vehicleType: selectedJob.vehicleType,
-                            packageType: selectedJob.packageType,
-                            totalPrice: selectedJob.price,
-                            assignedTo: selectedJob.assignedTo,
-                            status: serverStatus as any,
-                            customerAddress: selectedJob.address,
-                            notifyCustomer: false,
-                          });
-                          // Update local state
-                          setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, location: city.slug } : j));
-                          setSelectedJob(prev => prev ? { ...prev, location: city.slug } : prev);
-                          setShowMoveCityPicker(false);
-                          if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert("Moved!", `Job moved to ${city.label} calendar.`);
-                        } catch (e) {
-                          Alert.alert("Error", "Failed to move job. Please try again.");
-                        } finally {
-                          setMovingToCity(false);
-                        }
-                      }}
-                      style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, borderRadius: 10, borderWidth: 1.5, borderColor: isCurrent ? colors.primary : colors.border, backgroundColor: isCurrent ? colors.primary + "18" : colors.background }}
-                    >
-                      <Text style={{ color: isCurrent ? colors.primary : colors.foreground, fontWeight: isCurrent ? "700" : "500", fontSize: 15 }}>{city.label}</Text>
-                      {isCurrent && <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>Current</Text>}
-                      {movingToCity && !isCurrent && <ActivityIndicator size="small" color={colors.primary} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowMoveCityPicker(false)}
-                style={{ padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
-              >
-                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
-              </TouchableOpacity>
             </View>
           </View>
         )}

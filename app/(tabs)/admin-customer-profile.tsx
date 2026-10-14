@@ -223,7 +223,7 @@ export default function AdminCustomerProfileScreen() {
 
   const handleBack = () => {
     if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.replace("/(tabs)/admin-customers" as any);
+    router.back();
   };
 
   const handleTab = (tab: TabKey) => {
