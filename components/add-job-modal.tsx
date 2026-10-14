@@ -29,6 +29,7 @@ import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/compon
 import { CalendarPicker } from "@/components/calendar-picker";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -314,7 +315,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
           } as Partial<Record<VehicleType, number>>,
         };
       })
-    : isJobSyncCompany ? [] : PACKAGES_FALLBACK;
+    : []; // New Job is intentionally limited to active Price Book services.
 
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const standardPackages = allJobPackages.filter((p) => !p.isRv);
@@ -439,7 +440,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
       setShowCustomerDropdown(false);
       setSelectedDate(todayStr());
       setShowDatePicker(false);
-      setVehicleType(undefined);
+      setVehicleType("sedan");
       setPackageId(undefined);
       setAddonIds([]);
       setAddonQtys({});
@@ -520,7 +521,12 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
 
   // ── Save ──
   const handleSave = async () => {
-    if (!firstName.trim() || !lastName.trim() || !address.trim()) return;
+    if (!firstName.trim() || !lastName.trim() || !address.trim() || !packageId) return;
+    const incompleteServices = extraVehicles.filter((service) => !service.packageId);
+    if (incompleteServices.length > 0) {
+      Alert.alert("Missing service", `${incompleteServices.length} additional service${incompleteServices.length === 1 ? "" : "s"} still needs a Price Book selection.`);
+      return;
+    }
     setSaving(true);
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -578,12 +584,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
     }
   };
 
-  const canSave = firstName.trim().length > 0 && lastName.trim().length > 0 && address.trim().length > 0 && !saving;
-
-  // ── Packages to show for primary vehicle ──
-  const packagesToShow = vehicleType
-    ? (isRvVehicle(vehicleType) ? rvPackages : standardPackages)
-    : [];
+  const canSave = firstName.trim().length > 0 && lastName.trim().length > 0 && address.trim().length > 0 && !!packageId && !saving;
 
   return (
     <Modal
@@ -717,231 +718,27 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                 style={{ marginBottom: 16, zIndex: 999 }}
               />
 
-              {/* ── Vehicle Type ── */}
-              <Text style={[s.sectionLabel, { color: colors.muted }]}>Vehicle Type</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
-                {VEHICLE_TYPES.filter((v) => !v.group).map((v) => {
-                  const sel = vehicleType === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => { setVehicleType(v.id); setPackageId(undefined); setAddonIds([]); setAddonQtys({}); setPrice(""); setPriceOverridden(false); }}
-                      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                      <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {/* RV types */}
-              <Text style={[s.subLabel, { color: colors.muted }]}>RV</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-                {VEHICLE_TYPES.filter((v) => v.group === "rv").map((v) => {
-                  const sel = vehicleType === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => { setVehicleType(v.id); setPackageId(undefined); setAddonIds([]); setAddonQtys({}); setPrice(""); setPriceOverridden(false); }}
-                      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                      <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* ── Package ── */}
-              {vehicleType && (
-                <>
-                  <Text style={[s.sectionLabel, { color: colors.muted }]}>Package</Text>
-                  {packagesToShow.length === 0 && (
-                    <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>
-                      {isJobSyncCompany && companyPriceBook.isLoading
-                        ? "Loading your Company Price Book…"
-                        : isJobSyncCompany && companyPriceBook.error
-                          ? companyPriceBook.error
-                          : isJobSyncCompany
-                            ? "No active service is available for this vehicle type. Add or activate a service in the web Price Book."
-                            : "No packages available for this vehicle type."}
-                    </Text>
-                  )}
-                  {packagesToShow.map((p) => {
-                    const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[vehicleType] ?? 0;
-                    const sel = packageId === p.id;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        onPress={() => {
-                          setPackageId(p.id);
-                          setAddonIds([]); setAddonQtys({});
-                          setPriceOverridden(false);
-                          setShowPriceInput(false);
-                          setPrice(pkgPrice.toString());
-                        }}
-                        style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }}
-                        activeOpacity={0.8}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
-                          <Text style={{ fontSize: 18, marginRight: 8 }}>{p.emoji}</Text>
-                          <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>{p.title}</Text>
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              if (!sel) { setPackageId(p.id); setAddonIds([]); setAddonQtys({}); setPrice(pkgPrice.toString()); }
-                              setPriceOverridden(true); setShowPriceInput(true);
-                            }}
-                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: priceOverridden && sel ? colors.warning + "30" : "transparent" }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={{ color: priceOverridden && sel ? colors.warning : colors.primary, fontWeight: "800", fontSize: 15 }}>
-                              {priceOverridden && sel ? `$${price || pkgPrice} ✏️` : `$${pkgPrice}`}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 26 }}>{p.tagline}</Text>
-                        {sel && p.features.map((f) => (
-                          <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3, marginLeft: 26 }}>
-                            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary }} />
-                            <Text style={{ color: colors.foreground, fontSize: 12 }}>{f}</Text>
-                          </View>
-                        ))}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </>
-              )}
-
-              {/* Static add-ons are retained only for legacy sessions. */}
-              {!isJobSyncCompany && vehicleType && packageId && (
-                <>
-                  <TouchableOpacity
-                    onPress={() => setAddonsExpanded((e) => !e)}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: addonIds.length > 0 ? colors.primary : colors.border, borderRadius: 10, padding: 12, backgroundColor: addonIds.length > 0 ? colors.primary + "10" : colors.surface, marginBottom: addonsExpanded ? 10 : 16, marginTop: 4 }}
-                    activeOpacity={0.75}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Text style={{ fontSize: 16 }}>✨</Text>
-                      <Text style={{ color: addonIds.length > 0 ? colors.primary : colors.foreground, fontWeight: "600", fontSize: 14 }}>
-                        {addonIds.length > 0 ? `Add-Ons (${addonIds.length} selected)` : "Add Add-Ons (Optional)"}
-                      </Text>
-                    </View>
-                    <Text style={{ color: colors.muted, fontSize: 16 }}>{addonsExpanded ? "▲" : "▼"}</Text>
-                  </TouchableOpacity>
-                  {addonsExpanded && ADDONS.map((a) => {
-                    const qty = addonQtys[a.id] ?? 0;
-                    const handleQtyChange = (newQty: number) => {
-                      const newQtys = { ...addonQtys, [a.id]: newQty };
-                      if (newQty === 0) delete newQtys[a.id];
-                      setAddonQtys(newQtys);
-                      setAddonIds(ADDONS.filter((ad) => (newQtys[ad.id] ?? 0) > 0).map((ad) => ad.id));
-                      recalcPrice(packageId, vehicleType, newQtys, priceOverridden);
-                    };
-                    return (
-                      <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? colors.primary : colors.border, backgroundColor: qty > 0 ? colors.primary + "10" : colors.surface }}>
-                        <Text style={{ fontSize: 18, marginRight: 8 }}>{a.emoji}</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>{a.title}</Text>
-                          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 11 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
-                        </View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <TouchableOpacity onPress={() => handleQtyChange(Math.max(0, qty - 1))} style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }} disabled={qty === 0}><Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>−</Text></TouchableOpacity>
-                          <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, minWidth: 16, textAlign: "center" }}>{qty}</Text>
-                          <TouchableOpacity onPress={() => handleQtyChange(qty + 1)} style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}><Text style={{ color: colors.primary, fontSize: 15, fontWeight: "700" }}>+</Text></TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </>
-              )}
-
-              {/* ── Additional Vehicles ── */}
-              {vehicleType && packageId && (
-                <>
-                  {extraVehicles.map((ev, evIdx) => (
-                    <View key={evIdx} style={{ borderWidth: 1, borderColor: colors.primary + "44", borderRadius: 14, padding: 14, marginBottom: 14, backgroundColor: colors.primary + "08" }}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>Vehicle {evIdx + 2}</Text>
-                        <TouchableOpacity onPress={() => setExtraVehicles((prev) => prev.filter((_, i) => i !== evIdx))} style={{ padding: 4 }}>
-                          <Text style={{ color: colors.error, fontSize: 18, fontWeight: "700" }}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <Text style={[s.subLabel, { color: colors.muted }]}>Vehicle Type</Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
-                        {VEHICLE_TYPES.filter((v) => !v.group).map((v) => {
-                          const sel = ev.vehicleType === v.id;
-                          return (
-                            <TouchableOpacity key={v.id} onPress={() => setExtraVehicles((prev) => prev.map((x, i) => i === evIdx ? { ...x, vehicleType: v.id, packageId: "", addonIds: [], addonQtys: {}, price: 0 } : x))} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                              <Text style={{ fontSize: 14 }}>{v.emoji}</Text>
-                              <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 12, marginLeft: 5 }}>{v.label}</Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      <Text style={[s.subLabel, { color: colors.muted }]}>RV</Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                        {VEHICLE_TYPES.filter((v) => v.group === "rv").map((v) => {
-                          const sel = ev.vehicleType === v.id;
-                          return (
-                            <TouchableOpacity key={v.id} onPress={() => setExtraVehicles((prev) => prev.map((x, i) => i === evIdx ? { ...x, vehicleType: v.id, packageId: "", addonIds: [], addonQtys: {}, price: 0 } : x))} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                              <Text style={{ fontSize: 14 }}>{v.emoji}</Text>
-                              <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 12, marginLeft: 5 }}>{v.label}</Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      {ev.vehicleType ? (() => {
-                        const evPkgs = isRvVehicle(ev.vehicleType as VehicleType) ? rvPackages : standardPackages;
-                        return (
-                          <>
-                            <Text style={[s.subLabel, { color: colors.muted }]}>Package</Text>
-                            {evPkgs.map((p) => {
-                              const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[ev.vehicleType as VehicleType] ?? 0;
-                              const sel = ev.packageId === p.id;
-                              return (
-                                <TouchableOpacity key={p.id} onPress={() => setExtraVehicles((prev) => prev.map((x, i) => i === evIdx ? { ...x, packageId: p.id, price: pkgPrice } : x))} style={{ borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
-                                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                    <Text style={{ fontSize: 16, marginRight: 8 }}>{p.emoji}</Text>
-                                    <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, flex: 1 }}>{p.title}</Text>
-                                    <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 14 }}>${pkgPrice}</Text>
-                                  </View>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </>
-                        );
-                      })() : null}
-                      {ev.price > 0 && (
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 4 }}>
-                          <Text style={{ color: colors.muted, fontSize: 13 }}>Vehicle {evIdx + 2} subtotal</Text>
-                          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>${ev.price.toFixed(2)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  ))}
-
-                  {/* Add Another Vehicle */}
-                  <TouchableOpacity
-                    onPress={() => setExtraVehicles((prev) => [...prev, { vehicleType: "sedan", packageId: "", addonIds: [], addonQtys: {}, price: 0 }])}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, paddingVertical: 12, marginBottom: 16, backgroundColor: colors.primary + "0D" }}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>+</Text>
-                    <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Vehicle</Text>
-                  </TouchableOpacity>
-
-                  {/* Running total */}
-                  {extraVehicles.length > 0 && basePrice > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginBottom: 16 }}>
-                      <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>Total ({1 + extraVehicles.length} vehicles)</Text>
-                      <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${(basePrice + extraTotal).toFixed(2)}</Text>
-                    </View>
-                  )}
-                </>
-              )}
+              {/* ── Active Price Book services only ── */}
+              <Text style={[s.sectionLabel, { color: colors.muted }]}>Service</Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 10 }}>Choose an active service from the Price Book.</Text>
+              {allJobPackages.length === 0 && <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>{isJobSyncCompany && companyPriceBook.isLoading ? "Loading your Company Price Book…" : isJobSyncCompany && companyPriceBook.error ? companyPriceBook.error : "No active Price Book services are available. Add or activate a service in the Price Book before creating a job."}</Text>}
+              {allJobPackages.map((service) => {
+                const servicePrice = getPriceBookServiceStartingPrice(service.basePrice);
+                const selected = packageId === service.id;
+                return <TouchableOpacity key={service.id} onPress={() => { setVehicleType("sedan"); setPackageId(service.id); setAddonIds([]); setAddonQtys({}); setPriceOverridden(false); setShowPriceInput(false); setPrice(servicePrice.toString()); }} style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: selected ? 2 : 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: service.tagline || service.features.length ? 2 : 0 }}><Text style={{ fontSize: 18, marginRight: 8 }}>{service.emoji}</Text><Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>{service.title}</Text><Text style={{ color: selected && priceOverridden ? colors.warning : colors.primary, fontWeight: "800", fontSize: 15 }}>{selected && priceOverridden ? `$${price || servicePrice}` : formatPriceBookServiceRate(service.basePrice)}</Text></View>
+                  {service.tagline ? <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 26 }}>{service.tagline}</Text> : null}
+                  {selected && service.features.map((feature) => <View key={feature} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3, marginLeft: 26 }}><View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary }} /><Text style={{ color: colors.foreground, fontSize: 12 }}>{feature}</Text></View>)}
+                </TouchableOpacity>;
+              })}
+              {packageId && <>
+                {extraVehicles.map((serviceLine, serviceIndex) => <View key={serviceIndex} style={{ borderWidth: 1, borderColor: colors.primary + "44", borderRadius: 14, padding: 14, marginBottom: 14, backgroundColor: colors.primary + "08" }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>Additional service {serviceIndex + 1}</Text><TouchableOpacity onPress={() => setExtraVehicles((current) => current.filter((_, index) => index !== serviceIndex))} style={{ padding: 4 }}><Text style={{ color: colors.error, fontSize: 18, fontWeight: "700" }}>✕</Text></TouchableOpacity></View>
+                  {allJobPackages.map((service) => { const servicePrice = getPriceBookServiceStartingPrice(service.basePrice); const selected = serviceLine.packageId === service.id; return <TouchableOpacity key={service.id} onPress={() => setExtraVehicles((current) => current.map((line, index) => index === serviceIndex ? { ...line, vehicleType: "sedan", packageId: service.id, price: servicePrice } : line))} style={{ borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: selected ? 2 : 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary + "15" : colors.background }} activeOpacity={0.8}><View style={{ flexDirection: "row", alignItems: "center" }}><Text style={{ fontSize: 16, marginRight: 8 }}>{service.emoji}</Text><Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, flex: 1 }}>{service.title}</Text><Text style={{ color: colors.primary, fontWeight: "800", fontSize: 13 }}>{formatPriceBookServiceRate(service.basePrice)}</Text></View></TouchableOpacity>; })}
+                </View>)}
+                <TouchableOpacity onPress={() => setExtraVehicles((current) => [...current, { vehicleType: "sedan", packageId: "", addonIds: [], addonQtys: {}, price: 0 }])} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, paddingVertical: 12, marginBottom: 16, backgroundColor: colors.primary + "0D" }} activeOpacity={0.75}><Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>+</Text><Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Service</Text></TouchableOpacity>
+                {extraVehicles.length > 0 && basePrice > 0 && <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>Total ({1 + extraVehicles.length} services)</Text><Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${(basePrice + extraTotal).toFixed(2)}</Text></View>}
+              </>}
 
               {/* ── Custom Price Override ── */}
               {packageId && vehicleType && (

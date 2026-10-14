@@ -46,6 +46,7 @@ import {
   getJobSyncCompanySettings,
 } from "@/lib/jobsync-mobile-api";
 import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
+import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
@@ -1364,7 +1365,7 @@ export default function AdminScheduleScreen() {
         if (a.isRv !== b.isRv) return a.isRv ? 1 : -1;
         return pkgSortKey(a.id) - pkgSortKey(b.id);
       })
-    : isJobSyncCompany ? [] : PACKAGES;
+    : []; // New Job is intentionally limited to active Price Book services.
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const [showReassignPicker, setShowReassignPicker] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -1979,7 +1980,7 @@ export default function AdminScheduleScreen() {
     setCustomerSearch(""); setShowCustomerDropdown(false); setAddonsExpanded(false);
     setAddService(""); setAddPrice(""); setAddStartHour(bestStart); setAddEndHour(bestEnd);
     setAddDetailer(bestDetailer);
-    setAddVehicleType(undefined); setAddPackageId(undefined);
+    setAddVehicleType("sedan"); setAddPackageId(undefined);
     setAddCustomPrice(""); setShowCustomPriceInput(false);
     setAddCustomPackageName(""); setAddCustomPackageDesc(""); setAddCustomPackagePrice(""); setShowCustomPackageForm(false);
     setAddAddonIds([]); setAddAddonQtys({}); setAddRvSealantFeet("");
@@ -1997,10 +1998,9 @@ export default function AdminScheduleScreen() {
 
   const saveAdminJob = () => {
     if (!addFirstName.trim() || !addLastName.trim() || !addAddress.trim()) return;
-    // Warn if any extra vehicle has no package selected (price = 0 and no packageId)
-    const unpricedVehicles = addExtraVehicles.filter(v => !v.packageId && v.price === 0);
-    if (unpricedVehicles.length > 0) {
-      Alert.alert("Missing Package", `${unpricedVehicles.length} additional vehicle(s) have no package selected. Please select a package for each vehicle before saving.`);
+    const incompleteServices = addExtraVehicles.filter((service) => !service.packageId);
+    if (incompleteServices.length > 0) {
+      Alert.alert("Missing service", `${incompleteServices.length} additional service${incompleteServices.length === 1 ? "" : "s"} still needs a Price Book selection.`);
       return;
     }
     const resolvedTitle = addService.trim() || (addPackageId ? (allJobPackages.find(p => p.id === addPackageId)?.title ?? "Detail Service") : "Detail Service");
@@ -4898,38 +4898,16 @@ export default function AdminScheduleScreen() {
                   style={{ marginBottom: 16, zIndex: 999 }}
                 />
 
-                {/* Vehicle Type */}
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Vehicle Type</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
-                  {VEHICLE_TYPES.filter(v => !v.group).map((v) => {
-                    const sel = addVehicleType === v.id;
-                    return (
-                      <TouchableOpacity key={v.id} onPress={() => { setAddVehicleType(v.id); setAddPackageId(undefined); setAddAddonIds([]); setAddAddonQtys({}); setAddService(""); setAddPrice(""); }} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                        <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                        <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 6, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>RV Services</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-                  {VEHICLE_TYPES.filter(v => v.group === "rv").map((v) => {
-                    const sel = addVehicleType === v.id;
-                    return (
-                      <TouchableOpacity key={v.id} onPress={() => { setAddVehicleType(v.id); setAddPackageId(undefined); setAddAddonIds([]); setAddAddonQtys({}); setAddService(""); setAddPrice(""); }} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                        <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                        <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {/* Active Price Book services only. Vehicle categories are not part of the New Job flow. */}
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Service</Text>
+                <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 10 }}>Choose an active service from the Price Book.</Text>
 
-                {/* Package Picker */}
-                {addVehicleType && (() => {
-                  const packagesToShow = isRvVehicle(addVehicleType) ? rvPackages : allJobPackages.filter((p) => !p.isRv);
+                {/* Price Book service picker */}
+                {(() => {
+                  const packagesToShow = allJobPackages;
                   return (
                     <>
-                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Package</Text>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Price Book service</Text>
                       {packagesToShow.length === 0 && (
                         <Text style={{ color: isJobSyncCompany && companyPriceBook.error ? colors.error : colors.muted, fontSize: 13, marginBottom: 12 }}>
                           {isJobSyncCompany && companyPriceBook.isLoading
@@ -4937,17 +4915,17 @@ export default function AdminScheduleScreen() {
                             : isJobSyncCompany && companyPriceBook.error
                               ? companyPriceBook.error
                               : isJobSyncCompany
-                                ? "No active service is available for this vehicle type. Add or activate a service in the web Price Book."
-                                : "No packages are available for this vehicle type."}
+                                ? "No active Price Book services are available. Add or activate a service in the Price Book before creating a job."
+                                : "No active Price Book services are available."}
                         </Text>
                       )}
                       {packagesToShow.map((p) => {
-                        const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[addVehicleType] ?? 0;
+                        const pkgPrice = getPriceBookServiceStartingPrice(p.basePrice);
                         const sel = addPackageId === p.id;
                         // Show override price when set, otherwise show base package price
                         const displayPrice = (sel && addCustomPrice.trim() !== "") ? (parseFloat(addCustomPrice) || pkgPrice) : pkgPrice;
                         return (
-                          <TouchableOpacity key={p.id} onPress={() => { setAddPackageId(p.id); setAddAddonIds([]); setAddAddonQtys({}); setAddService(p.title); setAddPrice(pkgPrice.toString()); setAddCustomPrice(""); setShowCustomPriceInput(false); }} style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
+                          <TouchableOpacity key={p.id} onPress={() => { setAddPackageId(p.id); setAddVehicleType("sedan"); setAddAddonIds([]); setAddAddonQtys({}); setAddService(p.title); setAddPrice(pkgPrice.toString()); setAddCustomPrice(""); setShowCustomPriceInput(false); }} style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
                             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
                               <Text style={{ fontSize: 18, marginRight: 8 }}>{p.emoji}</Text>
                               <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>{p.title}</Text>
@@ -4955,7 +4933,7 @@ export default function AdminScheduleScreen() {
                                 {sel && addCustomPrice.trim() !== "" && (
                                   <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: "line-through" }}>${pkgPrice}</Text>
                                 )}
-                                <Text style={{ color: (sel && addCustomPrice.trim() !== "") ? colors.warning : colors.primary, fontWeight: "800", fontSize: 15 }}>${displayPrice}</Text>
+                                <Text style={{ color: (sel && addCustomPrice.trim() !== "") ? colors.warning : colors.primary, fontWeight: "800", fontSize: 15 }}>{sel && addCustomPrice.trim() !== "" ? `$${displayPrice.toFixed(2)}` : formatPriceBookServiceRate(p.basePrice)}</Text>
                               </View>
                             </View>
                             <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 26 }}>{p.tagline}</Text>
@@ -5019,272 +4997,29 @@ export default function AdminScheduleScreen() {
                           </TouchableOpacity>
                         );
                       })}
-                      {/* Local custom services are retained only for legacy sessions. */}
-                      {!isJobSyncCompany && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setAddPackageId(undefined);
-                          setAddAddonIds([]); setAddAddonQtys({});
-                          setShowCustomPackageForm(true);
-                          setAddCustomPrice(""); setShowCustomPriceInput(false);
-                        }}
-                        style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: showCustomPackageForm ? 2 : 1, borderColor: showCustomPackageForm ? colors.warning : colors.border, backgroundColor: showCustomPackageForm ? colors.warning + "15" : colors.background }}
-                        activeOpacity={0.8}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
-                          <Text style={{ fontSize: 18, marginRight: 8 }}>✏️</Text>
-                          <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>Custom Package</Text>
-                          <Text style={{ color: colors.warning, fontWeight: "800", fontSize: 13 }}>Enter price →</Text>
-                        </View>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 26 }}>Create a one-time custom service for this booking</Text>
-                        {showCustomPackageForm && (
-                          <View style={{ marginTop: 12, gap: 10 }}>
-                            <View>
-                              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", textTransform: "uppercase", marginBottom: 4 }}>Service Name *</Text>
-                              <TextInput
-                                value={addCustomPackageName}
-                                onChangeText={(t) => {
-                                  setAddCustomPackageName(t);
-                                  setAddService(t);
-                                }}
-                                placeholder="e.g. Paint Correction, Ceramic Coat..."
-                                placeholderTextColor={colors.muted}
-                                style={{ color: colors.foreground, fontSize: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface }}
-                                returnKeyType="next"
-                              />
-                            </View>
-                            <View>
-                              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", textTransform: "uppercase", marginBottom: 4 }}>Description (optional)</Text>
-                              <TextInput
-                                value={addCustomPackageDesc}
-                                onChangeText={setAddCustomPackageDesc}
-                                placeholder="Brief description of the service"
-                                placeholderTextColor={colors.muted}
-                                style={{ color: colors.foreground, fontSize: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface }}
-                                returnKeyType="next"
-                              />
-                            </View>
-                            <View>
-                              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", textTransform: "uppercase", marginBottom: 4 }}>Price *</Text>
-                              <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, backgroundColor: colors.surface }}>
-                                <Text style={{ color: colors.muted, fontSize: 15, marginRight: 4 }}>$</Text>
-                                <TextInput
-                                  value={addCustomPackagePrice}
-                                  onChangeText={(t) => {
-                                    setAddCustomPackagePrice(t);
-                                    setAddPrice(t);
-                                    setAddCustomPrice(t);
-                                  }}
-                                  placeholder="0.00"
-                                  placeholderTextColor={colors.muted}
-                                  keyboardType="decimal-pad"
-                                  style={{ flex: 1, color: colors.foreground, fontSize: 15, fontWeight: "700", paddingVertical: 8 }}
-                                  returnKeyType="done"
-                                />
-                              </View>
-                            </View>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                      )}
                     </>
                   );
                 })()}
 
-                {/* Add-ons */}
-                {!isJobSyncCompany && addVehicleType && (addPackageId || showCustomPackageForm) && (() => {
-                  const isRvJob = isRvVehicle(addVehicleType);
-                  const rvSealantFeet = parseInt(addRvSealantFeet) || 0;
-                  const rvSealantPrice = rvSealantFeet * 15;
-                  const recalcPrice = (newQtys: Record<string, number>, sealantFt: number) => {
-                    const addonsTotal = ADDONS.reduce((s, ad) => s + ad.price * (newQtys[ad.id] ?? 0), 0);
-                    const sealantTotal = sealantFt * 15;
-                    const totalQty = Object.values(newQtys).reduce((s, q) => s + q, 0);
-                    const sealantLabel = sealantFt > 0 ? ` + Sealant (${sealantFt}ft)` : "";
-                    if (showCustomPackageForm) {
-                      // Custom package: base price from custom price field
-                      const customBase = parseFloat(addCustomPackagePrice) || 0;
-                      const baseName = addCustomPackageName.trim() || "Custom Service";
-                      setAddService(baseName + (totalQty > 0 ? ` + ${totalQty} Add-on${totalQty > 1 ? "s" : ""}` : "") + sealantLabel);
-                      setAddPrice((customBase + addonsTotal + sealantTotal).toString());
-                    } else {
-                      const allPkgs = isRvJob ? rvPackages : allJobPackages.filter((p) => !p.isRv);
-                      const pkg = allPkgs.find((p) => p.id === addPackageId)!;
-                      const pkgPrice = (pkg?.basePrice as Partial<Record<VehicleType, number>>)?.[addVehicleType] ?? 0;
-                      setAddService(pkg.title + (totalQty > 0 ? ` + ${totalQty} Add-on${totalQty > 1 ? "s" : ""}` : "") + sealantLabel);
-                      setAddPrice((pkgPrice + addonsTotal + sealantTotal).toString());
-                    }
-                    setAddAddonIds(ADDONS.filter((ad) => (newQtys[ad.id] ?? 0) > 0).map((ad) => ad.id));
-                  };
-                  const hasAddons = addAddonIds.length > 0 || rvSealantFeet > 0;
-                  return (
-                    <>
-                      <TouchableOpacity
-                        onPress={() => setAddonsExpanded(e => !e)}
-                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: hasAddons ? colors.primary : colors.border, borderRadius: 10, padding: 12, backgroundColor: hasAddons ? colors.primary + "10" : colors.surface, marginBottom: addonsExpanded ? 10 : 16, marginTop: 4 }}
-                        activeOpacity={0.75}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <Text style={{ fontSize: 16 }}>✨</Text>
-                          <Text style={{ color: hasAddons ? colors.primary : colors.foreground, fontWeight: "600", fontSize: 14 }}>
-                            {hasAddons ? `Add-Ons (${addAddonIds.length + (rvSealantFeet > 0 ? 1 : 0)} selected)` : "Add Add-Ons (Optional)"}
-                          </Text>
-                        </View>
-                        <Text style={{ color: colors.muted, fontSize: 16 }}>{addonsExpanded ? "▲" : "▼"}</Text>
-                      </TouchableOpacity>
-                      {addonsExpanded && (
-                        <>
-                          {/* RV Paint Sealant footage input — only shown for RV jobs */}
-                          {isRvJob && (
-                            <View style={{ borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: rvSealantFeet > 0 ? 1.5 : 1, borderColor: rvSealantFeet > 0 ? colors.primary : colors.border, backgroundColor: rvSealantFeet > 0 ? colors.primary + "10" : colors.surface }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                                <Text style={{ fontSize: 18, marginRight: 8 }}>🎨</Text>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>RV Paint Sealant</Text>
-                                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 11 }}>$15 per foot{rvSealantFeet > 0 ? ` · ${rvSealantFeet}ft = $${rvSealantPrice}` : ""}</Text>
-                                </View>
-                              </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                                <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "600" }}>RV Length (ft):</Text>
-                                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.background }}>
-                                  <TextInput
-                                    value={addRvSealantFeet}
-                                    onChangeText={(v) => {
-                                      const clean = v.replace(/[^0-9]/g, "");
-                                      setAddRvSealantFeet(clean);
-                                      const ft = parseInt(clean) || 0;
-                                      recalcPrice(addAddonQtys, ft);
-                                    }}
-                                    placeholder="0"
-                                    placeholderTextColor={colors.muted}
-                                    keyboardType="number-pad"
-                                    style={{ flex: 1, color: colors.foreground, fontSize: 15, fontWeight: "600" }}
-                                  />
-                                  {rvSealantFeet > 0 && (
-                                    <TouchableOpacity onPress={() => { setAddRvSealantFeet(""); recalcPrice(addAddonQtys, 0); }}>
-                                      <Text style={{ color: colors.muted, fontSize: 16, paddingLeft: 6 }}>✕</Text>
-                                    </TouchableOpacity>
-                                  )}
-                                </View>
-                              </View>
-                            </View>
-                          )}
-                          {/* Standard add-ons — hidden for RV jobs (not applicable) */}
-                          {!isRvJob && ADDONS.map((a) => {
-                            const qty = addAddonQtys[a.id] ?? 0;
-                            return (
-                              <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? colors.primary : colors.border, backgroundColor: qty > 0 ? colors.primary + "10" : colors.surface }}>
-                                <Text style={{ fontSize: 18, marginRight: 8 }}>{a.emoji}</Text>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>{a.title}</Text>
-                                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 11 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                  <TouchableOpacity onPress={() => { const nq = Math.max(0, qty - 1); const newQtys = { ...addAddonQtys, [a.id]: nq }; if (nq === 0) delete newQtys[a.id]; setAddAddonQtys(newQtys); recalcPrice(newQtys, 0); }} style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }} disabled={qty === 0}><Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>−</Text></TouchableOpacity>
-                                  <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, minWidth: 16, textAlign: "center" }}>{qty}</Text>
-                                  <TouchableOpacity onPress={() => { const nq = qty + 1; const newQtys = { ...addAddonQtys, [a.id]: nq }; setAddAddonQtys(newQtys); recalcPrice(newQtys, 0); }} style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}><Text style={{ color: colors.primary, fontSize: 15, fontWeight: "700" }}>+</Text></TouchableOpacity>
-                                </View>
-                              </View>
-                            );
-                          })}
-                          {hasAddons && (
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginTop: 4, marginBottom: 8 }}>
-                              <Text style={{ color: colors.foreground, fontWeight: "600" }}>Add-ons Total</Text>
-                              <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${(ADDONS.reduce((s, ad) => s + ad.price * (addAddonQtys[ad.id] ?? 0), 0) + rvSealantPrice).toFixed(0)}</Text>
-                            </View>
-                          )}
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-
-                {/* Additional Vehicles */}
-                {addExtraVehicles.length > 0 && addExtraVehicles.map((ev, evIdx) => (
-                  <View key={evIdx} style={{ borderWidth: 1, borderColor: colors.primary + "44", borderRadius: 14, padding: 14, marginBottom: 14, backgroundColor: colors.primary + "08" }}>
+                {/* Additional Price Book services */}
+                {addExtraVehicles.map((serviceLine, serviceIndex) => (
+                  <View key={serviceIndex} style={{ borderWidth: 1, borderColor: colors.primary + "44", borderRadius: 14, padding: 14, marginBottom: 14, backgroundColor: colors.primary + "08" }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>Vehicle {evIdx + 2}</Text>
-                      <TouchableOpacity onPress={() => setAddExtraVehicles((prev) => prev.filter((_, i) => i !== evIdx))} style={{ padding: 4 }}>
-                        <Text style={{ color: colors.error, fontSize: 18, fontWeight: "700" }}>✕</Text>
-                      </TouchableOpacity>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>Additional service {serviceIndex + 1}</Text>
+                      <TouchableOpacity onPress={() => setAddExtraVehicles((current) => current.filter((_, index) => index !== serviceIndex))} style={{ padding: 4 }}><Text style={{ color: colors.error, fontSize: 18, fontWeight: "700" }}>✕</Text></TouchableOpacity>
                     </View>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Vehicle Type</Text>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
-                      {VEHICLE_TYPES.filter(v => !v.group).map((v) => {
-                        const sel = ev.vehicleType === v.id;
-                        return (
-                          <TouchableOpacity key={v.id} onPress={() => setAddExtraVehicles((prev) => prev.map((x, i) => {
-                            if (i !== evIdx) return x;
-                            // If a non-RV package is already selected, keep it and recalculate price for new vehicle type
-                            const pkg = x.packageId ? allJobPackages.find(p => p.id === x.packageId) : null;
-                            const newPrice = pkg ? ((pkg.basePrice as Partial<Record<VehicleType, number>>)[v.id as VehicleType] ?? 0) : 0;
-                            return { ...x, vehicleType: v.id, packageId: pkg ? x.packageId : "", addonIds: [], addonQtys: {}, price: newPrice };
-                          }))} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                            <Text style={{ fontSize: 14 }}>{v.emoji}</Text>
-                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 12, marginLeft: 5 }}>{v.label}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 6, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>RV</Text>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                      {VEHICLE_TYPES.filter(v => v.group === "rv").map((v) => {
-                        const sel = ev.vehicleType === v.id;
-                        return (
-                          <TouchableOpacity key={v.id} onPress={() => setAddExtraVehicles((prev) => prev.map((x, i) => i === evIdx ? { ...x, vehicleType: v.id, packageId: "", addonIds: [], addonQtys: {}, price: 0 } : x))} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }} activeOpacity={0.75}>
-                            <Text style={{ fontSize: 14 }}>{v.emoji}</Text>
-                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 12, marginLeft: 5 }}>{v.label}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    {ev.vehicleType ? (() => {
-                      const evPkgs = isRvVehicle(ev.vehicleType as VehicleType) ? rvPackages : allJobPackages.filter((p) => !p.isRv);
-                      return (
-                        <>
-                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Package</Text>
-                          {evPkgs.map((p) => {
-                            const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[ev.vehicleType as VehicleType] ?? 0;
-                            const sel = ev.packageId === p.id;
-                            return (
-                              <TouchableOpacity key={p.id} onPress={() => setAddExtraVehicles((prev) => prev.map((x, i) => i === evIdx ? { ...x, packageId: p.id, price: pkgPrice } : x))} style={{ borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
-                                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                  <Text style={{ fontSize: 16, marginRight: 8 }}>{p.emoji}</Text>
-                                  <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, flex: 1 }}>{p.title}</Text>
-                                  <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 14 }}>${pkgPrice}</Text>
-                                </View>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </>
-                      );
-                    })() : null}
-                    {ev.price > 0 && (
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 4 }}>
-                        <Text style={{ color: colors.muted, fontSize: 13 }}>Vehicle {evIdx + 2} subtotal</Text>
-                        <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>${ev.price.toFixed(2)}</Text>
-                      </View>
-                    )}
+                    {allJobPackages.map((service) => {
+                      const servicePrice = getPriceBookServiceStartingPrice(service.basePrice);
+                      const selected = serviceLine.packageId === service.id;
+                      return <TouchableOpacity key={service.id} onPress={() => setAddExtraVehicles((current) => current.map((line, index) => index === serviceIndex ? { ...line, vehicleType: "sedan", packageId: service.id, price: servicePrice } : line))} style={{ borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: selected ? 2 : 1, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary + "15" : colors.background }} activeOpacity={0.8}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}><Text style={{ fontSize: 16, marginRight: 8 }}>{service.emoji}</Text><Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, flex: 1 }}>{service.title}</Text><Text style={{ color: colors.primary, fontWeight: "800", fontSize: 13 }}>{formatPriceBookServiceRate(service.basePrice)}</Text></View>
+                      </TouchableOpacity>;
+                    })}
+                    {serviceLine.packageId ? <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 4 }}><Text style={{ color: colors.muted, fontSize: 13 }}>Service subtotal</Text><Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>${serviceLine.price.toFixed(2)}</Text></View> : null}
                   </View>
                 ))}
-
-                {/* Add Vehicle Button */}
-                <TouchableOpacity
-                  onPress={() => setAddExtraVehicles((prev) => [...prev, { vehicleType: "sedan", packageId: "", addonIds: [], addonQtys: {}, price: 0 }])}
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, paddingVertical: 12, marginBottom: 16, backgroundColor: colors.primary + "0D" }}
-                  activeOpacity={0.75}
-                >
-                  <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>+</Text>
-                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Vehicle</Text>
-                </TouchableOpacity>
-
-                {/* Running total if extra vehicles selected */}
-                {addExtraVehicles.length > 0 && parseFloat(addPrice) > 0 && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginBottom: 16 }}>
-                    <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>Total ({1 + addExtraVehicles.length} vehicles)</Text>
-                    <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${((parseFloat(addPrice) || 0) + addExtraVehicles.reduce((s, v) => s + v.price, 0)).toFixed(2)}</Text>
-                  </View>
-                )}
+                {addPackageId && <TouchableOpacity onPress={() => setAddExtraVehicles((current) => [...current, { vehicleType: "sedan", packageId: "", addonIds: [], addonQtys: {}, price: 0 }])} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, paddingVertical: 12, marginBottom: 16, backgroundColor: colors.primary + "0D" }} activeOpacity={0.75}><Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>+</Text><Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Service</Text></TouchableOpacity>}
+                {addExtraVehicles.length > 0 && parseFloat(addPrice) > 0 && <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginBottom: 16 }}><Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>Total ({1 + addExtraVehicles.length} services)</Text><Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${((parseFloat(addPrice) || 0) + addExtraVehicles.reduce((sum, service) => sum + service.price, 0)).toFixed(2)}</Text></View>}
 
                 {addPackageId && (
                   <>
