@@ -11,6 +11,8 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { getJobSyncCompanyCustomers, type JobSyncCompanyCustomer } from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
@@ -31,6 +33,7 @@ interface Customer {
   isVip?: boolean;
   vipStatus?: string | null;
   vipContractCount?: number;
+  isCompanyRecord?: boolean;
 }
 
 interface ScheduleJob {
@@ -83,6 +86,11 @@ export default function AdminCustomersScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const router = useRouter();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
   // Debounce search input so we don't fire a request on every keystroke
   useEffect(() => {
@@ -91,14 +99,10 @@ export default function AdminCustomersScreen() {
   }, [search]);
 
   // ── Queries ──
-  const {
-    data: customers = [],
-    isLoading,
-    refetch,
-    isRefetching,
-  } = trpc.customers.listAll.useQuery(
+  const legacyCustomersQuery = trpc.customers.listAll.useQuery(
     { search: debouncedSearch },
     {
+      enabled: !isJobSyncCompany,
       // Always re-fetch when search term changes — don't use stale cache for search results
       staleTime: debouncedSearch ? 0 : 10 * 60 * 1000,
       // Don't show previous results while new search is loading
@@ -106,17 +110,68 @@ export default function AdminCustomersScreen() {
     }
   );
 
+  const refreshCompanyCustomers = useCallback(async () => {
+    const token = jobSyncSession?.token;
+    if (!isJobSyncCompany || !token) return;
+    setCompanyLoading(true);
+    setCompanyError(null);
+    try {
+      setCompanyCustomers(await getJobSyncCompanyCustomers(token));
+    } catch {
+      setCompanyCustomers([]);
+      setCompanyError("Could not load this Company’s customers. Check your connection and pull to refresh.");
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, [isJobSyncCompany, jobSyncSession?.token]);
+
+  useEffect(() => {
+    if (!isJobSyncCompany) return;
+    void Promise.resolve().then(refreshCompanyCustomers);
+  }, [isJobSyncCompany, refreshCompanyCustomers]);
+
+  const customers = useMemo<Customer[]>(() => {
+    if (isJobSyncCompany) {
+      return companyCustomers.map((customer) => ({
+        customerId: String(customer.id),
+        fullName: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.addressLine1,
+        city: customer.city,
+        // The mobile customer endpoint intentionally does not claim lifetime-value
+        // or job-history aggregates it has not calculated server-side.
+        lifetimeValue: 0,
+        jobCount: 0,
+        lastServiceDate: null,
+        firstServiceDate: null,
+        source: "manual",
+        isCompanyRecord: true,
+      }));
+    }
+    return (legacyCustomersQuery.data ?? []) as Customer[];
+  }, [companyCustomers, isJobSyncCompany, legacyCustomersQuery.data]);
+
+  const isLoading = isJobSyncCompany ? companyLoading : legacyCustomersQuery.isLoading;
+  const isRefetching = isJobSyncCompany ? companyLoading : legacyCustomersQuery.isRefetching;
+  const refreshCustomers = isJobSyncCompany ? refreshCompanyCustomers : legacyCustomersQuery.refetch;
+
   // ── Filtered list (sorted A–Z by name) ──
   // Server already filters by search; sort client-side for display
   const filtered = useMemo(() => {
-    return [...(customers as Customer[])].sort((a, b) =>
+    const query = debouncedSearch.toLowerCase();
+    const matching = query
+      ? customers.filter((customer) => [customer.fullName, customer.phone, customer.email, customer.address, customer.city]
+        .some((value) => value?.toLowerCase().includes(query)))
+      : customers;
+    return [...matching].sort((a, b) =>
       a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" })
     );
-  }, [customers]);
+  }, [customers, debouncedSearch]);
 
   // ── Stats ──
   const totalLifetime = useMemo(
-    () => (customers as Customer[]).reduce((s, c) => s + (c.lifetimeValue ?? 0), 0),
+    () => customers.reduce((s, c) => s + (c.lifetimeValue ?? 0), 0),
     [customers]
   );
 
@@ -172,8 +227,12 @@ export default function AdminCustomersScreen() {
             <Text style={styles.rowSub2}>Last: {lastDate} · {item.jobCount} job{item.jobCount !== 1 ? "s" : ""}</Text>
           </View>
           <View style={styles.rowRight}>
-            <Text style={styles.rowLV}>{lv}</Text>
-            <Text style={styles.rowLVLabel}>lifetime</Text>
+            {item.isCompanyRecord ? (
+              <Text style={styles.rowLVLabel}>Company customer</Text>
+            ) : <>
+              <Text style={styles.rowLV}>{lv}</Text>
+              <Text style={styles.rowLVLabel}>lifetime</Text>
+            </>}
           </View>
         </TouchableOpacity>
       );
@@ -187,7 +246,7 @@ export default function AdminCustomersScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>All Customers</Text>
         <Text style={styles.headerSub}>
-          {(customers as Customer[]).length.toLocaleString()} records · {fmtCurrency(totalLifetime)} total
+          {customers.length.toLocaleString()} {isJobSyncCompany ? "Company customers" : `records · ${fmtCurrency(totalLifetime)} total`}
         </Text>
       </View>
 
@@ -208,13 +267,15 @@ export default function AdminCustomersScreen() {
       {/* Stats row */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{(customers as Customer[]).length}</Text>
+          <Text style={styles.statValue}>{customers.length}</Text>
           <Text style={styles.statLabel}>Total Customers</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: colors.success }]}>{fmtCurrency(totalLifetime)}</Text>
-          <Text style={styles.statLabel}>Total Lifetime Value</Text>
-        </View>
+        {!isJobSyncCompany && (
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: colors.success }]}>{fmtCurrency(totalLifetime)}</Text>
+            <Text style={styles.statLabel}>Total Lifetime Value</Text>
+          </View>
+        )}
       </View>
 
       {/* Result count */}
@@ -239,7 +300,7 @@ export default function AdminCustomersScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={refreshCustomers}
               tintColor={colors.primary}
             />
           }
@@ -247,7 +308,7 @@ export default function AdminCustomersScreen() {
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyIcon}>👤</Text>
               <Text style={styles.emptyText}>
-                {search.trim() ? "No customers match your search" : "No customers yet"}
+                {companyError ?? (search.trim() ? "No customers match your search" : "No customers yet")}
               </Text>
             </View>
           }
