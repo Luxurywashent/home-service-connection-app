@@ -30,6 +30,7 @@ import { CalendarPicker } from "@/components/calendar-picker";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
+import { filterJobSyncCompanyCustomers, getJobSyncCompanyCustomers } from "@/lib/jobsync-mobile-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,11 +150,48 @@ function CustomerSearchField({
   const [query, setQuery] = React.useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const { session: jobSyncSession } = useJobSyncAuth();
+  const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const [companyCustomers, setCompanyCustomers] = React.useState<Awaited<ReturnType<typeof getJobSyncCompanyCustomers>>>([]);
+  const [companyLoading, setCompanyLoading] = React.useState(false);
+  const [companyError, setCompanyError] = React.useState<string | null>(null);
 
-  const { data: results = [] } = trpc.customers.listAll.useQuery(
+  const { data: legacyResults = [] } = trpc.customers.listAll.useQuery(
     { search: searchTerm },
-    { enabled: searchTerm.length >= 2, staleTime: 10_000 }
+    { enabled: !isJobSyncCompany && searchTerm.length >= 2, staleTime: 10_000 }
   );
+
+  React.useEffect(() => {
+    let active = true;
+    if (!isJobSyncCompany || !jobSyncSession?.token) {
+      return () => { active = false; };
+    }
+    void (async () => {
+      await Promise.resolve();
+      if (!active) return;
+      setCompanyLoading(true);
+      setCompanyError(null);
+      try {
+        const customers = await getJobSyncCompanyCustomers(jobSyncSession.token);
+        if (active) setCompanyCustomers(customers);
+      } catch {
+        if (active) setCompanyError("Could not load this Company’s customers. Pull to refresh and try again.");
+      } finally {
+        if (active) setCompanyLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [isJobSyncCompany, jobSyncSession?.token]);
+
+  const results = isJobSyncCompany
+    ? filterJobSyncCompanyCustomers(companyCustomers, query).map((customer) => ({
+        customerId: customer.id,
+        fullName: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.addressLine1,
+      }))
+    : legacyResults as { customerId?: string | number; fullName: string; phone: string | null; email: string | null; address: string | null }[];
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -161,7 +199,7 @@ function CustomerSearchField({
     if (timerRef.current) clearTimeout(timerRef.current);
     if (text.length >= 2) {
       timerRef.current = setTimeout(() => {
-        setSearchTerm(text);
+        if (!isJobSyncCompany) setSearchTerm(text);
         setShowDropdown(true);
       }, 300);
     } else {
@@ -188,10 +226,16 @@ function CustomerSearchField({
           </TouchableOpacity>
         )}
       </View>
-      {showDropdown && (results as any[]).length > 0 && (
+      {showDropdown && query.trim().length >= 2 && (
         <View style={{ position: "absolute", top: 50, left: 0, right: 0, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, maxHeight: 200, overflow: "hidden", elevation: 8, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}>
-          <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
-            {(results as any[]).slice(0, 8).map((c: any, i: number) => (
+          {isJobSyncCompany && companyLoading ? (
+            <View style={{ padding: 14 }}><Text style={{ color: colors.muted }}>Loading Company customers…</Text></View>
+          ) : isJobSyncCompany && companyError ? (
+            <View style={{ padding: 14 }}><Text style={{ color: colors.error }}>{companyError}</Text></View>
+          ) : results.length === 0 ? (
+            <View style={{ padding: 14 }}><Text style={{ color: colors.muted }}>No matching customer in this Company.</Text></View>
+          ) : <ScrollView keyboardShouldPersistTaps="always" nestedScrollEnabled>
+            {results.slice(0, 8).map((c, i) => (
               <TouchableOpacity
                 key={c.customerId || i}
                 onPress={() => { setQuery(c.fullName); onSelect(c); }}
@@ -204,7 +248,7 @@ function CustomerSearchField({
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </ScrollView>}
         </View>
       )}
     </View>

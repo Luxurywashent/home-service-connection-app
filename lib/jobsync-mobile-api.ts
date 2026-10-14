@@ -85,6 +85,7 @@ const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
 const COMPANY_CHAT_DIRECT_PATH = "/api/mobile/v1/chat/direct";
 const COMPANY_PRICE_BOOK_PATH = "/api/mobile/v1/price-book";
 const COMPANY_TIME_OFF_PATH = "/api/mobile/v1/time-off";
+const COMPANY_CUSTOMERS_PATH = "/api/mobile/v1/customers";
 const COMPANY_ROLES = new Set(["owner", "dispatcher", "technician"]);
 const PLATFORM_ROLES = new Set(["owner", "developer", "sales", "customer_support", "operations"]);
 
@@ -245,6 +246,17 @@ export type JobSyncCompanySettings = {
   timezone: string;
 };
 
+export type JobSyncCompanyCustomer = {
+  id: number;
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  city: string | null;
+};
+
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   const row = asRecord(value) ?? {};
   const id = Number(row.id);
@@ -281,6 +293,44 @@ export function normalizeJobSyncCompanySettings(payload: unknown): JobSyncCompan
   };
 }
 
+export function normalizeJobSyncCompanyCustomers(payload: unknown): JobSyncCompanyCustomer[] {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const customers = Array.isArray(data.customers) ? data.customers : [];
+  return customers.map((value) => {
+    const customer = asRecord(value) ?? {};
+    const id = firstNumber(customer.id, customer.customerId, customer.customer_id);
+    const firstName = firstString(customer.firstName, customer.first_name) ?? "";
+    const lastName = firstString(customer.lastName, customer.last_name) ?? "";
+    const name = firstString(customer.name, customer.fullName, `${firstName} ${lastName}`.trim());
+    if (!id || !name) return null;
+    return {
+      id,
+      name,
+      firstName: firstName || name.split(/\s+/)[0] || "",
+      lastName: lastName || name.split(/\s+/).slice(1).join(" "),
+      email: firstString(customer.email),
+      phone: firstString(customer.phone, customer.phoneNumber),
+      addressLine1: firstString(customer.addressLine1, customer.address_line1, customer.address),
+      city: firstString(customer.city),
+    };
+  }).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
+}
+
+export function filterJobSyncCompanyCustomers(customers: JobSyncCompanyCustomer[], query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (normalizedQuery.length < 2) return [];
+  return customers.filter((customer) => [
+    customer.name,
+    customer.firstName,
+    customer.lastName,
+    customer.email,
+    customer.phone,
+    customer.addressLine1,
+    customer.city,
+  ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery))).slice(0, 8);
+}
+
 export async function getJobSyncCompanyJobs(token: string, range?: { start?: string; end?: string }): Promise<JobSyncMobileJob[]> {
   const search = new URLSearchParams();
   if (range?.start) search.set("start", range.start);
@@ -301,6 +351,13 @@ export async function getJobSyncCompanySettings(token: string): Promise<JobSyncC
   }));
   if (!settings) throw new Error("Home Service Connected returned invalid Company settings.");
   return settings;
+}
+
+export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
+  return normalizeJobSyncCompanyCustomers(await requestJson(COMPANY_CUSTOMERS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  }));
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {

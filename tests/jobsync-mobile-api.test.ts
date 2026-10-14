@@ -16,7 +16,10 @@ import {
   normalizeHomeServiceConnectedCommunityPosts,
   normalizeHomeServiceConnectedPriceBook,
   normalizeJobSyncCompanySettings,
+  normalizeJobSyncCompanyCustomers,
+  filterJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
+  getJobSyncCompanyCustomers,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -56,6 +59,42 @@ describe("JobSync mobile API contract", () => {
       if (originalBaseUrl === undefined) delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
       else process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL = originalBaseUrl;
     }
+  });
+
+  it("loads and filters customers through the Company-scoped mobile endpoint", async () => {
+    const originalBaseUrl = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        customers: [
+          { id: 17, firstName: "Robert", lastName: "Smith", email: "rob@example.com", phone: "555-0100", addressLine1: "10 Oak St", city: "Pensacola" },
+          { id: 18, firstName: "Other", lastName: "Customer" },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      const customers = await getJobSyncCompanyCustomers("company-token");
+      expect(customers).toHaveLength(2);
+      expect(filterJobSyncCompanyCustomers(customers, "rob")).toEqual([expect.objectContaining({ id: 17, name: "Robert Smith" })]);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://www.homeserviceconnected.com/api/mobile/v1/customers",
+        expect.objectContaining({
+          cache: "no-store",
+          headers: expect.objectContaining({ Authorization: "Bearer company-token" }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalBaseUrl === undefined) delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+      else process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL = originalBaseUrl;
+    }
+  });
+
+  it("rejects malformed Company customer rows", () => {
+    expect(normalizeJobSyncCompanyCustomers({ customers: [{ id: 0, name: "Invalid" }, { id: 19, name: " " }] })).toEqual([]);
   });
 
   it("normalizes an authorized Company member update payload", () => {
