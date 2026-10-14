@@ -10,6 +10,7 @@ import {
   startHomeServiceConnectedBreak,
   type HomeServiceConnectedTimeState,
 } from "@/lib/jobsync-mobile-api";
+import { getMobileConnectionErrorMessage } from "@/lib/mobile-connection-error";
 
 export function CompanyClockStatus({ token }: { token: string }) {
   const colors = useColors();
@@ -28,17 +29,19 @@ export function CompanyClockStatus({ token }: { token: string }) {
       if (nextState.isClockedIn) setActiveShiftRecovery(false);
       if (nextState.activeBreak?.isActive) setActiveBreakRecovery(false);
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
+      setError(getMobileConnectionErrorMessage(refreshError, "Unable to refresh your time status."));
     } finally {
       setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    setLoading(true);
-    void refresh();
+    const initialRefresh = setTimeout(() => { void refresh(); }, 0);
     const interval = setInterval(() => { void refresh(); }, 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialRefresh);
+      clearInterval(interval);
+    };
   }, [refresh]);
 
   const run = useCallback(async (
@@ -84,7 +87,7 @@ export function CompanyClockStatus({ token }: { token: string }) {
         }));
         setError(null);
       } else {
-        setError(message);
+        setError(getMobileConnectionErrorMessage(actionError, message));
       }
     } finally {
       setWorking(false);
@@ -99,7 +102,19 @@ export function CompanyClockStatus({ token }: { token: string }) {
 
   return (
     <View style={{ alignItems: "flex-end", gap: 5 }}>
-      {error ? <Text style={{ color: colors.error, fontSize: 11, maxWidth: 220, textAlign: "right" }}>{error}</Text> : null}
+      {error ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Retry time status"
+          disabled={loading || working}
+          onPress={() => void refresh()}
+          style={{ maxWidth: 220 }}
+        >
+          <Text style={{ color: colors.error, fontSize: 11, textAlign: "right" }}>
+            {error} Tap to retry.
+          </Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
         {isClockedIn ? (
           <>
