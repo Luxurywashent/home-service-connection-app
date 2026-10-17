@@ -46,6 +46,7 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
+  isJobSyncFieldSchedulingMember,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
 } from "@/lib/jobsync-mobile-api";
@@ -1714,7 +1715,9 @@ export default function AdminScheduleScreen() {
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
         if (cancelled) return;
-        const teamLanes: DetailerEntry[] = roster.members.map((member, index) => ({
+        // Match the web dispatcher: only field technicians can occupy a
+        // Company Calendar lane. Owners and dispatchers remain in Team Members.
+        const teamLanes: DetailerEntry[] = roster.members.filter(isJobSyncFieldSchedulingMember).map((member, index) => ({
           employeeId: `jobsync-${member.id}`,
           name: member.name,
           color: DETAILER_COLORS[index % DETAILER_COLORS.length],

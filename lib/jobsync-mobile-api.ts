@@ -30,6 +30,19 @@ export type JobSyncCompanyMember = {
   isActive: boolean;
 };
 
+/**
+ * Matches the Company Calendar eligibility contract used by the web
+ * dispatcher. Owners and dispatchers administer the workspace, but only
+ * field workers can occupy a schedule lane or receive an assignment.
+ *
+ * `detailer` remains a supported legacy role name for existing Companies and
+ * is treated as a technician until that Company's Team Member role is updated.
+ */
+export function isJobSyncFieldSchedulingMember(member: Pick<JobSyncCompanyMember, "role">): boolean {
+  const role = member.role.trim().toLowerCase();
+  return role === "technician" || role === "detailer";
+}
+
 export type JobSyncCompanyMemberDetail = JobSyncCompanyMember & {
   memberId: string | null;
   firstName: string;

@@ -6,6 +6,7 @@ import {
   createJobSyncMobileLoginPayload,
   createHomeServiceConnectedChatGroupPayload,
   extractJobSyncMobileToken,
+  isJobSyncFieldSchedulingMember,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncMobileSession,
@@ -221,6 +222,13 @@ describe("JobSync mobile API contract", () => {
     expect(roster?.company.name).toBe("Casey Services");
     expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
+  });
+
+  it("matches web calendar eligibility by rendering lanes for field technicians only", () => {
+    expect(isJobSyncFieldSchedulingMember({ role: "technician" })).toBe(true);
+    expect(isJobSyncFieldSchedulingMember({ role: "detailer" })).toBe(true);
+    expect(isJobSyncFieldSchedulingMember({ role: "owner" })).toBe(false);
+    expect(isJobSyncFieldSchedulingMember({ role: "dispatcher" })).toBe(false);
   });
 
   it("normalizes an authoritative detailed Company member profile", () => {
