@@ -101,7 +101,7 @@ function ArrivedOverlay({ detailerName, onClose }: { detailerName?: string; onCl
         <View style={styles.arrivedIconWrap}>
           <MaterialIcons name="check-circle" size={56} color="#22C55E" />
         </View>
-        <Text style={styles.arrivedTitle}>Your Detailer Has Arrived!</Text>
+        <Text style={styles.arrivedTitle}>Your Technician Has Arrived!</Text>
         {detailerName ? (
           <Text style={styles.arrivedSubtitle}>{firstName(detailerName)} is at your location</Text>
         ) : null}
@@ -215,7 +215,7 @@ function TrackChatModal({
               <MaterialIcons name="directions-car" size={18} color="#fff" />
             </View>
             <View>
-              <Text style={chatStyles.headerTitle}>Your Detailer</Text>
+              <Text style={chatStyles.headerTitle}>Your Technician</Text>
               <Text style={chatStyles.headerSub}>{windowOpen ? "● Active" : "● Chat closed"}</Text>
             </View>
           </View>
@@ -231,7 +231,7 @@ function TrackChatModal({
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 32 }}>
             <MaterialIcons name="chat-bubble-outline" size={48} color="#E5E7EB" />
             <Text style={{ marginTop: 12, color: "#9CA3AF", fontSize: 15, textAlign: "center" }}>
-              No messages yet.{"\n"}Say hi to your detailer!
+              No messages yet.{"\n"}Say hi to your technician!
             </Text>
           </View>
         ) : (
@@ -252,7 +252,7 @@ function TrackChatModal({
             style={chatStyles.input}
             value={text}
             onChangeText={setText}
-            placeholder={windowOpen ? "Message your detailer…" : "Chat is no longer active"}
+            placeholder={windowOpen ? "Message your technician…" : "Chat is no longer active"}
             placeholderTextColor="#9CA3AF"
             multiline
             maxLength={500}
@@ -436,14 +436,14 @@ export default function CustomerTrackScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Track Your Detailer</Text>
+          <Text style={styles.headerTitle}>Track Your Technician</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.emptyState}>
           <MaterialIcons name="location-off" size={64} color="#374151" />
           <Text style={styles.emptyTitle}>Tracking Not Available</Text>
           <Text style={styles.emptySubtitle}>
-            The detailer hasn't started sharing their location yet. Check back when your appointment is closer.
+            The technician hasn't started sharing their location yet. Check back when your appointment is closer.
           </Text>
           <TouchableOpacity style={styles.emptyBtn} onPress={() => router.back()}>
             <Text style={styles.emptyBtnText}>Go Back</Text>
@@ -461,7 +461,7 @@ export default function CustomerTrackScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Track Your Detailer</Text>
+          <Text style={styles.headerTitle}>Track Your Technician</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.emptyState}>
@@ -541,7 +541,7 @@ export default function CustomerTrackScreen() {
           <MaterialIcons name="arrow-back" size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={styles.headerOverlayCenter}>
-          <Text style={styles.headerOverlayTitle}>Track Your Detailer</Text>
+          <Text style={styles.headerOverlayTitle}>Track Your Technician</Text>
         </View>
         {/* Chat button — always show so customer can message detailer */}
         <TouchableOpacity
@@ -566,7 +566,7 @@ export default function CustomerTrackScreen() {
               <Text style={styles.statusSub}>
                 {token?.detailerName
                   ? `${firstName(token.detailerName)} is at your location`
-                  : "Your detailer is at your location"}
+                  : "Your technician is at your location"}
               </Text>
             </View>
           </View>
@@ -581,7 +581,7 @@ export default function CustomerTrackScreen() {
               <Text style={styles.statusSub}>
                 {token?.detailerName
                   ? `${firstName(token.detailerName)} is heading to you`
-                  : "Your detailer is heading to you"}
+                  : "Your technician is heading to you"}
               </Text>
             </View>
             <View style={styles.liveChip}>

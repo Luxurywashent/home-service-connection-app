@@ -742,7 +742,7 @@ function DetailerDashboard() {
     (notif: any) => notif.status === "unread" && !dismissedNotifications.has(notif.notificationId) && !EMPLOYEE_SYSTEM_TYPES.has(notif.notificationType)
   );
 
-  const firstName = employee?.fullName?.split(" ")[0] ?? "Detailer";
+  const firstName = employee?.fullName?.split(" ")[0] ?? "Technician";
   const greeting = getTimeBasedGreeting();
 
   return (

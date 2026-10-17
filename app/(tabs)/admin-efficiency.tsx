@@ -576,7 +576,7 @@ export default function AdminEfficiency() {
               <MetricCard
                 label="Days Tracked"
                 value={`${daysElapsed}`}
-                sub={selectedDetailer === "__team__" ? "across all detailers" : "this period"}
+                sub={selectedDetailer === "__team__" ? "across all technicians" : "this period"}
               />
             </View>
 

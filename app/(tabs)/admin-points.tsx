@@ -635,7 +635,7 @@ export default function AdminPointsScreen() {
               }}
               ListEmptyComponent={
                 <View style={{ alignItems: "center", paddingTop: 60 }}>
-                  <Text style={{ color: colors.muted, fontSize: 15 }}>No active detailers found.</Text>
+                  <Text style={{ color: colors.muted, fontSize: 15 }}>No active technicians found.</Text>
                 </View>
               }
             />
@@ -900,7 +900,7 @@ export default function AdminPointsScreen() {
                     }}
                   />
                   <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
-                    This title will appear in the detailer's Alerts tab and requires their acknowledgment.
+                    This title will appear in the technician's Alerts tab and requires their acknowledgment.
                   </Text>
                 </View>
               )}

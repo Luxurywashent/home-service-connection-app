@@ -324,7 +324,7 @@ function LocationCard({
 
       <View style={styles.cardBody}>
         {loc.detailers.length > 0 && (
-          <InfoRow label="Detailers" value={assignedNames} colors={colors} />
+          <InfoRow label="Technicians" value={assignedNames} colors={colors} />
         )}
         {loc.zapierWebhookUrl && (
           <InfoRow label="Zapier" value={loc.zapierWebhookUrl} colors={colors} truncate />
@@ -654,10 +654,10 @@ function LocationForm({
           placeholderTextColor={colors.muted}
         />
 
-        {/* Assign Detailers */}
-        <SectionTitle title="Assign Detailers" colors={colors} />
+        {/* Assign Technicians */}
+        <SectionTitle title="Assign Technicians" colors={colors} />
         {allDetailers.length === 0 ? (
-          <Text style={[styles.noDetailers, { color: colors.muted }]}>No detailers found.</Text>
+          <Text style={[styles.noDetailers, { color: colors.muted }]}>No technicians found.</Text>
         ) : (
           allDetailers.map((d) => {
             const selected = form.detailerIds.includes(d.employeeId);

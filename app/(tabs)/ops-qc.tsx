@@ -214,7 +214,7 @@ function JobQcCard({
             </View>
           </View>
           <Text style={[styles.subText, { color: colors.muted }]}>
-            {item.detailerName ? `Detailer: ${item.detailerName}` : "No detailer assigned"}
+            {item.detailerName ? `Technician: ${item.detailerName}` : "No technician assigned"}
             {cityDisplay ? `  •  ${cityDisplay}` : ""}
           </Text>
           {item.packageType ? <Text style={[styles.subText, { color: colors.muted }]}>{item.packageType}</Text> : null}
@@ -562,7 +562,7 @@ export default function OpsQcScreen() {
             <View style={styles.center}>
               <Text style={styles.emptyIcon}>📋</Text>
               <Text style={[styles.emptyText, { color: colors.muted }]}>No completed jobs for today yet.</Text>
-              <Text style={[styles.emptySubText, { color: colors.muted }]}>Jobs appear here once a detailer marks them finished.</Text>
+              <Text style={[styles.emptySubText, { color: colors.muted }]}>Jobs appear here once a technician marks them finished.</Text>
             </View>
           ) : (
             <FlatList

@@ -24,7 +24,7 @@ function getEfficiencyColor(eff: number, colors: any) {
 
 function roleLabel(role: string) {
   switch (role) {
-    case "detailer": return "Detailer";
+    case "detailer": return "Technician";
     case "admin": return "Admin";
     case "office": return "Office";
     case "operations_manager": return "Ops Manager";
@@ -409,7 +409,7 @@ export default function AdminEmployeesScreen() {
   };
 
   const roles: Array<{ value: string; label: string }> = [
-    { value: "detailer", label: "Detailer" },
+    { value: "detailer", label: "Technician" },
     { value: "admin", label: "Admin" },
     { value: "office", label: "Office" },
     { value: "operations_manager", label: "Ops Manager" },
@@ -482,7 +482,7 @@ export default function AdminEmployeesScreen() {
             ListHeaderComponent={
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 4, paddingRight: 16 }}>
-                  {([["all", "All Positions"], ["detailer", "Detailer"], ["admin", "Admin"], ["office", "Office"], ["operations_manager", "Ops Manager"], ["door_hanger_rep", "Door Hanger Rep"], ["sales", "Sales Rep"]] as const).map(([val, label]) => (
+                  {([["all", "All Positions"], ["detailer", "Technician"], ["admin", "Admin"], ["office", "Office"], ["operations_manager", "Ops Manager"], ["door_hanger_rep", "Door Hanger Rep"], ["sales", "Sales Rep"]] as const).map(([val, label]) => (
                     <TouchableOpacity
                       key={val}
                       onPress={() => setRoleFilter(val)}
@@ -647,12 +647,12 @@ export default function AdminEmployeesScreen() {
                         onPress={() => {
                           const activeDetailers = (employees ?? []).filter((e: any) => e.role === "detailer" && e.city === job.location);
                           if (activeDetailers.length === 0) {
-                            Alert.alert("No Detailers", `No active detailers found in ${job.location}. Job will be unassigned.`);
+                            Alert.alert("No Technicians", `No active technicians found in ${job.location}. Job will be unassigned.`);
                             return;
                           }
                           Alert.alert(
                             "Transfer To",
-                            "Select a detailer to transfer this job to:",
+                            "Select a technician to transfer this job to:",
                             [
                               ...activeDetailers.map((d: any) => ({
                                 text: d.fullName,
@@ -776,7 +776,7 @@ export default function AdminEmployeesScreen() {
                           </View>
                           {editData.role === "detailer" && editData.city && editData.city !== selectedEmp.city && (
                             <Text style={{ fontSize: 11, color: colors.warning, marginTop: 6 }}>
-                              ⚠️ Changing city will move this detailer&apos;s upcoming jobs to Unassigned.
+                              ⚠️ Changing city will move this technician&apos;s upcoming jobs to Unassigned.
                             </Text>
                           )}
                         </View>
@@ -1351,7 +1351,7 @@ function AddTeamMemberModal({ visible, onClose, colors, onSuccess }: { visible: 
   };
 
   const roles: Array<{ value: typeof role; label: string }> = [
-    { value: "detailer", label: "Detailer" },
+    { value: "detailer", label: "Technician" },
     { value: "admin", label: "Admin" },
     { value: "office", label: "Office" },
     { value: "operations_manager", label: "Ops Manager" },

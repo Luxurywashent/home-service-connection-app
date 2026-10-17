@@ -43,7 +43,7 @@ interface TeamMember {
 const GROUP_CHANNELS = [
   { key: "general", label: "General", emoji: "💬", description: "All team members" },
   { key: "admin", label: "Admin", emoji: "🏢", description: "Admin & management" },
-  { key: "detailers", label: "Detailers", emoji: "🚗", description: "Detailer team" },
+  { key: "detailers", label: "Technicians", emoji: "🚗", description: "Technician team" },
   { key: "sales", label: "Sales", emoji: "📊", description: "Sales team" },
   { key: "door_hangers", label: "Door Hangers", emoji: "🚪", description: "Door hanger reps" },
 ] as const;
@@ -304,7 +304,7 @@ function NewDmModal({ visible, members, currentEmployeeId, onSelect, onClose }: 
 
   const roleLabel = (role: string) => {
     const map: Record<string, string> = {
-      admin: "Admin", detailer: "Detailer", office: "Office",
+      admin: "Admin", detailer: "Technician", office: "Office",
       operations_manager: "Ops Manager", door_hanger_rep: "Door Hanger", sales: "Sales",
     };
     return map[role] ?? role;

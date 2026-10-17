@@ -42,7 +42,7 @@ function getReviewLink(city?: string | null): string {
 }
 
 function buildCopyText(detailerName: string, city: string): string {
-  const first = detailerName?.split(" ")[0] || "my detailer";
+  const first = detailerName?.split(" ")[0] || "my technician";
   const cityLabel = city
     ? city
         .split(" ")

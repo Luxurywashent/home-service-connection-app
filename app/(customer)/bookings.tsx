@@ -563,7 +563,7 @@ export default function CustomerBookingsScreen() {
                     activeOpacity={0.85}
                   >
                     <MaterialIcons name="my-location" size={15} color="#2563EB" />
-                    <Text style={styles.trackBtnText}>🚚 Track Your Detailer</Text>
+                    <Text style={styles.trackBtnText}>🚚 Track Your Technician</Text>
                   </TouchableOpacity>
                 )}
               </TouchableOpacity>

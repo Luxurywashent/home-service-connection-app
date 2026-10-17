@@ -150,7 +150,7 @@ export default function AdminRepairHistoryScreen() {
         <TextInput
           value={searchText}
           onChangeText={setSearchText}
-          placeholder="Search by van, detailer, equipment..."
+          placeholder="Search by van, technician, equipment..."
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14,

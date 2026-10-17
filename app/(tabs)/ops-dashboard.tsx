@@ -420,7 +420,7 @@ function OpsDailyChecklistSection({ colors, opsManagerId }: { colors: any; opsMa
         <CounterRow emoji="🚪" label="Door Hangers" field="doorHangers" value={dh} goal={100} />
         <ToggleRow emoji="📦" label="Blue Box Inventory Check" field="inventoryCheck" value={inv} />
         <ToggleRow emoji="☀️" label="Morning Team Check-In" field="morningTeamCheckIn" value={am} note="Check in with all working team members before noon" />
-        <ToggleRow emoji="🕑" label="Afternoon Team Check-In" field="afternoonTeamCheckIn" value={pm} note="Follow up with all Detailers around 2:30 PM" />
+        <ToggleRow emoji="🕑" label="Afternoon Team Check-In" field="afternoonTeamCheckIn" value={pm} note="Follow up with all Technicians around 2:30 PM" />
         <ToggleRow emoji="✅" label="QC Calls Complete" field="qcCallsDone" value={qc} note="All quality control calls done for today" />
       </View>
 

@@ -951,7 +951,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               {/* ── Detailer ── */}
               {detailers.length > 1 && (
                 <>
-                  <Text style={[s.sectionLabel, { color: colors.muted }]}>Assign Detailer</Text>
+                  <Text style={[s.sectionLabel, { color: colors.muted }]}>Assign Technician</Text>
                   <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
                     {detailers.map((det) => {
                       const dow = selectedDate ? new Date(selectedDate + "T12:00:00").getDay() : -1;

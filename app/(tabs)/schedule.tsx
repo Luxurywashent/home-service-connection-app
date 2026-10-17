@@ -2549,7 +2549,7 @@ export default function ScheduleScreen() {
       bookingRef: chatBookingRef,
       senderType: "detailer",
       senderId: employee?.employeeId ?? employee?.fullName ?? "detailer",
-      senderName: employee?.fullName ?? "Detailer",
+      senderName: employee?.fullName ?? "Technician",
       message: trimmed,
     });
     setChatMessage("");
@@ -5710,7 +5710,7 @@ export default function ScheduleScreen() {
                               customerPhone: lateSheetJob.phone,
                               customerEmail: lateSheetJob.email || undefined,
                               customerName: `${lateSheetJob.firstName} ${lateSheetJob.lastName}`,
-                              detailerName: employee?.fullName ?? "Your detailer",
+                              detailerName: employee?.fullName ?? "Your technician",
                               employeeId: employee?.employeeId ?? "",
                               delayMinutes: delay,
                               scheduledTime: `${hh}:${mm}`,

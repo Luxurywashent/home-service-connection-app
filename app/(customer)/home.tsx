@@ -700,7 +700,7 @@ export default function CustomerHomeScreen() {
             {
               icon: "verified" as const,
               title: "Trained Professionals",
-              desc: "Our detailers follow a strict step-by-step process to ensure consistent, high-quality results every time.",
+              desc: "Our technicians follow a strict step-by-step process to ensure consistent, high-quality results every time.",
             },
             {
               icon: "eco" as const,

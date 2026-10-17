@@ -463,7 +463,7 @@ function LeadDetailModal({
                   placeholderTextColor={colors.muted}
                   returnKeyType="done"
                 />
-                <Text style={[styles.convertLabel, { color: colors.muted }]}>Assign Detailer</Text>
+                <Text style={[styles.convertLabel, { color: colors.muted }]}>Assign Technician</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
                   <View style={{ flexDirection: "row", gap: 8, paddingVertical: 4 }}>
                     {DETAILERS.map((d) => (
@@ -608,7 +608,7 @@ function BookingDetailModal({
               <InfoRow label="Total" value={`$${booking.finalTotal ?? booking.totalPrice}`} colors={colors} />
             ) : null}
             {booking.assignedTo || booking.preferredDetailerName ? (
-              <InfoRow label="Detailer" value={booking.preferredDetailerName ?? booking.assignedTo ?? ""} colors={colors} />
+              <InfoRow label="Technician" value={booking.preferredDetailerName ?? booking.assignedTo ?? ""} colors={colors} />
             ) : null}
           </View>
 

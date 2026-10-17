@@ -2308,8 +2308,8 @@ export default function AdminScheduleScreen() {
     const newDetailerName = detailerOffShift ? undefined : job.detailerName;
     if (detailerOffShift) {
       Alert.alert(
-        "Detailer Off Shift",
-        `${assignedDet?.name ?? "The assigned detailer"} is off on the new date. The job has been unassigned — please reassign to an available detailer.`,
+        "Technician Off Shift",
+        `${assignedDet?.name ?? "The assigned technician"} is off on the new date. The job has been unassigned — please reassign to an available technician.`,
       );
     }
     const updated = { ...job, startHour: newStartHour, endHour: newEndHour, weekOffset: newWeekOffset, dayIndex: dayOfWeek, assignedTo: newAssignedTo, detailerName: newDetailerName };
@@ -2952,7 +2952,7 @@ export default function AdminScheduleScreen() {
                       )}
                     </View>
                     {addressPhotos.length === 0 ? (
-                      <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos yet. Add one to help detailers find the property.</Text>
+                      <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos yet. Add one to help technicians find the property.</Text>
                     ) : (
                       <View style={{ flexDirection: "row", gap: 8 }}>
                         {addressPhotos.map((photo: any) => (
@@ -4094,7 +4094,7 @@ export default function AdminScheduleScreen() {
                       // Recurring job — show options
                       Alert.alert(
                         "Delete Recurring Job",
-                        "This will permanently remove the job from all views including the customer portal and detailer schedule.",
+                        "This will permanently remove the job from all views including the customer portal and technician schedule.",
                         [
                           { text: "Cancel", style: "cancel" },
                           {
@@ -4142,7 +4142,7 @@ export default function AdminScheduleScreen() {
                         ]
                       );
                     } else {
-                      Alert.alert("Delete Job", "Permanently remove this job from all views? This cannot be undone and will also remove it from the customer portal and detailer schedule.", [
+                      Alert.alert("Delete Job", "Permanently remove this job from all views? This cannot be undone and will also remove it from the customer portal and technician schedule.", [
                         { text: "Cancel", style: "cancel" },
                         {
                           text: "Delete Permanently",
@@ -4295,7 +4295,7 @@ export default function AdminScheduleScreen() {
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}>
             <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: "100%" }}>
               <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>📍 Edit Address</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Changes will reflect on both admin and detailer calendars immediately.</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Changes will reflect on both admin and technician calendars immediately.</Text>
               <TextInput
                 value={editAddressDraft}
                 onChangeText={setEditAddressDraft}
@@ -5201,7 +5201,7 @@ export default function AdminScheduleScreen() {
                 {/* Detailer picker for multi-detailer cities */}
                 {cityConfig.detailers.length > 1 && (
                   <>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Assign Detailer</Text>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Assign Technician</Text>
                     <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
                       {cityConfig.detailers.map((det) => {
                         const dow = selectedDate.getDay();
@@ -5307,7 +5307,7 @@ export default function AdminScheduleScreen() {
                       )}
                     </View>
                     <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                      {addIsNewCustomer ? "Detailers will see a first-time badge on this job" : "Toggle on for first-time customers"}
+                      {addIsNewCustomer ? "Technicians will see a first-time badge on this job" : "Toggle on for first-time customers"}
                     </Text>
                   </View>
                   <Switch

@@ -15,7 +15,7 @@ const INSPECTION_CHECKS = [
   { key: "proper_process", label: "Proper detailing process followed (correct steps in order)" },
   { key: "quality",        label: "Quality of work meets standard" },
   { key: "equipment_ok",   label: "All equipment in working order" },
-  { key: "professional",   label: "Detailer looking professional (uniform, appearance)" },
+  { key: "professional",   label: "Technician looking professional (uniform, appearance)" },
   { key: "parked_proper",  label: "Van parked properly" },
   { key: "working_safely", label: "Working safely" },
   { key: "van_stocked",    label: "Van properly stocked with supplies" },

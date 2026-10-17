@@ -240,7 +240,7 @@ function JobDetailModal({
             )}
             {job.assignedTo && (
               <View style={styles.infoRow}>
-                <Text style={[styles.infoRowLabel, { color: colors.muted }]}>Detailer</Text>
+                <Text style={[styles.infoRowLabel, { color: colors.muted }]}>Technician</Text>
                 <Text style={[styles.infoRowValue, { color: colors.foreground }]}>{job.assignedTo}</Text>
               </View>
             )}

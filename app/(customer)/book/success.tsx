@@ -148,11 +148,11 @@ export default function BookingSuccessScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <MaterialIcons name="notifications" size={18} color="#6B7280" />
-            <Text style={styles.infoText}>You'll receive a push notification when your detailer is on the way.</Text>
+            <Text style={styles.infoText}>You'll receive a push notification when your technician is on the way.</Text>
           </View>
           <View style={styles.infoRow}>
             <MaterialIcons name="my-location" size={18} color="#6B7280" />
-            <Text style={styles.infoText}>Track your detailer in real-time from the Bookings tab.</Text>
+            <Text style={styles.infoText}>Track your technician in real-time from the Bookings tab.</Text>
           </View>
         </View>
 

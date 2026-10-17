@@ -350,7 +350,7 @@ export default function AdminCustomerProfileScreen() {
     } else {
       Alert.alert(
         "Delete Job",
-        `Permanently remove this job for ${job.customerName ?? params.fullName}? This cannot be undone and will remove it from the customer portal and detailer schedule.`,
+        `Permanently remove this job for ${job.customerName ?? params.fullName}? This cannot be undone and will remove it from the customer portal and technician schedule.`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -1476,7 +1476,7 @@ export default function AdminCustomerProfileScreen() {
               {/* Detailer */}
               {selectedJob?.assignedTo ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                  <Text style={{ fontSize: 14, color: colors.muted }}>Detailer</Text>
+                  <Text style={{ fontSize: 14, color: colors.muted }}>Technician</Text>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{selectedJob.assignedTo}</Text>
                 </View>
               ) : null}

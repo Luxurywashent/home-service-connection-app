@@ -131,7 +131,7 @@ function ChatModal({
               <MaterialIcons name="directions-car" size={18} color="#fff" />
             </View>
             <View>
-              <Text style={chatStyles.headerTitle}>Your Detailer</Text>
+              <Text style={chatStyles.headerTitle}>Your Technician</Text>
               <Text style={chatStyles.headerSub}>
                 {windowOpen ? "● Active" : "● Chat closed"}
               </Text>
@@ -151,7 +151,7 @@ function ChatModal({
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 32 }}>
             <MaterialIcons name="chat-bubble-outline" size={48} color="#E5E7EB" />
             <Text style={{ marginTop: 12, color: "#9CA3AF", fontSize: 15, textAlign: "center" }}>
-              No messages yet.{"\n"}Say hi to your detailer!
+              No messages yet.{"\n"}Say hi to your technician!
             </Text>
           </View>
         ) : (
@@ -174,7 +174,7 @@ function ChatModal({
             style={chatStyles.input}
             value={text}
             onChangeText={setText}
-            placeholder={windowOpen ? "Message your detailer…" : "Chat is no longer active"}
+            placeholder={windowOpen ? "Message your technician…" : "Chat is no longer active"}
             placeholderTextColor="#9CA3AF"
             multiline
             maxLength={500}
@@ -362,7 +362,7 @@ export default function CustomerJobDetailScreen() {
             <MaterialIcons name="access-time" size={22} color="#D97706" />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: "800", color: "#92400E", marginBottom: 2 }}>
-                ⚠️ Your detailer is running late
+                ⚠️ Your technician is running late
               </Text>
               <Text style={{ fontSize: 14, color: "#78350F" }}>
                 New estimated arrival: <Text style={{ fontWeight: "700" }}>{(job as any).lateEta}</Text>
@@ -381,7 +381,7 @@ export default function CustomerJobDetailScreen() {
             <View style={styles.chatBannerLeft}>
               <MaterialIcons name="chat" size={20} color="#2563EB" />
               <View>
-                <Text style={styles.chatBannerTitle}>Message Your Detailer</Text>
+                <Text style={styles.chatBannerTitle}>Message Your Technician</Text>
                 <Text style={styles.chatBannerSub}>Chat is active right now</Text>
               </View>
             </View>
@@ -477,7 +477,7 @@ export default function CustomerJobDetailScreen() {
             activeOpacity={0.85}
           >
             <MaterialIcons name="my-location" size={18} color="#FFFFFF" />
-            <Text style={styles.trackBtnText}>Track Your Detailer</Text>
+            <Text style={styles.trackBtnText}>Track Your Technician</Text>
           </TouchableOpacity>
         )}
 
