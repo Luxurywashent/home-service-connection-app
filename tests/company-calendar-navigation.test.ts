@@ -46,4 +46,26 @@ describe("Company calendar and customer navigation", () => {
     expect(eas).toContain('"EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://www.homeserviceconnected.com"');
     expect(eas).toContain('"EXPO_PUBLIC_API_BASE_URL": "https://www.homeserviceconnected.com"');
   });
+
+  it("refreshes an open Company calendar from the authoritative API", () => {
+    const adminSchedule = readProjectSource("app/(tabs)/admin-schedule.tsx");
+
+    expect(adminSchedule).toContain("Keep the open Company calendar converged with dispatcher-side changes.");
+    expect(adminSchedule).toContain("setInterval(() => {");
+    expect(adminSchedule).toContain("}, 30 * 1000);");
+    expect(adminSchedule).toContain("return () => clearInterval(refreshInterval);");
+  });
+
+  it("uses the bearer-scoped Company Jobs API for detail-panel reassignment", () => {
+    const adminSchedule = readProjectSource("app/(tabs)/admin-schedule.tsx");
+    const picker = adminSchedule.slice(
+      adminSchedule.indexOf("Reassign to:"),
+      adminSchedule.indexOf("</View>{/* end paddingHorizontal wrapper */}"),
+    );
+
+    expect(picker).toContain("assignedTo: d.employeeId");
+    expect(picker).toContain("if (isJobSyncCompany)");
+    expect(picker).toContain("saveCompanyCalendarChange(previous, next)");
+    expect(picker.indexOf("saveCompanyCalendarChange(previous, next)")).toBeLessThan(picker.indexOf("jobReassignMutation.mutateAsync"));
+  });
 });

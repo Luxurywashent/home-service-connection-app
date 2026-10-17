@@ -214,21 +214,23 @@ describe("JobSync mobile API contract", () => {
     const roster = normalizeJobSyncCompanyRoster({
       company: { id: 9, name: "Casey Services" },
       members: [
-        { id: 41, name: "Alex Technician", role: "technician", isActive: true },
+        { id: 41, name: "Alex Technician", role: "technician", isActive: true, calendarEligible: true },
         { id: 42, name: "Inactive Member", role: "technician", isActive: false },
       ],
     }, 9);
 
     expect(roster?.company.name).toBe("Casey Services");
-    expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true }]);
+    expect(roster?.members).toEqual([{ id: 41, name: "Alex Technician", role: "technician", isActive: true, calendarEligible: true }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
   });
 
-  it("matches web calendar eligibility by rendering lanes for field technicians only", () => {
-    expect(isJobSyncFieldSchedulingMember({ role: "technician" })).toBe(true);
-    expect(isJobSyncFieldSchedulingMember({ role: "detailer" })).toBe(true);
-    expect(isJobSyncFieldSchedulingMember({ role: "owner" })).toBe(false);
-    expect(isJobSyncFieldSchedulingMember({ role: "dispatcher" })).toBe(false);
+  it("matches the web calendar position setting instead of role-only lane eligibility", () => {
+    expect(isJobSyncFieldSchedulingMember({ role: "technician", calendarEligible: true })).toBe(true);
+    expect(isJobSyncFieldSchedulingMember({ role: "detailer", calendarEligible: true })).toBe(true);
+    expect(isJobSyncFieldSchedulingMember({ role: "technician", calendarEligible: false })).toBe(false);
+    expect(isJobSyncFieldSchedulingMember({ role: "technician" })).toBe(false);
+    expect(isJobSyncFieldSchedulingMember({ role: "owner", calendarEligible: true })).toBe(false);
+    expect(isJobSyncFieldSchedulingMember({ role: "dispatcher", calendarEligible: true })).toBe(false);
   });
 
   it("normalizes an authoritative detailed Company member profile", () => {

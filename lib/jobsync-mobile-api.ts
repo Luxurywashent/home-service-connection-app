@@ -28,6 +28,8 @@ export type JobSyncCompanyMember = {
   name: string;
   role: string;
   isActive: boolean;
+  /** Active Company-position setting returned by the HSC roster API. */
+  calendarEligible?: boolean;
 };
 
 /**
@@ -38,9 +40,9 @@ export type JobSyncCompanyMember = {
  * `detailer` remains a supported legacy role name for existing Companies and
  * is treated as a technician until that Company's Team Member role is updated.
  */
-export function isJobSyncFieldSchedulingMember(member: Pick<JobSyncCompanyMember, "role">): boolean {
+export function isJobSyncFieldSchedulingMember(member: Pick<JobSyncCompanyMember, "role" | "calendarEligible">): boolean {
   const role = member.role.trim().toLowerCase();
-  return role === "technician" || role === "detailer";
+  return member.calendarEligible === true && (role === "technician" || role === "detailer");
 }
 
 export type JobSyncCompanyMemberDetail = JobSyncCompanyMember & {
@@ -152,6 +154,10 @@ function stringList(value: unknown) {
 
 function isActiveMember(value: unknown) {
   return value !== false && value !== 0 && value !== "0" && value !== "false";
+}
+
+function isCalendarEligible(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
 }
 
 function errorMessage(payload: unknown, fallback: string) {
@@ -532,6 +538,7 @@ export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyI
       name,
       role: firstString(member.role, member.memberRole) ?? "team_member",
       isActive: true,
+      calendarEligible: isCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
     }];
   });
 

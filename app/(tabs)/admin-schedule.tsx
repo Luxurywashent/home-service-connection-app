@@ -1636,7 +1636,12 @@ export default function AdminScheduleScreen() {
       throw new Error("The selected Company date or time is invalid.");
     }
 
-    await updateJobSyncCompanyJobSchedule(token, jobId, { scheduledStartAt, scheduledEndAt });
+    const scheduleChanged = previous.companyDate !== next.companyDate
+      || previous.startHour !== next.startHour
+      || previous.endHour !== next.endHour;
+    if (scheduleChanged) {
+      await updateJobSyncCompanyJobSchedule(token, jobId, { scheduledStartAt, scheduledEndAt });
+    }
 
     const previousAssignee = companyUserId(previous.assignedTo);
     const nextAssignee = companyUserId(next.assignedTo);
@@ -1942,8 +1947,21 @@ export default function AdminScheduleScreen() {
   useFocusEffect(
     useCallback(() => {
       forceSync();
-    }, [])
+    }, [forceSync])
   );
+
+  // Keep the open Company calendar converged with dispatcher-side changes.
+  // This deliberately reuses the authenticated, no-store Company Jobs request
+  // rather than any legacy location cache. The web dispatcher polls on the
+  // same cadence, so a reschedule from either client reaches the other view
+  // without requiring the user to navigate away and back.
+  useEffect(() => {
+    if (!isJobSyncCompany || !jobSyncSession?.token) return;
+    const refreshInterval = setInterval(() => {
+      forceSync();
+    }, 30 * 1000);
+    return () => clearInterval(refreshInterval);
+  }, [forceSync, isJobSyncCompany, jobSyncSession?.token]);
 
   // Auto-open add-job modal with prefilled customer data when navigated from customer profile
   useEffect(() => {
@@ -4245,16 +4263,21 @@ export default function AdminScheduleScreen() {
                     </View>
                     {cityConfig.detailers.map((d) => (
                       <TouchableOpacity
-                        key={d.name}
+                        key={d.employeeId}
                         activeOpacity={0.8}
                         onPress={async () => {
                           if (!selectedJob) return;
+                          const previous = selectedJob;
+                          const next = { ...previous, detailerName: d.name, assignedTo: d.employeeId };
+                          setJobs((current) => current.map((job) => job.id === previous.id ? next : job));
+                          setSelectedJob(next);
+                          setShowReassignPicker(false);
+                          if (isJobSyncCompany) {
+                            await saveCompanyCalendarChange(previous, next);
+                            return;
+                          }
                           try {
-                            await jobReassignMutation.mutateAsync({ jobId: selectedJob.id, newAssignedTo: d.name });
-                            // Update local state
-                            setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, detailerName: d.name } : j));
-                            setSelectedJob({ ...selectedJob, detailerName: d.name });
-                            setShowReassignPicker(false);
+                            await jobReassignMutation.mutateAsync({ jobId: previous.id, newAssignedTo: d.name });
                           } catch (err) {
                             console.error("Reassign failed:", err);
                           }
