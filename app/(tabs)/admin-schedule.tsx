@@ -52,7 +52,7 @@ import {
 } from "@/lib/jobsync-mobile-api";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
-import Constants from "expo-constants";
+import { JobLocationMap } from "@/components/job-location-map";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
 
@@ -2815,16 +2815,13 @@ export default function AdminScheduleScreen() {
           <View style={{ flex: 1 }}>
             {selectedJob && (
               <ScrollView showsVerticalScrollIndicator={false}>
-                {/* ─── Street View Hero ─── */}
+                {/* ─── Native Google Maps job header ─── */}
                 {selectedJob.address ? (
                   <View style={{ position: "relative", height: 320 }}>
-                    <Image
-                      source={{ uri: `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(selectedJob.address)}&fov=90&pitch=10&key=${(Constants.expoConfig?.extra?.googleMapsApiKey as string) || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || ""}` }}
-                      style={{ width: "100%", height: 320 }}
-                      resizeMode="cover"
-                    />
-                    {/* Back button */}
+                    <JobLocationMap address={selectedJob.address} />
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Close job details"
                       onPress={() => { setSelectedJob(null); setShowReassignPicker(false); }}
                       style={{ position: "absolute", top: 52, left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 6, elevation: 6 }}
                     >
