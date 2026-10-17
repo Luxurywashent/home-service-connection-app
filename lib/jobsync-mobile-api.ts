@@ -96,6 +96,7 @@ const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
 const TIME_CLOCK_OUT_PATH = "/api/mobile/v1/time/clock-out";
 const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
+const TIME_TIMESHEETS_PATH = "/api/mobile/v1/time/timesheets";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
 const COMPANY_CHAT_DIRECT_PATH = "/api/mobile/v1/chat/direct";
@@ -654,6 +655,63 @@ export type HomeServiceConnectedTimeState = {
   activeBreak: { isActive: boolean; startedAt: string | null } | null;
 };
 
+export type HomeServiceConnectedTimeRecord = {
+  id: number;
+  memberName: string;
+  date: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  breakStart: string | null;
+  breakEnd: string | null;
+  totalHours: number | null;
+};
+
+function normalizeHomeServiceConnectedTimeRecord(value: unknown): HomeServiceConnectedTimeRecord | null {
+  const record = asRecord(value);
+  const id = nullableNumber(record?.id, record?.recordId, record?.record_id);
+  const date = firstString(record?.date, record?.businessDate, record?.business_date);
+  if (!record || !id || !date || !/^\d{4}-\d{2}-\d{2}/.test(date)) return null;
+  return {
+    id,
+    memberName: firstString(record.memberName, record.member_name, record.fullName, record.full_name, record.name) ?? "Team Member",
+    date: date.slice(0, 10),
+    clockIn: firstString(record.clockIn, record.clock_in, record.clockInAt, record.clock_in_at),
+    clockOut: firstString(record.clockOut, record.clock_out, record.clockOutAt, record.clock_out_at),
+    breakStart: firstString(record.breakStart, record.break_start),
+    breakEnd: firstString(record.breakEnd, record.break_end),
+    totalHours: nullableNumber(record.totalHours, record.total_hours),
+  };
+}
+
+/** Normalizes time records returned by the protected Company reporting route. */
+export function normalizeHomeServiceConnectedTimesheets(payload: unknown): HomeServiceConnectedTimeRecord[] {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const records = Array.isArray(data.records) ? data.records : Array.isArray(root?.records) ? root.records : [];
+  return records
+    .map(normalizeHomeServiceConnectedTimeRecord)
+    .filter((record): record is HomeServiceConnectedTimeRecord => Boolean(record));
+}
+
+/** Reads time records from the bearer-authenticated, Company-scoped API. */
+export async function getHomeServiceConnectedTimesheets(
+  token: string,
+  input: { start: string; end: string; memberId?: number },
+): Promise<HomeServiceConnectedTimeRecord[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start) || !/^\d{4}-\d{2}-\d{2}$/.test(input.end) || input.start > input.end) {
+    throw new Error("A valid time-reporting date range is required.");
+  }
+  if (input.memberId !== undefined && (!Number.isSafeInteger(input.memberId) || input.memberId <= 0)) {
+    throw new Error("Home Service Connected returned an invalid Team Member identifier.");
+  }
+  const query = new URLSearchParams({ start: input.start, end: input.end });
+  if (input.memberId !== undefined) query.set("memberId", String(input.memberId));
+  return normalizeHomeServiceConnectedTimesheets(await requestJson(`${TIME_TIMESHEETS_PATH}?${query.toString()}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  }));
+}
+
 export type HomeServiceConnectedTimeOffRequest = {
   requestId: string;
   startDate: string;
@@ -1137,16 +1195,16 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   const root = asRecord(payload);
   const data = firstRecord(root?.data, root) ?? {};
   const time = firstRecord(data.time, data.current, data.state, data.status, data) ?? {};
-  const entry = firstRecord(time.activeEntry, time.activeShift, time.activeTimesheet, time.timeEntry, data.activeEntry, data.activeShift, data.activeTimesheet, data.timeEntry);
+  const entry = firstRecord(time.entry, data.entry, time.activeEntry, time.activeShift, time.activeTimesheet, time.timeEntry, data.activeEntry, data.activeShift, data.activeTimesheet, data.timeEntry);
   const activeBreak = firstRecord(time.activeBreak, data.activeBreak, entry?.activeBreak, entry?.break);
   const status = firstString(time.status, time.clockStatus, data.status, data.clockStatus, entry?.status);
-  const clockInAt = firstString(time.clockInAt, time.clockInTime, data.clockInAt, data.clockInTime, entry?.clockInAt, entry?.clockInTime, entry?.startedAt);
+  const clockInAt = firstString(time.clockInAt, time.clockInTime, data.clockInAt, data.clockInTime, entry?.clockIn, entry?.clockInAt, entry?.clockInTime, entry?.startedAt);
   const isClockedIn = booleanState(time.isClockedIn) || booleanState(data.isClockedIn) || booleanState(status) || Boolean(entry) || Boolean(clockInAt);
-  const breakActive = Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime);
+  const breakActive = booleanState(time.activeBreak) || booleanState(data.activeBreak) || (Boolean(activeBreak) && !firstString(activeBreak?.endedAt, activeBreak?.breakEndTime, activeBreak?.endTime)) || Boolean(entry?.breakStart && !entry?.breakEnd);
   return {
     isClockedIn,
     clockInAt,
-    activeBreak: activeBreak ? { isActive: breakActive, startedAt: firstString(activeBreak.startedAt, activeBreak.breakStartTime, activeBreak.startTime) } : null,
+    activeBreak: activeBreak || breakActive ? { isActive: breakActive, startedAt: firstString(activeBreak?.startedAt, activeBreak?.breakStartTime, activeBreak?.startTime, entry?.breakStart) } : null,
   };
 }
 

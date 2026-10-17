@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getNativeEmployeeSession } from "../lib/jobsync-role-map";
+import { getNativeEmployeeSession, type JobSyncCompanySession } from "../lib/jobsync-role-map";
 
-const companySession = (role: "owner" | "dispatcher" | "technician") => ({
-  token: "test-token",
+const companySession = (role: "owner" | "dispatcher" | "technician"): JobSyncCompanySession => ({
   portal: "company",
   user: { id: 42, name: "Taylor Test", email: "taylor@example.com", role, memberId: "member-42" },
-  company: { id: 9, name: "Test Company", slug: "test-company", logoUrl: null, primaryColor: null, accentColor: null },
+  company: { id: 9, name: "Test Company" },
 });
 
 describe("JobSync native session routing", () => {

@@ -20,8 +20,10 @@ import {
   normalizeJobSyncCompanyCustomers,
   filterJobSyncCompanyCustomers,
   deleteJobSyncMobileAccount,
+  getHomeServiceConnectedTimesheets,
   getJobSyncCompanyJobs,
   getJobSyncCompanyCustomers,
+  normalizeHomeServiceConnectedTimesheets,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
 } from "../lib/jobsync-mobile-api";
@@ -38,6 +40,37 @@ describe("JobSync mobile API contract", () => {
 
   it("sends restored sessions with an Authorization bearer header", () => {
     expect(createJobSyncBearerHeaders("mobile-token")).toEqual({ Authorization: "Bearer mobile-token" });
+  });
+
+  it("loads Company time records from the protected HSC timesheet endpoint", async () => {
+    const originalBaseUrl = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        records: [{ id: 8, member_name: "Avery Technician", business_date: "2026-10-16", clock_in: "2026-10-16T13:00:00.000Z", clock_out: "2026-10-16T21:00:00.000Z", total_hours: "8" }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      await expect(getHomeServiceConnectedTimesheets("company-token", { start: "2026-10-13", end: "2026-10-19", memberId: 41 })).resolves.toEqual([
+        { id: 8, memberName: "Avery Technician", date: "2026-10-16", clockIn: "2026-10-16T13:00:00.000Z", clockOut: "2026-10-16T21:00:00.000Z", breakStart: null, breakEnd: null, totalHours: 8 },
+      ]);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://www.homeserviceconnected.com/api/mobile/v1/time/timesheets?start=2026-10-13&end=2026-10-19&memberId=41",
+        expect.objectContaining({ method: "GET", cache: "no-store", headers: expect.objectContaining({ Authorization: "Bearer company-token" }) }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalBaseUrl === undefined) delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+      else process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL = originalBaseUrl;
+    }
+  });
+
+  it("rejects invalid dates and ignores malformed Company time records", async () => {
+    expect(normalizeHomeServiceConnectedTimesheets({ records: [{ id: 0, date: "not-a-date" }] })).toEqual([]);
+    await expect(getHomeServiceConnectedTimesheets("company-token", { start: "2026-10-20", end: "2026-10-19" })).rejects.toThrow("valid time-reporting date range");
   });
 
   it("deletes only the authenticated Team Member account through the Company auth endpoint", async () => {
@@ -297,6 +330,13 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeHomeServiceConnectedTimeState({
       activeShift: { startedAt: "2026-08-16T13:00:00Z", status: "active" },
     }).isClockedIn).toBe(true);
+    expect(normalizeHomeServiceConnectedTimeState({
+      data: { entry: { id: 18, clockIn: "2026-10-17T15:00:00.000Z", breakStart: "2026-10-17T17:00:00.000Z", breakEnd: null } },
+    })).toEqual({
+      isClockedIn: true,
+      clockInAt: "2026-10-17T15:00:00.000Z",
+      activeBreak: { isActive: true, startedAt: "2026-10-17T17:00:00.000Z" },
+    });
   });
 
   it("normalizes Company time-off requests for employee history", () => {

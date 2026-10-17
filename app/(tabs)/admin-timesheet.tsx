@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   TextInput, Modal, Alert, Platform, Linking,
@@ -8,6 +8,14 @@ import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import { CalendarPicker } from "@/components/calendar-picker";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import {
+  getHomeServiceConnectedTimesheets,
+  getJobSyncCompanyMembers,
+  getJobSyncCompanySettings,
+  type HomeServiceConnectedTimeRecord,
+  type JobSyncCompanyMember,
+} from "@/lib/jobsync-mobile-api";
 
 // Lazy-load react-native-maps to avoid web crashes
 let MapView: any = null;
@@ -447,6 +455,247 @@ function getDashDateRange(period: DashPeriod, customStart?: string, customEnd?: 
   return { start: customStart ?? fmt(now), end: customEnd ?? fmt(now), label: `${customStart ?? ""} → ${customEnd ?? ""}` };
 }
 
+function companyDateKey(date: Date, timeZone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    if (values.year && values.month && values.day) return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    // The server remains authoritative; use the device date only if a stored
+    // Company timezone is malformed or unavailable.
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function companyWeekday(date: Date, timeZone: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
+  }
+}
+
+function companyRangeLabel(start: string, end: string) {
+  const dateForLabel = (value: string) => new Date(`${value}T12:00:00`)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return start === end ? dateForLabel(start) : `${dateForLabel(start)} – ${dateForLabel(end)}`;
+}
+
+function getCompanyDashDateRange(period: DashPeriod, timeZone: string, customStart?: string, customEnd?: string) {
+  const now = new Date();
+  const today = companyDateKey(now, timeZone);
+  if (period === "custom") {
+    return customStart && customEnd && customStart <= customEnd
+      ? { start: customStart, end: customEnd, label: companyRangeLabel(customStart, customEnd) }
+      : { start: null, end: null, label: "Select a valid date range" };
+  }
+  if (period === "day") return { start: today, end: today, label: companyRangeLabel(today, today) };
+
+  const companyToday = new Date(`${today}T12:00:00Z`);
+  if (period === "week") {
+    const weekDay = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(companyWeekday(now, timeZone));
+    const mondayOffset = weekDay === 0 ? -6 : 1 - Math.max(weekDay, 1);
+    const monday = new Date(companyToday);
+    monday.setUTCDate(companyToday.getUTCDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    const start = monday.toISOString().slice(0, 10);
+    const end = sunday.toISOString().slice(0, 10);
+    return { start, end, label: companyRangeLabel(start, end) };
+  }
+
+  const [year, month] = today.split("-").map(Number);
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end, label: new Date(`${start}T12:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
+}
+
+type CompanyTimesheetMember = JobSyncCompanyMember & { records: HomeServiceConnectedTimeRecord[] };
+
+/**
+ * Company sessions must never use the legacy local timesheet tRPC store.
+ * The HSC bearer API owns both clock actions and historical time records.
+ */
+function CompanyTimesheetScreen({ colors }: { colors: any }) {
+  const { session } = useJobSyncAuth();
+  const [period, setPeriod] = useState<DashPeriod>("week");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [pickingStart, setPickingStart] = useState(false);
+  const [pickingEnd, setPickingEnd] = useState(false);
+  const [timeZone, setTimeZone] = useState("America/Chicago");
+  const [members, setMembers] = useState<CompanyTimesheetMember[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
+
+  const token = session?.token ?? "";
+  const companyId = session?.company?.id ?? null;
+  const companyRole = session?.user.role;
+  const isCompany = session?.portal === "company" && companyId !== null;
+  const canManage = isCompany && (companyRole === "owner" || companyRole === "dispatcher");
+  const range = useMemo(
+    () => getCompanyDashDateRange(period, timeZone, customStart, customEnd),
+    [period, timeZone, customStart, customEnd],
+  );
+
+  const loadTimesheets = useCallback(async (isCurrent: () => boolean = () => true) => {
+    if (!isCompany || !companyId || !token || !range.start || !range.end) {
+      setMembers([]);
+      setIsLoading(false);
+      return;
+    }
+    if (!canManage) {
+      setMembers([]);
+      setError("Team timesheets are available to Company owners and dispatchers.");
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [settings, roster] = await Promise.all([
+        getJobSyncCompanySettings(token),
+        getJobSyncCompanyMembers(token, companyId),
+      ]);
+      if (!isCurrent()) return;
+      setTimeZone(settings.timezone);
+      const queryRange = getCompanyDashDateRange(period, settings.timezone, customStart, customEnd);
+      if (!queryRange.start || !queryRange.end) {
+        setMembers([]);
+        return;
+      }
+      const memberRows = await Promise.all(roster.members.map(async (member) => ({
+        ...member,
+        records: await getHomeServiceConnectedTimesheets(token, {
+          start: queryRange.start,
+          end: queryRange.end,
+          memberId: member.id,
+        }),
+      })));
+      if (!isCurrent()) return;
+      setMembers(memberRows);
+      setLastUpdatedAt(new Date());
+    } catch (loadError) {
+      if (!isCurrent()) return;
+      setMembers([]);
+      setError(loadError instanceof Error ? loadError.message : "Home Service Connected timesheets are unavailable.");
+    } finally {
+      if (isCurrent()) setIsLoading(false);
+    }
+  }, [canManage, companyId, customEnd, customStart, isCompany, period, range.end, range.start, token]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => { void loadTimesheets(() => active); }, 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [loadTimesheets]);
+
+  const displayedMembers = selectedMemberId && members.some((member) => member.id === selectedMemberId)
+    ? members.filter((member) => member.id === selectedMemberId)
+    : members;
+  const records = displayedMembers.flatMap((member) => member.records);
+  const totalHours = records.reduce((total, record) => total + (record.totalHours ?? 0), 0);
+  const breakHours = records.reduce((total, record) => {
+    if (!record.breakStart || !record.breakEnd) return total;
+    return total + Math.max(0, new Date(record.breakEnd).getTime() - new Date(record.breakStart).getTime()) / 3_600_000;
+  }, 0);
+  const workingAndBreakHours = totalHours + breakHours;
+  const activePct = workingAndBreakHours ? (totalHours / workingAndBreakHours) * 100 : 0;
+  const breakPct = workingAndBreakHours ? (breakHours / workingAndBreakHours) * 100 : 0;
+  const haptic = () => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+        <Text style={{ fontSize: 28, fontWeight: "800", color: colors.foreground }}>Team Dashboard</Text>
+        <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>{range.label}</Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Company time records</Text>
+      </View>
+      <View style={{ flexDirection: "row", paddingHorizontal: 20, marginBottom: 16, gap: 8 }}>
+        {(["day", "week", "month", "custom"] as DashPeriod[]).map((nextPeriod) => (
+          <TouchableOpacity
+            key={nextPeriod}
+            onPress={() => { setPeriod(nextPeriod); haptic(); if (nextPeriod === "custom" && !customStart) setPickingStart(true); }}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: period === nextPeriod ? colors.primary : colors.surface, borderWidth: 1, borderColor: period === nextPeriod ? colors.primary : colors.border }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: period === nextPeriod ? "#fff" : colors.foreground, textTransform: "capitalize" }}>{nextPeriod}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {period === "custom" && (
+        <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity onPress={() => setPickingStart(true)} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 11, color: colors.muted }}>From</Text><Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{customStart || "Select"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPickingEnd(true)} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 11, color: colors.muted }}>To</Text><Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{customEnd || "Select"}</Text>
+            </TouchableOpacity>
+          </View>
+          {pickingStart && <View style={{ marginTop: 12 }}><CalendarPicker selectedDate={customStart} onSelectDate={(date: string) => { setCustomStart(date); setPickingStart(false); if (!customEnd) setPickingEnd(true); }} /></View>}
+          {pickingEnd && !pickingStart && <View style={{ marginTop: 12 }}><CalendarPicker selectedDate={customEnd} onSelectDate={(date: string) => { setCustomEnd(date); setPickingEnd(false); }} /></View>}
+        </View>
+      )}
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Time Breakdown</Text>
+          <View style={{ height: 24, borderRadius: 12, overflow: "hidden", flexDirection: "row", backgroundColor: colors.border, marginBottom: 16 }}>
+            {activePct > 0 && <View style={{ width: `${activePct}%` as any, backgroundColor: "#16A34A", height: 24 }} />}
+            {breakPct > 0 && <View style={{ width: `${breakPct}%` as any, backgroundColor: "#F59E0B", height: 24 }} />}
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 12, color: colors.foreground }}>Worked ({activePct.toFixed(0)}%)</Text>
+            <Text style={{ fontSize: 12, color: colors.foreground }}>Breaks ({breakPct.toFixed(0)}%)</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flex: 1, backgroundColor: colors.primary + "10", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.primary + "30" }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase" }}>Total Hours</Text>
+            <Text style={{ fontSize: 28, fontWeight: "800", color: colors.primary, marginTop: 4 }}>{totalHours.toFixed(1)}</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: "#F59E0B10", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#F59E0B30" }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase" }}>Total Breaks</Text>
+            <Text style={{ fontSize: 28, fontWeight: "800", color: "#F59E0B", marginTop: 4 }}>{breakHours.toFixed(1)}h</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ paddingHorizontal: 20 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground }}>{selectedMemberId ? "Team Member" : `Team Members (${members.length})`}</Text>
+          <TouchableOpacity onPress={() => void loadTimesheets()} disabled={isLoading || !range.start || !range.end} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primary + "15" }}>
+            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>{isLoading ? "Loading…" : "Refresh"}</Text>
+          </TouchableOpacity>
+        </View>
+        {!isCompany ? <Text style={{ fontSize: 13, color: colors.muted }}>A Company session is required to view timesheets.</Text> : error ? <Text style={{ fontSize: 13, color: colors.error }}>{error}</Text> : isLoading ? <ActivityIndicator color={colors.primary} /> : !range.start || !range.end ? <Text style={{ fontSize: 13, color: colors.muted }}>Choose both dates to load Company time records.</Text> : displayedMembers.length === 0 ? <Text style={{ fontSize: 13, color: colors.muted }}>No active Team Members were returned for this Company.</Text> : (
+          <View style={{ gap: 8 }}>
+            {displayedMembers.map((member) => {
+              const memberHours = member.records.reduce((total, record) => total + (record.totalHours ?? 0), 0);
+              return <TouchableOpacity key={member.id} onPress={() => { setSelectedMemberId(selectedMemberId ? null : member.id); haptic(); }} activeOpacity={0.7} style={{ backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>{member.name}</Text><Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{member.records.length ? `${member.records.length} time record${member.records.length === 1 ? "" : "s"}` : "No time records in this period"}</Text></View>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.primary }}>{memberHours.toFixed(1)}h</Text>
+                </View>
+                {selectedMemberId === member.id && member.records.map((record) => <View key={record.id} style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}><Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{formatDate(record.date)}</Text><Text style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>{formatTime(record.clockIn)} – {record.clockOut ? formatTime(record.clockOut) : "Still clocked in"} · {(record.totalHours ?? 0).toFixed(2)}h</Text></View>)}
+              </TouchableOpacity>;
+            })}
+          </View>
+        )}
+        {lastUpdatedAt && !isLoading && <Text style={{ color: colors.muted, fontSize: 11, marginTop: 12, textAlign: "center" }}>Updated {lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text>}
+      </View>
+    </ScrollView>
+  );
+}
+
 function TeamDashboard({ colors, onSelectMember }: { colors: any; onSelectMember: (id: string) => void }) {
   const [period, setPeriod] = useState<DashPeriod>("week");
   const [customStart, setCustomStart] = useState<string>("");
@@ -599,6 +848,14 @@ function TeamDashboard({ colors, onSelectMember }: { colors: any; onSelectMember
 
 export default function AdminTimesheetScreen() {
   const colors = useColors();
+  const { session: jobSyncSession } = useJobSyncAuth();
+  if (jobSyncSession?.portal === "company") {
+    return <ScreenContainer className="px-0" edges={["left", "right"]}><CompanyTimesheetScreen colors={colors} /></ScreenContainer>;
+  }
+  return <LegacyAdminTimesheetScreen colors={colors} />;
+}
+
+function LegacyAdminTimesheetScreen({ colors }: { colors: any }) {
   const [viewMode, setViewMode] = useState<"dashboard" | "individual">("dashboard");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
