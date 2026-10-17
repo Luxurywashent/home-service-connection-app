@@ -27,6 +27,15 @@ describe("account settings layout", () => {
     expect(profile).toContain("Sign out of this device");
   });
 
+  it("offers Company Team Members a confirmed self-deletion action without deleting Company records", () => {
+    expect(profile).toContain("deleteJobSyncMobileAccount");
+    expect(profile).toContain('jobSyncSession?.portal === "company"');
+    expect(profile).toContain("Delete individual account");
+    expect(profile).toContain("Delete My Account");
+    expect(profile).toContain("Shared Company records stay intact.");
+    expect(profile).toContain("logoutJobSync");
+  });
+
   it("makes the redesigned screen reachable as Settings for Company users", () => {
     const settingsRoute = '{ label: "Settings",      icon: "⚙️",  route: "/profile" }';
 

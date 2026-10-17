@@ -19,6 +19,7 @@ import {
   normalizeJobSyncCompanySettings,
   normalizeJobSyncCompanyCustomers,
   filterJobSyncCompanyCustomers,
+  deleteJobSyncMobileAccount,
   getJobSyncCompanyJobs,
   getJobSyncCompanyCustomers,
   updateJobSyncCompanyJobAssignment,
@@ -37,6 +38,29 @@ describe("JobSync mobile API contract", () => {
 
   it("sends restored sessions with an Authorization bearer header", () => {
     expect(createJobSyncBearerHeaders("mobile-token")).toEqual({ Authorization: "Bearer mobile-token" });
+  });
+
+  it("deletes only the authenticated Team Member account through the Company auth endpoint", async () => {
+    const originalBaseUrl = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deleted: true }) });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      await expect(deleteJobSyncMobileAccount("company-token")).resolves.toEqual({ deleted: true });
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://www.homeserviceconnected.com/api/mobile/v1/auth/account",
+        expect.objectContaining({
+          method: "DELETE",
+          cache: "no-store",
+          headers: expect.objectContaining({ Authorization: "Bearer company-token" }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalBaseUrl === undefined) delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+      else process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL = originalBaseUrl;
+    }
   });
 
   it("loads Company jobs from the canonical HSC host without a native cache", async () => {

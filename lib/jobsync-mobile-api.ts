@@ -87,6 +87,7 @@ export type JobSyncCompanyMemberUpdateInput = {
 const DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com";
 const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
+const ACCOUNT_PATH = "/api/mobile/v1/auth/account";
 const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const COMPANY_SETTINGS_PATH = "/api/mobile/v1/company/settings";
@@ -518,6 +519,18 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("Home Service Connected returned an unsupported mobile session profile.");
   return session;
+}
+
+/** Disables only the authenticated Company Team Member's own mobile account. */
+export async function deleteJobSyncMobileAccount(token: string) {
+  const payload = asRecord(await requestJson(ACCOUNT_PATH, {
+    method: "DELETE",
+    headers: createJobSyncBearerHeaders(token),
+  }));
+  if (payload?.deleted !== true) {
+    throw new Error("Home Service Connected could not confirm that this account was deleted.");
+  }
+  return { deleted: true as const };
 }
 
 export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyId: number): JobSyncCompanyRoster | null {

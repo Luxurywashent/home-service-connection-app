@@ -15,6 +15,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { deleteJobSyncMobileAccount } from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
 
@@ -30,6 +32,7 @@ export default function ProfileScreen() {
   const colors = useColors();
   const { width } = useWindowDimensions();
   const { employee, logout } = useEmployeeAuth();
+  const { session: jobSyncSession, logout: logoutJobSync } = useJobSyncAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AccountSettingsTab>("account");
   const [showPinReset, setShowPinReset] = useState(false);
@@ -37,8 +40,10 @@ export default function ProfileScreen() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinSuccess, setPinSuccess] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const resetPinMutation = trpc.employee.resetPin.useMutation();
+  const isCompanySession = jobSyncSession?.portal === "company";
   const isDetailer = employee?.role === "detailer";
   const isWide = width >= 760;
 
@@ -72,16 +77,65 @@ export default function ProfileScreen() {
     }
   };
 
+  const signOut = async () => {
+    await Promise.all([logoutJobSync(), logout()]);
+    router.replace("/login");
+  };
+
   const handleLogout = () => {
     if (Platform.OS === "web") {
-      logout().then(() => router.replace("/login"));
+      void signOut();
       return;
     }
 
     Alert.alert("Sign Out", "Are you sure you want to sign out of this device?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: () => logout().then(() => router.replace("/login")) },
+      { text: "Sign Out", style: "destructive", onPress: () => { void signOut(); } },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    const token = jobSyncSession?.token;
+    if (!isCompanySession || !token) {
+      Alert.alert("Account unavailable", "Sign in to your Home Service Connection Company account before deleting it.");
+      return;
+    }
+
+    Alert.alert(
+      "Delete your mobile account?",
+      "This permanently disables only your individual Team Member sign-in and signs you out. Your Company, customers, jobs, schedules, payments, and shared records will not be deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => Alert.alert(
+            "Final confirmation",
+            "You will no longer be able to sign in with this Team Member account unless a Company administrator reactivates it.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete My Account",
+                style: "destructive",
+                onPress: () => {
+                  void (async () => {
+                    setDeletingAccount(true);
+                    try {
+                      await deleteJobSyncMobileAccount(token);
+                      await signOut();
+                    } catch (error) {
+                      Alert.alert("Account not deleted", error instanceof Error ? error.message : "Please try again.");
+                    } finally {
+                      setDeletingAccount(false);
+                    }
+                  })();
+                },
+              },
+            ],
+          ),
+        },
+      ],
+    );
   };
 
   const role = roleLabel(employee?.role ?? "");
@@ -198,10 +252,10 @@ export default function ProfileScreen() {
             <>
               <SettingsSectionHeader
                 title="Security"
-                description="Keep your sign-in PIN private and up to date"
+                description={isCompanySession ? "Manage access to your Home Service Connection Company account" : "Keep your sign-in PIN private and up to date"}
                 colors={colors}
               />
-              <View style={[styles.securityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {!isCompanySession && <View style={[styles.securityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={[styles.securityIcon, { backgroundColor: colors.primary + "18" }]}>
                   <MaterialIcons name="lock-outline" size={24} color={colors.primary} />
                 </View>
@@ -220,9 +274,19 @@ export default function ProfileScreen() {
                 >
                   <Text style={[styles.outlineButtonText, { color: colors.primary }]}>{showPinReset ? "Cancel" : "Change"}</Text>
                 </TouchableOpacity>
-              </View>
+              </View>}
 
-              {showPinReset && (
+              {isCompanySession && <View style={[styles.securityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.securityIcon, { backgroundColor: colors.primary + "18" }]}>
+                  <MaterialIcons name="verified-user" size={24} color={colors.primary} />
+                </View>
+                <View style={styles.securityCopy}>
+                  <Text style={[styles.securityTitle, { color: colors.foreground }]}>Company credentials</Text>
+                  <Text style={[styles.securityDescription, { color: colors.muted }]}>Your Company email and password are managed through Home Service Connection.</Text>
+                </View>
+              </View>}
+
+              {!isCompanySession && showPinReset && (
                 <View style={[styles.pinForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <Text style={[styles.formTitle, { color: colors.foreground }]}>Create a new PIN</Text>
                   <Text style={[styles.formDescription, { color: colors.muted }]}>Enter the same 4–6 digit PIN twice to confirm it.</Text>
@@ -270,6 +334,21 @@ export default function ProfileScreen() {
                   <Text style={[styles.signOutButtonText, { color: colors.error }]}>Sign Out</Text>
                 </TouchableOpacity>
               </View>
+
+              {isCompanySession && <View style={[styles.deleteAccountCard, { backgroundColor: colors.error + "0D", borderColor: colors.error + "55" }]}>
+                <View style={styles.deleteAccountCopy}>
+                  <Text style={[styles.deleteAccountTitle, { color: colors.error }]}>Delete individual account</Text>
+                  <Text style={[styles.deleteAccountDescription, { color: colors.muted }]}>Permanently disable only your Team Member sign-in. Shared Company records stay intact.</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleDeleteAccount}
+                  disabled={deletingAccount}
+                  activeOpacity={0.8}
+                  style={[styles.deleteAccountButton, { backgroundColor: colors.error, opacity: deletingAccount ? 0.65 : 1 }]}
+                >
+                  {deletingAccount ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.deleteAccountButtonText}>Delete Account</Text>}
+                </TouchableOpacity>
+              </View>}
             </>
           )}
         </View>
@@ -655,6 +734,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   signOutButtonText: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  deleteAccountCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginTop: 12,
+  },
+  deleteAccountCopy: {
+    marginBottom: 14,
+  },
+  deleteAccountTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  deleteAccountDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  deleteAccountButton: {
+    minHeight: 42,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteAccountButtonText: {
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "800",
   },
