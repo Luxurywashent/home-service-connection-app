@@ -56,6 +56,39 @@ function dateAtUtcMidnight(date: string) {
 }
 
 /**
+ * Converts a Company calendar day and decimal wall-clock hour to the UTC instant
+ * required by the Company Jobs API. This deliberately avoids the device timezone:
+ * dragging a Pensacola 9 AM appointment must send 9 AM Central, not 9 AM where the
+ * phone happens to be located.
+ */
+export function companyCalendarInstant(date: string, hour: number, timezone?: string | null) {
+  const [year, month, day] = date.split("-").map(Number);
+  if (![year, month, day, hour].every(Number.isFinite)) return null;
+
+  const wholeHour = Math.floor(hour);
+  const minute = Math.round((hour - wholeHour) * 60);
+  const intendedUtcWallTime = Date.UTC(year, month - 1, day, wholeHour, minute, 0, 0);
+  let instant = intendedUtcWallTime;
+  const resolvedTimezone = safeTimezone(timezone);
+
+  // Reconcile the intended wall time with the saved Company timezone. Repeating
+  // converges across standard and daylight-saving offsets without consulting the
+  // phone's local timezone.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const observed = zonedParts(new Date(instant), resolvedTimezone);
+    if (!observed) return null;
+    const observedUtcWallTime = dateAtUtcMidnight(observed.date)
+      + observed.hour * 3_600_000
+      + observed.minute * 60_000;
+    const adjustment = intendedUtcWallTime - observedUtcWallTime;
+    if (adjustment === 0) break;
+    instant += adjustment;
+  }
+
+  return new Date(instant).toISOString();
+}
+
+/**
  * Translates UTC API instants into the Company calendar's wall-clock date and time.
  * The mobile device timezone is deliberately not used: a 9 AM Pensacola appointment
  * remains 9 AM on the Company calendar even when the device is in another timezone.

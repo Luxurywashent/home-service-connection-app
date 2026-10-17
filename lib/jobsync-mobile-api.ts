@@ -344,6 +344,57 @@ export async function getJobSyncCompanyJobs(token: string, range?: { start?: str
     .filter((job): job is JobSyncMobileJob => Boolean(job));
 }
 
+export type JobSyncCompanyJobScheduleInput = {
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  expectedUpdatedAt?: string | null;
+};
+
+function validCompanyJobId(jobId: number) {
+  if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+    throw new Error("Home Service Connected returned an invalid Job identifier.");
+  }
+}
+
+/** Persists a Company Job's authoritative start/end instants. */
+export async function updateJobSyncCompanyJobSchedule(
+  token: string,
+  jobId: number,
+  input: JobSyncCompanyJobScheduleInput,
+) {
+  validCompanyJobId(jobId);
+  return requestJson(`${COMPANY_JOBS_PATH}/${jobId}/schedule`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      scheduledStartAt: input.scheduledStartAt,
+      scheduledEndAt: input.scheduledEndAt,
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    }),
+  });
+}
+
+/** Persists a Company Job's Team Member lane, including explicit unassignment. */
+export async function updateJobSyncCompanyJobAssignment(
+  token: string,
+  jobId: number,
+  assignedUserId: number | null,
+  expectedUpdatedAt?: string | null,
+) {
+  validCompanyJobId(jobId);
+  if (assignedUserId !== null && (!Number.isSafeInteger(assignedUserId) || assignedUserId <= 0)) {
+    throw new Error("Home Service Connected returned an invalid Team Member identifier.");
+  }
+  return requestJson(`${COMPANY_JOBS_PATH}/${jobId}/assignment`, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      assignedUserId,
+      ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+    }),
+  });
+}
+
 export async function getJobSyncCompanySettings(token: string): Promise<JobSyncCompanySettings> {
   const settings = normalizeJobSyncCompanySettings(await requestJson(COMPANY_SETTINGS_PATH, {
     method: "GET",

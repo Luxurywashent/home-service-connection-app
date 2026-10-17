@@ -20,6 +20,8 @@ import {
   filterJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
   getJobSyncCompanyCustomers,
+  updateJobSyncCompanyJobAssignment,
+  updateJobSyncCompanyJobSchedule,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -84,6 +86,50 @@ describe("JobSync mobile API contract", () => {
         expect.objectContaining({
           cache: "no-store",
           headers: expect.objectContaining({ Authorization: "Bearer company-token" }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalBaseUrl === undefined) delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+      else process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL = originalBaseUrl;
+    }
+  });
+
+  it("persists Company schedule and lane updates through the authenticated mobile Jobs API", async () => {
+    const originalBaseUrl = process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    delete process.env.EXPO_PUBLIC_JOBSYNC_API_BASE_URL;
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      await updateJobSyncCompanyJobSchedule("company-token", 47, {
+        scheduledStartAt: "2026-10-14T14:00:00.000Z",
+        scheduledEndAt: "2026-10-14T16:00:00.000Z",
+        expectedUpdatedAt: "2026-10-13T20:00:00.000Z",
+      });
+      await updateJobSyncCompanyJobAssignment("company-token", 47, null);
+
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        1,
+        "https://www.homeserviceconnected.com/api/mobile/v1/company/jobs/47/schedule",
+        expect.objectContaining({
+          method: "PATCH",
+          cache: "no-store",
+          headers: expect.objectContaining({ Authorization: "Bearer company-token" }),
+          body: JSON.stringify({
+            scheduledStartAt: "2026-10-14T14:00:00.000Z",
+            scheduledEndAt: "2026-10-14T16:00:00.000Z",
+            expectedUpdatedAt: "2026-10-13T20:00:00.000Z",
+          }),
+        }),
+      );
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        "https://www.homeserviceconnected.com/api/mobile/v1/company/jobs/47/assignment",
+        expect.objectContaining({
+          method: "PATCH",
+          cache: "no-store",
+          body: JSON.stringify({ assignedUserId: null }),
         }),
       );
     } finally {

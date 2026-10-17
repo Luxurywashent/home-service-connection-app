@@ -46,8 +46,10 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
+  updateJobSyncCompanyJobAssignment,
+  updateJobSyncCompanyJobSchedule,
 } from "@/lib/jobsync-mobile-api";
-import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
+import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import Constants from "expo-constants";
 
@@ -229,6 +231,8 @@ interface Job {
   price: number;
   startHour: number;
   endHour: number;
+  /** Authenticated Company-local calendar date for API-backed job updates. */
+  companyDate?: string;
   dayIndex: number;
   weekOffset: number;
   status: JobStatus;
@@ -309,9 +313,14 @@ type CitySlug = typeof CITY_LIST[number]["slug"];
 
 // Color palette assigned round-robin to detailers in order
 const DETAILER_COLORS = ["#0a7ea4", "#7c3aed", "#e11d48", "#16a34a", "#ea580c", "#0891b2"];
-
 interface DetailerEntry { name: string; color: string; employeeId: string; shift?: "first" | "second"; }
 interface CityConfig { slug: string; label: string; detailers: DetailerEntry[]; }
+
+function companyUserId(employeeId?: string) {
+  const match = employeeId?.match(/^jobsync-(\d+)$/);
+  const id = Number(match?.[1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 // No hardcoded fallback — calendar is fully driven by live DB data
 const FALLBACK_DETAILERS: Record<string, DetailerEntry[]> = {};
@@ -1606,6 +1615,35 @@ export default function AdminScheduleScreen() {
     setSyncKey((k) => k + 1);
   }, [utils]);
 
+  /**
+   * Company calendars are backed by the authenticated Jobs API. The old local
+   * schedule mutations remain only for legacy employee sessions; they must never
+   * be used to move a bearer-scoped Company Job.
+   */
+  const persistCompanyCalendarChange = useCallback(async (previous: Job, next: Job) => {
+    const token = jobSyncSession?.token;
+    const jobId = Number(previous.id);
+    const companyDate = next.companyDate;
+    if (!token || !Number.isSafeInteger(jobId) || jobId <= 0 || !companyDate) {
+      throw new Error("This Company Job cannot be updated until the calendar refreshes.");
+    }
+
+    const settings = await getJobSyncCompanySettings(token);
+    const scheduledStartAt = companyCalendarInstant(companyDate, next.startHour, settings.timezone);
+    const scheduledEndAt = companyCalendarInstant(companyDate, next.endHour, settings.timezone);
+    if (!scheduledStartAt || !scheduledEndAt) {
+      throw new Error("The selected Company date or time is invalid.");
+    }
+
+    await updateJobSyncCompanyJobSchedule(token, jobId, { scheduledStartAt, scheduledEndAt });
+
+    const previousAssignee = companyUserId(previous.assignedTo);
+    const nextAssignee = companyUserId(next.assignedTo);
+    if (previousAssignee !== nextAssignee) {
+      await updateJobSyncCompanyJobAssignment(token, jobId, nextAssignee);
+    }
+  }, [jobSyncSession?.token]);
+
   // Fetch blockers for the current week whenever city or week changes
   useEffect(() => {
     const fetchBlockers = async () => {
@@ -1741,6 +1779,7 @@ export default function AdminScheduleScreen() {
               price: job.amount,
               startHour: slot.startHour,
               endHour: slot.endHour,
+              companyDate: slot.date,
               dayIndex: position.dayIndex,
               weekOffset: position.weekOffset,
               status,
@@ -2232,9 +2271,23 @@ export default function AdminScheduleScreen() {
 
   const adminSaveTime = async (job: Job, newStartHour: number, newEndHour: number, newDateStr: string, notifyCustomer = false) => {
     if (newEndHour <= newStartHour) return;
-    // Recalculate weekOffset and dayIndex for the new date
+
+    if (isJobSyncCompany) {
+      const updated: Job = {
+        ...job,
+        startHour: newStartHour,
+        endHour: newEndHour,
+        companyDate: newDateStr,
+      };
+      setJobs((current) => current.map((candidate) => candidate.id === job.id ? updated : candidate));
+      setSelectedJob(updated);
+      setAdminEditingTime(false);
+      await saveCompanyCalendarChange(job, updated);
+      return;
+    }
+
+    // Legacy employee schedules retain their existing local date and shift logic.
     const newDate = parseLocalDate(newDateStr);
-    // Mon-based day index: 0=Mon…6=Sun
     const dayOfWeek = (newDate.getDay() + 6) % 7;
     const todayMonday = new Date();
     todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7);
@@ -2243,34 +2296,29 @@ export default function AdminScheduleScreen() {
     newMonday.setDate(newDate.getDate() - dayOfWeek);
     newMonday.setHours(0, 0, 0, 0);
     const newWeekOffset = Math.round((newMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
-
-    // Auto-clear detailer if they are off-shift on the new date
     const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
     const assignedDet = job.assignedTo
-      ? cityDets.find((d) => d.employeeId === job.assignedTo || d.name === job.assignedTo)
+      ? cityDets.find((detailer) => detailer.employeeId === job.assignedTo || detailer.name === job.assignedTo)
       : undefined;
     const detailerOffShift = assignedDet ? !isDetailerOnShift(assignedDet, dayOfWeek) : false;
     const newAssignedTo = detailerOffShift ? undefined : job.assignedTo;
     const newDetailerName = detailerOffShift ? undefined : job.detailerName;
-
     if (detailerOffShift) {
       Alert.alert(
         "Detailer Off Shift",
-        `${assignedDet?.name ?? "The assigned detailer"} is off on the new date. The job has been unassigned — please reassign to an available detailer.`
+        `${assignedDet?.name ?? "The assigned detailer"} is off on the new date. The job has been unassigned — please reassign to an available detailer.`,
       );
     }
-
     const updated = { ...job, startHour: newStartHour, endHour: newEndHour, weekOffset: newWeekOffset, dayIndex: dayOfWeek, assignedTo: newAssignedTo, detailerName: newDetailerName };
-    setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
+    setJobs((current) => current.map((candidate) => candidate.id === job.id ? updated : candidate));
     setSelectedJob(updated);
     setAdminEditingTime(false);
-    const timeSlot = `${formatHour(newStartHour)} - ${formatHour(newEndHour)}`;
     try {
       await jobUpsertMutation.mutateAsync({
         jobId: job.id,
         location: job.location ?? selectedCity,
         date: newDateStr,
-        timeSlot,
+        timeSlot: `${formatHour(newStartHour)} - ${formatHour(newEndHour)}`,
         startHour: newStartHour,
         endHour: newEndHour,
         assignedTo: newAssignedTo ?? "",
@@ -2279,9 +2327,10 @@ export default function AdminScheduleScreen() {
       if (detailerOffShift) {
         jobReassignMutation.mutate({ jobId: job.id, newAssignedTo: "" });
       }
-    } catch {}
+    } catch {
+      // Legacy storage remains best-effort; the Company path above is authoritative.
+    }
   };
-
   const adminSavePackage = async (job: Job, newPackageId: string) => {
     const pkg = allJobPackages.find((p) => p.id === newPackageId);
     const vt = (job.vehicleType ?? "sedan") as VehicleType;
@@ -2366,98 +2415,118 @@ export default function AdminScheduleScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJob?.id]);
 
-  const handleMoveAdminJob = useCallback((jobId: string, newStartHour: number, newLaneIdx?: number) => {
-    const cityConfig: CityConfig | undefined = { slug: selectedCity, label: CITY_LIST.find(c => c.slug === selectedCity)?.label ?? selectedCity, detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [] };
-    setJobs((prev) => {
-      const updated = prev.map((j) => {
-        if (j.id !== jobId) return j;
-        const duration = Math.max(1, j.endHour - j.startHour);
-        const newEndHour = newStartHour + duration;
-        // If dropped into a different lane, update detailerName + assignedTo
-        let newDetailerName = j.detailerName;
-        let newAssignedTo = j.assignedTo;
-        if (newLaneIdx !== undefined && cityConfig) {
-          const targetDetailer = cityConfig.detailers[newLaneIdx];
-          if (targetDetailer) {
-            newDetailerName = targetDetailer.name;
-            newAssignedTo = targetDetailer.employeeId ?? j.assignedTo;
-          } else {
-            // Dropped into the Unassigned lane — clear the assignment
-            newDetailerName = undefined;
-            newAssignedTo = undefined;
-          }
-        }
-        return { ...j, startHour: newStartHour, endHour: newEndHour, detailerName: newDetailerName, assignedTo: newAssignedTo };
-      });
-      const job = updated.find((j) => j.id === jobId);
-      if (job) {
-        const jobDate = getWeekDates(weekOffset)[job.dayIndex];
-        const dateStr = localDateStr(jobDate);
-        // Always explicitly reassign so null/empty is persisted correctly (jobUpsertMutation skips undefined fields)
-        jobReassignMutation.mutate({ jobId: job.id, newAssignedTo: job.assignedTo ?? "" });
-        // Also upsert to update time slot
-        jobUpsertMutation.mutate({
-          jobId: job.id,
-          location: job.location ?? selectedCity,
-          date: dateStr,
-          timeSlot: `${formatHour(job.startHour)} - ${formatHour(job.endHour)}`,
-          startHour: job.startHour,
-          endHour: job.endHour,
-          customerName: `${job.firstName} ${job.lastName}`.trim(),
-          customerPhone: job.phone || undefined,
-          vehicleType: job.vehicleType || undefined,
-          packageType: job.packageId || undefined,
-          serviceDescription: job.serviceDescription || undefined,
-          selectedAddons: job.addonIds?.length ? JSON.stringify(job.addonIds) : undefined,
-          totalPrice: job.price,
-          assignedTo: job.assignedTo ?? "", // empty string = unassigned; reassign mutation above handles the null write
-          status: "confirmed" as const,
-          source: "manual" as const,
-          notifyCustomer: false, // drag-to-move: never re-send confirmation
-        });
-        // Persist locally
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated)).catch(() => {});
-      }
-      return updated;
-    });
-  }, [weekOffset, selectedCity, jobUpsertMutation, jobReassignMutation]);
+  const saveCompanyCalendarChange = useCallback(async (previous: Job, next: Job) => {
+    try {
+      await persistCompanyCalendarChange(previous, next);
+      forceSync();
+    } catch (error) {
+      setJobs((current) => current.map((job) => job.id === previous.id ? previous : job));
+      setSelectedJob((current) => current?.id === previous.id ? previous : current);
+      const message = error instanceof Error ? error.message : "Home Service Connected could not save this calendar change.";
+      setCompanyCalendarError(message);
+      Alert.alert("Schedule not updated", message);
+      // If a two-step time-and-lane change only partially reached the server,
+      // replace the optimistic card with the backend's authoritative record.
+      forceSync();
+    }
+  }, [forceSync, persistCompanyCalendarChange]);
 
-  const handleResizeAdminJob = useCallback((jobId: string, newEndHour: number) => {
-    setJobs((prev) => {
-      const updated = prev.map((j) => {
-        if (j.id !== jobId) return j;
-        const clampedEnd = Math.max(j.startHour + 1, Math.min(HOURS[HOURS.length - 1], newEndHour));
-        return { ...j, endHour: clampedEnd };
-      });
-      const job = updated.find((j) => j.id === jobId);
-      if (job) {
-        const jobDate = getWeekDates(weekOffset)[job.dayIndex];
-        const dateStr = localDateStr(jobDate);
-        jobUpsertMutation.mutate({
-          jobId: job.id,
-          location: job.location ?? selectedCity,
-          date: dateStr,
-          timeSlot: `${formatHour(job.startHour)} - ${formatHour(job.endHour)}`,
-          startHour: job.startHour,
-          endHour: job.endHour,
-          customerName: `${job.firstName} ${job.lastName}`.trim(),
-          customerPhone: job.phone || undefined,
-          vehicleType: job.vehicleType || undefined,
-          packageType: job.packageId || undefined,
-          serviceDescription: job.serviceDescription || undefined,
-          selectedAddons: job.addonIds?.length ? JSON.stringify(job.addonIds) : undefined,
-          totalPrice: job.price,
-          assignedTo: job.assignedTo || job.detailerName || undefined,
-          status: "confirmed" as const,
-          source: "manual" as const,
-          notifyCustomer: false, // resize: never re-send confirmation
-        });
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated)).catch(() => {});
-      }
-      return updated;
-    });
-  }, [weekOffset, selectedCity, jobUpsertMutation]);
+  const handleMoveAdminJob = async (jobId: string, newStartHour: number, newLaneIdx?: number) => {
+    const previous = jobs.find((job) => job.id === jobId);
+    if (!previous) return;
 
+    const cityConfig: CityConfig = {
+      slug: selectedCity,
+      label: CITY_LIST.find((city) => city.slug === selectedCity)?.label ?? selectedCity,
+      detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [],
+    };
+    const duration = Math.max(1, previous.endHour - previous.startHour);
+    let detailerName = previous.detailerName;
+    let assignedTo = previous.assignedTo;
+    if (newLaneIdx !== undefined) {
+      const targetDetailer = cityConfig.detailers[newLaneIdx];
+      detailerName = targetDetailer?.name;
+      assignedTo = targetDetailer?.employeeId;
+    }
+
+    const displayedDate = localDateStr(getWeekDates(weekOffset)[previous.dayIndex]);
+    const next: Job = {
+      ...previous,
+      startHour: newStartHour,
+      endHour: newStartHour + duration,
+      companyDate: previous.companyDate ?? displayedDate,
+      detailerName,
+      assignedTo,
+    };
+    setJobs((current) => current.map((job) => job.id === jobId ? next : job));
+
+    if (isJobSyncCompany) {
+      await saveCompanyCalendarChange(previous, next);
+      return;
+    }
+
+    // Legacy employee schedules retain their existing isolated mutation path.
+    jobReassignMutation.mutate({ jobId: next.id, newAssignedTo: next.assignedTo ?? "" });
+    jobUpsertMutation.mutate({
+      jobId: next.id,
+      location: next.location ?? selectedCity,
+      date: displayedDate,
+      timeSlot: `${formatHour(next.startHour)} - ${formatHour(next.endHour)}`,
+      startHour: next.startHour,
+      endHour: next.endHour,
+      customerName: `${next.firstName} ${next.lastName}`.trim(),
+      customerPhone: next.phone || undefined,
+      vehicleType: next.vehicleType || undefined,
+      packageType: next.packageId || undefined,
+      serviceDescription: next.serviceDescription || undefined,
+      selectedAddons: next.addonIds?.length ? JSON.stringify(next.addonIds) : undefined,
+      totalPrice: next.price,
+      assignedTo: next.assignedTo ?? "",
+      status: "confirmed" as const,
+      source: "manual" as const,
+      notifyCustomer: false,
+    });
+    AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(jobs.map((job) => job.id === jobId ? next : job))).catch(() => {});
+  };
+
+  const handleResizeAdminJob = async (jobId: string, newEndHour: number) => {
+    const previous = jobs.find((job) => job.id === jobId);
+    if (!previous) return;
+
+    const displayedDate = localDateStr(getWeekDates(weekOffset)[previous.dayIndex]);
+    const next: Job = {
+      ...previous,
+      endHour: Math.max(previous.startHour + 1, Math.min(HOURS[HOURS.length - 1], newEndHour)),
+      companyDate: previous.companyDate ?? displayedDate,
+    };
+    setJobs((current) => current.map((job) => job.id === jobId ? next : job));
+
+    if (isJobSyncCompany) {
+      await saveCompanyCalendarChange(previous, next);
+      return;
+    }
+
+    jobUpsertMutation.mutate({
+      jobId: next.id,
+      location: next.location ?? selectedCity,
+      date: displayedDate,
+      timeSlot: `${formatHour(next.startHour)} - ${formatHour(next.endHour)}`,
+      startHour: next.startHour,
+      endHour: next.endHour,
+      customerName: `${next.firstName} ${next.lastName}`.trim(),
+      customerPhone: next.phone || undefined,
+      vehicleType: next.vehicleType || undefined,
+      packageType: next.packageId || undefined,
+      serviceDescription: next.serviceDescription || undefined,
+      selectedAddons: next.addonIds?.length ? JSON.stringify(next.addonIds) : undefined,
+      totalPrice: next.price,
+      assignedTo: next.assignedTo || next.detailerName || undefined,
+      status: "confirmed" as const,
+      source: "manual" as const,
+      notifyCustomer: false,
+    });
+    AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(jobs.map((job) => job.id === jobId ? next : job))).catch(() => {});
+  };
   const weekDates = getWeekDates(weekOffset);
   const selectedDate = weekDates[selectedDay];
   // Build runtime cityConfig from dynamic detailers (falls back to static if not yet loaded)
@@ -3019,7 +3088,7 @@ export default function AdminScheduleScreen() {
                             </View>
                           </View>
                         ) : (
-                          <TouchableOpacity onPress={() => { setAdminEditStartHour(selectedJob.startHour); setAdminEditEndHour(selectedJob.endHour); setAdminEditDate(localDateStr(jobDate)); setAdminRescheduleNotify(false); setAdminEditingTime(true); setTimeout(() => { const ITEM_W = 64 + 6; const todayOffset = Math.max(0, 180 * ITEM_W - 120); dateStripScrollRef.current?.scrollTo({ x: todayOffset, animated: false }); }, 60); }} activeOpacity={0.7}>
+                          <TouchableOpacity onPress={() => { setAdminEditStartHour(selectedJob.startHour); setAdminEditEndHour(selectedJob.endHour); setAdminEditDate(selectedJob.companyDate ?? localDateStr(jobDate)); setAdminRescheduleNotify(false); setAdminEditingTime(true); setTimeout(() => { const ITEM_W = 64 + 6; const todayOffset = Math.max(0, 180 * ITEM_W - 120); dateStripScrollRef.current?.scrollTo({ x: todayOffset, animated: false }); }, 60); }} activeOpacity={0.7}>
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                               <Text style={{ color: colors.muted, fontSize: 15 }}>Date</Text>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
