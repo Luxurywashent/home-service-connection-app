@@ -49,6 +49,7 @@ import {
   getJobSyncCompanyJob,
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
+  isCompanyScheduleColumnMember,
   rescheduleJobSyncCompanyJob,
   updateJobSyncCompanyJobStatus,
   type JobSyncCompanyCustomer,
@@ -1696,7 +1697,7 @@ export default function AdminScheduleScreen() {
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
         if (cancelled) return;
-        const teamLanes: DetailerEntry[] = roster.members.map((member, index) => ({
+        const teamLanes: DetailerEntry[] = roster.members.filter(isCompanyScheduleColumnMember).map((member, index) => ({
           employeeId: `jobsync-${member.id}`,
           name: member.name,
           color: DETAILER_COLORS[index % DETAILER_COLORS.length],

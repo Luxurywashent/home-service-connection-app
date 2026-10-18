@@ -8,6 +8,11 @@ export type JobSyncCompanySession = {
     email: string | null;
     role: string;
     memberId?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    hireDate?: string | null;
   };
   company?: {
     id: number;
@@ -20,10 +25,10 @@ export type NativeEmployeeBridge = {
   fullName: string;
   email: string | null;
   role: "detailer" | "admin" | "operations_manager";
-  city: null;
-  hireDate: null;
+  city: string | null;
+  hireDate: string | null;
   profilePhotoUrl: null;
-  phoneNumber: null;
+  phoneNumber: string | null;
   hourlyRate: null;
   upsellBonusPct: null;
   companyId: number;
@@ -46,10 +51,10 @@ export function getNativeEmployeeSession(session: JobSyncCompanySession): Native
     fullName: session.user.name,
     email: session.user.email,
     role: roleMap[role as JobSyncCompanyRole],
-    city: null,
-    hireDate: null,
+    city: session.user.city ?? null,
+    hireDate: session.user.hireDate ?? null,
     profilePhotoUrl: null,
-    phoneNumber: null,
+    phoneNumber: session.user.phone ?? null,
     hourlyRate: null,
     upsellBonusPct: null,
     companyId: session.company.id,

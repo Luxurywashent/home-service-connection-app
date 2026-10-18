@@ -16,6 +16,7 @@ type JobSyncAuthContextValue = {
   isLoading: boolean;
   loginCompany: (input: { email: string; password: string }) => Promise<JobSyncNativeSession>;
   loginPlatform: (input: { email: string; password: string }) => Promise<JobSyncNativeSession>;
+  refresh: () => Promise<JobSyncNativeSession>;
   logout: () => Promise<void>;
 };
 
@@ -45,6 +46,7 @@ const JobSyncAuthContext = createContext<JobSyncAuthContextValue>({
   isLoading: true,
   loginCompany: async () => { throw new Error("Home Service Connected authentication is unavailable"); },
   loginPlatform: async () => { throw new Error("Home Service Connected authentication is unavailable"); },
+  refresh: async () => { throw new Error("Home Service Connected authentication is unavailable"); },
   logout: async () => {},
 });
 
@@ -101,8 +103,16 @@ export function JobSyncAuthProvider({ children }: { children: React.ReactNode })
     await clearStoredToken();
   }, []);
 
+  const refresh = useCallback(async () => {
+    const token = session?.token ?? await readStoredToken();
+    if (!token) throw new Error("Home Service Connected authentication is unavailable");
+    const restored = await getJobSyncMobileSession(token);
+    setSession(restored);
+    return restored;
+  }, [session?.token]);
+
   return (
-    <JobSyncAuthContext.Provider value={{ session, isLoading, loginCompany, loginPlatform, logout }}>
+    <JobSyncAuthContext.Provider value={{ session, isLoading, loginCompany, loginPlatform, refresh, logout }}>
       {children}
     </JobSyncAuthContext.Provider>
   );
