@@ -1,5 +1,7 @@
 # HSC Phase 1 repair report
 
+Pre-production verification of these repairs is in `docs/HSC_PHASE1_PREPRODUCTION_VERIFICATION.md`. That document is the release gate. These repairs are not approved for production.
+
 Development-only repairs. Production API configuration was not changed. No production migration was applied. Payments and payroll calculations were not changed. The legacy database and its code were not removed.
 
 ## Step 1 — Production architecture
