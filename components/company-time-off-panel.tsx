@@ -8,7 +8,8 @@ import { useColors } from "@/hooks/use-colors";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import {
   COMPANY_TIME_OFF_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
+  companyWriteFailure,
 } from "@/lib/jobsync-company-authority";
 import {
   createHomeServiceConnectedTimeOff,
@@ -82,9 +83,11 @@ export function CompanyTimeOffPanel({
       setCanReview(list.canReview);
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setRequests([]);
       setCanReview(false);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -101,9 +104,11 @@ export function CompanyTimeOffPanel({
       })
       .catch((refreshError) => {
         if (cancelled) return;
+        const message = companyReadFailure(refreshError);
+        if (!message) return;
         setRequests([]);
         setCanReview(false);
-        setError(companyCanonicalReadError(refreshError));
+        setError(message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -140,7 +145,7 @@ export function CompanyTimeOffPanel({
       setSubmitSuccess("Request submitted to Home Service Connected.");
       await refresh();
     } catch (requestError) {
-      setSubmitError(companyCanonicalReadError(requestError));
+      setSubmitError(companyWriteFailure(requestError));
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +168,7 @@ export function CompanyTimeOffPanel({
       setReviewerNote("");
       await refresh();
     } catch (reviewError) {
-      setReviewMessage(companyCanonicalReadError(reviewError));
+      setReviewMessage(companyWriteFailure(reviewError));
     } finally {
       setReviewing(false);
     }

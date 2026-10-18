@@ -8,6 +8,7 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { BreakModal } from "./break-modal";
 import { CompanyClockStatus } from "./company-clock-status";
+import { CompanyLocationPublisher } from "./company-location-publisher";
 import { EndBreakConfirmationModal } from "./end-break-confirmation-modal";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "./location-disclosure-modal";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
@@ -37,7 +38,12 @@ export function HeaderClockStatus() {
     return <ActivityIndicator color="#0a7ea4" size="small" />;
   }
   if (usesCompanyTimekeepingAuthority(authority) && session?.token) {
-    return <CompanyClockStatus token={session.token} />;
+    return (
+      <>
+        <CompanyLocationPublisher token={session.token} role={session.user.role} />
+        <CompanyClockStatus token={session.token} />
+      </>
+    );
   }
   if (!allowsLegacyTimekeepingAuthority(authority)) {
     return <ActivityIndicator color="#0a7ea4" size="small" />;

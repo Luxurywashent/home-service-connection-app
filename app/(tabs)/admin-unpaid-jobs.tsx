@@ -25,7 +25,7 @@ import {
   allowsLegacyJobAuthority,
   canonicalJobId,
   companyCanonicalListState,
-  companyCanonicalReadError,
+  companyReadFailure,
   resolveCompanyJobAuthority,
   unpaidJobFromCanonical,
   usesCompanyJobAuthority,
@@ -570,8 +570,10 @@ export default function AdminUnpaidJobsScreen() {
       setCompanyJobs(await fetchCompanyUnpaidJobs(companyToken));
       setCompanyFetchError(null);
     } catch (error) {
+      const message = companyReadFailure(error);
+      if (!message) return;
       setCompanyJobs([]);
-      setCompanyFetchError(companyCanonicalReadError(error));
+      setCompanyFetchError(message);
     }
   };
 
@@ -586,8 +588,10 @@ export default function AdminUnpaidJobsScreen() {
       })
       .catch((error) => {
         if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
         setCompanyJobs([]);
-        setCompanyFetchError(companyCanonicalReadError(error));
+        setCompanyFetchError(message);
       })
       .finally(() => {
         if (!cancelled) setCompletedCompanyLoadKey(companyLoadKey);

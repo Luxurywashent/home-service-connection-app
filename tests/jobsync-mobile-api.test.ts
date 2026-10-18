@@ -26,6 +26,9 @@ import {
   normalizeJobSyncCompanyRoster,
   normalizeJobSyncCompanySettings,
   normalizeJobSyncMobileSession,
+  isCompanyScheduleColumnMember,
+  isExplicitCalendarEligible,
+  createJobSyncOwnProfilePayload,
   normalizeJobSyncFeatureAccess,
   normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedChatGroups,
@@ -198,6 +201,66 @@ describe("JobSync mobile API contract", () => {
       calendarEligible: false,
     }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
+  });
+
+  it("keeps string-zero calendar flags off the technician columns", () => {
+    expect(Boolean("0")).toBe(true);
+    expect(isExplicitCalendarEligible("0")).toBe(false);
+    expect(isExplicitCalendarEligible("1")).toBe(true);
+    const roster = normalizeJobSyncCompanyRoster({
+      company: { id: 9, name: "Casey Services" },
+      members: [
+        { id: 41, name: "Office Admin", role: "dispatcher", isActive: true, calendarEligible: "0" },
+        { id: 42, name: "Field Tech", role: "technician", isActive: true, calendarEligible: "1" },
+        { id: 43, name: "Dual Role", role: "dispatcher", isActive: true, calendarEligible: true },
+        { id: 44, name: "Inactive Tech", role: "technician", isActive: false, calendarEligible: 1 },
+      ],
+    }, 9);
+    expect(roster?.members.filter(isCompanyScheduleColumnMember).map((member) => member.name)).toEqual(["Field Tech", "Dual Role"]);
+  });
+
+  it("sends only permitted self-profile fields and keeps email read-only", () => {
+    const payload = createJobSyncOwnProfilePayload({
+      firstName: " Taylor ",
+      lastName: " Field ",
+      phone: " 850-555-0100 ",
+      city: " Destin ",
+    });
+    expect(payload).toEqual({
+      firstName: "Taylor",
+      lastName: "Field",
+      phone: "850-555-0100",
+      city: "Destin",
+    });
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("role");
+    expect(payload).not.toHaveProperty("hireDate");
+    expect(payload).not.toHaveProperty("memberId");
+  });
+
+  it("maps city, phone, and hire date from the JobSync session profile", () => {
+    const session = normalizeJobSyncMobileSession({
+      accountType: "company",
+      user: {
+        id: 41,
+        name: "Taylor Field",
+        firstName: "Taylor",
+        lastName: "Field",
+        email: "taylor@example.com",
+        phone: "850-555-0100",
+        city: "Destin",
+        hireDate: "2024-03-01",
+        role: "technician",
+      },
+      company: { id: 9, name: "Casey Services" },
+    }, "company-token");
+    expect(session?.user).toMatchObject({
+      phone: "850-555-0100",
+      city: "Destin",
+      hireDate: "2024-03-01",
+      firstName: "Taylor",
+      lastName: "Field",
+    });
   });
 
   it("normalizes an authoritative detailed Company member profile", () => {

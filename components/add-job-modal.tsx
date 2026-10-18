@@ -34,6 +34,7 @@ import {
   createJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyMembers,
+  isCompanyScheduleColumnMember,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
 import {
@@ -484,7 +485,7 @@ function AddJobModalForm({ visible, onClose, onSaved, prefill }: AddJobModalProp
         try {
           const roster = await getJobSyncCompanyMembers(jobSyncSession.token, jobSyncSession.company.id);
           const entries = roster.members
-            .filter((member) => member.calendarEligible)
+            .filter(isCompanyScheduleColumnMember)
             .map((member, index) => ({
               employeeId: String(member.id),
               name: member.name,

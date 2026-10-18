@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const dashboard = readFileSync(new URL("../app/(tabs)/admin-dashboard.tsx", import.meta.url), "utf8");
+const home = readFileSync(new URL("../app/(tabs)/index.tsx", import.meta.url), "utf8");
 const employees = readFileSync(new URL("../app/(tabs)/admin-employees.tsx", import.meta.url), "utf8");
 const customerProfile = readFileSync(new URL("../components/company-customer-profile-panel.tsx", import.meta.url), "utf8");
 const customers = readFileSync(new URL("../components/company-customers-panel.tsx", import.meta.url), "utf8");
@@ -20,7 +21,14 @@ describe("Company canonical cross-screen refresh", () => {
   it("makes every related mounted Company surface consume the shared revision", () => {
     expect(dashboard).toContain("useJobSyncSync");
     expect(dashboard).toContain("revision: companySyncRevision");
-    expect(dashboard).toContain("[companySyncRevision, end, jobSyncSession?.token, start]");
+    expect(dashboard).toContain("companyOperationsRequest");
+    expect(dashboard).toContain("companySyncRevision");
+    expect(dashboard).toContain("companyRequestValue(companyOperationsRequest?.key ?? null, companySummaryResource)");
+    expect(dashboard).toContain("companyRequestValue(companyOperationsRequest?.key ?? null, companyLocationsResource)");
+    expect(dashboard).toContain("companyRequestValue(companyOperationsRequest?.sessionPeriodKey ?? null, lastCompanySummaryResource)");
+    expect(dashboard).toContain("getJobSyncCompanyDashboardSummary(request.token, { period: request.period })");
+    expect(dashboard).toContain("getJobSyncCompanyDispatchBoard(request.token, { date: request.today })");
+    expect(dashboard).toContain("if (!message) return;");
     expect(employees).toContain("revision: companySyncRevision");
     expect(employees).toContain("companyRosterRequest");
     expect(employees).toContain("companyMemberDetailRequest");
@@ -28,6 +36,16 @@ describe("Company canonical cross-screen refresh", () => {
     expect(customerProfile).toContain("customerRequest");
     expect(customers).toContain("[revision, token]");
     expect(finance).toContain("[revision, token]");
+  });
+
+  it("gates Company home and schedule writes after a request is cancelled or superseded", () => {
+    expect(home).toContain("companyHoursResource");
+    expect(home).toContain("companyRequestValue(companyHoursRequestKey, companyHoursResource)");
+    expect(home).toContain("${jobSyncSession.token}:${view}:${weekRange.start}:${weekRange.end}:${weekRange.today}:${companySyncRevision}");
+    expect(home).toContain("if (cancelled) return;");
+    expect(home).toContain("if (!message) return;");
+    expect(adminSchedule).toContain("let cancelled = false;");
+    expect(adminSchedule).toContain("if (cancelled) return;");
   });
 
   it("uses Company-local week headers and today selection only after the matching session timezone loads", () => {

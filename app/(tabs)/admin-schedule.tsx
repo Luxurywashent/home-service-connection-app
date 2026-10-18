@@ -49,6 +49,7 @@ import {
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
   moveJobSyncCompanyJob,
+  isCompanyScheduleColumnMember,
   updateJobSyncCompanyJobStatus,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
@@ -60,7 +61,7 @@ import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   companyAddJobUsesCanonicalCustomers,
   companyAssignedUserId,
-  companyCanonicalReadError,
+  companyReadFailure,
   companyScheduleDateTime,
   companyScheduleLegacyPaymentQueryEnabled,
   mapCanonicalJobToScheduleFields,
@@ -1704,7 +1705,7 @@ export default function AdminScheduleScreen() {
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
         if (cancelled) return;
-        const teamLanes: DetailerEntry[] = roster.members.map((member, index) => ({
+        const teamLanes: DetailerEntry[] = roster.members.filter(isCompanyScheduleColumnMember).map((member, index) => ({
           employeeId: `jobsync-${member.id}`,
           name: member.name,
           color: DETAILER_COLORS[index % DETAILER_COLORS.length],
@@ -1726,6 +1727,7 @@ export default function AdminScheduleScreen() {
     if (!allowLegacyJobAuthority) {
       const token = jobSyncSession?.token;
       if (!isJobSyncCompany || !token) return;
+      let cancelled = false;
       const syncCompanyJobs = async () => {
         setIsSyncing(true);
         try {
@@ -1736,6 +1738,7 @@ export default function AdminScheduleScreen() {
             getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() }),
             getJobSyncCompanySettings(token),
           ]);
+          if (cancelled) return;
           setCompanyTimezoneResource({ token, timezone: companySettings.timezone });
           const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => ({
             ...mapCanonicalJobToScheduleFields(job, "", companySettings.timezone),
@@ -1744,12 +1747,16 @@ export default function AdminScheduleScreen() {
           setCompanyJobsError(null);
           setJobs(mappedJobs);
         } catch (error) {
-          setJobs([]);
-          setCompanyJobsError(companyCanonicalReadError(error));
-        } finally { setIsSyncing(false); }
+          if (cancelled) return;
+          const message = companyReadFailure(error);
+          if (message) {
+            setJobs([]);
+            setCompanyJobsError(message);
+          }
+        } finally { if (!cancelled) setIsSyncing(false); }
       };
       void syncCompanyJobs();
-      return;
+      return () => { cancelled = true; };
     }
     const syncServerJobs = async () => {
       setIsSyncing(true);

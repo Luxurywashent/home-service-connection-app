@@ -6,7 +6,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
   resolveCompanyFinanceDisplay,
 } from "@/lib/jobsync-company-authority";
 import { getJobSyncCompanyFinance, type JobSyncCompanyFinanceSummary } from "@/lib/jobsync-mobile-api";
@@ -49,8 +49,10 @@ export function CompanyFinancePanel({ token }: { token: string }) {
       setFinance(await getJobSyncCompanyFinance(token));
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setFinance(null);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -66,8 +68,10 @@ export function CompanyFinancePanel({ token }: { token: string }) {
       })
       .catch((refreshError) => {
         if (cancelled) return;
+        const message = companyReadFailure(refreshError);
+        if (!message) return;
         setFinance(null);
-        setError(companyCanonicalReadError(refreshError));
+        setError(message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

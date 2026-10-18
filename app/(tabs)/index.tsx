@@ -9,8 +9,12 @@ import { CompanyMeetingBanner } from "@/components/company-meeting-banner";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
+import { companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { companyHomeTimesheetRange } from "@/lib/company-home-timesheet-range";
 import {
   allowsLegacyTimekeepingAuthority,
+  companyReadFailure,
   resolveCompanyDisplayedHours,
   resolveCompanyTimekeepingAuthority,
   usesCompanyTimekeepingAuthority,
@@ -419,8 +423,14 @@ function DetailerDashboard() {
     },
     { enabled: allowLegacyTimekeeping && !!employee?.employeeId, refetchOnWindowFocus: false, refetchInterval: 60000 }
   );
-  const [companyHours, setCompanyHours] = useState<number | null>(null);
-  const [companyHoursError, setCompanyHoursError] = useState<string | null>(null);
+  const { revision: companySyncRevision } = useJobSyncSync();
+  const [companyHoursResource, setCompanyHoursResource] = useState<CompanyRequestResource<{ hours: number | null; error: string | null }> | null>(null);
+  const companyHoursRequestKey = isCompanyTimekeeping && jobSyncSession?.token
+    ? `${jobSyncSession.token}:${view}:${weekRange.start}:${weekRange.end}:${weekRange.today}:${companySyncRevision}`
+    : null;
+  const companyHoursState = companyRequestValue(companyHoursRequestKey, companyHoursResource);
+  const companyHours = companyHoursState?.hours ?? null;
+  const companyHoursError = companyHoursState?.error ?? null;
 
   // Query completed schedule jobs to include their revenue in dashboard metrics
   const completedJobsQuery = trpc.jobs.completedForDetailer.useQuery(
@@ -456,25 +466,21 @@ function DetailerDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!isCompanyTimekeeping || !jobSyncSession?.token) return () => { cancelled = true; };
-    getHomeServiceConnectedTimesheets(jobSyncSession.token, {
-      start: view === "today" ? weekRange.today : view === "week" ? weekRange.start : "2020-01-01",
-      end: view === "today" ? weekRange.today : view === "week" ? weekRange.end : weekRange.today,
-    })
+    if (!companyHoursRequestKey || !jobSyncSession?.token) return () => { cancelled = true; };
+    getHomeServiceConnectedTimesheets(jobSyncSession.token, companyHomeTimesheetRange(view))
       .then((records) => {
         if (!cancelled) {
-          setCompanyHours(sumHomeServiceConnectedTimesheetHours(records));
-          setCompanyHoursError(null);
+          setCompanyHoursResource({ requestKey: companyHoursRequestKey, data: { hours: sumHomeServiceConnectedTimesheetHours(records), error: null } });
         }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setCompanyHours(null);
-          setCompanyHoursError(error instanceof Error ? error.message : "Company hours are unavailable.");
-        }
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
+        setCompanyHoursResource({ requestKey: companyHoursRequestKey, data: { hours: null, error: message } });
       });
     return () => { cancelled = true; };
-  }, [isCompanyTimekeeping, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
+  }, [companyHoursRequestKey, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
   const clockInMutation = trpc.timesheet.clockIn.useMutation();
   const clockOutMutation = trpc.timesheet.clockOut.useMutation();
 
