@@ -46,7 +46,7 @@ jobs:
         run: pnpm test
 
       - name: Lint mobile screens and components
-        run: pnpm lint
+        run: pnpm lint --no-cache
 
       - name: Build server
         run: pnpm build

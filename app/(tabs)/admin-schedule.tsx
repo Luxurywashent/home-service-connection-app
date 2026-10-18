@@ -17,19 +17,18 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   Linking,
   ActivityIndicator,
   Image,
   Switch,
   RefreshControl,
+  PanResponder,
+  Alert,
 } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { useSharedValue, useAnimatedStyle, runOnJS, withTiming } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { ScreenContainer } from "@/components/screen-container";
@@ -42,17 +41,18 @@ import { CompanyCollectPayment } from "@/components/company-collect-payment";
 import { RecurrencePicker, recurrenceLabel, type RecurrenceRule } from "@/components/recurrence-picker";
 import { CalendarPicker } from "@/components/calendar-picker";
 import {
-  assignJobSyncCompanyJob,
   createJobSyncCompanyCustomer,
   createJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyJob,
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
-  rescheduleJobSyncCompanyJob,
+  getJobSyncCompanySettings,
+  moveJobSyncCompanyJob,
   updateJobSyncCompanyJobStatus,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
+import { companyCalendarDisplayWeekDates, companyCalendarTodayDayIndex, companyCalendarWeekDate } from "@/lib/company-calendar";
 import {
   addJobLocalCustomerSearchEnabled,
   allowsLegacyJobAuthority,
@@ -72,6 +72,12 @@ import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import Constants from "expo-constants";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
+
+let legacyJobSequence = 0;
+function nextLegacyJobId(): string {
+  legacyJobSequence += 1;
+  return `local-${Date.now()}-${legacyJobSequence}`;
+}
 
 // ─── Types (shared with schedule.tsx) ─────────────────────────────────────────
 
@@ -276,6 +282,7 @@ interface Job {
   vehicleMake?: string;
   vehicleModel?: string;
   additionalVehicles?: AdditionalVehicle[];
+  canonicalUpdatedAt?: string | null;
   // enhanced detail fields
   tags?: string[];
   privateNotes?: PrivateNote[];
@@ -347,8 +354,6 @@ function isDetailerOnShift(det: DetailerEntry, dayOfWeek: number): boolean {
   return true;
 }
 
-// Legacy — kept for the one place that iterates all cities to resolve detailer names
-const CITY_CONFIG = CITY_LIST.map((c) => ({ ...c, detailers: FALLBACK_DETAILERS[c.slug] ?? [] }));
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -402,7 +407,7 @@ function formatFullDate(d: Date) {
   return `${WEEK_DAYS_FULL[monIdx]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-function getWeekDates(offset: number): Date[] {
+function getDeviceWeekDates(offset: number): Date[] {
   const today = new Date();
   // Anchor to Monday: JS getDay() 0=Sun, so (getDay()+6)%7 gives 0=Mon
   const monday = new Date(today);
@@ -414,7 +419,7 @@ function getWeekDates(offset: number): Date[] {
   });
 }
 
-function todayDayIndex(): number {
+function deviceTodayDayIndex(): number {
   // Returns 0=Mon, 1=Tue, …, 6=Sun
   return (new Date().getDay() + 6) % 7;
 }
@@ -470,165 +475,116 @@ function AdminJobBlock({
   const statusColor = STATUS_COLOR[job.status];
   const duration = Math.max(1, job.endHour - job.startHour);
 
-  const blockY = useSharedValue(top);
-  const blockX = useSharedValue(left);
-  const blockH = useSharedValue(height);
-  const isDragging = useSharedValue(false);
-  const isResizing = useSharedValue(false);
-  const startBlockY = useSharedValue(top);
-  const startBlockX = useSharedValue(left);
-  const startBlockH = useSharedValue(height);
-  const hoverLane = useSharedValue(laneIdx);
+  const [interaction, setInteraction] = useState<"move" | "resize" | null>(null);
+  const [dragPosition, setDragPosition] = useState(() => ({ top, left, height }));
+  const [hoverLane, setHoverLane] = useState(laneIdx);
 
-  useEffect(() => {
-    if (!isDragging.value && !isResizing.value) {
-      blockY.value = top;
-      blockX.value = left;
-      blockH.value = height;
-    }
-  }, [top, left, height]);
+  const moveResponder = React.useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) =>
+        !!onMoveAndReassign && gesturesEnabled && (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4),
+      onPanResponderGrant: () => {
+        setInteraction("move");
+        setDragPosition({ top, left, height });
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const maxY = (HOURS[HOURS.length - 1] - HOURS[0] - duration) * SLOT_HEIGHT;
+        const nextTop = Math.max(0, Math.min(maxY, top + gesture.dy));
+        const maxX = (laneCount - 1) * laneWidth;
+        const nextLeft = Math.max(0, Math.min(maxX, left + gesture.dx));
+        setDragPosition({ top: nextTop, left: nextLeft, height });
+        setHoverLane(Math.min(laneCount - 1, Math.max(0, Math.floor((nextLeft + laneWidth / 2) / laneWidth))));
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        const maxY = (HOURS[HOURS.length - 1] - HOURS[0] - duration) * SLOT_HEIGHT;
+        const nextTop = Math.max(0, Math.min(maxY, top + gesture.dy));
+        const slotIdx = Math.round(nextTop / (SLOT_HEIGHT / 2));
+        const clampedHi = Math.max(0, Math.min(HOURS.length - 1, slotIdx));
+        const maxX = (laneCount - 1) * laneWidth;
+        const nextLeft = Math.max(0, Math.min(maxX, left + gesture.dx));
+        const newLane = Math.min(laneCount - 1, Math.max(0, Math.floor((nextLeft + laneWidth / 2) / laneWidth)));
+        setDragPosition({ top: clampedHi * (SLOT_HEIGHT / 2) + 2, left: newLane * laneWidth, height });
+        setHoverLane(laneIdx);
+        setInteraction(null);
+        if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onMoveAndReassign?.(job.id, HOURS[clampedHi], newLane);
+      },
+      onPanResponderTerminate: () => {
+        setHoverLane(laneIdx);
+        setInteraction(null);
+      },
+    }),
+    [duration, gesturesEnabled, height, job.id, laneCount, laneIdx, laneWidth, left, onMoveAndReassign, top]
+  );
 
-  const commitMoveAndReassign = (newStartHour: number, newLane: number) => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onMoveAndReassign?.(job.id, newStartHour, newLane);
-  };
+  const resizeResponder = React.useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: () => !!onResize && gesturesEnabled,
+      onMoveShouldSetPanResponder: () => !!onResize && gesturesEnabled,
+      onPanResponderGrant: () => {
+        setInteraction("resize");
+        setDragPosition({ top, left, height });
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const minHeight = SLOT_HEIGHT / 2 - 4;
+        const maxHeight = (HOURS[HOURS.length - 1] - job.startHour) * SLOT_HEIGHT - 4;
+        setDragPosition({ top, left, height: Math.max(minHeight, Math.min(maxHeight, height + gesture.dy)) });
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        const minHeight = SLOT_HEIGHT / 2 - 4;
+        const maxHeight = (HOURS[HOURS.length - 1] - job.startHour) * SLOT_HEIGHT - 4;
+        const nextHeight = Math.max(minHeight, Math.min(maxHeight, height + gesture.dy));
+        const snappedHours = Math.max(0.5, Math.round(((nextHeight + 4) / SLOT_HEIGHT) * 2) / 2);
+        setDragPosition({ top, left, height: snappedHours * SLOT_HEIGHT - 4 });
+        setInteraction(null);
+        if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onResize?.(job.id, job.startHour + snappedHours);
+      },
+      onPanResponderTerminate: () => setInteraction(null),
+    }),
+    [gesturesEnabled, height, job.id, job.startHour, left, onResize, top]
+  );
 
-  const commitResize = (newEndHour: number) => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onResize?.(job.id, newEndHour);
-  };
-
-  // ── Move gesture (long-press on body) ──
-  const pan = Gesture.Pan()
-    .enabled(!!onMoveAndReassign && gesturesEnabled)
-    .activateAfterLongPress(300)
-    .minDistance(4)
-    .onStart(() => {
-      "worklet";
-      isDragging.value = true;
-      startBlockY.value = blockY.value;
-      startBlockX.value = blockX.value;
-    })
-    .onUpdate((e) => {
-      "worklet";
-      const newY = startBlockY.value + e.translationY;
-      const maxY = (HOURS[HOURS.length - 1] - HOURS[0] - duration) * SLOT_HEIGHT;
-      blockY.value = Math.max(0, Math.min(maxY, newY));
-
-      const newX = startBlockX.value + e.translationX;
-      const maxX = (laneCount - 1) * laneWidth;
-      blockX.value = Math.max(0, Math.min(maxX, newX));
-
-      const centerX = blockX.value + laneWidth / 2;
-      hoverLane.value = Math.min(laneCount - 1, Math.max(0, Math.floor(centerX / laneWidth)));
-    })
-    .onEnd(() => {
-      "worklet";
-      // Snap to nearest 30-min slot (SLOT_HEIGHT/2 = 32px per slot)
-      const slotIdx = Math.round(blockY.value / (SLOT_HEIGHT / 2));
-      const clampedHi = Math.max(0, Math.min(HOURS.length - 1, slotIdx));
-      const newLane = hoverLane.value;
-
-      blockY.value = withTiming(clampedHi * (SLOT_HEIGHT / 2) + 2, { duration: 150 });
-      blockX.value = withTiming(newLane * laneWidth, { duration: 150 });
-
-      isDragging.value = false;
-      hoverLane.value = newLane;
-
-      runOnJS(commitMoveAndReassign)(HOURS[clampedHi], newLane);
-    })
-    .onFinalize(() => {
-      "worklet";
-      isDragging.value = false;
-      hoverLane.value = laneIdx;
-    });
-
-  // ── Resize gesture (drag handle at bottom) ──
-  const resizePan = Gesture.Pan()
-    .enabled(!!onResize && gesturesEnabled)
-    .minDistance(2)
-    .onStart(() => {
-      "worklet";
-      isResizing.value = true;
-      startBlockH.value = blockH.value;
-    })
-    .onUpdate((e) => {
-      "worklet";
-      const minH = SLOT_HEIGHT / 2 - 4; // minimum 30 minutes (0.5 hour)
-      const maxH = (HOURS[HOURS.length - 1] - job.startHour) * SLOT_HEIGHT - 4;
-      blockH.value = Math.max(minH, Math.min(maxH, startBlockH.value + e.translationY));
-    })
-    .onEnd(() => {
-      "worklet";
-      // Snap to nearest 30-minute increment
-      const rawHours = (blockH.value + 4) / SLOT_HEIGHT;
-      const snappedHours = Math.max(0.5, Math.round(rawHours * 2) / 2);
-      const snappedH = snappedHours * SLOT_HEIGHT - 4;
-      blockH.value = withTiming(snappedH, { duration: 120 });
-      isResizing.value = false;
-      const newEndHour = job.startHour + snappedHours;
-      runOnJS(commitResize)(newEndHour);
-    })
-    .onFinalize(() => {
-      "worklet";
-      isResizing.value = false;
-    });
-
-  // Tap to open job detail (instant — drag is handled by the pan gesture with long-press activation)
-  const tap = Gesture.Tap()
-    .enabled(gesturesEnabled)
-    .maxDuration(500)
-    .onEnd((_e, success) => {
-      "worklet";
-      if (success && !isDragging.value && !isResizing.value) {
-        runOnJS(onPress)();
-      }
-    });
-
-  const composed = Gesture.Exclusive(pan, tap);
-
-  const animStyle = useAnimatedStyle(() => ({
-    position: "absolute" as const,
-    top: blockY.value,
-    left: blockX.value + 2,
-    width: laneWidth - 4,
-    height: blockH.value,
-    zIndex: isDragging.value ? 200 : 10,
-    opacity: isDragging.value ? 0.92 : 1,
-    transform: [{ scale: isDragging.value ? 1.04 : 1 }],
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: isDragging.value ? 12 : 2 },
-    shadowOpacity: isDragging.value ? 0.35 : 0.1,
-    shadowRadius: isDragging.value ? 16 : 4,
-    elevation: isDragging.value ? 14 : 2,
-  }));
-
-  const totalHeight = HOURS.length * (SLOT_HEIGHT / 2);
-  const hoverHighlightStyle = useAnimatedStyle(() => {
-    const active = isDragging.value && hoverLane.value !== laneIdx;
-    return {
-      position: "absolute" as const,
-      top: 0,
-      left: hoverLane.value * laneWidth,
-      width: laneWidth,
-      height: active ? totalHeight : 0,
-      backgroundColor: active ? "rgba(255,255,255,0.07)" : "transparent",
-      borderWidth: active ? 1.5 : 0,
-      borderColor: "rgba(255,255,255,0.3)",
-      borderRadius: 4,
-      zIndex: 5,
-      pointerEvents: "none" as const,
-      overflow: "hidden" as const,
-    };
-  });
+  const activePosition = interaction ? dragPosition : { top, left, height };
+  const isMoving = interaction === "move";
+  const activeHoverLane = isMoving && hoverLane !== laneIdx;
 
   return (
     <>
       {/* Lane drop target highlight */}
-      <Animated.View style={hoverHighlightStyle} />
+      <View style={{
+        position: "absolute",
+        top: 0,
+        left: hoverLane * laneWidth,
+        width: laneWidth,
+        height: activeHoverLane ? HOURS.length * (SLOT_HEIGHT / 2) : 0,
+        backgroundColor: activeHoverLane ? "rgba(255,255,255,0.07)" : "transparent",
+        borderWidth: activeHoverLane ? 1.5 : 0,
+        borderColor: "rgba(255,255,255,0.3)",
+        borderRadius: 4,
+        zIndex: 5,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }} />
 
-      <GestureDetector gesture={composed}>
-        <Animated.View style={[animStyle, {
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPress}
+        {...moveResponder.panHandlers}
+        style={{
+          position: "absolute",
+          top: activePosition.top,
+          left: activePosition.left + 2,
+          width: laneWidth - 4,
+          height: activePosition.height,
+          zIndex: isMoving ? 200 : 10,
+          opacity: isMoving ? 0.92 : 1,
+          transform: [{ scale: isMoving ? 1.04 : 1 }],
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: isMoving ? 12 : 2 },
+          shadowOpacity: isMoving ? 0.35 : 0.1,
+          shadowRadius: isMoving ? 16 : 4,
+          elevation: isMoving ? 14 : 2,
           backgroundColor: detailerColor + "22",
           borderLeftWidth: 3,
           borderLeftColor: detailerColor,
@@ -637,46 +593,47 @@ function AdminJobBlock({
           borderRadius: 6,
           padding: 4,
           overflow: "hidden",
-        }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <Text style={{ fontSize: 11, fontWeight: "700", color: detailerColor, lineHeight: 14, flex: 1 }} numberOfLines={1}>
-              {job.firstName} {job.lastName}
-            </Text>
-            {job.isNewCustomer && (
-              <View style={{ backgroundColor: "#F59E0B", borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1 }}>
-                <Text style={{ color: "#fff", fontSize: 8, fontWeight: "800" }}>NEW</Text>
-              </View>
-            )}
-          </View>
-          <Text style={{ fontSize: 10, color: colors.muted, lineHeight: 13 }} numberOfLines={1}>
-            {formatHour(job.startHour)}–{formatHour(job.endHour)}
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: detailerColor, lineHeight: 14, flex: 1 }} numberOfLines={1}>
+            {job.firstName} {job.lastName}
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 1 }}>
-            <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor }} />
-            <Text style={{ fontSize: 9, color: statusColor, fontWeight: "600" }}>{STATUS_LABELS[job.status]}</Text>
-          </View>
-
-          {/* Resize handle at bottom */}
-          {!!onResize && (
-            <GestureDetector gesture={resizePan}>
-              <View style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: 14,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: detailerColor + "33",
-                borderBottomLeftRadius: 6,
-                borderBottomRightRadius: 6,
-              }}>
-                <View style={{ width: 24, height: 3, borderRadius: 2, backgroundColor: detailerColor + "99" }} />
-              </View>
-            </GestureDetector>
+          {job.isNewCustomer && (
+            <View style={{ backgroundColor: "#F59E0B", borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1 }}>
+              <Text style={{ color: "#fff", fontSize: 8, fontWeight: "800" }}>NEW</Text>
+            </View>
           )}
-        </Animated.View>
-      </GestureDetector>
+        </View>
+        <Text style={{ fontSize: 10, color: colors.muted, lineHeight: 13 }} numberOfLines={1}>
+          {formatHour(job.startHour)}–{formatHour(job.endHour)}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 1 }}>
+          <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor }} />
+          <Text style={{ fontSize: 9, color: statusColor, fontWeight: "600" }}>{STATUS_LABELS[job.status]}</Text>
+        </View>
+
+        {/* Resize handle at bottom */}
+        {!!onResize && (
+          <View
+            {...resizeResponder.panHandlers}
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: detailerColor + "33",
+              borderBottomLeftRadius: 6,
+              borderBottomRightRadius: 6,
+            }}
+          >
+            <View style={{ width: 24, height: 3, borderRadius: 2, backgroundColor: detailerColor + "99" }} />
+          </View>
+        )}
+      </TouchableOpacity>
     </>
   );
 }
@@ -1105,7 +1062,7 @@ function CustomerSearchField({
       })
       .slice(0, 8)
       .map((customer) => ({ id: customer.id, fullName: customer.name, phone: customer.phone, email: customer.email, address: customer.addressLine1 }))
-    : results as Array<{ id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }>;
+    : results as { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }[];
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -1167,6 +1124,81 @@ function CustomerSearchField({
 // 30-min slots: 8:00, 8:30, ..., 17:00 (19 slots)
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => 8 + i * 0.5); // 8:00 AM – 5:00 PM
 
+function TimeDropdown({
+  colors,
+  visible,
+  onClose,
+  selected,
+  onSelect,
+  minHour,
+  formatHour,
+  blockedHours,
+}: {
+  colors: any;
+  visible: boolean;
+  onClose: () => void;
+  selected: number;
+  onSelect: (hour: number) => void;
+  minHour?: number;
+  formatHour: (hour: number) => string;
+  blockedHours?: Set<number>;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} activeOpacity={1} onPress={onClose}>
+        <View style={{ position: "absolute", top: "30%", left: 40, right: 40, backgroundColor: colors.surface, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 15 }}>Select Time</Text>
+            {blockedHours && blockedHours.size > 0 && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error }} />
+                <Text style={{ color: colors.muted, fontSize: 11 }}>= Booked</Text>
+              </View>
+            )}
+          </View>
+          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+            {PICK_HOURS.map((hour) => {
+              const isBlocked = blockedHours?.has(hour) ?? false;
+              const isBelowMin = minHour !== undefined && hour <= minHour;
+              const disabled = isBlocked || isBelowMin;
+              const isSelected = hour === selected;
+              return (
+                <TouchableOpacity
+                  key={hour}
+                  onPress={() => { if (!disabled) { onSelect(hour); onClose(); } }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: 20,
+                    paddingVertical: 14,
+                    backgroundColor: isBlocked ? colors.error + "18" : isSelected ? colors.primary + "22" : "transparent",
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: colors.border,
+                    opacity: isBelowMin ? 0.3 : 1,
+                  }}
+                  activeOpacity={disabled ? 1 : 0.7}
+                >
+                  <Text style={{ color: isBlocked ? colors.error : isSelected ? colors.primary : colors.foreground, fontWeight: isSelected ? "700" : "400", fontSize: 16, textDecorationLine: isBlocked ? "line-through" : "none" }}>
+                    {formatHour(hour)}
+                  </Text>
+                  {isBlocked && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.error }} />
+                      <Text style={{ color: colors.error, fontSize: 12, fontWeight: "600" }}>Booked</Text>
+                    </View>
+                  )}
+                  {isSelected && !isBlocked && <Text style={{ color: colors.primary, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 function DragTimePicker({
   colors,
   startHour,
@@ -1190,72 +1222,7 @@ function DragTimePicker({
   const duration = endHour - startHour;
   const durationLabel = duration % 1 !== 0 ? `${Math.floor(duration)}h 30m` : `${duration}h`;
 
-  const TimeDropdown = ({
-    visible,
-    onClose,
-    selected,
-    onSelect,
-    minHour,
-  }: {
-    visible: boolean;
-    onClose: () => void;
-    selected: number;
-    onSelect: (h: number) => void;
-    minHour?: number;
-  }) => (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }} activeOpacity={1} onPress={onClose}>
-        <View style={{ position: "absolute", top: "30%", left: 40, right: 40, backgroundColor: colors.surface, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 15 }}>Select Time</Text>
-            {blockedHours && blockedHours.size > 0 && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error }} />
-                <Text style={{ color: colors.muted, fontSize: 11 }}>= Booked</Text>
-              </View>
-            )}
-          </View>
-          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
-            {PICK_HOURS.map((h) => {
-              const isBlocked = blockedHours?.has(h) ?? false;
-              const isBelowMin = minHour !== undefined && h <= minHour;
-              const disabled = isBlocked || isBelowMin;
-              const sel = h === selected;
-              return (
-                <TouchableOpacity
-                  key={h}
-                  onPress={() => { if (!disabled) { onSelect(h); onClose(); } }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingHorizontal: 20,
-                    paddingVertical: 14,
-                    backgroundColor: isBlocked ? colors.error + "18" : sel ? colors.primary + "22" : "transparent",
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                    opacity: isBelowMin ? 0.3 : 1,
-                  }}
-                  activeOpacity={disabled ? 1 : 0.7}
-                >
-                  <Text style={{ color: isBlocked ? colors.error : sel ? colors.primary : colors.foreground, fontWeight: sel ? "700" : "400", fontSize: 16, textDecorationLine: isBlocked ? "line-through" : "none" }}>
-                    {formatHour(h)}
-                  </Text>
-                  {isBlocked && (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.error }} />
-                      <Text style={{ color: colors.error, fontSize: 12, fontWeight: "600" }}>Booked</Text>
-                    </View>
-                  )}
-                  {sel && !isBlocked && <Text style={{ color: colors.primary, fontSize: 18 }}>✓</Text>}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
+
 
   return (
     <View style={{ marginBottom: 16 }}>
@@ -1294,6 +1261,7 @@ function DragTimePicker({
         <Text style={{ color: colors.muted, fontSize: 12 }}>({durationLabel})</Text>
       </View>
       <TimeDropdown
+        colors={colors}
         visible={showStart}
         onClose={() => setShowStart(false)}
         selected={startHour}
@@ -1304,16 +1272,44 @@ function DragTimePicker({
             if (nextEnd !== undefined) onEndChange(nextEnd);
           }
         }}
+        formatHour={formatHour}
+        blockedHours={blockedHours}
       />
       <TimeDropdown
+        colors={colors}
         visible={showEnd}
         onClose={() => setShowEnd(false)}
         selected={endHour}
         onSelect={onEndChange}
         minHour={startHour}
+        formatHour={formatHour}
+        blockedHours={blockedHours}
       />
     </View>
   );
+}
+
+async function adminLoadCustomerHistory(jobId: string, phone?: string, email?: string) {
+    try {
+      const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: phone || undefined, email: email || undefined, excludeJobId: jobId }))}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      const items = data?.result?.data?.json ?? data?.result?.data ?? [];
+      return items.map((serverJob: any) => ({
+        id: serverJob.jobId, firstName: serverJob.customerName?.split(" ")[0] || "",
+        lastName: serverJob.customerName?.split(" ").slice(1).join(" ") || "",
+        phone: serverJob.customerPhone || "", email: serverJob.customerEmail || undefined,
+        address: serverJob.customerAddress || "",
+        serviceTitle: serverJob.packageType || "Detail Service",
+        packageId: serverJob.packageId || resolvePackageId(serverJob.packageType) || undefined,
+        price: parseFloat(serverJob.totalPrice || "0"),
+        startHour: serverJob.startHour != null ? parseFloat(String(serverJob.startHour)) : 8, endHour: serverJob.endHour != null ? parseFloat(String(serverJob.endHour)) : 10,
+        dayIndex: 0, weekOffset: 0,
+        status: "finished" as JobStatus,
+        createdAt: serverJob.createdAt ? new Date(serverJob.createdAt).toISOString() : new Date().toISOString(),
+        location: serverJob.location,
+      }));
+    } catch { return []; }
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -1330,6 +1326,21 @@ export default function AdminScheduleScreen() {
   const companyPriceBook = useCompanyPriceBook();
   const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
   const [companyCustomersError, setCompanyCustomersError] = useState<string | null>(null);
+  const [companyTimezoneResource, setCompanyTimezoneResource] = useState<{ token: string; timezone: string } | null>(null);
+  const companyTimezone = companyTimezoneResource?.token === jobSyncSession?.token
+    ? companyTimezoneResource?.timezone ?? ""
+    : "";
+  const companyTimezoneReady = Boolean(companyTimezone);
+  const getWeekDates = (offset: number) => (
+    isJobSyncCompany && companyTimezoneReady
+      ? companyCalendarDisplayWeekDates(offset, companyTimezone)
+      : getDeviceWeekDates(offset)
+  );
+  const todayDayIndex = () => (
+    isJobSyncCompany && companyTimezoneReady
+      ? companyCalendarTodayDayIndex(companyTimezone)
+      : deviceTodayDayIndex()
+  );
   const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
     prefillFirst?: string;
@@ -1338,7 +1349,7 @@ export default function AdminScheduleScreen() {
     prefillEmail?: string;
     prefillAddress?: string;
   }>();
-  const prefillHandledRef = React.useRef<string | null>(null);
+  const [prefillHandledKey, setPrefillHandledKey] = useState<string | null>(null);
   const addModalScrollRef = React.useRef<import('react-native').ScrollView>(null);
   const jobUpsertMutation = trpc.jobs.upsert.useMutation();
   const jobDeleteMutation = trpc.jobs.delete.useMutation();
@@ -1361,8 +1372,7 @@ export default function AdminScheduleScreen() {
       );
     },
   });
-  const performanceUpsertMutation = trpc.performance.upsert.useMutation();
-  const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 300000 });
+    const { data: localPbServices = [] } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 300000 });
   const pbServices = isJobSyncCompany ? companyPriceBook.services : localPbServices;
   // ── Schedule Blockers ──
   const blockerCreateMutation = trpc.scheduleBlockers.create.useMutation();
@@ -1425,6 +1435,11 @@ export default function AdminScheduleScreen() {
   const [chargingCard, setChargingCard] = useState(false);
   const [selectedChargeCardId, setSelectedChargeCardId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const selectedJobId = selectedJob?.id;
+  const selectedJobPhone = selectedJob?.phone;
+  const selectedJobEmail = selectedJob?.email;
+  const selectedJobAddress = selectedJob?.address;
+  const selectedJobLocation = selectedJob?.location;
   // Build customerKey from selectedJob for savedCards query
   const scheduleCustomerKey = selectedJob
     ? selectedJob.email
@@ -1467,16 +1482,7 @@ export default function AdminScheduleScreen() {
   const [sendingJobReceipt, setSendingJobReceipt] = useState(false);
   const sendJobReceiptMutation = trpc.jobs.sendReceipt.useMutation();
 
-  useEffect(() => {
-    if (!allowLegacyJobAuthority) {
-      setShowCheckout(false);
-      setShowChargeModal(false);
-      setShowRefundModal(false);
-    }
-  }, [allowLegacyJobAuthority]);
   // Enhanced job detail state
-  const [adminPrivateNotes, setAdminPrivateNotes] = useState("");
-  const [adminEditingNotes, setAdminEditingNotes] = useState(false);
   const [adminTagInput, setAdminTagInput] = useState("");
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
   const [adminEditingTax, setAdminEditingTax] = useState(false);
@@ -1505,6 +1511,14 @@ export default function AdminScheduleScreen() {
   const [companyJobsError, setCompanyJobsError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
+  const calendarSelectionKey = isJobSyncCompany
+    ? (companyTimezoneReady ? `company:${jobSyncSession?.company?.id}:${companyTimezone}` : null)
+    : "legacy";
+  const [lastCalendarSelectionKey, setLastCalendarSelectionKey] = useState<string | null>(null);
+  if (calendarSelectionKey && lastCalendarSelectionKey !== calendarSelectionKey) {
+    setLastCalendarSelectionKey(calendarSelectionKey);
+    setSelectedDay(todayDayIndex());
+  }
   const [selectedCity, setSelectedCity] = useState<CitySlug>("crestview");
   const [screenWidth, setScreenWidth] = useState(375);
 
@@ -1621,10 +1635,6 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     let cancelled = false;
     if (!showAddModal || !isJobSyncCompany || !jobSyncSession?.token) {
-      if (!isJobSyncCompany) {
-        setCompanyCustomers([]);
-        setCompanyCustomersError(null);
-      }
       return () => { cancelled = true; };
     }
     void getJobSyncCompanyCustomers(jobSyncSession.token)
@@ -1644,15 +1654,15 @@ export default function AdminScheduleScreen() {
       try {
         const data = await utils.scheduleBlockers.list.fetch({ city: selectedCity, startDate, endDate });
         setBlockers(data.map((b) => ({ ...b, startHour: parseFloat(String(b.startHour)), endHour: parseFloat(String(b.endHour)), allDay: Number(b.allDay) })));
-      } catch (_) {}
+      } catch {}
     };
     fetchBlockers();
-  }, [selectedCity, syncKey, weekOffset]);
+  }, [selectedCity, syncKey, utils.scheduleBlockers.list, weekOffset]);
 
   // Live-refresh photo URLs from the server whenever a job detail panel is opened
   useEffect(() => {
-    if (!selectedJob) return;
-    const jobId = selectedJob.id;
+    if (!selectedJobId) return;
+    const jobId = selectedJobId;
     utils.jobs.getPhotos.fetch({ jobId })
       .then(({ urls }) => {
         if (!urls || urls.length === 0) return;
@@ -1667,12 +1677,10 @@ export default function AdminScheduleScreen() {
         setJobs((prev) => prev.map((j) => j.id === jobId ? { ...j, photoUrls: urls } : j));
       })
       .catch(() => { /* ignore — offline or job not found */ });
-  }, [selectedJob?.id]);
+  }, [selectedJobId, utils.jobs.getPhotos]);
 
   // Per-employee storage key: prevents cross-user cache leakage
-  const STORAGE_KEY = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
-  const storageKeyRef = useRef(STORAGE_KEY);
-  storageKeyRef.current = STORAGE_KEY;
+  const storageKey = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
 
   useEffect(() => {
     if (!allowLegacyJobAuthority) return;
@@ -1693,7 +1701,6 @@ export default function AdminScheduleScreen() {
     if (!token || !companyId) return;
     let cancelled = false;
 
-    setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: false }));
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
         if (cancelled) return;
@@ -1718,20 +1725,20 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     if (!allowLegacyJobAuthority) {
       const token = jobSyncSession?.token;
-      if (!isJobSyncCompany || !token) {
-        setJobs([]);
-        setCompanyJobsError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
-        return;
-      }
+      if (!isJobSyncCompany || !token) return;
       const syncCompanyJobs = async () => {
         setIsSyncing(true);
         try {
           const today = new Date();
           const start = new Date(today); start.setDate(today.getDate() - 365);
           const end = new Date(today); end.setDate(today.getDate() + 365);
-          const serverJobs = await getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() });
+          const [serverJobs, companySettings] = await Promise.all([
+            getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() }),
+            getJobSyncCompanySettings(token),
+          ]);
+          setCompanyTimezoneResource({ token, timezone: companySettings.timezone });
           const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => ({
-            ...mapCanonicalJobToScheduleFields(job, ""),
+            ...mapCanonicalJobToScheduleFields(job, "", companySettings.timezone),
             email: undefined,
           }) as Job);
           setCompanyJobsError(null);
@@ -1857,7 +1864,7 @@ export default function AdminScheduleScreen() {
           // Also purge any previously-cached cancelled jobs for this city
           const cleanedOther = dedupedOther.filter((j: any) => (j as any)._rawStatus !== 'cancelled' && j.status !== 'cancelled');
           const merged = [...cleanedOther, ...activeJobs];
-          AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(merged));
+          AsyncStorage.setItem(storageKey, JSON.stringify(merged));
           return merged;
         });
       } catch {
@@ -1867,7 +1874,7 @@ export default function AdminScheduleScreen() {
       }
     };
     syncServerJobs();
-  }, [companySyncRevision, isJobSyncCompany, jobSyncSession?.token, selectedCity, syncKey]);
+  }, [allowLegacyJobAuthority, companySyncRevision, isJobSyncCompany, jobSyncSession?.token, selectedCity, storageKey, syncKey, utils.jobs.listByLocation]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
@@ -1877,11 +1884,13 @@ export default function AdminScheduleScreen() {
   );
 
   // Auto-open add-job modal with prefilled customer data when navigated from customer profile
-  useEffect(() => {
-    if (!prefillFirst && !prefillLast && !prefillPhone && !prefillEmail && !prefillAddress) return;
-    const key = [prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress].join("|");
-    if (prefillHandledRef.current === key) return;
-    prefillHandledRef.current = key;
+  const prefillKey = prefillFirst || prefillLast || prefillPhone || prefillEmail || prefillAddress
+    ? JSON.stringify([prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress])
+    : null;
+  // Guarded adjustment consumes each route intent once before children render.
+  // Closing the draft must not reset this key and reopen the same route intent.
+  if (prefillKey && prefillKey !== prefillHandledKey) {
+    setPrefillHandledKey(prefillKey);
     setAddFirstName(prefillFirst ?? "");
     setAddLastName(prefillLast ?? "");
     setAddPhone(prefillPhone ?? "");
@@ -1890,36 +1899,44 @@ export default function AdminScheduleScreen() {
     setAddJobDate(localDateStr(getWeekDates(weekOffset)[selectedDay]));
     setShowAddDatePicker(false);
     setShowAddModal(true);
-  }, [prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress]);
+  }
+
+  const selectJob = useCallback((job: Job) => {
+    if (job.location) setSelectedCity(job.location as CitySlug);
+    setWeekOffset(job.weekOffset);
+    setSelectedDay(job.dayIndex);
+    setCustomerHistory([]);
+    setAddressPhotos([]);
+    setSelectedJob(job);
+    setAdminEditingTime(false);
+    setAdminEditingPackage(false);
+    setAdminEditingDiscount(false);
+    setAdminEditingTax(false);
+    setAdminEditingDeposit(false);
+    setAdminEditingPrice(false);
+    setShowCustomerHistory(false);
+  }, []);
 
   // When navigated from AI Receptionist call log with a bookingId, find and open that job
-  const highlightHandledRef = useRef<string | null>(null);
+  const [highlightHandledKey, setHighlightHandledKey] = useState<string | null>(null);
+  const highlightedJob = highlightBookingId
+    ? jobs.find((job) => job.id === highlightBookingId || job.bookingId === highlightBookingId)
+    : undefined;
+  if (highlightBookingId && highlightHandledKey !== highlightBookingId && highlightedJob) {
+    setHighlightHandledKey(highlightBookingId);
+    selectJob(highlightedJob);
+  }
   useEffect(() => {
-    if (!highlightBookingId || highlightHandledRef.current === highlightBookingId) return;
-    // Search across all loaded jobs first
-    const match = jobs.find((j) => j.id === highlightBookingId || j.bookingId === highlightBookingId);
-    if (match) {
-      highlightHandledRef.current = highlightBookingId;
-      if (match.location && match.location !== selectedCity) setSelectedCity(match.location as any);
-      setWeekOffset(match.weekOffset);
-      setSelectedDay(match.dayIndex);
-      setSelectedJob(match);
-      setAdminEditingTime(false);
-      setAdminEditingPackage(false);
-      setAdminEditingDiscount(false);
-      setAdminEditingTax(false);
-      setAdminEditingDeposit(false);
-      setShowCustomerHistory(false);
-      return;
-    }
+    if (!highlightBookingId || highlightHandledKey === highlightBookingId || highlightedJob) return;
     // Job not in local cache yet — fetch from server by bookingId
     if (!allowLegacyJobAuthority) return;
+    let cancelled = false;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightBookingId)}`);
         if (!res.ok) return;
         const sj = await res.json();
-        if (!sj?.jobId) return;
+        if (cancelled || !sj?.jobId) return;
         const bookingDate = parseLocalDate(sj.date);
         // Mon-based day index: 0=Mon…6=Sun
         const dayOfWeek = (bookingDate.getDay() + 6) % 7;
@@ -1965,30 +1982,22 @@ export default function AdminScheduleScreen() {
           finishedAt: sj.finishedAt ? String(sj.finishedAt) : null,
           isNewCustomer: sj.isNewCustomer === 1 || (sj.isNewCustomer as any) === true,
         } as Job;
-        highlightHandledRef.current = highlightBookingId;
-        if (sj.location && sj.location !== selectedCity) setSelectedCity(sj.location as any);
-        setWeekOffset(wOffset);
-        setSelectedDay(dayOfWeek);
-        setSelectedJob(job);
-        setAdminEditingTime(false);
-        setAdminEditingPackage(false);
-        setAdminEditingDiscount(false);
-        setAdminEditingTax(false);
-        setAdminEditingDeposit(false);
-        setShowCustomerHistory(false);
+        setHighlightHandledKey(highlightBookingId);
+        selectJob(job);
       } catch {
         // Silently fail — job may not exist yet
       }
     };
     fetchAndOpen();
-  }, [highlightBookingId, jobs, isJobSyncCompany]);
+    return () => { cancelled = true; };
+  }, [allowLegacyJobAuthority, highlightBookingId, highlightHandledKey, highlightedJob, selectJob]);
 
-  const persistJobs = useCallback((updated: Job[]) => {
+  const persistJobs = (updated: Job[]) => {
     setJobs(updated);
     if (allowLegacyJobAuthority) {
-      AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
+      AsyncStorage.setItem(storageKey, JSON.stringify(updated));
     }
-  }, [allowLegacyJobAuthority]);
+  };
 
   const openAdd = () => {
     const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
@@ -2056,9 +2065,10 @@ export default function AdminScheduleScreen() {
               city: CITY_LIST.find((city) => city.slug === selectedCity)?.label ?? selectedCity,
               vehicleType: addVehicleType,
             });
-        const dateStr = addJobDate || localDateStr(getWeekDates(weekOffset)[selectedDay]);
-        const scheduledStartAt = new Date(`${dateStr}T${String(Math.floor(addStartHour)).padStart(2, "0")}:${addStartHour % 1 ? "30" : "00"}:00`).toISOString();
-        const scheduledEndAt = new Date(`${dateStr}T${String(Math.floor(addEndHour)).padStart(2, "0")}:${addEndHour % 1 ? "30" : "00"}:00`).toISOString();
+        const dateStr = addJobDate || companyCalendarWeekDate(selectedDay, weekOffset, companyTimezone);
+        if (!dateStr) throw new Error("The Company calendar date could not be resolved. Refresh and try again.");
+        const scheduledStartAt = companyScheduleDateTime(dateStr, addStartHour, companyTimezone);
+        const scheduledEndAt = companyScheduleDateTime(dateStr, addEndHour, companyTimezone);
         const assignedUserId = addDetailer.startsWith("jobsync-") ? Number(addDetailer.slice("jobsync-".length)) : undefined;
         const job = await createJobSyncCompanyJob(jobSyncSession.token, {
           customerId: customer.id,
@@ -2096,7 +2106,7 @@ export default function AdminScheduleScreen() {
     const discountAmountFinal = computedDiscount > 0 ? computedDiscount : undefined;
     const discountCodeFinal = addDiscountCode.trim() || undefined;
     const newJob: Job = {
-      id: Date.now().toString(),
+      id: nextLegacyJobId(),
       firstName: addFirstName.trim(),
       lastName: addLastName.trim(),
       phone: addPhone.trim(),
@@ -2261,9 +2271,10 @@ export default function AdminScheduleScreen() {
         return;
       }
       try {
-        await rescheduleJobSyncCompanyJob(jobSyncSession.token, jobId, {
-          scheduledStartAt: companyScheduleDateTime(newDateStr, newStartHour),
-          scheduledEndAt: companyScheduleDateTime(newDateStr, newEndHour),
+        await moveJobSyncCompanyJob(jobSyncSession.token, jobId, {
+          scheduledStartAt: companyScheduleDateTime(newDateStr, newStartHour, companyTimezone),
+          scheduledEndAt: companyScheduleDateTime(newDateStr, newEndHour, companyTimezone),
+          expectedUpdatedAt: job.canonicalUpdatedAt ?? undefined,
         });
         forceSync();
       } catch (error) {
@@ -2368,63 +2379,39 @@ export default function AdminScheduleScreen() {
     } catch {}
   };
 
-  const adminLoadCustomerHistory = async (job: Job) => {
-    if (!allowLegacyJobAuthority) return;
-    try {
-      const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      // tRPC v11 wraps response data in .result.data.json
-      const items = data?.result?.data?.json ?? data?.result?.data ?? [];
-      setCustomerHistory(items.map((sj: any) => ({
-        id: sj.jobId, firstName: sj.customerName?.split(" ")[0] || "",
-        lastName: sj.customerName?.split(" ").slice(1).join(" ") || "",
-        phone: sj.customerPhone || "", email: sj.customerEmail || undefined,
-        address: sj.customerAddress || "",
-        serviceTitle: sj.packageType || "Detail Service",
-        packageId: sj.packageId || resolvePackageId(sj.packageType) || undefined,
-        price: parseFloat(sj.totalPrice || "0"),
-        startHour: sj.startHour != null ? parseFloat(String(sj.startHour)) : 8, endHour: sj.endHour != null ? parseFloat(String(sj.endHour)) : 10,
-        dayIndex: 0, weekOffset: 0,
-        status: "finished" as JobStatus,
-        createdAt: sj.createdAt ? new Date(sj.createdAt).toISOString() : new Date().toISOString(),
-        location: sj.location,
-      })));
-    } catch { /* fail silently */ }
-  };
 
-  // Auto-load customer history whenever a job is selected in admin view
-  // (placed after adminLoadCustomerHistory definition so it's in scope)
+
+  // Synchronize selected-job external data. Job-local UI state is reset by selectJob.
   useEffect(() => {
-    setCustomerHistory([]);
-    setAddressPhotos([]);
-    // Company Job detail refreshes from canonical HSC Job AR (same record web uses).
-    if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
-      const id = canonicalJobId(selectedJob.id);
+    let cancelled = false;
+    if (isJobSyncCompany && selectedJobId && jobSyncSession?.token) {
+      const canonicalId = canonicalJobId(selectedJobId);
       const token = jobSyncSession.token;
-      const fallbackLocation = selectedJob.location ?? "";
-      if (id) {
-        getJobSyncCompanyJob(token, id)
+      if (canonicalId) {
+        getJobSyncCompanyJob(token, canonicalId)
           .then((canonical) => {
-            const mapped = mapCanonicalJobToScheduleFields(canonical, fallbackLocation) as Job;
-            setSelectedJob((prev) => (prev && prev.id === String(id) ? { ...prev, ...mapped, id: String(id) } : prev));
-            setJobs((prev) => prev.map((job) => (job.id === String(id) ? { ...job, ...mapped, id: String(id) } : job)));
+            const mapped = mapCanonicalJobToScheduleFields(canonical, selectedJobLocation ?? "", companyTimezone) as Job;
+            if (cancelled) return;
+            setSelectedJob((previous) => (previous && previous.id === String(canonicalId) ? { ...previous, ...mapped, id: String(canonicalId) } : previous));
+            setJobs((previous) => previous.map((job) => (job.id === String(canonicalId) ? { ...job, ...mapped, id: String(canonicalId) } : job)));
           })
           .catch(() => { /* keep list-mapped fields if detail refresh fails */ });
       }
-      return;
+      return () => { cancelled = true; };
     }
-    if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
-      adminLoadCustomerHistory(selectedJob);
+    if (allowLegacyJobAuthority && selectedJobId && (selectedJobPhone || selectedJobEmail)) {
+      void adminLoadCustomerHistory(selectedJobId, selectedJobPhone, selectedJobEmail).then((history) => {
+        if (!cancelled) setCustomerHistory(history);
+      });
     }
-    if (!isJobSyncCompany && selectedJob?.address) {
-      const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
-      utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddressPhotos(photos)).catch(() => {});
+    if (!isJobSyncCompany && selectedJobAddress) {
+      const addressKey = selectedJobAddress.trim().toLowerCase().replace(/\s+/g, "-");
+      void utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => { if (!cancelled) setAddressPhotos(photos); }).catch(() => {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob?.id]);
+    return () => { cancelled = true; };
+  }, [allowLegacyJobAuthority, companyTimezone, isJobSyncCompany, jobSyncSession?.token, selectedJobAddress, selectedJobEmail, selectedJobId, selectedJobLocation, selectedJobPhone, utils.jobs.getAddressPhotos]);
 
-  const handleMoveAdminJob = useCallback((jobId: string, newStartHour: number, newLaneIdx?: number) => {
+  const handleMoveAdminJob = (jobId: string, newStartHour: number, newLaneIdx?: number) => {
     const cityConfig: CityConfig | undefined = { slug: selectedCity, label: CITY_LIST.find(c => c.slug === selectedCity)?.label ?? selectedCity, detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [] };
     setJobs((prev) => {
       const updated = prev.map((j) => {
@@ -2454,13 +2441,12 @@ export default function AdminScheduleScreen() {
         if (!isJobSyncCompany || !canonicalId || !token) return prev;
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
-        void Promise.all([
-          rescheduleJobSyncCompanyJob(token, canonicalId, {
-            scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour),
-            scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour),
-          }),
-          assignJobSyncCompanyJob(token, canonicalId, { assignedUserId: companyAssignedUserId(job.assignedTo) }),
-        ]).then(() => forceSync()).catch((error) => {
+        void moveJobSyncCompanyJob(token, canonicalId, {
+          scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour, companyTimezone),
+          scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour, companyTimezone),
+          assignedUserId: companyAssignedUserId(job.assignedTo),
+          expectedUpdatedAt: job.canonicalUpdatedAt ?? undefined,
+        }).then(() => forceSync()).catch((error) => {
           Alert.alert("Schedule not updated", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
           forceSync();
         });
@@ -2492,13 +2478,13 @@ export default function AdminScheduleScreen() {
           notifyCustomer: false, // drag-to-move: never re-send confirmation
         });
         // Persist locally
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated)).catch(() => {});
+        AsyncStorage.setItem(storageKey, JSON.stringify(updated)).catch(() => {});
       }
       return updated;
     });
-  }, [weekOffset, selectedCity, jobUpsertMutation, jobReassignMutation, isJobSyncCompany, jobSyncSession?.token]);
+  };
 
-  const handleResizeAdminJob = useCallback((jobId: string, newEndHour: number) => {
+  const handleResizeAdminJob = (jobId: string, newEndHour: number) => {
     setJobs((prev) => {
       const updated = prev.map((j) => {
         if (j.id !== jobId) return j;
@@ -2512,9 +2498,10 @@ export default function AdminScheduleScreen() {
         if (!isJobSyncCompany || !canonicalId || !token) return prev;
         const jobDate = getWeekDates(weekOffset)[job.dayIndex];
         const dateStr = localDateStr(jobDate);
-        void rescheduleJobSyncCompanyJob(token, canonicalId, {
-          scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour),
-          scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour),
+        void moveJobSyncCompanyJob(token, canonicalId, {
+          scheduledStartAt: companyScheduleDateTime(dateStr, job.startHour, companyTimezone),
+          scheduledEndAt: companyScheduleDateTime(dateStr, job.endHour, companyTimezone),
+          expectedUpdatedAt: job.canonicalUpdatedAt ?? undefined,
         }).then(() => forceSync()).catch((error) => {
           Alert.alert("Schedule not updated", error instanceof Error ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
           forceSync();
@@ -2543,11 +2530,11 @@ export default function AdminScheduleScreen() {
           source: "manual" as const,
           notifyCustomer: false, // resize: never re-send confirmation
         });
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated)).catch(() => {});
+        AsyncStorage.setItem(storageKey, JSON.stringify(updated)).catch(() => {});
       }
       return updated;
     });
-  }, [weekOffset, selectedCity, jobUpsertMutation, isJobSyncCompany, jobSyncSession?.token]);
+  };
 
   const weekDates = getWeekDates(weekOffset);
   const selectedDate = weekDates[selectedDay];
@@ -2577,31 +2564,20 @@ export default function AdminScheduleScreen() {
   })();
 
   // Compute blocked hours per detailer for the selected date (used in Add Job form)
-  const addBlockedHoursByDetailer = React.useMemo(() => {
-    const map: Record<string, Set<number>> = {};
-    const dow = selectedDate.getDay();
-    // First, mark 8–17 as blocked for any detailer not on shift today
-    for (const det of cityConfig.detailers) {
-      if (!isDetailerOnShift(det, dow)) {
-        if (!map[det.employeeId]) map[det.employeeId] = new Set();
-        for (let h = 8; h < 17; h++) map[det.employeeId].add(h);
-      }
+  const addBlockedHoursByDetailer: Record<string, Set<number>> = {};
+  const selectedDayOfWeek = selectedDate.getDay();
+  for (const detailer of cityConfig.detailers) {
+    if (!isDetailerOnShift(detailer, selectedDayOfWeek)) {
+      if (!addBlockedHoursByDetailer[detailer.employeeId]) addBlockedHoursByDetailer[detailer.employeeId] = new Set();
+      for (let hour = 8; hour < 17; hour++) addBlockedHoursByDetailer[detailer.employeeId].add(hour);
     }
-    // Then overlay actual job conflicts
-    for (const job of dayJobs) {
-      if (!job.detailerName || (job.status as string) === "cancelled") continue;
-      const jStart = job.startHour ?? 0;
-      const jEnd = job.endHour ?? 24;
-      if (!map[job.detailerName]) map[job.detailerName] = new Set();
-      for (let h = jStart; h < jEnd; h++) map[job.detailerName].add(h);
-    }
-    return map;
-  }, [dayJobs, cityConfig.detailers, selectedDate]);
-  // Blocked hours for the currently selected detailer in the Add Job form
-  const addCurrentBlockedHours = React.useMemo(
-    () => addBlockedHoursByDetailer[addDetailer] ?? new Set<number>(),
-    [addBlockedHoursByDetailer, addDetailer]
-  );
+  }
+  for (const job of dayJobs) {
+    if (!job.detailerName || (job.status as string) === "cancelled") continue;
+    if (!addBlockedHoursByDetailer[job.detailerName]) addBlockedHoursByDetailer[job.detailerName] = new Set();
+    for (let hour = job.startHour ?? 0; hour < (job.endHour ?? 24); hour++) addBlockedHoursByDetailer[job.detailerName].add(hour);
+  }
+  const addCurrentBlockedHours = addBlockedHoursByDetailer[addDetailer] ?? new Set<number>();
   // Dot indicators
   const jobsByDay = weekDates.map((_, i) =>
     jobs.some(
@@ -2629,6 +2605,13 @@ export default function AdminScheduleScreen() {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     });
+
+  if (isJobSyncCompany && !companyTimezoneReady) {
+    return <ScreenContainer><View style={{ padding: 24, gap: 12 }}>
+      <Text style={{ color: colors.foreground }}>{companyJobsError || "Loading Company calendar…"}</Text>
+      <TouchableOpacity onPress={forceSync}><Text style={{ color: colors.primary }}>Retry</Text></TouchableOpacity>
+    </View></ScreenContainer>;
+  }
 
   return (
     <ScreenContainer
@@ -2812,11 +2795,11 @@ export default function AdminScheduleScreen() {
           jobs={dayJobs}
           cityConfig={cityConfig}
           screenWidth={screenWidth}
-          onJobPress={(job) => { setSelectedJob(job); setAdminEditingTime(false); setAdminEditingPackage(false); setAdminEditingDiscount(false); setAdminEditingTax(false); setAdminEditingDeposit(false); setAdminEditingPrice(false); setShowCustomerHistory(false); }}
+          onJobPress={selectJob}
           onMoveAndReassign={handleMoveAdminJob}
           onResize={handleResizeAdminJob}
           isAdmin={true}
-          gesturesEnabled={!selectedJob && !showCheckout}
+          gesturesEnabled={!selectedJob && !(showCheckout && allowLegacyJobAuthority)}
           selectedDayOfWeek={selectedDate.getDay()}
           onRefresh={forceSync}
           refreshing={isSyncing}
@@ -3748,7 +3731,7 @@ export default function AdminScheduleScreen() {
                 ) : null}
 
                 {/* ── Refund Modal ── */}
-                <Modal visible={showRefundModal} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
+                <Modal visible={showRefundModal && allowLegacyJobAuthority} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
                   <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
                     <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
                       <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>↩️ Issue Refund</Text>
@@ -3949,7 +3932,6 @@ export default function AdminScheduleScreen() {
                 {allowLegacyJobAuthority && (
                 <TouchableOpacity
                   onPress={() => {
-                    const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
                     // If any payment has been recorded, show remaining balance mode automatically
                     const remainingOnly = alreadyPaid > 0.01;
@@ -4383,7 +4365,7 @@ export default function AdminScheduleScreen() {
                       // Update local state so the address shows immediately without a refetch
                       setSelectedJob((prev: any) => prev ? { ...prev, address: editAddressDraft.trim() } : prev);
                       setShowEditAddressModal(false);
-                    } catch (e) {
+                    } catch {
                       Alert.alert("Error", "Failed to update address. Please try again.");
                     } finally {
                       setSavingAddress(false);
@@ -4449,7 +4431,7 @@ export default function AdminScheduleScreen() {
                           setShowMoveCityPicker(false);
                           if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                           Alert.alert("Moved!", `Job moved to ${city.label} calendar.`);
-                        } catch (e) {
+                        } catch {
                           Alert.alert("Error", "Failed to move job. Please try again.");
                         } finally {
                           setMovingToCity(false);
@@ -4844,16 +4826,9 @@ export default function AdminScheduleScreen() {
                           try {
                             // Calculate old addon total from the vehicle's current addons
                             const vehicleIdx = editAddonsVehicleIdx;
-                            let oldIds: string[] = [];
-                            let oldQtys: Record<string, number> = {};
-                            if (vehicleIdx === -1) {
-                              oldIds = selectedJob.addonIds ?? [];
-                              oldQtys = selectedJob.addonQtys ?? {};
-                            } else {
-                              const av = (selectedJob.additionalVehicles ?? [])[vehicleIdx];
-                              oldIds = av?.addonIds ?? [];
-                              oldQtys = av?.addonQtys ?? {};
-                            }
+                            const oldQtys: Record<string, number> = vehicleIdx === -1
+                              ? selectedJob.addonQtys ?? {}
+                              : (selectedJob.additionalVehicles ?? [])[vehicleIdx]?.addonQtys ?? {};
                             const oldTotal = ADDONS.reduce((s, a) => s + a.price * (oldQtys[a.id] ?? 0), 0);
                             const newTotal = ADDONS.reduce((s, a) => s + a.price * (editAddonsQtys[a.id] ?? 0), 0);
                             const delta = newTotal - oldTotal;
@@ -5017,7 +4992,7 @@ export default function AdminScheduleScreen() {
                         <Text style={{ color: colors.muted, fontSize: 16 }}>✕</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer's {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer&apos;s {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
                   </View>
 
                   {/* Send button */}
@@ -5081,7 +5056,7 @@ export default function AdminScheduleScreen() {
         {/* Checkout overlay — rendered inside the job detail Modal to avoid stacked-modal iOS touch issues */}
         {selectedJob && allowLegacyJobAuthority && (
           <AdminCheckoutModal
-            visible={showCheckout}
+            visible={showCheckout && allowLegacyJobAuthority}
             job={selectedJob}
             customerPhone={selectedJob.phone ?? null}
             customerEmail={selectedJob.email ?? null}
@@ -5114,7 +5089,7 @@ export default function AdminScheduleScreen() {
       </Modal>
 
       {/* Add Job Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => { prefillHandledRef.current = null; setShowAddModal(false); }}>
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => { setShowAddModal(false); }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
             <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%" }}>
@@ -5130,7 +5105,7 @@ export default function AdminScheduleScreen() {
                     <Text style={{ fontSize: 10, color: colors.primary }}>{showAddDatePicker ? "▲" : "▼"}</Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => { prefillHandledRef.current = null; setShowAddModal(false); }}>
+                <TouchableOpacity onPress={() => { setShowAddModal(false); }}>
                   <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
                 </TouchableOpacity>
               </View>
@@ -5581,7 +5556,7 @@ export default function AdminScheduleScreen() {
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 8, padding: 8, marginBottom: 8 }}>
                         <Text style={{ fontSize: 13 }}>⚠️</Text>
                         <Text style={{ fontSize: 12, color: "#DC2626", flex: 1 }}>
-                          {addDetailer} already has jobs during some hours today. Grayed-out slots marked "Booked" are unavailable.
+                          {addDetailer} already has jobs during some hours today. Grayed-out slots marked &quot;Booked&quot; are unavailable.
                         </Text>
                       </View>
                     )}
@@ -5783,7 +5758,7 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 <View style={{ flexDirection: "row", gap: 12, marginTop: 8, marginBottom: 8 }}>
-                  <TouchableOpacity onPress={() => { prefillHandledRef.current = null; setShowAddModal(false); }} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+                  <TouchableOpacity onPress={() => { setShowAddModal(false); }} style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
                     <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -6051,7 +6026,7 @@ export default function AdminScheduleScreen() {
               <View style={{ alignItems: "center", paddingVertical: 20, marginBottom: 16 }}>
                 <Text style={{ fontSize: 32, marginBottom: 8 }}>💳</Text>
                 <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, marginBottom: 4 }}>No Cards on File</Text>
-                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center", lineHeight: 18 }}>This customer has no saved cards. Use \"Send Portal Access\" so they can add a card.</Text>
+                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center", lineHeight: 18 }}>This customer has no saved cards. Use &quot;Send Portal Access&quot; so they can add a card.</Text>
               </View>
             )}
 

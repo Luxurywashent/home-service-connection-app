@@ -1,3 +1,4 @@
+import { companyCalendarDisplayWeekDates, companyCalendarTodayDayIndex } from "@/lib/company-calendar";
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Constants from "expo-constants";
 import { useLocalSearchParams } from "expo-router";
@@ -15,32 +16,28 @@ import {
   Linking,
   ActivityIndicator,
   Dimensions,
+  PanResponder,
   Switch,
   RefreshControl,
   AppState,
   FlatList,
   type AppStateStatus,
 } from "react-native";
-import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView as GHScrollView } from "react-native-gesture-handler";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  runOnJS,
-  withTiming,
-} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSharedValue } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "react-native";
-import Svg, { Rect, Text as SvgText, G, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJob, getJobSyncCompanyJobs, getJobSyncCompanyMembers, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJob, getJobSyncCompanyJobs, getJobSyncCompanyMembers, getJobSyncCompanySettings, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
 import {
   allowsLegacyJobAuthority,
   canonicalJobId,
@@ -77,6 +74,11 @@ const VEHICLE_TYPES: { id: VehicleType; label: string; emoji: string; group?: "r
 
 const RV_VEHICLE_IDS = new Set<VehicleType>(["rv_20_29", "rv_30_39", "rv_40_plus"]);
 function isRvVehicle(v: VehicleType | null): boolean { return v !== null && RV_VEHICLE_IDS.has(v); }
+
+/** Timestamp IDs retain the legacy local-job format used by offline merge logic. */
+function createLocalJobId(): string {
+  return Date.now().toString();
+}
 
 interface PackageDef {
   id: string;
@@ -500,7 +502,6 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 // Half-hour slots across the full day. The visible grid opens at 8 AM, but
 // authoritative early and late Company Jobs remain reachable by scrolling.
-const SCHEDULE_START_HOUR = COMPANY_SCHEDULE_START_HOUR;
 const HOURS = COMPANY_SCHEDULE_HALF_HOUR_SLOTS;
 const SLOT_HEIGHT = 32; // half height since slots are 30min now
 const TIME_COL_WIDTH = 68;
@@ -525,7 +526,7 @@ function formatFullDate(d: Date) {
   return `${WEEK_DAYS_FULL[monIdx]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-function getWeekDates(offset: number): Date[] {
+function getDeviceWeekDates(offset: number): Date[] {
   const today = new Date();
   // Anchor to Monday: JS getDay() 0=Sun, so (getDay()+6)%7 gives 0=Mon
   const monday = new Date(today);
@@ -537,7 +538,7 @@ function getWeekDates(offset: number): Date[] {
   });
 }
 
-function todayDayIndex(): number {
+function deviceTodayDayIndex(): number {
   // Returns 0=Mon, 1=Tue, …, 6=Sun
   return (new Date().getDay() + 6) % 7;
 }
@@ -889,28 +890,15 @@ const SignatureCanvas = React.memo(React.forwardRef<SignatureCanvasRef, { onDraw
     const [paths, setPaths] = useState<SigPath[]>([]);
     // the stroke currently being drawn
     const [livePath, setLivePath] = useState<SigPath>([]);
-    const { PanResponder: PR } = require("react-native");
-
-    // Store callbacks in refs so panResponder is only created once and never re-created
-    // when parent re-renders (which would wipe the drawn paths)
-    const onDrawRef = useRef(onDraw);
-    const onClearRef = useRef(onClear);
-    const onDrawStartRef = useRef(onDrawStart);
-    const onDrawEndRef = useRef(onDrawEnd);
-    useEffect(() => { onDrawRef.current = onDraw; }, [onDraw]);
-    useEffect(() => { onClearRef.current = onClear; }, [onClear]);
-    useEffect(() => { onDrawStartRef.current = onDrawStart; }, [onDrawStart]);
-    useEffect(() => { onDrawEndRef.current = onDrawEnd; }, [onDrawEnd]);
-
     const panResponder = React.useMemo(() =>
-      PR.create({
+      PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (e: { nativeEvent: { locationX: number; locationY: number } }) => {
           const pt = { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY };
           setLivePath([pt]);
-          onDrawRef.current();
-          onDrawStartRef.current?.();
+          onDraw();
+          onDrawStart?.();
         },
         onPanResponderMove: (e: { nativeEvent: { locationX: number; locationY: number } }) => {
           const pt = { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY };
@@ -924,7 +912,7 @@ const SignatureCanvas = React.memo(React.forwardRef<SignatureCanvasRef, { onDraw
             }
             return [];
           });
-          onDrawEndRef.current?.();
+          onDrawEnd?.();
         },
         onPanResponderTerminate: () => {
           // commit whatever we have so strokes aren't lost on termination
@@ -934,18 +922,17 @@ const SignatureCanvas = React.memo(React.forwardRef<SignatureCanvasRef, { onDraw
             }
             return [];
           });
-          onDrawEndRef.current?.();
+          onDrawEnd?.();
         },
-      })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    , []);
+      }),
+    [onDraw, onDrawEnd, onDrawStart]);
 
     // paths ref for readSignature (always up-to-date without closure staleness)
     const pathsRef = useRef<SigPath[]>([]);
     useEffect(() => { pathsRef.current = paths; }, [paths]);
 
     React.useImperativeHandle(ref, () => ({
-      clearSignature: () => { setPaths([]); setLivePath([]); onClearRef.current(); },
+      clearSignature: () => { setPaths([]); setLivePath([]); onClear(); },
       readSignature: async () => {
         const allPaths = pathsRef.current;
         if (allPaths.length === 0) return null;
@@ -956,7 +943,7 @@ const SignatureCanvas = React.memo(React.forwardRef<SignatureCanvasRef, { onDraw
         const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="120"><path d="${pathData}" stroke="#000" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
         return `data:image/svg+xml;base64,${btoa(svgStr)}`;
       },
-    }));
+    }), [onClear]);
 
     const toPathD = (pts: SigPoint[]) => {
       if (pts.length < 2) return "";
@@ -992,23 +979,18 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [cardNumber, setCardNumber] = useState(""); const [cardExpiry, setCardExpiry] = useState(""); const [cardCvc, setCardCvc] = useState("");
   const [cardComplete, setCardComplete] = useState(false); // Stripe CardField complete state
-  const [cardLast4, setCardLast4] = useState("");
-  const [stripePaymentMethodId, setStripePaymentMethodId] = useState<string | null>(null);
   const [referenceNote, setReferenceNote] = useState("");
   const [selectedTipPct, setSelectedTipPct] = useState<number | null>(null);
   const [customTipStr, setCustomTipStr] = useState("");
   const [hasSignature, setHasSignature] = useState(false);
+  const [scrollLocked, setScrollLocked] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
-  const [scrollLocked, setScrollLocked] = useState(false);
   const sigRef = useRef<SignatureCanvasRef>(null);
   // Hard lock ref — survives re-renders and blocks concurrent STPPaymentHandler calls
   const paymentInFlightRef = useRef(false);
-  const createPaymentIntent = trpc.stripe.createPaymentIntent.useMutation();
-  const scanCardMutation = trpc.stripe.scanCard.useMutation();
   const chargeCardOnFileMutation = trpc.savedCards.chargeCard.useMutation();
   const generateTipLinkMutation = trpc.savedCards.generateTipLink.useMutation();
-  const [isScanning, setIsScanning] = useState(false);
   // Derive customerKey from job phone/email to look up saved cards
   const jobCustomerKey = (() => {
     const np = job.phone ? job.phone.replace(/\D/g, "").slice(-10) : null;
@@ -1021,16 +1003,12 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
     { enabled: !!jobCustomerKey && visible, staleTime: 30_000 }
   );
   const savedCard = savedCardsQuery.data?.find((c: any) => c.isDefault) ?? savedCardsQuery.data?.[0] ?? null;
-  const [paymentIntentId, setPaymentIntentId] = useState<string | undefined>(undefined);
+  const paymentIntentId: string | undefined = undefined;
   const [isCardOnFile, setIsCardOnFile] = useState(false);
 
   const subtotal = Math.max(0, (job.price ?? 0) + (job.upsellTotal ?? 0) - (job.discountAmount ?? 0));
   const tipAmount = selectedTipPct === null ? 0 : selectedTipPct === -1 ? (parseFloat(customTipStr) || 0) : Math.round(subtotal * selectedTipPct * 100) / 100;
   const total = subtotal + tipAmount;
-
-  useEffect(() => {
-    if (visible) { setStep("method"); setMethod(null); setCardNumber(""); setCardExpiry(""); setCardCvc(""); setCardComplete(false); setCardLast4(""); setReferenceNote(""); setSelectedTipPct(null); setCustomTipStr(""); setHasSignature(false); setIsProcessing(false); setPaymentResult(null); setIsCardOnFile(false); }
-  }, [visible]);
 
   const fmtCard = (t: string) => t.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
   const fmtExp = (t: string) => { const d = t.replace(/\D/g, "").slice(0, 4); return d.length >= 3 ? `${d.slice(0, 2)}/${d.slice(2)}` : d; };
@@ -1082,7 +1060,6 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
       } else {
         // Cash / Check / Other / Web card (no real charge)
         if (Platform.OS !== "web") await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const digits = cardNumber.replace(/\s/g, "");
         setPaymentResult({ success: true, message: method === "cash" ? "Cash payment recorded" : method === "check" ? "Check payment recorded" : "Payment recorded" });
         setStep("result");
         onComplete({ method: method!, subtotal, tipAmount, total, paidAt: new Date().toISOString(), signatureData: signatureData ?? undefined, cardLast4: undefined, referenceNote: referenceNote.trim() || undefined });
@@ -1139,27 +1116,6 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
     </View>
   );
 
-  const handleScanCard = async () => {
-    try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) { Alert.alert("Camera Permission", "Please allow camera access to scan cards."); return; }
-      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: false });
-      if (result.canceled || !result.assets?.[0]) return;
-      setIsScanning(true);
-      const asset = result.assets[0];
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-      const ext = (asset.uri.split('.').pop() || 'jpeg').toLowerCase();
-      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-      const scanned = await scanCardMutation.mutateAsync({ imageBase64: base64, mimeType });
-      if (scanned.cardNumber) setCardNumber(scanned.cardNumber);
-      if (scanned.expiry) setCardExpiry(scanned.expiry);
-      if (!scanned.cardNumber && !scanned.expiry) Alert.alert("Scan Failed", "Could not read the card. Please enter the details manually.");
-    } catch {
-      Alert.alert("Scan Error", "Could not scan the card. Please enter details manually.");
-    } finally {
-      setIsScanning(false);
-    }
-  };
   const renderCard = () => {
     return (
       <View>
@@ -1305,7 +1261,7 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
         <View style={[co.tipDivider, { backgroundColor: colors.border }]} />
         <View style={co.tipSummaryRow}><Text style={[{ fontWeight: "700", fontSize: 15 }, { color: colors.foreground }]}>Total to Charge</Text><Text style={[{ fontWeight: "800", fontSize: 18 }, { color: colors.primary }]}>${subtotal.toFixed(2)}</Text></View>
       </View>
-      <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", marginBottom: 16 }}>A "Leave a Tip" email will be sent to the customer after charging.</Text>
+      <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", marginBottom: 16 }}>A &quot;Leave a Tip&quot; email will be sent to the customer after charging.</Text>
       <TouchableOpacity
         onPress={async () => {
           if (!savedCard) return;
@@ -1447,7 +1403,7 @@ function CheckoutModal({ visible, job, onClose, onComplete }: {
             {step === "signature" ? (
               <View style={{ paddingBottom: 24 }}>{renderSignature()}</View>
             ) : (
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
+              <ScrollView scrollEnabled={!scrollLocked} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
                 {step === "method" && renderMethod()}
                 {step === "card_entry" && renderCard()}
                 {step === "card_on_file" && renderCardOnFile()}
@@ -1538,7 +1494,7 @@ function JobBlock({
     if (!active) return;
     const id = setInterval(() => setCardTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [job.status, job.id]);
+  }, [job.status, job.id, job.jobFinishedAt]);
 
   const liveTimerLabel = (() => {
     if (job.status === "on_my_way" && job.travelStartedAt) return `🚚 ${formatElapsed(job.travelStartedAt)}`;
@@ -1641,7 +1597,6 @@ function AdminDispatchBoard({
 }) {
   const colors = useColors();
   const screenWidth = Dimensions.get("window").width;
-  const gridHeight = HOURS.length * SLOT_HEIGHT;
 
   // Filter jobs for this day
   const dayJobs = jobs.filter((j) => j.dayIndex === dayIndex && j.weekOffset === weekOffset);
@@ -1655,9 +1610,8 @@ function AdminDispatchBoard({
   const colWidth = singleCol ? screenWidth - TIME_COL_WIDTH : 200;
 
   // Swipe detector (PanResponder) for day navigation — only fires on clear horizontal swipes
-  const { PanResponder: PR } = require("react-native");
   const swipePanResponder = React.useMemo(() =>
-    PR.create({
+    PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_: any, gs: any) => Math.abs(gs.dx) > 20 && Math.abs(gs.dy) < 15,
       onPanResponderRelease: (_: any, gs: any) => {
@@ -1667,9 +1621,8 @@ function AdminDispatchBoard({
           else if (gs.dx < 0 && onSwipeLeft) onSwipeLeft();
         }
       },
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  , [onSwipeLeft, onSwipeRight]);
+    }),
+  [onSwipeLeft, onSwipeRight]);
 
   // Get jobs for a specific detailer column
   const getColJobs = (detailerId: string, colIndex: number) => {
@@ -1954,22 +1907,14 @@ function DayTimeline({
   // ── Swipe detector for changing days ──
   // Use PanResponder instead of horizontal paging ScrollView to avoid blocking taps on job cards.
   // Only activates on clear horizontal swipes (dx > 50, dy < 30).
-  const { PanResponder: PR } = require("react-native");
-  const swipeStartX = useRef(0);
-  const swipeStartY = useRef(0);
-
   const swipePanResponder = React.useMemo(() =>
-    PR.create({
+    PanResponder.create({
       onStartShouldSetPanResponder: () => false, // don't capture on touch start
       onMoveShouldSetPanResponder: (_: any, gestureState: any) => {
         // Only capture if it's a clear horizontal swipe (dx > 20, dy < 15)
         const dx = Math.abs(gestureState.dx);
         const dy = Math.abs(gestureState.dy);
         return dx > 20 && dy < 15;
-      },
-      onPanResponderGrant: (e: any) => {
-        swipeStartX.current = e.nativeEvent.pageX;
-        swipeStartY.current = e.nativeEvent.pageY;
       },
       onPanResponderRelease: (e: any, gestureState: any) => {
         const dx = gestureState.dx;
@@ -1984,9 +1929,8 @@ function DayTimeline({
           }
         }
       },
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  , [onSwipeLeft, onSwipeRight]);
+    }),
+  [onSwipeLeft, onSwipeRight]);
 
   // Render the timeline grid content
   const renderTimelineContent = () => (
@@ -2283,8 +2227,23 @@ export default function ScheduleScreen() {
   const isJobSyncCompany = usesCompanyJobAuthority(companyAuthority);
   const allowLegacyJobAuthority = allowsLegacyJobAuthority(companyAuthority);
   const companyPriceBook = useCompanyPriceBook();
+  const [companyTimezoneResource, setCompanyTimezoneResource] = useState<{ token: string; timezone: string } | null>(null);
+  const companyTimezone = companyTimezoneResource?.token === jobSyncSession?.token
+    ? companyTimezoneResource?.timezone ?? ""
+    : "";
+  const companyTimezoneReady = Boolean(companyTimezone);
+  const getWeekDates = (offset: number) => (
+    isJobSyncCompany && companyTimezoneReady
+      ? companyCalendarDisplayWeekDates(offset, companyTimezone)
+      : getDeviceWeekDates(offset)
+  );
+  const todayDayIndex = () => (
+    isJobSyncCompany && companyTimezoneReady
+      ? companyCalendarTodayDayIndex(companyTimezone)
+      : deviceTodayDayIndex()
+  );
   const { highlightJobId } = useLocalSearchParams<{ highlightJobId?: string }>();
-  const highlightJobHandledRef = useRef<string | null>(null);
+  const [highlightJobHandledKey, setHighlightJobHandledKey] = useState<string | null>(null);
   const utils = trpc.useUtils();
   // Price book loaded early so syncServerJobs closure can reference it
   const { data: localPriceBookEarly } = trpc.pricebook.list.useQuery(undefined, { enabled: allowLegacyJobAuthority, staleTime: 60_000 });
@@ -2342,37 +2301,47 @@ export default function ScheduleScreen() {
   const [navJob, setNavJob] = useState<Job | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayDayIndex());
+  const calendarSelectionKey = isJobSyncCompany
+    ? (companyTimezoneReady ? `company:${jobSyncSession?.company?.id}:${companyTimezone}` : null)
+    : "legacy";
+  const [lastCalendarSelectionKey, setLastCalendarSelectionKey] = useState<string | null>(null);
+  if (calendarSelectionKey && lastCalendarSelectionKey !== calendarSelectionKey) {
+    setLastCalendarSelectionKey(calendarSelectionKey);
+    setSelectedDay(todayDayIndex());
+  }
   const [jobs, setJobs] = useState<Job[]>([]);
   const [companyJobsError, setCompanyJobsError] = useState<string | null>(null);
-  const [companyCalendarMembers, setCompanyCalendarMembers] = useState<JobSyncCompanyMember[]>([]);
-  const [companyCalendarMembersLoading, setCompanyCalendarMembersLoading] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<LocationSlug>(() => {
-    // Will be overridden by employee city in useEffect below
-    return "crestview";
-  });
+  const companyCalendarKey = isJobSyncCompany && jobSyncSession?.token && jobSyncSession.company?.id
+    ? `${jobSyncSession.company.id}:${jobSyncSession.token}:${jobSyncRevision}`
+    : null;
+  const [companyCalendarResource, setCompanyCalendarResource] = useState<{
+    key: string;
+    members: JobSyncCompanyMember[];
+  } | null>(null);
+  const companyCalendarMembers = companyCalendarResource?.key === companyCalendarKey
+    ? companyCalendarResource.members
+    : [];
+  const companyCalendarMembersLoading = Boolean(companyCalendarKey && companyCalendarResource?.key !== companyCalendarKey);
+  const [adminSelectedLocation, setSelectedLocation] = useState<LocationSlug>("crestview");
+  // A detailer's Company location comes from their active employee record; admins retain the picker state.
+  const selectedLocation: LocationSlug = employee?.role === "detailer" && employee.city
+    ? cityToSlug(employee.city)
+    : adminSelectedLocation;
   const [isSyncingBookings, setIsSyncingBookings] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    if (!isJobSyncCompany || !jobSyncSession?.token || !jobSyncSession.company?.id) {
-      setCompanyCalendarMembers([]);
-      setCompanyCalendarMembersLoading(false);
-      return () => { cancelled = true; };
-    }
-    setCompanyCalendarMembersLoading(true);
+    if (!companyCalendarKey || !jobSyncSession?.token || !jobSyncSession.company?.id) return () => { cancelled = true; };
     getJobSyncCompanyMembers(jobSyncSession.token, jobSyncSession.company.id)
       .then((roster) => {
-        if (!cancelled) setCompanyCalendarMembers(roster.members);
+        if (!cancelled) setCompanyCalendarResource({ key: companyCalendarKey, members: roster.members });
       })
       .catch(() => {
-        if (!cancelled) setCompanyCalendarMembers([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCompanyCalendarMembersLoading(false);
+        if (!cancelled) setCompanyCalendarResource({ key: companyCalendarKey, members: [] });
       });
     return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncRevision]);
+  }, [companyCalendarKey, jobSyncSession?.token, jobSyncSession?.company?.id]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showServiceWizard, setShowServiceWizard] = useState(false);
@@ -2392,16 +2361,10 @@ export default function ScheduleScreen() {
     },
   });
   const [showCheckout, setShowCheckout] = useState(false);
-  const checkoutJobRef = useRef<Job | null>(null); // keeps job data alive after detail modal closes
+  const [checkoutJob, setCheckoutJob] = useState<Job | null>(null); // keeps job data alive after detail modal closes
   const jobsRef = useRef<Job[]>([]); // always-current jobs for use in nav callbacks
   const [isRefunding, setIsRefunding] = useState(false);
   const refundPaymentMutation = trpc.stripe.refundPayment.useMutation();
-
-  useEffect(() => {
-    if (!allowLegacyJobAuthority) {
-      setShowCheckout(false);
-    }
-  }, [allowLegacyJobAuthority]);
 
   // Upsell state
   const [showUpsellPanel, setShowUpsellPanel] = useState(false);
@@ -2526,8 +2489,19 @@ export default function ScheduleScreen() {
   const [inspNotes, setInspNotes] = useState("");
   // Enhanced job detail state
   const [showCustomerHistory, setShowCustomerHistory] = useState(true);
-  const [customerHistoryJobs, setCustomerHistoryJobs] = useState<any[]>([]);
-  const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false);
+  const [customerHistoryResource, setCustomerHistoryResource] = useState<{
+    jobId: string;
+    jobs: any[];
+  } | null>(null);
+  const customerHistoryJobs = customerHistoryResource && customerHistoryResource.jobId === selectedJob?.id
+    ? customerHistoryResource.jobs
+    : [];
+  const customerHistoryLoading = Boolean(
+    !isJobSyncCompany &&
+    selectedJob?.id &&
+    (selectedJob.phone || selectedJob.email) &&
+    customerHistoryResource?.jobId !== selectedJob.id
+  );
   const [editingTags, setEditingTags] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [editingPrivateNotes, setEditingPrivateNotes] = useState(false);
@@ -2537,7 +2511,17 @@ export default function ScheduleScreen() {
   const [savingMeta, setSavingMeta] = useState(false);
 
   // Address location photos (detailer view — can add, cannot delete)
-  const [addrPhotos, setAddrPhotos] = useState<any[]>([]);
+  const selectedAddressKey = selectedJob?.address.trim().toLowerCase().replace(/\s+/g, "-") ?? "";
+  const [addressPhotosResource, setAddressPhotosResource] = useState<{
+    addressKey: string;
+    photos: any[];
+  } | null>(null);
+  const addrPhotos = addressPhotosResource?.addressKey === selectedAddressKey
+    ? addressPhotosResource.photos
+    : [];
+  const setAddrPhotos = useCallback((photos: any[]) => {
+    if (selectedAddressKey) setAddressPhotosResource({ addressKey: selectedAddressKey, photos });
+  }, [selectedAddressKey]);
   const [viewingAddrPhoto, setViewingAddrPhoto] = useState<string | null>(null);
   const [addrPhotoUploading, setAddrPhotoUploading] = useState(false);
   const uploadAddrPhotoMutation = trpc.jobs.uploadAddressPhoto.useMutation();
@@ -2559,8 +2543,7 @@ export default function ScheduleScreen() {
 
   // Auto-load customer history whenever a job is selected
   useEffect(() => {
-    setCustomerHistoryJobs([]);
-    setAddrPhotos([]);
+    let cancelled = false;
     // Company Job detail always refreshes from canonical HSC Job AR — never local schedule_jobs.
     if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
       const id = canonicalJobId(selectedJob.id);
@@ -2569,20 +2552,33 @@ export default function ScheduleScreen() {
       if (id) {
         getJobSyncCompanyJob(token, id)
           .then((canonical) => {
-            const mapped = mapCanonicalJobToScheduleFields(canonical, fallbackLocation) as Job;
+            if (cancelled) return;
+            const mapped = mapCanonicalJobToScheduleFields(canonical, fallbackLocation, companyTimezone) as Job;
             setSelectedJob((prev) => (prev && prev.id === String(id) ? { ...prev, ...mapped, id: String(id) } : prev));
             setJobs((prev) => prev.map((job) => (job.id === String(id) ? { ...job, ...mapped, id: String(id) } : job)));
           })
           .catch(() => { /* keep list-mapped fields if detail refresh fails */ });
       }
-      return;
+      return () => { cancelled = true; };
     }
     if (!isJobSyncCompany && selectedJob && (selectedJob.phone || selectedJob.email)) {
-      loadCustomerHistory(selectedJob);
+      const jobId = selectedJob.id;
+      const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: selectedJob.phone || undefined, email: selectedJob.email || undefined, excludeJobId: jobId }))}`;
+      fetch(url)
+        .then((response) => response.json())
+        .then((data) => {
+          if (cancelled) return;
+          // tRPC v11 wraps response data in .result.data.json.
+          const history = data?.result?.data?.json ?? data?.result?.data ?? [];
+          setCustomerHistoryResource({ jobId, jobs: history });
+        })
+        .catch(() => { if (!cancelled) setCustomerHistoryResource({ jobId, jobs: [] }); });
     }
     if (!isJobSyncCompany && selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
-      utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddrPhotos(photos)).catch(() => {});
+      utils.jobs.getAddressPhotos.fetch({ addressKey })
+        .then((photos: any[]) => { if (!cancelled) setAddressPhotosResource({ addressKey, photos }); })
+        .catch(() => {});
     }
     // Live-refresh photo URLs from the server whenever a job detail panel is opened.
     // This ensures photos uploaded from another device (or a previous session) are always visible.
@@ -2590,7 +2586,7 @@ export default function ScheduleScreen() {
       const jobId = selectedJob.id;
       utils.jobs.getPhotos.fetch({ jobId })
         .then(({ urls }: { urls: string[] }) => {
-          if (!urls || urls.length === 0) return;
+          if (cancelled || !urls || urls.length === 0) return;
           setSelectedJob((prev) => {
             if (!prev || prev.id !== jobId) return prev;
             const merged = Array.from(new Set([...urls, ...(prev.photoUrls ?? []), ...(prev.photos ?? [])].filter(Boolean)));
@@ -2606,16 +2602,15 @@ export default function ScheduleScreen() {
         })
         .catch(() => { /* ignore — offline or job not in DB yet */ });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob?.id]);
+    return () => { cancelled = true; };
+  }, [companyTimezone, companyTimezoneReady, isJobSyncCompany, jobSyncSession?.token, selectedJob?.address, selectedJob?.email, selectedJob?.id, selectedJob?.location, selectedJob?.phone, utils.jobs.getAddressPhotos, utils.jobs.getPhotos]);
 
   // Mark messages read when chat modal opens
   useEffect(() => {
     if (showChatModal && chatBookingRef) {
       chatMarkReadMutation.mutate({ bookingRef: chatBookingRef, readerType: "detailer" });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showChatModal, chatBookingRef]);
+  }, [showChatModal, chatBookingRef, chatMarkReadMutation]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -2696,8 +2691,6 @@ export default function ScheduleScreen() {
   // Per-employee storage key: prevents detailer A from seeing detailer B's cached jobs
   // Admins share one cache (no suffix); detailers get their own isolated cache.
   const STORAGE_KEY = `${STORAGE_KEY_BASE}_${employee?.employeeId || 'anon'}`;
-  const storageKeyRef = useRef(STORAGE_KEY);
-  storageKeyRef.current = STORAGE_KEY;
 
   useEffect(() => {
     if (authLoading || !employee?.employeeId) return; // Wait until we know WHO is logged in
@@ -2717,7 +2710,7 @@ export default function ScheduleScreen() {
     jobsRef.current = updated;
     setJobs(updated);
     if (allowLegacyJobAuthority) {
-      AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
   };
 
@@ -2789,9 +2782,13 @@ export default function ScheduleScreen() {
         const today = new Date();
         const start = new Date(today); start.setDate(today.getDate() - 365);
         const end = new Date(today); end.setDate(today.getDate() + 365);
-        const companyJobs = await getJobSyncCompanyJobs(jobSyncSession.token, { start: start.toISOString(), end: end.toISOString() });
+        const [companyJobs, companySettings] = await Promise.all([
+          getJobSyncCompanyJobs(jobSyncSession.token, { start: start.toISOString(), end: end.toISOString() }),
+          getJobSyncCompanySettings(jobSyncSession.token),
+        ]);
+        setCompanyTimezoneResource({ token: jobSyncSession.token, timezone: companySettings.timezone });
         const mappedCompanyJobs: Job[] = companyJobs.map((job) =>
-          mapCanonicalJobToScheduleFields(job, "") as Job
+          mapCanonicalJobToScheduleFields(job, "", companySettings.timezone) as Job
         );
         setCompanyJobsError(null);
         setJobs(mappedCompanyJobs);
@@ -3075,7 +3072,7 @@ export default function ScheduleScreen() {
         // Remove any previously-cached cancelled jobs so they don't linger after a cancel
         const merged = [...otherLocJobs, ...mergedNewJobs, ...localOnlyJobs, ...outsideWindowJobs]
           .filter((j: any) => (j as any)._rawStatus !== 'cancelled' && j.status !== 'cancelled');
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(merged));
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         return merged;
       });
       // If the currently-open job was deleted or reassigned away, close its detail panel
@@ -3188,7 +3185,7 @@ export default function ScheduleScreen() {
           return { ...sb, payment: sb.payment ?? local.payment };
         });
         const merged = [...manual, ...mergedOnline];
-        AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(merged));
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         return merged;
       });
     } catch (e) {
@@ -3199,25 +3196,19 @@ export default function ScheduleScreen() {
   };
 
   // Single reliable sync effect: fires when auth loads or employee changes
-  // Directly computes the correct location slug and syncs — no two-step chain
+  // Keep the latest async loader available to subscriptions without recreating them on every render.
+  const syncServerJobsRef = useRef(syncServerJobs);
+  useEffect(() => {
+    syncServerJobsRef.current = syncServerJobs;
+  }, [syncServerJobs]);
+
   useEffect(() => {
     if (authLoading) return; // wait for session to load from AsyncStorage
-    const slug: LocationSlug = (employee?.city && employee.role === "detailer")
-      ? cityToSlug(employee.city)
-      : selectedLocation;
-    // Update location picker for detailers (UI only, doesn't re-trigger sync)
-    if (slug !== selectedLocation) {
-      setSelectedLocation(slug);
-    }
-    // Pass employee explicitly so syncServerJobs never reads a stale closure value
-    syncServerJobs(slug, employee);
-  }, [authLoading, employee?.employeeId, jobSyncRevision]);
-  // Also sync whenever admin manually changes the selected location
-  useEffect(() => {
-    if (!authLoading && (employee?.role === "admin" || employee?.role === "operations_manager" || employee?.role === "office")) {
-      syncServerJobs(selectedLocation, employee);
-    }
-  }, [selectedLocation]);
+    const loadSchedule = async () => {
+      await syncServerJobsRef.current(selectedLocation, employee);
+    };
+    void loadSchedule();
+  }, [allowLegacyJobAuthority, authLoading, employee, isJobSyncCompany, jobSyncRevision, jobSyncSession?.token, selectedLocation]);
 
   // ── Auto-refresh: 30-second polling for detailers ──────────────────────────
   // Silently re-syncs every 30 seconds while the screen is mounted.
@@ -3232,10 +3223,10 @@ export default function ScheduleScreen() {
       : selectedLocation;
     const intervalMs = isDetailer ? 10_000 : 15_000; // detailers: 10s, admins: 15s
     const intervalId = setInterval(() => {
-      syncServerJobs(slug, employee);
+      void syncServerJobsRef.current(slug, employee);
     }, intervalMs);
     return () => clearInterval(intervalId);
-  }, [authLoading, employee?.employeeId, employee?.role, employee?.city, selectedLocation]);
+  }, [authLoading, employee, selectedLocation]);
 
   // ── Auto-refresh: app comes back to foreground ────────────────────────────
   // Immediately re-syncs when the detailer switches back to the app.
@@ -3246,33 +3237,36 @@ export default function ScheduleScreen() {
     const slug: LocationSlug = employee.city ? cityToSlug(employee.city) : selectedLocation;
     const subscription = AppState.addEventListener("change", (nextState: AppStateStatus) => {
       if (nextState === "active") {
-        syncServerJobs(slug, employee);
+        void syncServerJobsRef.current(slug, employee);
       }
     });
     return () => subscription.remove();
-  }, [authLoading, employee?.employeeId, employee?.role, employee?.city, selectedLocation]);
+  }, [authLoading, employee, selectedLocation]);
 
 
   // ── Deep link: open specific job from push notification tap ──────────────
+  const highlightedJob = highlightJobId
+    ? jobs.find((job) => job.id === highlightJobId || job.bookingId === highlightJobId)
+    : undefined;
+  // Consume a changed route intent once, including when its cached Job arrives.
+  // React discards this render and applies the guarded adjustment atomically.
+  if (highlightJobId && highlightJobHandledKey !== highlightJobId && highlightedJob) {
+    setHighlightJobHandledKey(highlightJobId);
+    setWeekOffset(highlightedJob.weekOffset);
+    setSelectedDay(highlightedJob.dayIndex);
+    setSelectedJob(highlightedJob);
+  }
   useEffect(() => {
-    if (!highlightJobId || highlightJobHandledRef.current === highlightJobId) return;
-    // Search in already-loaded jobs first
-    const match = jobs.find((j) => j.id === highlightJobId || j.bookingId === highlightJobId);
-    if (match) {
-      highlightJobHandledRef.current = highlightJobId;
-      setWeekOffset(match.weekOffset);
-      setSelectedDay(match.dayIndex);
-      setSelectedJob(match);
-      return;
-    }
+    if (!highlightJobId || highlightJobHandledKey === highlightJobId || highlightedJob) return;
     // Job not in local cache yet — fetch from server
     if (!allowLegacyJobAuthority) return;
+    let cancelled = false;
     const fetchAndOpen = async () => {
       try {
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightJobId)}`);
         if (!res.ok) return;
         const sj = await res.json();
-        if (!sj?.jobId) return;
+        if (cancelled || !sj?.jobId) return;
         const bookingDate = parseLocalDate(sj.date);
         const dayOfWeek = (bookingDate.getDay() + 6) % 7;
         const todayMonday = new Date();
@@ -3316,7 +3310,7 @@ export default function ScheduleScreen() {
           additionalVehicles: [],
           createdAt: sj.createdAt ? new Date(sj.createdAt).toISOString() : new Date().toISOString(),
         } as Job;
-        highlightJobHandledRef.current = highlightJobId;
+        setHighlightJobHandledKey(highlightJobId);
         setWeekOffset(wOffset);
         setSelectedDay(dayOfWeek);
         setSelectedJob(job);
@@ -3325,16 +3319,17 @@ export default function ScheduleScreen() {
       }
     };
     fetchAndOpen();
-  }, [highlightJobId, jobs, isJobSyncCompany]);
+    return () => { cancelled = true; };
+  }, [allowLegacyJobAuthority, highlightJobId, highlightJobHandledKey, highlightedJob]);
 
   // Pull-to-refresh handler for detailer view
   const handleRefresh = useCallback(async () => {
-    if (!employee?.employeeId) return;
+    if (!employee?.employeeId && !isJobSyncCompany) return;
     setIsRefreshing(true);
-    const slug: LocationSlug = employee.city ? cityToSlug(employee.city) : selectedLocation;
-    await syncServerJobs(slug, employee);
+    const slug: LocationSlug = employee?.city ? cityToSlug(employee.city) : selectedLocation;
+    await syncServerJobsRef.current(slug, employee);
     setIsRefreshing(false);
-  }, [employee, selectedLocation]);
+  }, [employee, isJobSyncCompany, selectedLocation]);
 
   const openAdd = (sh = 8, eh = 9) => {
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
@@ -3371,7 +3366,7 @@ export default function ScheduleScreen() {
     if (!firstName.trim() || !lastName.trim() || !address.trim()) return;
     const resolvedTitle = serviceTitle.trim() || (packageId ? (PACKAGES.find(p => p.id === packageId)?.title ?? "Detail Service") : "Detail Service");
     const newJob: Job = {
-      id: Date.now().toString(),
+      id: createLocalJobId(),
       firstName: firstName.trim(), lastName: lastName.trim(),
       email: email.trim(), phone: phone.trim(), address: address.trim(),
       vehicleType, packageId, addonIds, addonQtys,
@@ -3569,24 +3564,6 @@ export default function ScheduleScreen() {
   };
 
   // ─── Enhanced Job Detail Helpers ────────────────────────────────────────────
-
-  const loadCustomerHistory = async (job: Job) => {
-    if (!allowLegacyJobAuthority) return;
-    if (!job.phone && !job.email) return;
-    setCustomerHistoryLoading(true);
-    try {
-      const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      // tRPC v11 wraps response data in .result.data.json
-      const jobs = data?.result?.data?.json ?? data?.result?.data ?? [];
-      setCustomerHistoryJobs(jobs);
-    } catch {
-      setCustomerHistoryJobs([]);
-    } finally {
-      setCustomerHistoryLoading(false);
-    }
-  };
 
   const saveJobTags = async (job: Job, newTags: string[]) => {
     if (!allowLegacyJobAuthority) return;
@@ -3810,7 +3787,7 @@ export default function ScheduleScreen() {
       return;
     }
     // selectedJob may be null if the detail modal was dismissed before checkout opened (iOS modal stacking fix)
-    const job = selectedJob ?? checkoutJobRef.current;
+    const job = selectedJob ?? checkoutJob;
     if (!job) return;
     const updated = jobs.map((j) => j.id === job.id ? { ...j, payment, status: "finished" as JobStatus } : j);
     persistJobs(updated);
@@ -4028,7 +4005,7 @@ export default function ScheduleScreen() {
       const duration = Math.max(1, job.endHour - job.startHour);
       const newEndHour = Math.min(newStartHour + duration, HOURS[HOURS.length - 1] + 1);
       const updated = prev.map((j) => j.id === jobId ? { ...j, startHour: newStartHour, endHour: newEndHour } : j);
-      AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       // Sync moved job to server (fire-and-forget)
       if (!job.isOnlineBooking) {
         jobUpsertMutation.mutate({
@@ -4118,6 +4095,13 @@ export default function ScheduleScreen() {
     return false;
   });
   const jobsByDay = weekDates.map((_, i) => visibleJobs.some((j) => j.dayIndex === i && j.weekOffset === weekOffset));
+
+  if (isJobSyncCompany && !companyTimezoneReady) {
+    return <ScreenContainer><View style={{ padding: 24, gap: 12 }}>
+      <Text style={{ color: colors.foreground }}>{companyJobsError || "Loading Company calendar…"}</Text>
+      <TouchableOpacity onPress={handleRefresh}><Text style={{ color: colors.primary }}>Retry</Text></TouchableOpacity>
+    </View></ScreenContainer>;
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -4485,7 +4469,7 @@ export default function ScheduleScreen() {
                     {allowLegacyJobAuthority ? !selectedJob.payment ? (
                       <TouchableOpacity
                         onPress={() => {
-                          checkoutJobRef.current = selectedJob;
+                          setCheckoutJob(selectedJob);
                           // Close job detail first — iOS cannot stack two modals reliably
                           setSelectedJob(null);
                           setShowUpsellPanel(false);
@@ -6365,23 +6349,23 @@ export default function ScheduleScreen() {
       </Modal>
 
       {/* Checkout Modal - rendered at root level to avoid iOS nested-modal issue */}
-      {companyScheduleCheckoutMounted({ authority: companyAuthority, showCheckout }) && (checkoutJobRef.current ?? selectedJob) && (
+      {companyScheduleCheckoutMounted({ authority: companyAuthority, showCheckout }) && (checkoutJob ?? selectedJob) && (
         <CheckoutModal
           visible={showCheckout}
-          job={(checkoutJobRef.current ?? selectedJob)!}
+          job={(checkoutJob ?? selectedJob)!}
           onClose={() => {
             setShowCheckout(false);
             // Re-open the job detail so the user can go back after cancelling
-            if (checkoutJobRef.current) {
+            if (checkoutJob) {
               setTimeout(() => {
-                setSelectedJob(checkoutJobRef.current);
-                checkoutJobRef.current = null;
+                setSelectedJob(checkoutJob);
+                setCheckoutJob(null);
               }, 300);
             }
           }}
           onComplete={(p) => {
             handlePaymentComplete(p);
-            checkoutJobRef.current = null;
+            setCheckoutJob(null);
           }}
         />
       )}
