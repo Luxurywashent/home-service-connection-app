@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "../server/routers";
 import { COOKIE_NAME } from "../shared/const";
 import type { TrpcContext } from "../server/_core/context";
+
+const triggerGhlSmsMock = vi.hoisted(() => vi.fn());
+// Logout uses the real router and cookie code, but must not import the server
+// entry point just because unrelated legacy SMS routes share this router.
+vi.mock("../server/_core/index", () => ({ triggerGhlSms: triggerGhlSmsMock }));
 
 type CookieCall = {
   name: string;
@@ -50,6 +55,7 @@ describe("auth.logout", () => {
     const result = await caller.auth.logout();
 
     expect(result).toEqual({ success: true });
+    expect(triggerGhlSmsMock).not.toHaveBeenCalled();
     expect(clearedCookies).toHaveLength(1);
     expect(clearedCookies[0]?.name).toBe(COOKIE_NAME);
     expect(clearedCookies[0]?.options).toMatchObject({
