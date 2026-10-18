@@ -36,11 +36,14 @@ jobs:
       - name: Run Expo diagnostics
         run: npx expo-doctor
 
-      - name: Run complete offline regression suite
-        run: pnpm test
+      - name: Run deterministic Company contract tests
+        run: pnpm exec vitest run tests/jobsync-mobile-api.test.ts tests/jobsync-native-session.test.ts --pool=forks --poolOptions.forks.singleFork=true
 
       - name: Type check
         run: pnpm check
+
+      - name: Run complete offline regression suite
+        run: pnpm test
 
       - name: Build server
         run: pnpm build
