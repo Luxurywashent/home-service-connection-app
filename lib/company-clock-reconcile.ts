@@ -1,3 +1,5 @@
+import { isRequestCancellation } from "@/lib/jobsync-mobile-api";
+
 export type CompanyClockIntent = "clock-in" | "clock-out" | "break-start" | "break-end";
 
 export type CompanyClockServerState = {
@@ -23,6 +25,7 @@ export function reconcileClockAction(
   actionError: unknown,
 ): CompanyClockReconcileResult {
   if (!server) {
+    if (isRequestCancellation(actionError)) return { status: "unknown", message: UNCONFIRMED };
     return { status: "unknown", message: actionError ? `${clockActionMessage(actionError)} ${UNCONFIRMED}` : UNCONFIRMED };
   }
   if (intent === "clock-in") {

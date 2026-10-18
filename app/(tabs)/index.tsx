@@ -11,6 +11,7 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import {
   allowsLegacyTimekeepingAuthority,
+  companyReadFailure,
   resolveCompanyDisplayedHours,
   resolveCompanyTimekeepingAuthority,
   usesCompanyTimekeepingAuthority,
@@ -477,10 +478,11 @@ function DetailerDashboard() {
         }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setCompanyHours(null);
-          setCompanyHoursError(error instanceof Error ? error.message : "Company hours are unavailable.");
-        }
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
+        setCompanyHours(null);
+        setCompanyHoursError(message);
       });
     return () => { cancelled = true; };
   }, [isCompanyTimekeeping, jobSyncSession?.token, view]);

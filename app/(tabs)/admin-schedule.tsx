@@ -61,7 +61,7 @@ import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   companyAddJobUsesCanonicalCustomers,
   companyAssignedUserId,
-  companyCanonicalReadError,
+  companyReadFailure,
   companyScheduleDateTime,
   companyScheduleLegacyPaymentQueryEnabled,
   mapCanonicalJobToScheduleFields,
@@ -1737,8 +1737,11 @@ export default function AdminScheduleScreen() {
           setCompanyJobsError(null);
           setJobs(mappedJobs);
         } catch (error) {
-          setJobs([]);
-          setCompanyJobsError(companyCanonicalReadError(error));
+          const message = companyReadFailure(error);
+          if (message) {
+            setJobs([]);
+            setCompanyJobsError(message);
+          }
         } finally { setIsSyncing(false); }
       };
       void syncCompanyJobs();

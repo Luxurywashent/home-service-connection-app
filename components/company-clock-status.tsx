@@ -1,17 +1,21 @@
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { AppState, type AppStateStatus, ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useColors } from "@/hooks/use-colors";
+import { publishCompanyClockNotice } from "@/lib/company-clock-notice";
 import { reconcileClockAction, type CompanyClockIntent } from "@/lib/company-clock-reconcile";
 import {
   clockInHomeServiceConnected,
   clockOutHomeServiceConnected,
   endHomeServiceConnectedBreak,
   getHomeServiceConnectedTimeState,
+  isRequestCancellation,
   startHomeServiceConnectedBreak,
   type HomeServiceConnectedTimeState,
 } from "@/lib/jobsync-mobile-api";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
+
+const STATUS_POLL_MS = 30_000;
 
 export function CompanyClockStatus({ token }: { token: string }) {
   const colors = useColors();
@@ -19,33 +23,64 @@ export function CompanyClockStatus({ token }: { token: string }) {
   const [state, setState] = useState<HomeServiceConnectedTimeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const actionInFlight = useRef(false);
+  const refreshAbort = useRef<AbortController | null>(null);
+  const refreshGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
+    refreshAbort.current?.abort();
+    const controller = new AbortController();
+    refreshAbort.current = controller;
+    const generation = ++refreshGeneration.current;
     try {
-      setError(null);
-      const nextState = await getHomeServiceConnectedTimeState(token);
+      const nextState = await getHomeServiceConnectedTimeState(token, { signal: controller.signal });
+      if (generation !== refreshGeneration.current) return;
       setState(nextState);
+      publishCompanyClockNotice(null);
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
+      if (generation !== refreshGeneration.current || controller.signal.aborted || isRequestCancellation(refreshError)) return;
+      const message = refreshError instanceof Error && refreshError.message.trim()
+        ? refreshError.message
+        : "Unable to refresh your time status.";
+      publishCompanyClockNotice(message);
     } finally {
-      setLoading(false);
+      if (generation === refreshGeneration.current) setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    setLoading(true);
-    void refresh();
-    const interval = setInterval(() => { void refresh(); }, 30_000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const poll = () => {
+      void refresh();
+      interval = setInterval(() => { void refresh(); }, STATUS_POLL_MS);
+    };
+    const stop = () => {
+      if (interval) clearInterval(interval);
+      interval = undefined;
+      refreshAbort.current?.abort();
+    };
+    const foreground = (next: AppStateStatus) => next !== "background" && next !== "inactive";
+    const onChange = (next: AppStateStatus) => {
+      if (foreground(next)) {
+        if (interval) clearInterval(interval);
+        poll();
+      } else {
+        stop();
+      }
+    };
+    if (foreground(AppState.currentState)) poll();
+    const subscription = AppState.addEventListener("change", onChange);
+    return () => {
+      stop();
+      publishCompanyClockNotice(null);
+      subscription.remove();
+    };
   }, [refresh, revision]);
 
   const run = useCallback(async (action: () => Promise<unknown>, intent: CompanyClockIntent) => {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
     setWorking(true);
-    setError(null);
     let actionError: unknown = null;
     try {
       await action();
@@ -61,33 +96,22 @@ export function CompanyClockStatus({ token }: { token: string }) {
     const result = reconcileClockAction(intent, server, actionError);
     if (result.status === "confirmed") {
       setState(result.state);
-      setError(null);
+      publishCompanyClockNotice(null);
     } else {
-      setError(result.message);
+      publishCompanyClockNotice(result.message);
     }
     actionInFlight.current = false;
     setWorking(false);
   }, [token]);
 
-  if (loading) return <ActivityIndicator color={colors.primary} size="small" />;
-  if (error && !state) {
-    return (
-      <View style={{ alignItems: "flex-end", maxWidth: 220 }}>
-        <Text style={{ color: colors.error, fontSize: 11, textAlign: "right" }}>{error}</Text>
-        <TouchableOpacity accessibilityRole="button" onPress={() => { setLoading(true); void refresh(); }} style={{ marginTop: 6 }}>
-          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  if (loading && !state) return <ActivityIndicator color={colors.primary} size="small" />;
 
   const isClockedIn = state?.isClockedIn === true;
   const isOnBreak = state?.activeBreak?.isActive === true;
   const buttonBase = { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 } as const;
 
   return (
-    <View style={{ alignItems: "flex-end", gap: 5 }}>
-      {error ? <Text style={{ color: colors.error, fontSize: 11, maxWidth: 220, textAlign: "right" }}>{error}</Text> : null}
+    <View style={{ alignItems: "flex-end" }}>
       <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
         {isClockedIn ? (
           <>

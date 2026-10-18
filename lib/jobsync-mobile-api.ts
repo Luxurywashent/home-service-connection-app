@@ -214,9 +214,61 @@ function getJobSyncBaseUrl() {
   return resolveJobSyncBaseUrl();
 }
 
+export class JobSyncRequestCanceledError extends Error {
+  readonly canceled = true;
+
+  constructor() {
+    super("Home Service Connected request was canceled.");
+    this.name = "JobSyncRequestCanceledError";
+  }
+}
+
+const REQUEST_TIMEOUT_MESSAGE = "Home Service Connected took too long to respond. Check your connection and try again.";
+
+/** True for caller aborts and Expo's native URLSession cancellation. A timeout is classified separately. */
+export function isRequestCancellation(error: unknown): boolean {
+  if (error instanceof JobSyncRequestCanceledError) return true;
+  if (!error || (typeof error !== "object" && typeof error !== "string")) return false;
+  if (typeof error === "object" && error !== null && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause && cause !== error && isRequestCancellation(cause)) return true;
+  }
+  const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = typeof error === "string"
+    ? error
+    : typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  if (name === "AbortError" || name === "JobSyncRequestCanceledError" || name === "FetchRequestCanceledException") return true;
+  const blob = `${name} ${message}`;
+  return blob.includes("FetchRequestCanceledException")
+    || blob.includes("Fetch request has been canceled")
+    || blob.includes("The operation was aborted");
+}
+
+function transportFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/Network request failed|Failed to fetch|NetworkError|The Internet connection appears to be offline|network connection was lost/i.test(message)) {
+    return new Error("No connection to Home Service Connected. Check your network and try again.");
+  }
+  return error instanceof Error ? error : new Error("Unable to reach Home Service Connected.");
+}
+
 async function requestJson(path: string, init: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), COMPANY_TIME_REQUEST_TIMEOUT_MS);
+  const external = init.signal;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, COMPANY_TIME_REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => {
+    controller.abort();
+  };
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener("abort", abortFromCaller);
+  }
   try {
     const response = await fetch(`${getJobSyncBaseUrl()}${path}`, {
       ...init,
@@ -233,12 +285,12 @@ async function requestJson(path: string, init: RequestInit) {
     }
     return payload;
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Home Service Connected took too long to respond. Check your connection and try again.");
-    }
-    throw error;
+    if (timedOut) throw new Error(REQUEST_TIMEOUT_MESSAGE);
+    if (external?.aborted || isRequestCancellation(error)) throw new JobSyncRequestCanceledError();
+    throw transportFailure(error);
   } finally {
     clearTimeout(timeout);
+    external?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -1659,8 +1711,12 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   };
 }
 
-export async function getHomeServiceConnectedTimeState(token: string) {
-  const payload = await requestJson(TIME_CURRENT_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+export async function getHomeServiceConnectedTimeState(token: string, init?: { signal?: AbortSignal }) {
+  const payload = await requestJson(TIME_CURRENT_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+    ...(init?.signal ? { signal: init.signal } : {}),
+  });
   return normalizeHomeServiceConnectedTimeState(payload);
 }
 

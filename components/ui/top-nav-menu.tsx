@@ -10,6 +10,7 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
+import { CompanyClockNotice } from "@/components/company-clock-notice";
 import { HeaderClockStatus } from "@/components/header-clock-status";
 
 export interface TopNavMenuProps {
@@ -228,6 +229,8 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
             </Pressable>
           </View>
         </View>
+
+        <CompanyClockNotice />
 
         {/* ── Unread Chat Banner ── */}
         <View style={{ marginHorizontal: -12 }}>

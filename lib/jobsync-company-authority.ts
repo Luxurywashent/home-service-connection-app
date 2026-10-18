@@ -1,9 +1,10 @@
-import type {
-  JobSyncCanonicalJobStatus,
-  JobSyncCompanyInvoice,
-  JobSyncCompanyUnpaidJob,
-  JobSyncMobileJob,
-  JobSyncNativeSession,
+import {
+  isRequestCancellation,
+  type JobSyncCanonicalJobStatus,
+  type JobSyncCompanyInvoice,
+  type JobSyncCompanyUnpaidJob,
+  type JobSyncMobileJob,
+  type JobSyncNativeSession,
 } from "@/lib/jobsync-mobile-api";
 
 export const COMPANY_LEGACY_FALLTHROUGH_BLOCKED =
@@ -377,6 +378,21 @@ export function resolveCompanyDisplayedHours(input: {
 
 export function companyCanonicalReadError(error: unknown) {
   return error instanceof Error && error.message.trim() ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED;
+}
+
+/** Screen-level read failure. Expected cancellation is not a connection error. */
+export function companyReadFailure(error: unknown): string | null {
+  if (isRequestCancellation(error)) return null;
+  return companyCanonicalReadError(error);
+}
+
+/** Write failure that must not be retried automatically. Cancellation means the saved state is unconfirmed. */
+export function companyWriteFailure(error: unknown, fallback?: string) {
+  if (isRequestCancellation(error)) {
+    return "Home Service Connected did not confirm this change. Check the saved result before trying again.";
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback ?? companyCanonicalReadError(error);
 }
 
 export function companyScheduleWritesLocalMirror(): false {

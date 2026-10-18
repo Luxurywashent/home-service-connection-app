@@ -10,7 +10,7 @@ import { useColors } from "@/hooks/use-colors";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
   companyCanonicalListState,
-  companyCanonicalReadError,
+  companyReadFailure,
 } from "@/lib/jobsync-company-authority";
 import { getJobSyncCompanyCustomers, type JobSyncCompanyCustomer } from "@/lib/jobsync-mobile-api";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
@@ -35,8 +35,10 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
       setCustomers(await getJobSyncCompanyCustomers(token));
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setCustomers([]);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }

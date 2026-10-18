@@ -45,7 +45,7 @@ import {
   allowsLegacyJobAuthority,
   canonicalJobId,
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
   companyScheduleCheckoutMounted,
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
@@ -2795,8 +2795,10 @@ export default function ScheduleScreen() {
         setCompanyJobsError(null);
         setJobs(mappedCompanyJobs);
       } catch (error) {
+        const message = companyReadFailure(error);
+        if (!message) return;
         setJobs([]);
-        setCompanyJobsError(companyCanonicalReadError(error));
+        setCompanyJobsError(message);
       }
       return;
     }

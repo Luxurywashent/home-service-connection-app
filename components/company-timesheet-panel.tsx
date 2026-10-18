@@ -9,8 +9,9 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import {
   COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
 } from "@/lib/jobsync-company-authority";
+import { describeCompanyShift, formatCompanyClockTime } from "@/lib/company-shift-display";
 import {
   getHomeServiceConnectedTeamTimeSummary,
   getHomeServiceConnectedTimesheetPage,
@@ -35,13 +36,6 @@ function weekRange(weekOffset = 0) {
     return `${year}-${month}-${dayOfMonth}`;
   };
   return { start: ymd(monday), end: ymd(sunday), monday, sunday };
-}
-
-function formatClockTime(value: string | null) {
-  if (!value) return "--:--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--:--";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 function formatDateLabel(dateStr: string) {
@@ -100,10 +94,12 @@ export function CompanyTimesheetPanel({
       }
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setRecords([]);
       setTeam([]);
       setWeekLabel(null);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -243,7 +239,16 @@ export function CompanyTimesheetPanel({
           <CompanyAuthorityMessage title="No clock records for this week" detail="This empty list came from Home Service Connected, not a local timesheet table." />
         ) : (
           <View style={{ gap: 12, paddingHorizontal: 20 }}>
-            {records.map((record) => (
+            {records.map((record) => {
+              const shift = describeCompanyShift({
+                clockIn: record.clockIn,
+                clockOut: record.clockOut,
+                breakStart: record.breakStart,
+                breakEnd: record.breakEnd,
+                totalHours: record.totalHours,
+                timeZone: weekLabel?.timezone,
+              });
+              return (
               <View
                 key={record.id}
                 style={{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, padding: 16 }}
@@ -254,28 +259,34 @@ export function CompanyTimesheetPanel({
                 <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Clock In</Text>
-                    <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "700" }}>{formatClockTime(record.clockIn)}</Text>
+                    <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "700" }}>{shift.clockInLabel}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Clock Out</Text>
                     <Text style={{ color: record.clockOut ? colors.success : colors.warning, fontSize: 14, fontWeight: "700" }}>
-                      {formatClockTime(record.clockOut)}
+                      {shift.clockOutLabel}
                     </Text>
                   </View>
                 </View>
                 <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>
                   {(record.totalHours ?? 0).toFixed(2)} hrs · {record.approvalStatus || "pending"}
                 </Text>
+                {shift.recordedHoursMatchTimestamps === false ? (
+                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
+                    Recorded hours do not match these clock timestamps. The stored clock record was not changed.
+                  </Text>
+                ) : null}
                 {record.reviewerNote ? (
                   <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>{record.reviewerNote}</Text>
                 ) : null}
                 {record.breakStart ? (
                   <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
-                    Break {formatClockTime(record.breakStart)}{record.breakEnd ? ` – ${formatClockTime(record.breakEnd)}` : " · active"}
+                    Break {formatCompanyClockTime(record.breakStart, weekLabel?.timezone)}{record.breakEnd ? ` – ${formatCompanyClockTime(record.breakEnd, weekLabel?.timezone)}` : " · active"}
                   </Text>
                 ) : null}
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>

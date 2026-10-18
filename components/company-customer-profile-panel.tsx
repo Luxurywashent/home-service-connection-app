@@ -9,7 +9,8 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
   COMPANY_PAYMENT_CONTROLS,
-  companyCanonicalReadError,
+  companyReadFailure,
+  companyWriteFailure,
 } from "@/lib/jobsync-company-authority";
 import {
   getJobSyncCompanyCustomer,
@@ -139,8 +140,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
       setForm(toEditForm(next));
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setCustomer(null);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -173,7 +176,7 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
       setForm(toEditForm(updated));
       setEditing(false);
     } catch (updateError) {
-      setSaveError(companyCanonicalReadError(updateError));
+      setSaveError(companyWriteFailure(updateError));
     } finally {
       setSaving(false);
     }

@@ -37,7 +37,7 @@ jobs:
         run: npx expo-doctor
 
       - name: Run deterministic Company contract tests
-        run: pnpm exec vitest run tests/jobsync-mobile-api.test.ts tests/jobsync-native-session.test.ts tests/schedule-roles-profile.test.ts --pool=forks --poolOptions.forks.singleFork=true
+        run: pnpm exec vitest run tests/jobsync-mobile-api.test.ts tests/jobsync-native-session.test.ts tests/schedule-roles-profile.test.ts tests/fetch-cancel-timesheet-hours.test.ts --pool=forks --poolOptions.forks.singleFork=true
 
       - name: Type check
         run: pnpm check
