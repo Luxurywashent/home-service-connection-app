@@ -1,7 +1,8 @@
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useColors } from "@/hooks/use-colors";
+import { reconcileClockAction, type CompanyClockIntent } from "@/lib/company-clock-reconcile";
 import {
   clockInHomeServiceConnected,
   clockOutHomeServiceConnected,
@@ -19,16 +20,13 @@ export function CompanyClockStatus({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeShiftRecovery, setActiveShiftRecovery] = useState(false);
-  const [activeBreakRecovery, setActiveBreakRecovery] = useState(false);
+  const actionInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
       setError(null);
       const nextState = await getHomeServiceConnectedTimeState(token);
       setState(nextState);
-      if (nextState.isClockedIn) setActiveShiftRecovery(false);
-      if (nextState.activeBreak?.isActive) setActiveBreakRecovery(false);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
     } finally {
@@ -43,55 +41,33 @@ export function CompanyClockStatus({ token }: { token: string }) {
     return () => clearInterval(interval);
   }, [refresh, revision]);
 
-  const run = useCallback(async (
-    action: () => Promise<unknown>,
-    nextState: "clock-in" | "clock-out" | "break-start" | "break-end",
-  ) => {
+  const run = useCallback(async (action: () => Promise<unknown>, intent: CompanyClockIntent) => {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     setWorking(true);
     setError(null);
+    let actionError: unknown = null;
     try {
-      await Promise.race([
-        action(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Time action did not respond. Please sign out and sign in again, then retry.")), 12_000)),
-      ]);
-      setState((current) => {
-        const clockedIn = nextState === "clock-in" ? true : nextState === "clock-out" ? false : current?.isClockedIn === true;
-        const activeBreak = nextState === "break-start"
-          ? { isActive: true, startedAt: new Date().toISOString() }
-          : nextState === "break-end"
-            ? null
-            : current?.activeBreak ?? null;
-        return { isClockedIn: clockedIn, clockInAt: clockedIn ? current?.clockInAt ?? new Date().toISOString() : null, activeBreak };
-      });
-      if (nextState === "clock-in" || nextState === "clock-out") setActiveShiftRecovery(false);
-      if (nextState === "break-start" || nextState === "break-end") setActiveBreakRecovery(false);
-      void refresh();
-    } catch (actionError) {
-      const message = actionError instanceof Error ? actionError.message : "Unable to update your time status.";
-      if (nextState === "clock-in" && /already\s+(?:clocked\s+)?in|already\s+on\s+shift/i.test(message)) {
-        setActiveShiftRecovery(true);
-        setState((current) => ({
-          isClockedIn: true,
-          clockInAt: current?.clockInAt ?? new Date().toISOString(),
-          activeBreak: current?.activeBreak ?? null,
-        }));
-        setError(null);
-      } else if (nextState === "break-start" && /break\s+is\s+already\s+active|already\s+(?:on\s+)?break/i.test(message)) {
-        setActiveShiftRecovery(true);
-        setActiveBreakRecovery(true);
-        setState((current) => ({
-          isClockedIn: true,
-          clockInAt: current?.clockInAt ?? new Date().toISOString(),
-          activeBreak: { isActive: true, startedAt: current?.activeBreak?.startedAt ?? new Date().toISOString() },
-        }));
-        setError(null);
-      } else {
-        setError(message);
-      }
-    } finally {
-      setWorking(false);
+      await action();
+    } catch (error) {
+      actionError = error;
     }
-  }, [refresh]);
+    let server: HomeServiceConnectedTimeState | null = null;
+    try {
+      server = await getHomeServiceConnectedTimeState(token);
+    } catch {
+      server = null;
+    }
+    const result = reconcileClockAction(intent, server, actionError);
+    if (result.status === "confirmed") {
+      setState(result.state);
+      setError(null);
+    } else {
+      setError(result.message);
+    }
+    actionInFlight.current = false;
+    setWorking(false);
+  }, [token]);
 
   if (loading) return <ActivityIndicator color={colors.primary} size="small" />;
   if (error && !state) {
@@ -105,8 +81,8 @@ export function CompanyClockStatus({ token }: { token: string }) {
     );
   }
 
-  const isClockedIn = state?.isClockedIn === true || activeShiftRecovery;
-  const isOnBreak = state?.activeBreak?.isActive === true || activeBreakRecovery;
+  const isClockedIn = state?.isClockedIn === true;
+  const isOnBreak = state?.activeBreak?.isActive === true;
   const buttonBase = { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 } as const;
 
   return (

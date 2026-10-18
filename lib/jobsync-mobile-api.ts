@@ -101,6 +101,11 @@ const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const TIME_TIMESHEETS_PATH = "/api/mobile/v1/time/timesheets";
 const TIME_TEAM_SUMMARY_PATH = "/api/mobile/v1/time/team-summary";
+const DASHBOARD_SUMMARY_PATH = "/api/mobile/v1/dashboard/summary";
+const DISPATCH_BOARD_PATH = "/api/mobile/v1/dispatch/board";
+const DISPATCH_LOCATION_PATH = "/api/mobile/v1/dispatch/location";
+export const COMPANY_TIME_REQUEST_TIMEOUT_MS = 20_000;
+export const COMPANY_LOCATION_STALE_MS = 15 * 60 * 1000;
 const TIME_OFF_PATH = "/api/mobile/v1/time-off";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
@@ -192,7 +197,7 @@ function getJobSyncBaseUrl() {
 
 async function requestJson(path: string, init: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const timeout = setTimeout(() => controller.abort(), COMPANY_TIME_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${getJobSyncBaseUrl()}${path}`, {
       ...init,
@@ -1101,6 +1106,7 @@ export type HomeServiceConnectedTimeState = {
 
 export type HomeServiceConnectedTimesheetRecord = {
   id: number;
+  memberUserId: number | null;
   memberName: string;
   date: string;
   clockIn: string | null;
@@ -1108,6 +1114,43 @@ export type HomeServiceConnectedTimesheetRecord = {
   breakStart: string | null;
   breakEnd: string | null;
   totalHours: number | null;
+  approvalStatus: string;
+  reviewedAt: string | null;
+  reviewerNote: string | null;
+};
+
+export type HomeServiceConnectedTimesheetPage = {
+  records: HomeServiceConnectedTimesheetRecord[];
+  weekStart: string | null;
+  weekEnd: string | null;
+  timezone: string | null;
+};
+
+export type JobSyncCompanyDashboardSummary = {
+  period: string;
+  timezone: string;
+  generatedAt: string;
+  bookedRevenue: number;
+  scheduledRevenue: number;
+  completedJobValue: number;
+  collected: number;
+  outstandingBalance: number;
+  jobsBooked: number;
+  jobsCompleted: number;
+  upsellRevenue: number | null;
+  discountTotal: number | null;
+  upsellDefinition: string;
+  discountDefinition: string;
+};
+
+export type JobSyncCompanyDispatchLocation = {
+  userId: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  recordedAt: string | null;
+  ageSeconds: number | null;
+  stale: boolean;
 };
 
 export type HomeServiceConnectedTeamTimeMember = {
@@ -1595,6 +1638,7 @@ export function normalizeHomeServiceConnectedTimesheetRecord(value: unknown): Ho
   if (!id) return null;
   return {
     id,
+    memberUserId: firstNumber(record?.memberUserId, record?.member_user_id),
     memberName: firstString(record?.memberName, record?.fullName, record?.full_name) ?? "Team Member",
     date: firstString(record?.date, record?.workDate, record?.work_date) ?? "",
     clockIn: firstString(record?.clockIn, record?.clock_in, record?.clockInAt),
@@ -1602,6 +1646,9 @@ export function normalizeHomeServiceConnectedTimesheetRecord(value: unknown): Ho
     breakStart: firstString(record?.breakStart, record?.break_start),
     breakEnd: firstString(record?.breakEnd, record?.break_end),
     totalHours: nullableNumber(record?.totalHours, record?.total_hours),
+    approvalStatus: firstString(record?.approvalStatus, record?.approval_status) ?? "pending",
+    reviewedAt: firstString(record?.reviewedAt, record?.reviewed_at),
+    reviewerNote: firstString(record?.reviewerNote, record?.reviewer_note),
   };
 }
 
@@ -1691,8 +1738,10 @@ export function normalizeHomeServiceConnectedTimeOffReview(payload: unknown): Ho
   };
 }
 
-function timeRangeQuery(input?: { start?: string; end?: string; memberId?: number }) {
+function timeRangeQuery(input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean }) {
   const params = new URLSearchParams();
+  if (input?.weekOffset !== undefined && Number.isInteger(input.weekOffset)) params.set("weekOffset", String(input.weekOffset));
+  if (input?.today) params.set("today", "1");
   if (input?.start) params.set("start", input.start);
   if (input?.end) params.set("end", input.end);
   if (input?.memberId && Number.isSafeInteger(input.memberId) && input.memberId > 0) {
@@ -1702,15 +1751,136 @@ function timeRangeQuery(input?: { start?: string; end?: string; memberId?: numbe
   return query ? `?${query}` : "";
 }
 
-export async function getHomeServiceConnectedTimesheets(
+export function normalizeHomeServiceConnectedTimesheetPage(payload: unknown): HomeServiceConnectedTimesheetPage {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  return {
+    records: normalizeHomeServiceConnectedTimesheets(payload),
+    weekStart: firstString(data.weekStart, data.week_start, root?.weekStart),
+    weekEnd: firstString(data.weekEnd, data.week_end, root?.weekEnd),
+    timezone: firstString(data.timezone, root?.timezone),
+  };
+}
+
+export async function getHomeServiceConnectedTimesheetPage(
   token: string,
-  input?: { start?: string; end?: string; memberId?: number },
+  input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean },
 ) {
   const payload = await requestJson(`${TIME_TIMESHEETS_PATH}${timeRangeQuery(input)}`, {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
   });
-  return normalizeHomeServiceConnectedTimesheets(payload);
+  return normalizeHomeServiceConnectedTimesheetPage(payload);
+}
+
+export async function getHomeServiceConnectedTimesheets(
+  token: string,
+  input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean },
+) {
+  const page = await getHomeServiceConnectedTimesheetPage(token, input);
+  return page.records;
+}
+
+function requiredCompanyMoney(value: unknown, label: string) {
+  const parsed = nullableNumber(value);
+  if (parsed === null) throw new Error(`Home Service Connected did not return ${label}.`);
+  return parsed;
+}
+
+export function isCompanyLocationStale(location: { stale?: boolean; recordedAt?: string | null }, now = Date.now()) {
+  if (location.stale === true || !location.recordedAt) return true;
+  const recorded = new Date(location.recordedAt).getTime();
+  if (!Number.isFinite(recorded)) return true;
+  return now - recorded > COMPANY_LOCATION_STALE_MS;
+}
+
+export function normalizeJobSyncCompanyDashboardSummary(payload: unknown): JobSyncCompanyDashboardSummary {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.summary, root?.data, root);
+  if (!data) throw new Error("Home Service Connected did not return a Company revenue summary.");
+  const timezone = firstString(data.timezone);
+  const generatedAt = firstString(data.generatedAt, data.generated_at);
+  if (!timezone || !generatedAt) throw new Error("Home Service Connected did not return a Company revenue summary.");
+  return {
+    period: firstString(data.period) ?? "day",
+    timezone,
+    generatedAt,
+    bookedRevenue: requiredCompanyMoney(data.bookedRevenue, "booked revenue"),
+    scheduledRevenue: requiredCompanyMoney(data.scheduledRevenue, "scheduled revenue"),
+    completedJobValue: requiredCompanyMoney(data.completedJobValue, "completed job value"),
+    collected: requiredCompanyMoney(data.collected, "collected revenue"),
+    outstandingBalance: requiredCompanyMoney(data.outstandingBalance, "outstanding balance"),
+    jobsBooked: requiredCompanyMoney(data.jobsBooked, "booked jobs"),
+    jobsCompleted: requiredCompanyMoney(data.jobsCompleted, "completed jobs"),
+    upsellRevenue: nullableNumber(data.upsellRevenue),
+    discountTotal: nullableNumber(data.discountTotal),
+    upsellDefinition: firstString(data.upsellDefinition) ?? "Upsell dollars are not stored separately from the job amount.",
+    discountDefinition: firstString(data.discountDefinition) ?? "Discount dollars are not stored separately from the job amount.",
+  };
+}
+
+export async function getJobSyncCompanyDashboardSummary(token: string, input?: { period?: "day" | "week" | "month" | "custom"; customStart?: string; customEnd?: string }) {
+  const params = new URLSearchParams();
+  if (input?.period) params.set("period", input.period);
+  if (input?.customStart) params.set("customStart", input.customStart);
+  if (input?.customEnd) params.set("customEnd", input.customEnd);
+  const query = params.toString();
+  const payload = await requestJson(`${DASHBOARD_SUMMARY_PATH}${query ? `?${query}` : ""}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncCompanyDashboardSummary(payload);
+}
+
+export function normalizeJobSyncCompanyDispatchBoard(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const locations = Array.isArray(data.locations) ? data.locations : [];
+  return {
+    date: firstString(data.date),
+    locations: locations.flatMap((value) => {
+      const row = asRecord(value);
+      const userId = firstNumber(row?.userId, row?.user_id);
+      const latitude = nullableNumber(row?.latitude);
+      const longitude = nullableNumber(row?.longitude);
+      if (!userId || latitude === null || longitude === null) return [];
+      const recordedAt = firstString(row?.recordedAt, row?.recorded_at);
+      const location = {
+        userId,
+        name: firstString(row?.name, row?.technicianName) ?? "Team Member",
+        latitude,
+        longitude,
+        recordedAt,
+        ageSeconds: nullableNumber(row?.ageSeconds, row?.age_seconds),
+        stale: false,
+      };
+      location.stale = isCompanyLocationStale({ stale: row?.stale === true, recordedAt });
+      return [location];
+    }),
+  };
+}
+
+export async function getJobSyncCompanyDispatchBoard(token: string, input?: { date?: string }) {
+  const params = new URLSearchParams();
+  if (input?.date) params.set("date", input.date);
+  const query = params.toString();
+  const payload = await requestJson(`${DISPATCH_BOARD_PATH}${query ? `?${query}` : ""}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncCompanyDispatchBoard(payload);
+}
+
+export async function publishJobSyncCompanyLocation(token: string, input: { latitude: number; longitude: number; accuracyMeters?: number }) {
+  return requestJson(DISPATCH_LOCATION_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      latitude: input.latitude,
+      longitude: input.longitude,
+      ...(input.accuracyMeters !== undefined ? { accuracyMeters: input.accuracyMeters } : {}),
+    }),
+  });
 }
 
 export async function getHomeServiceConnectedTeamTimeSummary(token: string) {

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { CompanyAuthorityLoading, CompanyAuthorityMessage, companyTimeListState } from "@/components/company-authority-state";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import {
   COMPANY_TIMEKEEPING_LEGACY_FALLTHROUGH_BLOCKED,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/jobsync-company-authority";
 import {
   getHomeServiceConnectedTeamTimeSummary,
-  getHomeServiceConnectedTimesheets,
+  getHomeServiceConnectedTimesheetPage,
   sumHomeServiceConnectedTimesheetHours,
   type HomeServiceConnectedTeamTimeMember,
   type HomeServiceConnectedTimesheetRecord,
@@ -65,25 +66,33 @@ export function CompanyTimesheetPanel({
 }) {
   const colors = useColors();
   const router = useRouter();
+  const { session } = useJobSyncAuth();
   const { revision } = useJobSyncSync();
   const manager = showTeam && canManageCompanyTimesheets(role);
+  const selfId = session?.user.id;
   const [weekOffset, setWeekOffset] = useState(0);
-  const [memberId, setMemberId] = useState<number | null>(null);
+  const [memberScope, setMemberScope] = useState<"team" | "self" | number>(manager ? "team" : "self");
   const [records, setRecords] = useState<HomeServiceConnectedTimesheetRecord[]>([]);
   const [team, setTeam] = useState<HomeServiceConnectedTeamTimeMember[]>([]);
+  const [weekLabel, setWeekLabel] = useState<{ start: string; end: string; timezone: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const week = useMemo(() => weekRange(weekOffset), [weekOffset]);
+  const fallbackWeek = useMemo(() => weekRange(weekOffset), [weekOffset]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const nextRecords = await getHomeServiceConnectedTimesheets(token, {
-        start: week.start,
-        end: week.end,
-        ...(manager && memberId ? { memberId } : {}),
+      const memberId = manager && memberScope === "self" && selfId
+        ? selfId
+        : manager && typeof memberScope === "number"
+          ? memberScope
+          : undefined;
+      const page = await getHomeServiceConnectedTimesheetPage(token, {
+        weekOffset,
+        ...(memberId ? { memberId } : {}),
       });
-      setRecords(nextRecords);
+      setRecords(page.records);
+      setWeekLabel(page.weekStart && page.weekEnd ? { start: page.weekStart, end: page.weekEnd, timezone: page.timezone } : null);
       if (manager) {
         setTeam(await getHomeServiceConnectedTeamTimeSummary(token));
       } else {
@@ -93,11 +102,12 @@ export function CompanyTimesheetPanel({
     } catch (refreshError) {
       setRecords([]);
       setTeam([]);
+      setWeekLabel(null);
       setError(companyCanonicalReadError(refreshError));
     } finally {
       setLoading(false);
     }
-  }, [manager, memberId, token, week.end, week.start]);
+  }, [manager, memberScope, selfId, token, weekOffset]);
 
   useEffect(() => {
     void refresh();
@@ -105,7 +115,10 @@ export function CompanyTimesheetPanel({
 
   const listState = companyTimeListState({ loading, error, itemCount: records.length });
   const totalHours = sumHomeServiceConnectedTimesheetHours(records);
-  const selectedMember = team.find((member) => member.id === memberId);
+  const selectedMember = typeof memberScope === "number" ? team.find((member) => member.id === memberScope) : undefined;
+  const weekText = weekLabel
+    ? `${formatDateLabel(weekLabel.start)} – ${formatDateLabel(weekLabel.end)}${weekLabel.timezone ? ` · ${weekLabel.timezone}` : ""}`
+    : `${fallbackWeek.monday.toLocaleDateString()} - ${fallbackWeek.sunday.toLocaleDateString()}`;
 
   return (
     <ScreenContainer className="px-0" edges={["left", "right"]}>
@@ -149,7 +162,7 @@ export function CompanyTimesheetPanel({
               <Text style={{ color: colors.primary, fontSize: 16 }}>← Previous</Text>
             </TouchableOpacity>
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "600" }}>
-              {week.monday.toLocaleDateString()} - {week.sunday.toLocaleDateString()}
+              {weekText}
             </Text>
             <TouchableOpacity accessibilityRole="button" onPress={() => setWeekOffset((value) => value + 1)} style={{ padding: 8 }}>
               <Text style={{ color: colors.primary, fontSize: 16 }}>Next →</Text>
@@ -159,7 +172,7 @@ export function CompanyTimesheetPanel({
             <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" }}>Weekly Hours</Text>
             <Text style={{ color: colors.primary, fontSize: 40, fontWeight: "800" }}>{listState === "error" ? "—" : totalHours.toFixed(2)}</Text>
             <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6 }}>
-              {selectedMember ? `${selectedMember.name} · canonical clock records` : "canonical clock records"}
+              {selectedMember ? `${selectedMember.name} · canonical clock records` : memberScope === "team" && manager ? "Team · canonical clock records" : "canonical clock records"}
             </Text>
           </View>
         </View>
@@ -170,33 +183,47 @@ export function CompanyTimesheetPanel({
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               <TouchableOpacity
                 accessibilityRole="button"
-                onPress={() => setMemberId(null)}
+                onPress={() => setMemberScope("team")}
                 style={{
-                  backgroundColor: memberId === null ? colors.primary : colors.surface,
-                  borderColor: memberId === null ? colors.primary : colors.border,
+                  backgroundColor: memberScope === "team" ? colors.primary : colors.surface,
+                  borderColor: memberScope === "team" ? colors.primary : colors.border,
                   borderRadius: 16,
                   borderWidth: 1,
                   paddingHorizontal: 12,
                   paddingVertical: 8,
                 }}
               >
-                <Text style={{ color: memberId === null ? "#FFFFFF" : colors.foreground, fontSize: 12, fontWeight: "700" }}>Me</Text>
+                <Text style={{ color: memberScope === "team" ? "#FFFFFF" : colors.foreground, fontSize: 12, fontWeight: "700" }}>Team</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setMemberScope("self")}
+                style={{
+                  backgroundColor: memberScope === "self" ? colors.primary : colors.surface,
+                  borderColor: memberScope === "self" ? colors.primary : colors.border,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: memberScope === "self" ? "#FFFFFF" : colors.foreground, fontSize: 12, fontWeight: "700" }}>Me</Text>
               </TouchableOpacity>
               {team.map((member) => (
                 <TouchableOpacity
                   key={member.id}
                   accessibilityRole="button"
-                  onPress={() => setMemberId(member.id)}
+                  onPress={() => setMemberScope(member.id)}
                   style={{
-                    backgroundColor: memberId === member.id ? colors.primary : colors.surface,
-                    borderColor: memberId === member.id ? colors.primary : colors.border,
+                    backgroundColor: memberScope === member.id ? colors.primary : colors.surface,
+                    borderColor: memberScope === member.id ? colors.primary : colors.border,
                     borderRadius: 16,
                     borderWidth: 1,
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                   }}
                 >
-                  <Text style={{ color: memberId === member.id ? "#FFFFFF" : colors.foreground, fontSize: 12, fontWeight: "700" }}>
+                  <Text style={{ color: memberScope === member.id ? "#FFFFFF" : colors.foreground, fontSize: 12, fontWeight: "700" }}>
                     {member.name}{member.clockedIn ? " · in" : ""}
                   </Text>
                 </TouchableOpacity>
@@ -237,8 +264,11 @@ export function CompanyTimesheetPanel({
                   </View>
                 </View>
                 <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>
-                  {(record.totalHours ?? 0).toFixed(2)} hrs
+                  {(record.totalHours ?? 0).toFixed(2)} hrs · {record.approvalStatus || "pending"}
                 </Text>
+                {record.reviewerNote ? (
+                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>{record.reviewerNote}</Text>
+                ) : null}
                 {record.breakStart ? (
                   <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
                     Break {formatClockTime(record.breakStart)}{record.breakEnd ? ` – ${formatClockTime(record.breakEnd)}` : " · active"}

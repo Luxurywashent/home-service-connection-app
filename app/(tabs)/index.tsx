@@ -465,10 +465,11 @@ function DetailerDashboard() {
       setCompanyHoursError(null);
       return () => { cancelled = true; };
     }
-    getHomeServiceConnectedTimesheets(jobSyncSession.token, {
-      start: view === "today" ? weekRange.today : view === "week" ? weekRange.start : "2020-01-01",
-      end: view === "today" ? weekRange.today : view === "week" ? weekRange.end : weekRange.today,
-    })
+    getHomeServiceConnectedTimesheets(jobSyncSession.token, view === "today"
+      ? { today: true }
+      : view === "week"
+        ? { weekOffset: 0 }
+        : { start: "2020-01-01" })
       .then((records) => {
         if (!cancelled) {
           setCompanyHours(sumHomeServiceConnectedTimesheetHours(records));
@@ -482,7 +483,7 @@ function DetailerDashboard() {
         }
       });
     return () => { cancelled = true; };
-  }, [isCompanyTimekeeping, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
+  }, [isCompanyTimekeeping, jobSyncSession?.token, view]);
   const clockInMutation = trpc.timesheet.clockIn.useMutation();
   const clockOutMutation = trpc.timesheet.clockOut.useMutation();
 
