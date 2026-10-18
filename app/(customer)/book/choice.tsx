@@ -59,7 +59,7 @@ export default function BookChoiceStep() {
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>Continue as Guest</Text>
               <Text style={styles.cardDescription}>
-                Book now without an account. We'll send confirmation to your email.
+                Book now without an account. We’ll send confirmation to your email.
               </Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color="#9CA3AF" />

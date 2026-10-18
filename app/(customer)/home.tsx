@@ -17,7 +17,7 @@ import { useCustomerPush } from "@/hooks/use-customer-push";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -183,7 +183,7 @@ export default function CustomerHomeScreen() {
     { enabled: !!token, refetchInterval: 60000 }
   );
   // Pulse animation for tracking banner
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!activeTracking) return;
     const pulse = Animated.loop(
@@ -194,7 +194,7 @@ export default function CustomerHomeScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [activeTracking]);
+  }, [activeTracking, pulseAnim]);
   // Active promotions from admin
   const { data: activePromos = [] } = trpc.promotions.getActive.useQuery(undefined, { refetchInterval: 5 * 60 * 1000 });
   const [expandedPromo, setExpandedPromo] = useState<string | null>(null);
@@ -271,18 +271,6 @@ export default function CustomerHomeScreen() {
     p.muted = true;
     p.play();
   });
-
-  // Ensure both players play on mount (handles cases where autoplay is deferred)
-  useEffect(() => {
-    if (heroConfig.type === "video") {
-      player.muted = true;
-      player.play();
-    }
-    if (actionConfig.type === "video") {
-      player2.muted = true;
-      player2.play();
-    }
-  }, [heroConfig, actionConfig]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#FFFFFF", paddingTop: insets.top }}>
@@ -729,7 +717,7 @@ export default function CustomerHomeScreen() {
         <View style={styles.ctaSection}>
           <Text style={styles.ctaHeadline}>Ready for a spotless vehicle?</Text>
           <Text style={styles.ctaSubtext}>
-            Book your detail in minutes. We'll handle the rest.
+            Book your detail in minutes. We’ll handle the rest.
           </Text>
           <TouchableOpacity
             onPress={() => router.push("/login" as any)}

@@ -87,7 +87,7 @@ export default function InvestorInquiryScreen() {
             <Animated.View entering={FadeInDown.duration(600)} style={styles.formContainer}>
               <Text style={styles.formTitle}>Interested in Investing?</Text>
               <Text style={styles.formSubtitle}>
-                Tell us about yourself and we'll reach out with more details about our investment opportunities.
+                Tell us about yourself and we’ll reach out with more details about our investment opportunities.
               </Text>
 
               {/* Full Name */}

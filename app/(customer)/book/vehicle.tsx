@@ -205,7 +205,7 @@ export default function BookVehicleStep() {
           >
             <Text style={styles.saveBtnText}>Continue</Text>
           </TouchableOpacity>
-          <Text style={styles.infoNote}>We'll send your booking confirmation to the email address above.</Text>
+          <Text style={styles.infoNote}>We’ll send your booking confirmation to the email address above.</Text>
         </ScrollView>
         </KeyboardAvoidingView>
       </ScreenContainer>

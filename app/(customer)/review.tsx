@@ -130,7 +130,7 @@ export default function CustomerReviewScreen() {
             {firstName
               ? `${firstName} left your car looking its best.`
               : "Your car is looking its best."}
-            {"\n"}We'd love to hear what you think!
+            {"\n"}We’d love to hear what you think!
           </Text>
         </View>
 

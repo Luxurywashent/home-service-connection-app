@@ -444,7 +444,7 @@ export default function BookConfirmStep() {
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.confirmNote}>We'll send your booking confirmation to your email.</Text>
+        <Text style={styles.confirmNote}>We’ll send your booking confirmation to your email.</Text>
       </View>
     </ScreenContainer>
   );

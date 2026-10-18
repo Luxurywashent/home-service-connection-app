@@ -135,7 +135,7 @@ export default function BookingSuccessScreen() {
 
         <Text style={styles.title}>Booking Confirmed!</Text>
         <Text style={styles.subtitle}>
-          Your detail has been scheduled. We'll confirm your appointment within 24 hours.
+          Your detail has been scheduled. We’ll confirm your appointment within 24 hours.
         </Text>
 
         {ref && (
@@ -148,7 +148,7 @@ export default function BookingSuccessScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <MaterialIcons name="notifications" size={18} color="#6B7280" />
-            <Text style={styles.infoText}>You'll receive a push notification when your detailer is on the way.</Text>
+            <Text style={styles.infoText}>You’ll receive a push notification when your detailer is on the way.</Text>
           </View>
           <View style={styles.infoRow}>
             <MaterialIcons name="my-location" size={18} color="#6B7280" />

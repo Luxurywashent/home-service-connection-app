@@ -53,7 +53,7 @@ function useCustomerActivityTracking() {
   const startSession = trpc.customerActivity.startSession.useMutation();
   const endSession = trpc.customerActivity.endSession.useMutation();
   const sessionIdRef = useRef<string | null>(null);
-  const sessionStartRef = useRef<number>(Date.now());
+  const sessionStartRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!customer?.customerId) return;
@@ -67,7 +67,7 @@ function useCustomerActivityTracking() {
 
     // End session when app goes to background
     const sub = AppState.addEventListener("change", (state) => {
-      if ((state === "background" || state === "inactive") && sessionIdRef.current) {
+      if ((state === "background" || state === "inactive") && sessionIdRef.current && sessionStartRef.current !== null) {
         const durationSeconds = Math.round((Date.now() - sessionStartRef.current) / 1000);
         endSession.mutate({ sessionId: sessionIdRef.current, durationSeconds });
         sessionIdRef.current = null;
@@ -83,7 +83,7 @@ function useCustomerActivityTracking() {
     return () => {
       sub.remove();
       // End session on unmount
-      if (sessionIdRef.current) {
+      if (sessionIdRef.current && sessionStartRef.current !== null) {
         const durationSeconds = Math.round((Date.now() - sessionStartRef.current) / 1000);
         endSession.mutate({ sessionId: sessionIdRef.current, durationSeconds });
       }
