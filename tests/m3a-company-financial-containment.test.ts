@@ -229,7 +229,9 @@ describe("M3A Company financial containment", () => {
     expect(companyCustomersSource).not.toContain("lifetimeValue");
     expect(customersSource).toContain("CompanyCustomersPanel");
     expect(customersSource).toContain("LegacyAdminCustomersScreen");
-    expect(customersSource).toContain("customers.listAll");
+    expect(customersSource).toContain("getJobSyncCompanyCustomers");
+    expect(customersSource).not.toContain("trpc.customers.listAll");
+    expect(customersSource).toContain('company={(token) => <CompanyCustomersPanel token={token} />}');
     expect(salesCustomersSource).toContain("CompanyCustomersPanel");
   });
 
@@ -310,7 +312,8 @@ describe("M3A Company financial containment", () => {
     expect(financeSource).toContain("trpc.finance.createTransaction");
     expect(financeSource).toContain("TTPSettingsPanel");
     expect(customersSource).toContain("function LegacyAdminCustomersScreen");
-    expect(customersSource).toContain("trpc.customers.listAll");
+    expect(customersSource).toContain("getJobSyncCompanyCustomers");
+    expect(customersSource).not.toContain("trpc.customers.listAll");
     expect(profileSource).toContain("function LegacyAdminCustomerProfileScreen");
     expect(profileSource).toContain("trpc.savedCards.list");
     expect(profileSource).toContain("trpc.estimates.create");
