@@ -62,6 +62,20 @@ interface Props {
   detailerName?: string;
 }
 
+export function NavigationMapModal({ visible, onClose, ...contentProps }: Props) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      {visible ? <NavigationMapModalContent key={`${contentProps.jobId ?? ""}:${contentProps.destination}`} {...contentProps} onClose={onClose} /> : null}
+    </Modal>
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function stripHtml(html: string): string {
@@ -136,8 +150,7 @@ function formatETA(sec: number): string {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function NavigationMapModal({
-  visible,
+function NavigationMapModalContent({
   destination,
   jobName,
   apiKey,
@@ -145,7 +158,7 @@ export function NavigationMapModal({
   onClose,
   jobId,
   detailerName,
-}: Props) {
+}: Omit<Props, "visible">) {
   useKeepAwake();
 
   const mapRef = useRef<MapView>(null);
@@ -175,13 +188,14 @@ export function NavigationMapModal({
 
   // ── Fetch route ─────────────────────────────────────────────────────────────
   const fetchRoute = useCallback(
-    async (origin: LatLng) => {
+    async (origin: LatLng, isCancelled: () => boolean = () => false) => {
       try {
         const originStr = `${origin.latitude},${origin.longitude}`;
         const destStr = encodeURIComponent(destination);
         const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destStr}&mode=driving&key=${apiKey}`;
         const res = await fetch(url);
         const json = await res.json();
+        if (isCancelled()) return;
         if (json.status !== "OK" || !json.routes?.length) {
           setError("Could not find a route. Check the job address.");
           setLoading(false);
@@ -231,7 +245,7 @@ export function NavigationMapModal({
 
         // Initial camera: heading-up, van in lower third
         setTimeout(() => {
-          if (mapRef.current) {
+          if (!isCancelled() && mapRef.current) {
             mapRef.current.animateCamera(
               {
                 center: origin,
@@ -245,41 +259,31 @@ export function NavigationMapModal({
           }
         }, 400);
       } catch {
-        setError("Navigation unavailable. Check your connection.");
-        setLoading(false);
+        if (!isCancelled()) {
+          setError("Navigation unavailable. Check your connection.");
+          setLoading(false);
+        }
       }
     },
-    [destination, apiKey]
+    [apiKey, destination, detailerName, jobId, sendEtaMutation]
   );
 
   // Mount the map only after the modal slide animation completes
   useEffect(() => {
-    if (visible) {
-      mapReadyTimerRef.current = setTimeout(() => setMapMounted(true), 450);
-    } else {
-      if (mapReadyTimerRef.current) clearTimeout(mapReadyTimerRef.current);
-      setMapMounted(false);
-    }
+    mapReadyTimerRef.current = setTimeout(() => setMapMounted(true), 450);
     return () => {
       if (mapReadyTimerRef.current) clearTimeout(mapReadyTimerRef.current);
     };
-  }, [visible]);
+  }, []);
 
   // ── Location watch ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!visible) return;
-    setLoading(true);
-    setError(null);
-    setRoute(null);
-    setRemainingPolyline([]);
-    etaSentRef.current = false;
-    setStepIndex(0);
-    setSpeedMph(0);
-
     let cancelled = false;
 
-    (async () => {
+    const beginNavigation = async () => {
+      try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled) return;
       if (status !== "granted") {
         setError("Location permission required for navigation.");
         setLoading(false);
@@ -289,6 +293,7 @@ export function NavigationMapModal({
       const initial = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.BestForNavigation,
       });
+      if (cancelled) return;
       const pos: LatLng = {
         latitude: initial.coords.latitude,
         longitude: initial.coords.longitude,
@@ -296,10 +301,9 @@ export function NavigationMapModal({
       if (initial.coords.heading != null && initial.coords.heading >= 0) {
         lastBearingRef.current = initial.coords.heading;
       }
-      if (!cancelled) {
-        setCurrentPos(pos);
-        await fetchRoute(pos);
-      }
+      setCurrentPos(pos);
+      await fetchRoute(pos, () => cancelled);
+      if (cancelled) return;
 
       const sub = await Location.watchPositionAsync(
         {
@@ -384,15 +388,26 @@ export function NavigationMapModal({
           }
         }
       );
+      if (cancelled) {
+        sub.remove();
+        return;
+      }
       watcherRef.current = sub;
-    })();
+      } catch {
+        if (!cancelled) {
+          setError("Navigation unavailable. Check your connection.");
+          setLoading(false);
+        }
+      }
+    };
+    void beginNavigation();
 
     return () => {
       cancelled = true;
       watcherRef.current?.remove();
       watcherRef.current = null;
     };
-  }, [visible]);
+  }, [fetchRoute]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleArrive = () => {
@@ -413,17 +428,9 @@ export function NavigationMapModal({
   // ── Render ──────────────────────────────────────────────────────────────────
   const currentStep = route?.steps[stepIndex];
   const nextStep = route?.steps[stepIndex + 1];
-  const isLastStep = route ? stepIndex >= route.steps.length - 1 : false;
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      onRequestClose={handleClose}
-    >
-      <View style={styles.container}>
+    <View style={styles.container}>
         {/* ── Map ── */}
         {Platform.OS !== "web" ? (
           mapMounted ? (
@@ -585,12 +592,11 @@ export function NavigationMapModal({
                 pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
               ]}
             >
-              <Text style={styles.arrivedBtnText}>📍  I've Arrived</Text>
+              <Text style={styles.arrivedBtnText}>{"📍  I've Arrived"}</Text>
             </Pressable>
           </View>
         )}
-      </View>
-    </Modal>
+    </View>
   );
 }
 

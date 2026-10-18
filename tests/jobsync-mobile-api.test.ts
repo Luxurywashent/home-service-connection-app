@@ -13,15 +13,18 @@ import {
   getJobSyncCompanyCustomer,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyFinance,
+  getJobSyncCompanySettings,
   getJobSyncCompanyInvoices,
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
   getJobSyncUnpaidJobs,
+  moveJobSyncCompanyJob,
   rescheduleJobSyncCompanyJob,
   updateJobSyncCompanyJobStatus,
   resolveJobSyncBaseUrl,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
+  normalizeJobSyncCompanySettings,
   normalizeJobSyncMobileSession,
   normalizeJobSyncFeatureAccess,
   normalizeHomeServiceConnectedTimeState,
@@ -109,6 +112,26 @@ describe("JobSync mobile API contract", () => {
     expect(session?.user.role).toBe("owner");
     expect(session?.company?.id).toBe(9);
     expect(session?.token).toBe("company-token");
+  });
+
+  it("reads a canonical Company timezone for schedule rendering and writes", async () => {
+    expect(normalizeJobSyncCompanySettings({ company: { id: 9, name: "Casey Services", timeZone: "America/Chicago" } }))
+      .toEqual({ id: 9, name: "Casey Services", timezone: "America/Chicago" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ company: { id: 9, name: "Casey Services", timezone: "America/Chicago" } }),
+    } as Response);
+    try {
+      await expect(getJobSyncCompanySettings("company-token")).resolves.toEqual({
+        id: 9,
+        name: "Casey Services",
+        timezone: "America/Chicago",
+      });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/company/settings");
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer company-token" } });
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("normalizes a Platform Admin profile without Company context", () => {
@@ -422,6 +445,37 @@ describe("JobSync mobile API contract", () => {
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/company/jobs/45/status");
       expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/company/jobs/45/assignment");
       expect(String(fetchMock.mock.calls[2][0])).toContain("/api/mobile/v1/company/jobs/45/schedule");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("uses one revision-guarded atomic schedule request and does not retry a failed move as a second effect", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: { message: "This Job changed before it could be moved." } }),
+    } as Response);
+    try {
+      await expect(moveJobSyncCompanyJob("company-token", 45, {
+        scheduledStartAt: "2026-09-11T15:00:00.000Z",
+        scheduledEndAt: "2026-09-11T16:30:00.000Z",
+        assignedUserId: 41,
+        expectedUpdatedAt: "2026-09-11T14:00:00.000Z",
+      })).rejects.toThrow("This Job changed before it could be moved.");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/jobs/45/schedule");
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+        method: "PATCH",
+        headers: { Authorization: "Bearer company-token" },
+      });
+      expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+        scheduledStartAt: "2026-09-11T15:00:00.000Z",
+        scheduledEndAt: "2026-09-11T16:30:00.000Z",
+        assignedUserId: 41,
+        expectedUpdatedAt: "2026-09-11T14:00:00.000Z",
+      });
     } finally {
       fetchMock.mockRestore();
     }

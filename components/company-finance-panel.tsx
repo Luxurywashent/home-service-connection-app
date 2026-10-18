@@ -45,7 +45,6 @@ export function CompanyFinancePanel({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       setFinance(await getJobSyncCompanyFinance(token));
       setError(null);
@@ -58,8 +57,23 @@ export function CompanyFinancePanel({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    getJobSyncCompanyFinance(token)
+      .then((nextFinance) => {
+        if (cancelled) return;
+        setFinance(nextFinance);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setFinance(null);
+        setError(companyCanonicalReadError(refreshError));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [revision, token]);
 
   const display = resolveCompanyFinanceDisplay({
     mode: "company",

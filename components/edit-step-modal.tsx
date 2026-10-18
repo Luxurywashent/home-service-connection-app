@@ -1,7 +1,6 @@
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Alert } from "react-native";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useColors } from "@/hooks/use-colors";
-import { cn } from "@/lib/utils";
 import * as Haptics from "expo-haptics";
 
 interface EditStepModalProps {
@@ -18,7 +17,12 @@ interface EditStepModalProps {
   isLoading: boolean;
 }
 
-export function EditStepModal({
+export function EditStepModal(props: EditStepModalProps) {
+  if (!props.visible) return null;
+  return <EditStepModalForm key={props.step?.id ?? props.step?.title ?? "new-step"} {...props} />;
+}
+
+function EditStepModalForm({
   visible,
   step,
   onClose,
@@ -26,23 +30,12 @@ export function EditStepModal({
   isLoading,
 }: EditStepModalProps) {
   const colors = useColors();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [warnings, setWarnings] = useState("");
-  const [tips, setTips] = useState("");
+  const [title, setTitle] = useState(step?.title ?? "");
+  const [description, setDescription] = useState(step?.description ?? "");
+  const [imageUrl, setImageUrl] = useState(step?.imageUrl ?? "");
+  const [warnings, setWarnings] = useState(step?.warnings ?? "");
+  const [tips, setTips] = useState(step?.tips ?? "");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (step) {
-      setTitle(step.title || "");
-      setDescription(step.description || "");
-      setImageUrl(step.imageUrl || "");
-      setWarnings(step.warnings || "");
-      setTips(step.tips || "");
-      setError("");
-    }
-  }, [step, visible]);
 
   const handleSave = async () => {
     if (!title.trim()) {

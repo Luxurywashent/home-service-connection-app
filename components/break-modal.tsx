@@ -132,7 +132,7 @@ export function BreakModal({ visible, onClose }: BreakModalProps) {
               Select Break Type
             </Text>
             <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
-              Choose the type of break you're taking
+              {"Choose the type of break you're taking"}
             </Text>
           </View>
 

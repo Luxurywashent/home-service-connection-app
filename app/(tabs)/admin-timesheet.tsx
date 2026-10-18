@@ -304,32 +304,25 @@ function AddTimeSlotModal({
 }
 
 // ─── Add/Edit Break Modal ─────────────────────────────────────────────────────
-function BreakModal({
-  visible, date, existingBreak, onClose, onSave, colors,
-}: {
+type BreakModalProps = {
   visible: boolean; date: string;
   existingBreak?: { breakId: string; breakType: string; breakStartTime?: any; breakEndTime?: any; status: string } | null;
   onClose: () => void;
   onSave: (data: { breakType: string; startTime?: Date; endTime?: Date; status: string }) => void;
   colors: any;
-}) {
+};
+
+function BreakModal(props: BreakModalProps) {
+  return <BreakModalForm key={`${props.visible}:${props.existingBreak?.breakId ?? "new"}:${props.date}`} {...props} />;
+}
+
+function BreakModalForm({ visible, date, existingBreak, onClose, onSave, colors }: BreakModalProps) {
   const [breakType, setBreakType] = useState<string>(existingBreak?.breakType ?? "morning_15min");
   const [startTime, setStartTime] = useState(existingBreak?.breakStartTime ? toTimeStr(existingBreak.breakStartTime) : "10:00 AM");
   const [endTime, setEndTime] = useState(existingBreak?.breakEndTime ? toTimeStr(existingBreak.breakEndTime) : "10:15 AM");
   const [status, setStatus] = useState(existingBreak?.status ?? "taken");
   const [hasStart, setHasStart] = useState<boolean>(!!existingBreak?.breakStartTime || true);
   const [hasEnd, setHasEnd] = useState<boolean>(!!existingBreak?.breakEndTime || true);
-
-  React.useEffect(() => {
-    if (visible) {
-      setBreakType(existingBreak?.breakType ?? "morning_15min");
-      setStartTime(existingBreak?.breakStartTime ? toTimeStr(existingBreak.breakStartTime) : "10:00 AM");
-      setEndTime(existingBreak?.breakEndTime ? toTimeStr(existingBreak.breakEndTime) : "10:15 AM");
-      setStatus(existingBreak?.status ?? "taken");
-      setHasStart(true);
-      setHasEnd(!!existingBreak?.breakEndTime);
-    }
-  }, [visible, existingBreak]);
 
   const handleSave = () => {
     const startDate = hasStart ? parseTimeStr(startTime, date) : undefined;

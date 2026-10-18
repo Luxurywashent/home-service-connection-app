@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
@@ -16,6 +16,8 @@ import {
   updateJobSyncCompanyCustomer,
   type JobSyncCompanyCustomerDetail,
 } from "@/lib/jobsync-mobile-api";
+import { companyRequestLoading, companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   const colors = useColors();
@@ -97,6 +99,11 @@ type EditForm = {
   postalCode: string;
 };
 
+type CustomerProfileResource = {
+  customer: JobSyncCompanyCustomerDetail | null;
+  error: string | null;
+};
+
 function toEditForm(customer: JobSyncCompanyCustomerDetail): EditForm {
   return {
     firstName: customer.firstName ?? "",
@@ -113,42 +120,47 @@ function toEditForm(customer: JobSyncCompanyCustomerDetail): EditForm {
 export function CompanyCustomerProfilePanel({ token }: { token: string }) {
   const colors = useColors();
   const { session } = useJobSyncAuth();
+  const { revision, invalidateCanonicalSurfaces } = useJobSyncSync();
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = Number(params.customerId);
   const validId = Number.isSafeInteger(customerId) && customerId > 0;
   const canEdit = session?.user?.role === "owner" || session?.user?.role === "dispatcher";
-  const [customer, setCustomer] = useState<JobSyncCompanyCustomerDetail | null>(null);
-  const [loading, setLoading] = useState(validId);
-  const [error, setError] = useState<string | null>(validId ? null : "A valid Home Service Connected customer is required.");
+  const [customerResource, setCustomerResource] = useState<CompanyRequestResource<CustomerProfileResource> | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!validId) {
-      setCustomer(null);
-      setLoading(false);
-      setError("A valid Home Service Connected customer is required.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const next = await getJobSyncCompanyCustomer(token, customerId);
-      setCustomer(next);
-      setForm(toEditForm(next));
-      setError(null);
-    } catch (refreshError) {
-      setCustomer(null);
-      setError(companyCanonicalReadError(refreshError));
-    } finally {
-      setLoading(false);
-    }
-  }, [customerId, token, validId]);
+  const customerRequest = useMemo(
+    () => validId ? { key: `${token}:${customerId}:${revision}` } : null,
+    [customerId, revision, token, validId],
+  );
+  const customerResult = companyRequestValue(customerRequest?.key ?? null, customerResource);
+  const customer = customerResult?.customer ?? null;
+  const loading = companyRequestLoading(customerRequest?.key ?? null, customerResource);
+  const error = validId
+    ? customerResult?.error ?? null
+    : "A valid Home Service Connected customer is required.";
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!customerRequest) return;
+    let cancelled = false;
+    getJobSyncCompanyCustomer(token, customerId)
+      .then((next) => {
+        if (cancelled) return;
+        setCustomerResource({ requestKey: customerRequest.key, data: { customer: next, error: null } });
+        setForm(toEditForm(next));
+      })
+      .catch((refreshError) => {
+        if (!cancelled) {
+          setCustomerResource({
+            requestKey: customerRequest.key,
+            data: { customer: null, error: companyCanonicalReadError(refreshError) },
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [customerId, customerRequest, token]);
 
   const save = useCallback(async () => {
     if (!form || !validId) return;
@@ -169,15 +181,18 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
         region: form.region,
         postalCode: form.postalCode,
       });
-      setCustomer(updated);
+      if (customerRequest) {
+        setCustomerResource({ requestKey: customerRequest.key, data: { customer: updated, error: null } });
+      }
       setForm(toEditForm(updated));
       setEditing(false);
+      invalidateCanonicalSurfaces();
     } catch (updateError) {
       setSaveError(companyCanonicalReadError(updateError));
     } finally {
       setSaving(false);
     }
-  }, [customerId, form, token, validId]);
+  }, [customerId, customerRequest, form, invalidateCanonicalSurfaces, token, validId]);
 
   return (
     <ScreenContainer edges={["left", "right"]} className="flex-1">

@@ -202,7 +202,7 @@ export function DoorHangerSuggestionModal({
                 fontSize: 14,
               }}
             >
-              Got it, let's go!
+              {"Got it, let's go!"}
             </Text>
           </TouchableOpacity>
         </View>

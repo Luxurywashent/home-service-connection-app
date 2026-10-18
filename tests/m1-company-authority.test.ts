@@ -115,9 +115,9 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(scheduleSource).toContain("mapCanonicalJobToScheduleFields");
     expect(adminScheduleSource).toContain("mapCanonicalJobToScheduleFields");
     expect(scheduleSource).toContain("getJobSyncCompanyJobs");
-    expect(scheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "")');
+    expect(scheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "", companySettings.timezone)');
     expect(scheduleSource).not.toContain("cityToSlug(job.city)");
-    expect(adminScheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "")');
+    expect(adminScheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "", companySettings.timezone)');
     expect(addJobSource).toContain("city: prefill?.city?.trim() || undefined");
     expect(addJobSource).toContain("{!isJobSyncCompany && (");
     expect(scheduleSource).not.toContain("trpc.jobs.upsert.useMutation();\n    if (isJobSyncCompany)");
@@ -158,8 +158,9 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(companyAssignedUserId("jobsync-41")).toBe(41);
     expect(Number.isNaN(new Date(companyScheduleDateTime("2026-09-12", 15)).getTime())).toBe(false);
     expect(scheduleSource).toContain("updateJobSyncCompanyJobStatus");
-    expect(adminScheduleSource).toContain("rescheduleJobSyncCompanyJob");
-    expect(adminScheduleSource).toContain("assignJobSyncCompanyJob");
+    expect(adminScheduleSource).toContain("moveJobSyncCompanyJob");
+    expect(adminScheduleSource).not.toContain("rescheduleJobSyncCompanyJob");
+    expect(adminScheduleSource).not.toContain("assignJobSyncCompanyJob");
   });
 
   it("rejects client-supplied Company identity on Job mutations", async () => {

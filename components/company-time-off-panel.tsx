@@ -76,7 +76,6 @@ export function CompanyTimeOffPanel({
   const [reviewMessage, setReviewMessage] = useState("");
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       const list = await getHomeServiceConnectedTimeOff(token);
       setRequests(list.requests);
@@ -92,8 +91,25 @@ export function CompanyTimeOffPanel({
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    getHomeServiceConnectedTimeOff(token)
+      .then((nextList) => {
+        if (cancelled) return;
+        setRequests(nextList.requests);
+        setCanReview(nextList.canReview);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setRequests([]);
+        setCanReview(false);
+        setError(companyCanonicalReadError(refreshError));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [revision, token]);
 
   const hoursRequested = useMemo(() => {
     if (!startDate || !endDate) return 8;

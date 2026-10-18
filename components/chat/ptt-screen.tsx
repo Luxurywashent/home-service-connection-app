@@ -11,7 +11,7 @@ import React, {
 } from "react";
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Platform, Pressable, Alert, PanResponder, Animated,
+  StyleSheet, Platform, Pressable, Alert, Animated,
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import {
@@ -167,7 +167,7 @@ export function PttButton({ onSend, isSending }: PttButtonProps) {
   const startTimeRef = useRef<number>(0);
   const isRecordingRef = useRef(false);
   const chirpStartPlayer = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [scaleAnim] = useState(() => new Animated.Value(1));
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
@@ -232,22 +232,6 @@ export function PttButton({ onSend, isSending }: PttButtonProps) {
     }
   }, [audioRecorder, onSend, scaleAnim]);
 
-  // Use refs so PanResponder always calls the latest callback version
-  const startRecordingRef = useRef(startRecording);
-  const stopRecordingRef = useRef(stopRecording);
-  useEffect(() => { startRecordingRef.current = startRecording; }, [startRecording]);
-  useEffect(() => { stopRecordingRef.current = stopRecording; }, [stopRecording]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => { startRecordingRef.current(); },
-      onPanResponderRelease: () => { stopRecordingRef.current(); },
-      onPanResponderTerminate: () => { stopRecordingRef.current(); },
-    })
-  ).current;
-
   if (hasPermission === false) {
     return (
       <View style={styles.pttPermDenied}>
@@ -266,29 +250,34 @@ export function PttButton({ onSend, isSending }: PttButtonProps) {
           <Text style={[styles.recordingLabel, { color: "#EF4444" }]}>Recording…</Text>
         </View>
       )}
-      <Animated.View
-        {...(isSending ? {} : panResponder.panHandlers)}
-        style={[
-          styles.pttBtn,
-          {
-            backgroundColor: isRecording ? "#EF4444" : isSending ? colors.border : colors.primary,
-            shadowColor: isRecording ? "#EF4444" : colors.primary,
-            shadowOpacity: isRecording ? 0.5 : 0.25,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
+      <Pressable
+        disabled={isSending}
+        onPressIn={() => { void startRecording(); }}
+        onPressOut={() => { void stopRecording(); }}
       >
-        {isSending ? (
-          <ActivityIndicator color="#fff" size="large" />
-        ) : (
-          <>
-            <Text style={styles.pttIcon}>{isRecording ? "🎙" : "📡"}</Text>
-            <Text style={styles.pttLabel}>
-              {isRecording ? "Release to Send" : "Hold to Talk"}
-            </Text>
-          </>
-        )}
-      </Animated.View>
+        <Animated.View
+          style={[
+            styles.pttBtn,
+            {
+              backgroundColor: isRecording ? "#EF4444" : isSending ? colors.border : colors.primary,
+              shadowColor: isRecording ? "#EF4444" : colors.primary,
+              shadowOpacity: isRecording ? 0.5 : 0.25,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          {isSending ? (
+            <ActivityIndicator color="#fff" size="large" />
+          ) : (
+            <>
+              <Text style={styles.pttIcon}>{isRecording ? "🎙" : "📡"}</Text>
+              <Text style={styles.pttLabel}>
+                {isRecording ? "Release to Send" : "Hold to Talk"}
+              </Text>
+            </>
+          )}
+        </Animated.View>
+      </Pressable>
       <Text style={[styles.pttHint, { color: colors.muted }]}>
         {isRecording
           ? "Speak now — release when done"

@@ -5,7 +5,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 function getWeekRange() {
   const now = new Date();
@@ -40,11 +40,11 @@ function formatExpirationCountdown(expiresAt: string | null | undefined): string
 function TreasureChestReveal({ prizeName, prizeEmoji, onClose, colors }: {
   prizeName: string; prizeEmoji: string; onClose: () => void; colors: any;
 }) {
-  const chestBounce = useRef(new Animated.Value(0)).current;
-  const prizeScale = useRef(new Animated.Value(0)).current;
-  const prizeY = useRef(new Animated.Value(30)).current;
-  const sparkleOpacity = useRef(new Animated.Value(0)).current;
-  const lidRotate = useRef(new Animated.Value(0)).current;
+  const [chestBounce] = useState(() => new Animated.Value(0));
+  const [prizeScale] = useState(() => new Animated.Value(0));
+  const [prizeY] = useState(() => new Animated.Value(30));
+  const [sparkleOpacity] = useState(() => new Animated.Value(0));
+  const [lidRotate] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.sequence([

@@ -143,6 +143,10 @@ function todayStr(): string {
   return `${y}-${m}-${day}`;
 }
 
+function createManualJobId(): string {
+  return Date.now().toString();
+}
+
 // ─── CustomerSearchField ──────────────────────────────────────────────────────
 
 function CustomerSearchField({
@@ -180,7 +184,7 @@ function CustomerSearchField({
       })
       .slice(0, 8)
       .map((customer) => ({ id: customer.id, fullName: customer.name, phone: customer.phone, email: customer.email, address: customer.addressLine1 }))
-    : results as Array<{ id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }>;
+    : results as { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }[];
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -309,7 +313,12 @@ interface AddJobModalProps {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
+export function AddJobModal(props: AddJobModalProps) {
+  if (!props.visible) return null;
+  return <AddJobModalForm {...props} />;
+}
+
+function AddJobModalForm({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
   const colors = useColors();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
@@ -461,56 +470,12 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
 
   useEffect(() => {
     let cancelled = false;
-    if (!visible || !isJobSyncCompany || !jobSyncSession?.token) {
-      if (!isJobSyncCompany) {
-        setCompanyCustomers([]);
-        setCompanyCustomersError(null);
-      }
-      return () => { cancelled = true; };
-    }
+    if (!isJobSyncCompany || !jobSyncSession?.token) return () => { cancelled = true; };
     void getJobSyncCompanyCustomers(jobSyncSession.token)
       .then((customers) => { if (!cancelled) { setCompanyCustomers(customers); setCompanyCustomersError(null); } })
       .catch((error) => { if (!cancelled) setCompanyCustomersError(error instanceof Error ? error.message : "Home Service Connected could not load Company customers."); });
     return () => { cancelled = true; };
-  }, [visible, isJobSyncCompany, jobSyncSession?.token]);
-
-  // ── Reset on open ──
-  useEffect(() => {
-    if (visible) {
-      setFirstName(prefill?.firstName ?? "");
-      setLastName(prefill?.lastName   ?? "");
-      setPhone(prefill?.phone         ?? "");
-      setEmail(prefill?.email         ?? "");
-      setAddress(prefill?.address     ?? "");
-      setSelectedCity((prefill?.city as CitySlug) ?? "crestview");
-      setCustomerSearch("");
-      setShowCustomerDropdown(false);
-      setSelectedCompanyCustomerId(null);
-      setSelectedDate(todayStr());
-      setShowDatePicker(false);
-      setVehicleType(undefined);
-      setPackageId(undefined);
-      setAddonIds([]);
-      setAddonQtys({});
-      setAddonsExpanded(false);
-      setPrice("");
-      setPriceOverridden(false);
-      setShowPriceInput(false);
-      setExtraVehicles([]);
-      setDiscountType("fixed");
-      setDiscountInput("");
-      setShowDiscountRow(false);
-      setJobNotes("");
-      setShowNotesInput(false);
-      setPaymentMethod(null);
-      setStartHour(8);
-      setEndHour(10);
-      setRecurrenceRule(null);
-      setShowRecurrencePicker(false);
-      setNotifyCustomer(true);
-      setSaving(false);
-    }
-  }, [visible]);
+  }, [isJobSyncCompany, jobSyncSession?.token]);
 
   // ── Fetch detailers when city changes ──
   useEffect(() => {
@@ -674,7 +639,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
         });
         Alert.alert("Recurring Jobs Created", `${res.count} job${res.count === 1 ? "" : "s"} scheduled.`);
       } else {
-        await jobUpsertMutation.mutateAsync({ ...basePayload, jobId: Date.now().toString(), notifyCustomer });
+        await jobUpsertMutation.mutateAsync({ ...basePayload, jobId: createManualJobId(), notifyCustomer });
         Alert.alert("Job Saved", `Job for ${firstName} ${lastName} on ${selectedDate} has been saved.`);
       }
       onSaved?.();

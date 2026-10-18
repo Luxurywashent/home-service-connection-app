@@ -6,6 +6,8 @@ import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyJobs } from "@/lib/jobsync-mobile-api";
+import { companyRequestLoading, companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 import { useEmployeePush } from "@/hooks/use-employee-push";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
@@ -93,6 +95,7 @@ export default function AdminDashboard() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: companySyncRevision } = useJobSyncSync();
   const router = useRouter();
   // Register push token so admins receive job and chat notifications
   useEmployeePush();
@@ -101,8 +104,14 @@ export default function AdminDashboard() {
 
   // State for day/week toggle
   const [period, setPeriod] = useState<"day" | "week">("day");
-  const [canonicalWeekJobs, setCanonicalWeekJobs] = useState<any[]>([]);
-  const [canonicalJobsLoading, setCanonicalJobsLoading] = useState(false);
+  const [canonicalWeekResource, setCanonicalWeekResource] = useState<CompanyRequestResource<any[]> | null>(null);
+  const canonicalWeekRequest = useMemo(() => {
+    const token = jobSyncSession?.token;
+    if (!token) return null;
+    return { key: `${token}:${start}:${end}:${companySyncRevision}`, token };
+  }, [companySyncRevision, end, jobSyncSession?.token, start]);
+  const canonicalWeekJobs = companyRequestValue(canonicalWeekRequest?.key ?? null, canonicalWeekResource) ?? [];
+  const canonicalJobsLoading = companyRequestLoading(canonicalWeekRequest?.key ?? null, canonicalWeekResource);
 
   // Queries
   const { data: detailers, isLoading: loadingDetailers } = trpc.employee.listDetailers.useQuery(undefined, { enabled: !jobSyncSession });
@@ -125,32 +134,28 @@ export default function AdminDashboard() {
     enabled: !jobSyncSession,
   });
   useEffect(() => {
-    if (!jobSyncSession?.token) {
-      setCanonicalWeekJobs([]);
-      return;
-    }
+    if (!canonicalWeekRequest) return;
     let cancelled = false;
-    setCanonicalJobsLoading(true);
-    getJobSyncCompanyJobs(jobSyncSession.token, { start: `${start}T00:00:00.000Z`, end: `${end}T23:59:59.999Z` })
+    getJobSyncCompanyJobs(canonicalWeekRequest.token, { start: `${start}T00:00:00.000Z`, end: `${end}T23:59:59.999Z` })
       .then((jobs) => {
         if (cancelled) return;
-        setCanonicalWeekJobs(jobs.map((job) => ({
-          ...job,
-          date: job.scheduledStartAt?.slice(0, 10) ?? null,
-          assignedTo: job.assignedName ?? "",
-          totalPrice: job.amount,
-          upsellTotal: 0,
-          discountAmount: 0,
-        })));
+        setCanonicalWeekResource({
+          requestKey: canonicalWeekRequest.key,
+          data: jobs.map((job) => ({
+            ...job,
+            date: job.scheduledStartAt?.slice(0, 10) ?? null,
+            assignedTo: job.assignedName ?? "",
+            totalPrice: job.amount,
+            upsellTotal: 0,
+            discountAmount: 0,
+          })),
+        });
       })
       .catch(() => {
-        if (!cancelled) setCanonicalWeekJobs([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCanonicalJobsLoading(false);
+        if (!cancelled) setCanonicalWeekResource({ requestKey: canonicalWeekRequest.key, data: [] });
       });
     return () => { cancelled = true; };
-  }, [end, jobSyncSession?.token, start]);
+  }, [canonicalWeekRequest, end, start]);
   const dashboardJobs = jobSyncSession ? canonicalWeekJobs : (weekJobs as any[] | undefined);
   // Note: We'll fetch break data from detailers' timesheet status instead
   // const { data: timesheets } = trpc.timesheet.getWeeklyLogs.useQuery(

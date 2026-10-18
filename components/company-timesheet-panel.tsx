@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -75,33 +75,34 @@ export function CompanyTimesheetPanel({
   const [error, setError] = useState<string | null>(null);
   const week = useMemo(() => weekRange(weekOffset), [weekOffset]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const nextRecords = await getHomeServiceConnectedTimesheets(token, {
-        start: week.start,
-        end: week.end,
-        ...(manager && memberId ? { memberId } : {}),
-      });
-      setRecords(nextRecords);
-      if (manager) {
-        setTeam(await getHomeServiceConnectedTeamTimeSummary(token));
-      } else {
-        setTeam([]);
-      }
-      setError(null);
-    } catch (refreshError) {
-      setRecords([]);
-      setTeam([]);
-      setError(companyCanonicalReadError(refreshError));
-    } finally {
-      setLoading(false);
-    }
-  }, [manager, memberId, token, week.end, week.start]);
-
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    const recordsRequest = getHomeServiceConnectedTimesheets(token, {
+      start: week.start,
+      end: week.end,
+      ...(manager && memberId ? { memberId } : {}),
+    });
+    const read = manager
+      ? Promise.all([recordsRequest, getHomeServiceConnectedTeamTimeSummary(token)])
+      : recordsRequest.then((nextRecords) => [nextRecords, [] as HomeServiceConnectedTeamTimeMember[]] as const);
+    read
+      .then(([nextRecords, nextTeam]) => {
+        if (cancelled) return;
+        setRecords(nextRecords);
+        setTeam(nextTeam);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setRecords([]);
+        setTeam([]);
+        setError(companyCanonicalReadError(refreshError));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [manager, memberId, revision, token, week.end, week.start]);
 
   const listState = companyTimeListState({ loading, error, itemCount: records.length });
   const totalHours = sumHomeServiceConnectedTimesheetHours(records);

@@ -45,6 +45,9 @@ jobs:
       - name: Run complete offline regression suite
         run: pnpm test
 
+      - name: Lint mobile screens and components
+        run: pnpm lint
+
       - name: Build server
         run: pnpm build
 

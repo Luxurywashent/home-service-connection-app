@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -203,8 +203,8 @@ function RankRow({
   delay: number;
 }) {
   const colors = useColors();
-  const slideAnim = useRef(new Animated.Value(60)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [slideAnim] = useState(() => new Animated.Value(60));
+  const [fadeAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.parallel([
@@ -307,9 +307,9 @@ export default function AdminLeaderboardScreen() {
   const [category, setCategory] = useState<Category>("score");
   const [refreshing, setRefreshing] = useState(false);
 
-  const podiumAnim1 = useRef(new Animated.Value(0)).current;
-  const podiumAnim2 = useRef(new Animated.Value(0)).current;
-  const podiumAnim3 = useRef(new Animated.Value(0)).current;
+  const [podiumAnim1] = useState(() => new Animated.Value(0));
+  const [podiumAnim2] = useState(() => new Animated.Value(0));
+  const [podiumAnim3] = useState(() => new Animated.Value(0));
 
   const query = trpc.performance.weeklyDetailerLeaderboard.useQuery({});
 
@@ -373,7 +373,7 @@ export default function AdminLeaderboardScreen() {
           <Text style={styles.heroEmoji}>🏆</Text>
           <Text style={styles.heroTitle}>Weekly Leaderboard</Text>
           <Text style={styles.heroSubtitle}>{weekLabel}</Text>
-          <Text style={styles.heroTagline}>Who's taking the top spot this week?</Text>
+          <Text style={styles.heroTagline}>Who&apos;s taking the top spot this week?</Text>
         </LinearGradient>
 
         {/* ── Category Tabs ── */}

@@ -93,6 +93,7 @@ const COMPANY_UNPAID_JOBS_PATH = "/api/mobile/v1/payments/unpaid-jobs";
 const COMPANY_CUSTOMERS_PATH = "/api/mobile/v1/customers";
 const COMPANY_FINANCE_PATH = "/api/mobile/v1/finance";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const COMPANY_SETTINGS_PATH = "/api/mobile/v1/company/settings";
 const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
@@ -360,6 +361,12 @@ export type JobSyncCompanyJobCreateInput = {
   privateNotes?: string;
 };
 
+export type JobSyncCompanySettings = {
+  id: number;
+  name: string;
+  timezone: string;
+};
+
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   const row = asRecord(value) ?? {};
   const id = Number(row.id);
@@ -384,6 +391,20 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
     paymentStatus: firstString(row.paymentStatus) ?? "unpaid",
     customerName: firstString(row.customerName) ?? "",
     assignedName: firstString(row.assignedName),
+  };
+}
+
+export function normalizeJobSyncCompanySettings(payload: unknown): JobSyncCompanySettings | null {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const company = firstRecord(data.company, root?.company) ?? {};
+  const id = nullableNumber(company.id, company.companyId);
+  const name = firstString(company.name, company.companyName);
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    timezone: firstString(company.timezone, company.timeZone) ?? "America/Chicago",
   };
 }
 
@@ -470,6 +491,15 @@ export async function getJobSyncCompanyJobs(token: string, range?: { start?: str
     itemKey: "jobs",
     normalize: normalizeJobSyncMobileJob,
   });
+}
+
+export async function getJobSyncCompanySettings(token: string): Promise<JobSyncCompanySettings> {
+  const settings = normalizeJobSyncCompanySettings(await requestJson(COMPANY_SETTINGS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  }));
+  if (!settings) throw new Error("Home Service Connected returned invalid Company settings.");
+  return settings;
 }
 
 function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer | null {
@@ -862,6 +892,43 @@ export async function rescheduleJobSyncCompanyJob(token: string, jobId: number, 
     jobId: firstNumber(payload.jobId) ?? jobId,
     scheduledStartAt: firstString(payload.scheduledStartAt) ?? input.scheduledStartAt,
     scheduledEndAt: firstString(payload.scheduledEndAt) ?? input.scheduledEndAt ?? null,
+  };
+}
+
+/**
+ * Atomically moves a Company Job on the canonical dispatch board.  A drag can
+ * change both its scheduled window and technician lane, so it must never fan
+ * out into independent schedule and assignment writes that can partially apply.
+ */
+export async function moveJobSyncCompanyJob(token: string, jobId: number, input: {
+  scheduledStartAt: string;
+  scheduledEndAt?: string | null;
+  assignedUserId?: number | null;
+  expectedUpdatedAt?: string;
+}) {
+  if (input.assignedUserId !== undefined && !Number.isSafeInteger(input.assignedUserId) && input.assignedUserId !== null) {
+    throw new Error("A Company Job assignment must be an active user ID or unassigned.");
+  }
+  const payload = asRecord(await requestJson(companyOperationalJobPath(jobId, "/schedule"), {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyMutationBody({
+      scheduledStartAt: input.scheduledStartAt,
+      ...(input.scheduledEndAt !== undefined ? { scheduledEndAt: input.scheduledEndAt } : {}),
+      ...(input.assignedUserId !== undefined ? { assignedUserId: input.assignedUserId } : {}),
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    })),
+  })) ?? {};
+  if (payload.success === false) {
+    throw new Error(errorMessage(payload, "Home Service Connected could not move this Job."));
+  }
+  const job = asRecord(payload.job) ?? payload;
+  return {
+    success: true,
+    jobId: firstNumber(job.jobId, job.id) ?? jobId,
+    scheduledStartAt: firstString(job.scheduledStartAt) ?? input.scheduledStartAt,
+    scheduledEndAt: firstString(job.scheduledEndAt) ?? input.scheduledEndAt ?? null,
+    assignedUserId: nullableNumber(job.assignedUserId) ?? input.assignedUserId ?? null,
   };
 }
 

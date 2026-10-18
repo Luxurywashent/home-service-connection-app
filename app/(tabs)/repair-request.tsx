@@ -78,7 +78,7 @@ export default function RepairRequestScreen() {
 
   const handleSubmit = () => {
     if (!vanAssignment) {
-      Alert.alert("No Van Assigned", "You don't have a van assigned yet. Please contact your admin.");
+      Alert.alert("No Van Assigned", "You don&apos;t have a van assigned yet. Please contact your admin.");
       return;
     }
     if (!selectedEquipment) {
@@ -136,7 +136,7 @@ export default function RepairRequestScreen() {
         {/* No van warning */}
         {!vanAssignment && (
           <View style={styles.warnCard}>
-            <Text style={styles.warnText}>⚠️ You don't have a van assigned. Ask your admin to assign you a van before submitting repairs.</Text>
+            <Text style={styles.warnText}>⚠️ You don&apos;t have a van assigned. Ask your admin to assign you a van before submitting repairs.</Text>
           </View>
         )}
 

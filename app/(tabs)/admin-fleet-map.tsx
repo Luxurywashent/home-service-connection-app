@@ -700,6 +700,12 @@ export default function AdminFleetMapScreen() {
   const [cityFilter, setCityFilter] = useState("All");
   const [showAddVan, setShowAddVan] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   // ── Live Map data ──
   const { data: locationData, isLoading: mapLoading, refetch: refetchMap, isFetching: mapFetching } =
     trpc.location.getActive.useQuery(undefined, { refetchInterval: 30000 });
@@ -778,7 +784,7 @@ export default function AdminFleetMapScreen() {
 
   const formatUpdated = (iso: string) => {
     const d = new Date(iso);
-    const mins = Math.round((Date.now() - d.getTime()) / 60000);
+    const mins = Math.round((currentTime - d.getTime()) / 60000);
     if (mins < 1) return "just now";
     if (mins === 1) return "1 min ago";
     return `${mins} mins ago`;

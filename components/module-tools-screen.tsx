@@ -73,7 +73,7 @@ export function ModuleToolsScreen({ moduleKey, moduleName, onContinue, onExit }:
           Tools & Products
         </Text>
         <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 24, lineHeight: 20 }}>
-          Review the tools, chemicals, and towels you'll need before starting this module.
+          {"Review the tools, chemicals, and towels you'll need before starting this module."}
         </Text>
 
         {toolsQuery.isLoading ? (
@@ -154,7 +154,7 @@ export function ModuleToolsScreen({ moduleKey, moduleName, onContinue, onExit }:
           })}
         >
           <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-            I'm Ready — Start Training →
+            {"I'm Ready — Start Training →"}
           </Text>
         </Pressable>
       </ScrollView>

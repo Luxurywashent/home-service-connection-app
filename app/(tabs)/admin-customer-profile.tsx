@@ -974,7 +974,7 @@ function LegacyAdminCustomerProfileScreen() {
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>💳</Text>
                   <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, marginBottom: 4 }}>No Cards Saved</Text>
                   <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center", lineHeight: 18 }}>
-                    Tap "+ Add Card" to save a card on file for this customer.
+                    Tap &quot;+ Add Card&quot; to save a card on file for this customer.
                   </Text>
                 </View>
               ) : (

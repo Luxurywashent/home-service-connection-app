@@ -57,7 +57,7 @@ export default function InvestorSupportScreen() {
 
           <Text style={[styles.title, { color: colors.foreground }]}>🆘 Support</Text>
           <Text style={[styles.subtitle, { color: colors.muted }]}>
-            Have a question or concern? Submit a request and we'll respond promptly.
+            Have a question or concern? Submit a request and we&apos;ll respond promptly.
           </Text>
 
           {/* New Request Button */}

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, RefreshControl, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, Platform, RefreshControl, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
 
 import { CompanyAuthorityLoading, CompanyAuthorityMessage } from "@/components/company-authority-state";
 import { ScreenContainer } from "@/components/screen-container";
@@ -30,7 +29,6 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       setCustomers(await getJobSyncCompanyCustomers(token));
       setError(null);
@@ -43,8 +41,23 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    getJobSyncCompanyCustomers(token)
+      .then((nextCustomers) => {
+        if (cancelled) return;
+        setCustomers(nextCustomers);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setCustomers([]);
+        setError(companyCanonicalReadError(refreshError));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [revision, token]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

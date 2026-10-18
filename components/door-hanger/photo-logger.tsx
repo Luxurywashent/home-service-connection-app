@@ -49,9 +49,33 @@ export default function PhotoLogger() {
   const createEntryMutation = trpc.doorHanger.createEntry.useMutation();
   const uploadPhotoMutation = trpc.doorHanger.uploadPhoto.useMutation();
 
-  // On mount: request permissions and pre-fetch location
+  async function prefetchLocation() {
+    if (isFetchingLocation.current) return;
+    isFetchingLocation.current = true;
+    try {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = loc.coords;
+      let address = "Unknown location";
+      try {
+        const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geo.length > 0) {
+          const { streetNumber, street, city, region, postalCode } = geo[0];
+          address = [streetNumber, street, city, region, postalCode].filter(Boolean).join(" ");
+        }
+      } catch {}
+      cachedLocation.current = { latitude, longitude, address };
+    } catch (err) {
+      console.warn("Location prefetch failed:", err);
+    } finally {
+      isFetchingLocation.current = false;
+    }
+  }
+
+  // On mount and after a permission change: request access and pre-fetch location.
   useEffect(() => {
-    (async () => {
+    void (async () => {
       let granted = locationPermission?.granted;
       if (!granted) {
         const result = await requestLocationPermission();
@@ -76,35 +100,9 @@ export default function PhotoLogger() {
           );
         }
       }
-      if (granted) {
-        prefetchLocation();
-      }
+      if (granted) await prefetchLocation();
     })();
-  }, []);
-
-  const prefetchLocation = async () => {
-    if (isFetchingLocation.current) return;
-    isFetchingLocation.current = true;
-    try {
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = loc.coords;
-      let address = "Unknown location";
-      try {
-        const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-        if (geo.length > 0) {
-          const { streetNumber, street, city, region, postalCode } = geo[0];
-          address = [streetNumber, street, city, region, postalCode].filter(Boolean).join(" ");
-        }
-      } catch {}
-      cachedLocation.current = { latitude, longitude, address };
-    } catch (err) {
-      console.warn("Location prefetch failed:", err);
-    } finally {
-      isFetchingLocation.current = false;
-    }
-  };
+  }, [locationPermission?.granted, requestLocationPermission]);
 
   const getLocation = async (): Promise<{ latitude: number; longitude: number; address: string }> => {
     if (cachedLocation.current) {

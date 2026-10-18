@@ -38,7 +38,7 @@ export function TimecardDisplay() {
   return (
     <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
       <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>
-        Today's Breaks
+        {"Today's Breaks"}
       </Text>
       
       {breaks.length === 0 ? (

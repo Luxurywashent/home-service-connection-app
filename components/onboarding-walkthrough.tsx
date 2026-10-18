@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -98,9 +98,9 @@ interface Props {
 
 export function OnboardingWalkthrough({ visible, onComplete }: Props) {
   const [step, setStep] = useState(0);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const arrowAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const [arrowAnim] = useState(() => new Animated.Value(0));
+  const [fadeAnim] = useState(() => new Animated.Value(0));
 
   const current = WALKTHROUGH_STEPS[step];
   const isLast = step === WALKTHROUGH_STEPS.length - 1;

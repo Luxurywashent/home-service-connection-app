@@ -24,9 +24,9 @@ export function CompanyClockStatus({ token }: { token: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      setError(null);
       const nextState = await getHomeServiceConnectedTimeState(token);
       setState(nextState);
+      setError(null);
       if (nextState.isClockedIn) setActiveShiftRecovery(false);
       if (nextState.activeBreak?.isActive) setActiveBreakRecovery(false);
     } catch (refreshError) {
@@ -37,11 +37,30 @@ export function CompanyClockStatus({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => {
-    setLoading(true);
-    void refresh();
-    const interval = setInterval(() => { void refresh(); }, 30_000);
-    return () => clearInterval(interval);
-  }, [refresh, revision]);
+    let cancelled = false;
+    const readTimeState = () => {
+      getHomeServiceConnectedTimeState(token)
+        .then((nextState) => {
+          if (cancelled) return;
+          setState(nextState);
+          setError(null);
+          if (nextState.isClockedIn) setActiveShiftRecovery(false);
+          if (nextState.activeBreak?.isActive) setActiveBreakRecovery(false);
+        })
+        .catch((refreshError) => {
+          if (!cancelled) setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh your time status.");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    readTimeState();
+    const interval = setInterval(readTimeState, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [revision, token]);
 
   const run = useCallback(async (
     action: () => Promise<unknown>,

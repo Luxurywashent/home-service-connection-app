@@ -57,8 +57,6 @@ export default function DoorHangerMapView() {
   const employeeName = employee?.fullName ?? "Team Member";
 
   const mapRef = useRef<MapView>(null);
-  const [entries, setEntries] = useState<EntryLocation[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedEntry, setSelectedEntry] = useState<EntryLocation | null>(null);
   const [userRegion, setUserRegion] = useState(DEFAULT_REGION);
   const hasFittedRef = useRef(false);
@@ -68,7 +66,7 @@ export default function DoorHangerMapView() {
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
 
   // Use stable empty array to avoid render loop from default value
-  const { data: rawEntries, refetch, isRefetching } = trpc.doorHanger.getEntries.useQuery(
+  const { data: rawEntries, refetch, isRefetching, isLoading: queryLoading } = trpc.doorHanger.getEntries.useQuery(
     { employeeId },
     { enabled: !!employeeId },
   );
@@ -94,36 +92,29 @@ export default function DoorHangerMapView() {
     })();
   }, []);
 
-  // Map raw entries to EntryLocation — only re-runs when doorHangerEntries reference changes
-  useEffect(() => {
-    const mapped = doorHangerEntries
-      .filter((e: any) => e.latitude && e.longitude)
-      .map((e: any) => {
+  const entries = useMemo(
+    () => doorHangerEntries
+      .filter((entry: any) => entry.latitude && entry.longitude)
+      .map((entry: any) => {
         let photoUrls: string[] = [];
-        if (e.photoUrls) {
-          try { photoUrls = JSON.parse(e.photoUrls); } catch {}
+        if (entry.photoUrls) {
+          try { photoUrls = JSON.parse(entry.photoUrls); } catch {}
         }
         return {
-          id: String(e.id),
-          entryId: e.entryId,
-          latitude: Number(e.latitude),
-          longitude: Number(e.longitude),
-          address: e.address || "Unknown location",
-          outreachType: (e.outreachType as OutreachType) || "door_hangers",
+          id: String(entry.id),
+          entryId: entry.entryId,
+          latitude: Number(entry.latitude),
+          longitude: Number(entry.longitude),
+          address: entry.address || "Unknown location",
+          outreachType: (entry.outreachType as OutreachType) || "door_hangers",
           photoUrls,
           employeeName,
-          createdAt: e.createdAt,
+          createdAt: entry.createdAt,
         } as EntryLocation;
-      });
-    setEntries(mapped);
-    setIsLoading(false);
-    if (mapped.length > 0 && !hasFittedRef.current) {
-      hasFittedRef.current = true;
-      setTimeout(() => fitToPins(mapped), 600);
-    }
-  // employeeName is a primitive string — safe dependency
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doorHangerEntries, employeeName]);
+      }),
+    [doorHangerEntries, employeeName],
+  );
+  const isLoading = Boolean(employeeId) && queryLoading;
 
   const visibleEntries = useMemo(
     () => entries.filter((e) => activeFilters.has(e.outreachType)),
@@ -151,6 +142,13 @@ export default function DoorHangerMapView() {
       animated: true,
     });
   };
+
+  useEffect(() => {
+    if (entries.length === 0 || hasFittedRef.current) return;
+    hasFittedRef.current = true;
+    const timer = setTimeout(() => fitToPins(entries), 600);
+    return () => clearTimeout(timer);
+  }, [entries]);
 
   const getMapRegion = () => {
     if (entries.length === 0) return userRegion;
