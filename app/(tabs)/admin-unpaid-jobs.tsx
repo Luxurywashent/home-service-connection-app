@@ -54,6 +54,11 @@ type UnpaidJob = {
   balanceDue: number;
 };
 
+async function fetchCompanyUnpaidJobs(token: string): Promise<UnpaidJob[]> {
+  const rows = await getJobSyncCompanyUnpaidJobs(token);
+  return rows.map(unpaidJobFromCanonical);
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function formatMoney(n: number | string | null | undefined): string {
   const v = typeof n === "string" ? parseFloat(n) : (n ?? 0);
@@ -539,40 +544,56 @@ export default function AdminUnpaidJobsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [companyJobs, setCompanyJobs] = useState<UnpaidJob[]>([]);
-  const [companyLoading, setCompanyLoading] = useState(false);
-  const [companyError, setCompanyError] = useState<string | null>(null);
+  const [companyFetchError, setCompanyFetchError] = useState<string | null>(null);
+  const [completedCompanyLoadKey, setCompletedCompanyLoadKey] = useState<string | null>(null);
+  const companyToken = jobSyncSession?.token;
+  const companyLoadKey = `${isCompany ? companyToken ?? "blocked" : "legacy"}:${companySyncRevision}`;
+  const companyLoading = isCompany && !!companyToken && completedCompanyLoadKey !== companyLoadKey;
+  const companyError = isCompany && !companyToken ? COMPANY_LEGACY_FALLTHROUGH_BLOCKED : companyFetchError;
 
   const query = trpc.jobs.getUnpaid.useQuery({ includeInProgress: true }, { enabled: allowLegacy });
-  const jobs: UnpaidJob[] = isCompany ? companyJobs : (query.data?.jobs ?? []) as UnpaidJob[];
+  const jobs: UnpaidJob[] = isCompany ? (companyToken ? companyJobs : []) : (query.data?.jobs ?? []) as UnpaidJob[];
   const companyListState = companyCanonicalListState({
     loading: companyLoading || companyAuthority === "unknown",
     error: companyError,
     itemCount: jobs.length,
   });
 
-  const loadCompanyUnpaid = useCallback(async () => {
+  const loadCompanyUnpaid = async () => {
     if (!isCompany) return;
-    if (!jobSyncSession?.token) {
+    if (!companyToken) {
       setCompanyJobs([]);
-      setCompanyError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
+      setCompanyFetchError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
       return;
     }
-    setCompanyLoading(true);
     try {
-      const rows = await getJobSyncCompanyUnpaidJobs(jobSyncSession.token);
-      setCompanyJobs(rows.map(unpaidJobFromCanonical));
-      setCompanyError(null);
+      setCompanyJobs(await fetchCompanyUnpaidJobs(companyToken));
+      setCompanyFetchError(null);
     } catch (error) {
       setCompanyJobs([]);
-      setCompanyError(companyCanonicalReadError(error));
-    } finally {
-      setCompanyLoading(false);
+      setCompanyFetchError(companyCanonicalReadError(error));
     }
-  }, [isCompany, jobSyncSession?.token]);
+  };
 
   useEffect(() => {
-    void loadCompanyUnpaid();
-  }, [companySyncRevision, loadCompanyUnpaid]);
+    let cancelled = false;
+    if (!isCompany || !companyToken) return () => { cancelled = true; };
+    fetchCompanyUnpaidJobs(companyToken)
+      .then((rows) => {
+        if (cancelled) return;
+        setCompanyJobs(rows);
+        setCompanyFetchError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCompanyJobs([]);
+        setCompanyFetchError(companyCanonicalReadError(error));
+      })
+      .finally(() => {
+        if (!cancelled) setCompletedCompanyLoadKey(companyLoadKey);
+      });
+    return () => { cancelled = true; };
+  }, [companyLoadKey, companyToken, isCompany]);
 
   const onRefresh = async () => {
     setRefreshing(true);

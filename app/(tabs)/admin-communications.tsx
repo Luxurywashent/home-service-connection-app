@@ -129,7 +129,7 @@ function ThreadView({
     const body = messageText.trim();
     if (!body) return;
     sendMutation.mutate({ lineId, toNumber: contactNumber, body, employeeId });
-  }, [messageText, lineId, contactNumber, employeeId]);
+  }, [messageText, lineId, contactNumber, employeeId, sendMutation]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
@@ -361,13 +361,6 @@ export default function AdminCommunicationsScreen() {
     return logs;
   }, [callLogs, showMissedOnly]);
 
-  // Deep-link: if params change (e.g. navigated from dashboard banner), switch to portal tab and open thread
-  useEffect(() => {
-    if (params.tab === "portal" && params.customerId) {
-      setActiveTab("portal");
-      setSelectedPortalCustomerId(params.customerId);
-    }
-  }, [params.tab, params.customerId]);
   const { data: missedCallData } = trpc.phone.getMissedCallCount.useQuery(
     { since: lastCallsViewedAt ?? undefined },
     { refetchInterval: 30000 }
@@ -381,14 +374,14 @@ export default function AdminCommunicationsScreen() {
     });
   }, []);
 
-  // When user switches to calls tab, mark as seen
-  useEffect(() => {
-    if (activeTab === "calls") {
+  const handleTabChange = useCallback((tab: "messages" | "calls" | "emails" | "portal") => {
+    setActiveTab(tab);
+    if (tab === "calls") {
       const now = new Date().toISOString();
       setLastCallsViewedAt(now);
-      AsyncStorage.setItem("calls_last_viewed_at", now);
+      void AsyncStorage.setItem("calls_last_viewed_at", now);
     }
-  }, [activeTab]);
+  }, []);
 
   const unreadCount = unreadData?.count ?? 0;
 
@@ -419,7 +412,7 @@ export default function AdminCommunicationsScreen() {
               key={tab}
               style={[styles.tabItem, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
               onPress={() => {
-                setActiveTab(tab);
+                handleTabChange(tab);
                 if (tab === "portal" && portalUnreadCount > 0) {
                   markAllPortalReadMutation.mutate();
                 }
