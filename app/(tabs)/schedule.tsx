@@ -50,6 +50,7 @@ import {
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
   resolveCompanyJobAuthority,
+  companyScheduleJobIsAssignedToUser,
   usesCompanyJobAuthority,
 } from "@/lib/jobsync-company-authority";
 import { CompanyCollectPayment } from "@/components/company-collect-payment";
@@ -357,6 +358,7 @@ interface Job {
   upsellBonus?: number; // 40% of upsellTotal credited to detailer
   basePrice?: number; // original price before any upsells (set on first upsell save, never changes)
   detailerName?: string; // name of the detailer assigned to this job
+  assignedTo?: string; // canonical JobSync assignment key: jobsync-{userId}
   travelStartedAt?: string; // ISO timestamp when ON MY WAY was tapped
   arrivedAt?: string;       // ISO timestamp when ARRIVED was tapped (travel ends)
   jobStartedAt?: string;    // ISO timestamp when job timer started (= arrivedAt)
@@ -2563,7 +2565,7 @@ export default function ScheduleScreen() {
     if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
       const id = canonicalJobId(selectedJob.id);
       const token = jobSyncSession.token;
-      const fallbackLocation = selectedLocation || selectedJob.location || "crestview";
+      const fallbackLocation = selectedJob.location ?? "";
       if (id) {
         getJobSyncCompanyJob(token, id)
           .then((canonical) => {
@@ -2788,10 +2790,9 @@ export default function ScheduleScreen() {
         const start = new Date(today); start.setDate(today.getDate() - 365);
         const end = new Date(today); end.setDate(today.getDate() + 365);
         const companyJobs = await getJobSyncCompanyJobs(jobSyncSession.token, { start: start.toISOString(), end: end.toISOString() });
-        const mappedCompanyJobs: Job[] = companyJobs.map((job) => ({
-          ...mapCanonicalJobToScheduleFields(job, location),
-          location: (job.city ? cityToSlug(job.city) : location) as LocationSlug,
-        }) as Job);
+        const mappedCompanyJobs: Job[] = companyJobs.map((job) =>
+          mapCanonicalJobToScheduleFields(job, "") as Job
+        );
         setCompanyJobsError(null);
         setJobs(mappedCompanyJobs);
       } catch (error) {
@@ -4098,6 +4099,12 @@ export default function ScheduleScreen() {
   const myName = employee?.fullName?.toLowerCase() ?? "";
   const myId = employee?.employeeId ?? "";
   const visibleJobs = jobs.filter((j) => {
+    // Company Jobs are scoped by the authenticated canonical assignment. Never
+    // apply a Luxury Wash city filter or its Crestview fallback to this data.
+    if (isJobSyncCompany) {
+      if (isCompanyCalendarManager) return true;
+      return companyScheduleJobIsAssignedToUser(j, jobSyncSession?.user.id);
+    }
     if (isAdminRole) return !j.location || j.location.toLowerCase() === selectedLocation.toLowerCase();
     // Detailer view: only show jobs explicitly assigned to this detailer.
     // Jobs with no detailerName are NOT shown to detailers — they belong to other detailers
@@ -4294,7 +4301,9 @@ export default function ScheduleScreen() {
         ) : (
           // Detailer: single-column personal timeline
           <DayTimeline
-            jobs={(() => {
+            jobs={isJobSyncCompany
+              ? jobs.filter((j) => companyScheduleJobIsAssignedToUser(j, jobSyncSession?.user.id))
+              : (() => {
               const mySlug = employee?.city ? cityToSlug(employee.city) : "crestview";
               const myId = employee?.employeeId ?? "";
               const myName = employee?.fullName?.toLowerCase() ?? "";

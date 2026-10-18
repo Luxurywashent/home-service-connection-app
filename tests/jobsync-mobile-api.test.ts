@@ -283,6 +283,46 @@ describe("JobSync mobile API contract", () => {
       fetchMock.mockRestore();
     }
   });
+  it("fetches every Company jobs page with its original date range and de-duplicates boundary overlaps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            { id: 44, customerId: 8, title: "First", serviceName: "Mow", status: "scheduled", amount: 90, customerName: "First Customer" },
+            { id: 45, customerId: 9, title: "Boundary", serviceName: "Mow", status: "scheduled", amount: 100, customerName: "Boundary Customer" },
+          ],
+          page: { limit: 300, nextCursor: "opaque-next-page" },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            { id: 45, customerId: 9, title: "Boundary", serviceName: "Mow", status: "scheduled", amount: 100, customerName: "Boundary Customer" },
+            { id: 46, customerId: 10, title: "Last", serviceName: "Mow", status: "scheduled", amount: 110, customerName: "Last Customer" },
+          ],
+          page: { limit: 300, nextCursor: null },
+        }),
+      } as Response);
+    try {
+      const jobs = await getJobSyncCompanyJobs("company-token", {
+        start: "2026-09-11T00:00:00.000Z",
+        end: "2026-09-12T00:00:00.000Z",
+      });
+      expect(jobs.map((job) => job.id)).toEqual([44, 45, 46]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("start=2026-09-11T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("end=2026-09-12T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("limit=300");
+      expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("cursor=");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("start=2026-09-11T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("end=2026-09-12T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("limit=300");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("cursor=opaque-next-page");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
   it("fetches Company customers through the authenticated searchable endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -291,8 +331,39 @@ describe("JobSync mobile API contract", () => {
     try {
       const customers = await getJobSyncCompanyCustomers("company-token", "Ruby Abac");
       expect(customers).toEqual([{ id: 51, firstName: "Ruby", lastName: "Abac", name: "Ruby Abac", email: null, phone: "8505550100", addressLine1: null, city: null, region: null, postalCode: null, vehicleType: null, updatedAt: null }]);
-      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/customers?search=Ruby%20Abac");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/customers?search=Ruby+Abac&limit=300");
       expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer company-token" } });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  it("fetches every searchable Company customers page with the original search and de-duplicates boundary overlaps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customers: [
+            { id: 51, firstName: "Ruby", lastName: "Abac" },
+            { id: 52, firstName: "Ruby", lastName: "Baker" },
+          ],
+          page: { limit: 300, nextCursor: "opaque-customer-page" },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customers: [
+            { id: 52, firstName: "Ruby", lastName: "Baker" },
+            { id: 53, firstName: "Ruby", lastName: "Clark" },
+          ],
+          page: { limit: 300, nextCursor: null },
+        }),
+      } as Response);
+    try {
+      const customers = await getJobSyncCompanyCustomers("company-token", "Ruby");
+      expect(customers.map((customer) => customer.id)).toEqual([51, 52, 53]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("customers?search=Ruby&limit=300");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("customers?search=Ruby&limit=300&cursor=opaque-customer-page");
     } finally {
       fetchMock.mockRestore();
     }

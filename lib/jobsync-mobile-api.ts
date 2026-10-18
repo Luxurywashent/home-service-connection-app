@@ -402,12 +402,74 @@ export async function getJobSyncCompanyIncrementalSync(token: string, since?: st
   return normalizeJobSyncIncrementalSync(await requestJson(`${COMPANY_SYNC_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) }), since);
 }
 
+const JOBSYNC_COLLECTION_PAGE_LIMIT = 300;
+
+function nextJobSyncCollectionCursor(payload: Record<string, unknown>): string | null {
+  const page = asRecord(payload.page);
+  // Older JobSync deployments returned a single unpaginated array. Treat a
+  // missing page envelope as that complete response instead of retrying it.
+  if (!page || page.nextCursor == null) return null;
+  if (typeof page.nextCursor === "string" && page.nextCursor.trim()) return page.nextCursor;
+  throw new Error("Home Service Connected returned an invalid pagination cursor.");
+}
+
+async function getAllJobSyncCollectionPages<T extends { id: number }>(input: {
+  token: string;
+  path: string;
+  search: URLSearchParams;
+  itemKey: string;
+  normalize: (value: unknown) => T | null;
+}): Promise<T[]> {
+  const items: T[] = [];
+  const itemIds = new Set<number>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+
+  do {
+    // Rebuild the query every time so each cursor request keeps the original
+    // range/search filter and never leaks a cursor into another Company query.
+    const query = new URLSearchParams(input.search);
+    query.set("limit", String(JOBSYNC_COLLECTION_PAGE_LIMIT));
+    if (cursor) query.set("cursor", cursor);
+    const payload = asRecord(await requestJson(`${input.path}?${query.toString()}`, {
+      method: "GET",
+      headers: createJobSyncBearerHeaders(input.token),
+    })) ?? {};
+
+    const collection = payload[input.itemKey];
+    const rows: unknown[] = Array.isArray(collection) ? collection : [];
+    for (const row of rows) {
+      const item = input.normalize(row);
+      // Keyset pagination can overlap during concurrent record updates.
+      if (item && !itemIds.has(item.id)) {
+        itemIds.add(item.id);
+        items.push(item);
+      }
+    }
+
+    cursor = nextJobSyncCollectionCursor(payload);
+    if (cursor) {
+      if (cursors.has(cursor)) {
+        throw new Error("Home Service Connected returned a repeated pagination cursor.");
+      }
+      cursors.add(cursor);
+    }
+  } while (cursor);
+
+  return items;
+}
+
 export async function getJobSyncCompanyJobs(token: string, range?: { start?: string; end?: string }): Promise<JobSyncMobileJob[]> {
   const search = new URLSearchParams();
   if (range?.start) search.set("start", range.start);
   if (range?.end) search.set("end", range.end);
-  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
-  return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncMobileJob).filter((job): job is JobSyncMobileJob => Boolean(job));
+  return getAllJobSyncCollectionPages({
+    token,
+    path: COMPANY_JOBS_PATH,
+    search,
+    itemKey: "jobs",
+    normalize: normalizeJobSyncMobileJob,
+  });
 }
 
 function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer | null {
@@ -433,9 +495,15 @@ function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer
 }
 
 export async function getJobSyncCompanyCustomers(token: string, search?: string): Promise<JobSyncCompanyCustomer[]> {
-  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
-  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
-  return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
+  const query = new URLSearchParams();
+  if (search?.trim()) query.set("search", search.trim());
+  return getAllJobSyncCollectionPages({
+    token,
+    path: COMPANY_CUSTOMERS_PATH,
+    search: query,
+    itemKey: "customers",
+    normalize: normalizeJobSyncCompanyCustomer,
+  });
 }
 
 function normalizeJobSyncCompanyCustomerDetail(value: unknown): JobSyncCompanyCustomerDetail | null {

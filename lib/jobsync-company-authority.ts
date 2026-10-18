@@ -390,6 +390,24 @@ export function hourFromIso(value: string | null, fallback: number) {
   return date.getHours() + date.getMinutes() / 60;
 }
 
+/** Company cities are canonical display data, not Luxury Wash location slugs. */
+export function companyScheduleLocation(city: string | null | undefined): string {
+  return city?.trim() ?? "";
+}
+
+/** Legacy service-area filtering must never narrow an authenticated Company board. */
+export function scheduleJobMatchesCity(location: string | null | undefined, selectedCity: string, isCompany: boolean): boolean {
+  return isCompany || !location || location.toLowerCase() === selectedCity.toLowerCase();
+}
+
+/** A technician may only see canonical Jobs assigned to their authenticated user. */
+export function companyScheduleJobIsAssignedToUser(
+  job: Pick<CompanyScheduleJobFields, "assignedTo">,
+  userId: number | null | undefined,
+): boolean {
+  return Number.isSafeInteger(userId) && (userId as number) > 0 && job.assignedTo === `jobsync-${userId}`;
+}
+
 export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackLocation: string): CompanyScheduleJobFields {
   const start = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
   const end = job.scheduledEndAt ? new Date(job.scheduledEndAt) : null;
@@ -409,7 +427,7 @@ export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackL
     "scheduled";
   return {
     id: String(job.id),
-    location: job.city || fallbackLocation,
+    location: companyScheduleLocation(job.city) || fallbackLocation,
     firstName: customerParts[0] || "",
     lastName: customerParts.slice(1).join(" "),
     email: "",

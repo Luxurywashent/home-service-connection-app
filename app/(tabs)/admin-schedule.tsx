@@ -65,6 +65,7 @@ import {
   companyScheduleLegacyPaymentQueryEnabled,
   mapCanonicalJobToScheduleFields,
   resolveCompanyJobAuthority,
+  scheduleJobMatchesCity,
   usesCompanyJobAuthority,
 } from "@/lib/jobsync-company-authority";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
@@ -1730,7 +1731,7 @@ export default function AdminScheduleScreen() {
           const end = new Date(today); end.setDate(today.getDate() + 365);
           const serverJobs = await getJobSyncCompanyJobs(token, { start: start.toISOString(), end: end.toISOString() });
           const mappedJobs = serverJobs.filter((job) => job.status !== "cancelled").map((job) => ({
-            ...mapCanonicalJobToScheduleFields(job, selectedCity),
+            ...mapCanonicalJobToScheduleFields(job, ""),
             email: undefined,
           }) as Job);
           setCompanyJobsError(null);
@@ -2401,7 +2402,7 @@ export default function AdminScheduleScreen() {
     if (isJobSyncCompany && selectedJob?.id && jobSyncSession?.token) {
       const id = canonicalJobId(selectedJob.id);
       const token = jobSyncSession.token;
-      const fallbackLocation = selectedCity || selectedJob.location || "crestview";
+      const fallbackLocation = selectedJob.location ?? "";
       if (id) {
         getJobSyncCompanyJob(token, id)
           .then((canonical) => {
@@ -2567,7 +2568,7 @@ export default function AdminScheduleScreen() {
       if (
         j.dayIndex !== selectedDay ||
         j.weekOffset !== weekOffset ||
-        (j.location && j.location.toLowerCase() !== selectedCity.toLowerCase())
+        !scheduleJobMatchesCity(j.location, selectedCity, isJobSyncCompany)
       ) return false;
       if (seen.has(j.id)) return false;
       seen.add(j.id);
@@ -2607,7 +2608,7 @@ export default function AdminScheduleScreen() {
       (j) =>
         j.dayIndex === i &&
         j.weekOffset === weekOffset &&
-        (!j.location || j.location.toLowerCase() === selectedCity.toLowerCase())
+        scheduleJobMatchesCity(j.location, selectedCity, isJobSyncCompany)
     )
   );
 

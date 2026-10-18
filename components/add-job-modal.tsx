@@ -647,7 +647,9 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               phone,
               email,
               addressLine1: address,
-              city: cityLabel,
+              // Company customer cities come only from an explicit caller
+              // prefill. Do not inherit the hidden legacy Crestview selector.
+              city: prefill?.city?.trim() || undefined,
               vehicleType,
             });
         const start = new Date(`${selectedDate}T${String(startHour).padStart(2, "0")}:00`);
@@ -706,7 +708,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <View>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>New Job</Text>
-                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{cityLabel} · {selectedDate}</Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{isJobSyncCompany ? selectedDate : `${cityLabel} · ${selectedDate}`}</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
                 <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
@@ -735,32 +737,36 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                 </View>
               )}
 
-              {/* ── City ── */}
-              <Text style={[s.sectionLabel, { color: colors.muted }]}>Location</Text>
-              <TouchableOpacity
-                onPress={() => setShowCityPicker((v) => !v)}
-                style={[s.rowBtn, { borderColor: colors.border, backgroundColor: colors.background, marginBottom: showCityPicker ? 8 : 16 }]}
-                activeOpacity={0.75}
-              >
-                <Text style={{ color: colors.foreground, fontSize: 15 }}>{cityLabel}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{showCityPicker ? "▲" : "▼"}</Text>
-              </TouchableOpacity>
-              {showCityPicker && (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                  {CITY_LIST.map((c) => {
-                    const sel = selectedCity === c.slug;
-                    return (
-                      <TouchableOpacity
-                        key={c.slug}
-                        onPress={() => { setSelectedCity(c.slug); setShowCityPicker(false); }}
-                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13 }}>{c.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+              {!isJobSyncCompany && (
+                <>
+                  {/* ── City ── */}
+                  <Text style={[s.sectionLabel, { color: colors.muted }]}>Location</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCityPicker((v) => !v)}
+                    style={[s.rowBtn, { borderColor: colors.border, backgroundColor: colors.background, marginBottom: showCityPicker ? 8 : 16 }]}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={{ color: colors.foreground, fontSize: 15 }}>{cityLabel}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>{showCityPicker ? "▲" : "▼"}</Text>
+                  </TouchableOpacity>
+                  {showCityPicker && (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                      {CITY_LIST.map((c) => {
+                        const sel = selectedCity === c.slug;
+                        return (
+                          <TouchableOpacity
+                            key={c.slug}
+                            onPress={() => { setSelectedCity(c.slug); setShowCityPicker(false); }}
+                            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13 }}>{c.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
               )}
 
               {/* ── Customer ── */}
