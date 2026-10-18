@@ -60,18 +60,7 @@ async function openHostedCheckoutUrl(url: string) {
   await WebBrowser.openBrowserAsync(safeUrl);
 }
 
-export function CompanyCollectPayment({
-  token,
-  jobId,
-  role,
-  authority = "company",
-  amount,
-  paidTotal,
-  balance,
-  paymentStatus,
-  jobStatus,
-  onCanonicalRefresh,
-}: {
+type CompanyCollectPaymentProps = {
   token: string;
   jobId: number;
   role: JobSyncCompanyRole | string;
@@ -82,7 +71,17 @@ export function CompanyCollectPayment({
   paymentStatus?: string;
   jobStatus?: string;
   onCanonicalRefresh?: () => Promise<void> | void;
-}) {
+};
+
+export function CompanyCollectPayment(props: CompanyCollectPaymentProps) {
+  if (props.authority && props.authority !== "company") return null;
+  return <CompanyCollectPaymentSession key={`${props.token}:${props.jobId}`} {...props} />;
+}
+
+function CompanyCollectPaymentSession({
+  token, jobId, role, authority = "company", amount, paidTotal, balance,
+  paymentStatus, jobStatus, onCanonicalRefresh,
+}: CompanyCollectPaymentProps) {
   const colors = useColors();
   const [job, setJob] = useState<JobSyncMobileJob | null>(null);
   const [payments, setPayments] = useState<JobSyncCompanyJobPayment[]>([]);
@@ -129,24 +128,18 @@ export function CompanyCollectPayment({
   }, [jobId, token]);
 
   useEffect(() => {
-    if (lastJobIdRef.current === jobId) return;
-    lastJobIdRef.current = jobId;
-    idempotencyKeyRef.current = null;
-    requestFingerprintRef.current = null;
-    paymentAcceptedRef.current = false;
-    setNotice(null);
-    setMethod("cash");
-    setAmountText("");
-  }, [jobId]);
-
-  useEffect(() => {
-    if (!mounted) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
-    setLoading(true);
-    loadCanonical()
+    Promise.all([
+      getJobSyncCompanyJob(token, jobId),
+      getJobSyncCompanyJobPayments(token, jobId),
+    ])
+      .then(([nextJob, nextPayments]) => {
+        if (cancelled) return;
+        setJob(nextJob);
+        setPayments(nextPayments);
+        setAmountText((current) => current.trim() ? current : (nextJob.balance > 0 ? nextJob.balance.toFixed(2) : ""));
+        setError(null);
+      })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Unable to load Job payment state.");
       })
@@ -154,7 +147,7 @@ export function CompanyCollectPayment({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadCanonical, mounted]);
+  }, [jobId, token]);
 
   const refreshAfterWrite = useCallback(async () => {
     try {
