@@ -93,7 +93,7 @@ Head: `611ffefc79b41b5724d73964854736bcc53609c9`.
 Completed: 2026-10-18T01:07:24Z.
 Result: 67 test files passed, 1068 tests passed, 49 skipped. Server build completed (`dist/index.js`).
 
-The handoff commit does not change server or client code. A new run starts when this document is pushed. Treat that new run as a separate result from the PASS above.
+The handoff commit does not change server or client code. After it was pushed, run `39086181095` on `8ba849e2eab174cfc46e799b28ee4e4a7ba1ab09` also passed: 67 files, 1068 tests passed, 49 skipped, and the server build completed.
 
 ### Mobile local suite — PASS
 
@@ -124,7 +124,7 @@ Reported drift:
 - `expo-router@57.0.25` expected `~57.0.28`
 - `expo-splash-screen@57.0.9` expected `~57.0.10`
 
-This branch does not change those package versions. The same `Verify Expo SDK alignment` step failed on `7843659`, `bac1ecf`, `6bdf541`, and `d7e9ce2`. The last successful run of this workflow was `fix/asc-app-id-submit` at `d0b291a66e842bf66d9a431031d43692f6bcd771` on 2026-10-11. Expo packages were not bumped in this task. A new run on `34c93f6` is expected to fail at the same step.
+This branch does not change those package versions. The same `Verify Expo SDK alignment` step failed on `7843659`, `bac1ecf`, `6bdf541`, and `d7e9ce2`. The last successful run of this workflow was `fix/asc-app-id-submit` at `d0b291a66e842bf66d9a431031d43692f6bcd771` on 2026-10-11. Expo packages were not bumped in this task. Run `39086180818` on Mobile tip `e6e2faf9beeba9d235974b1b4f799c9c6b570eaf` failed at the same step, with the same nine packages.
 
 ## Deployment order
 
