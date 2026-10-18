@@ -12,10 +12,10 @@ The Mobile repairs are already implemented. They are not in JobSync PR #55. They
 | --- | --- |
 | Repository | `https://github.com/Luxurywashent/home-service-connection-app` |
 | Branch | `cursor/hsc-phase1-repairs-3e4f` |
-| Tip SHA | `6bdf54183cc4cd2181863a32103d3523b98fb753` |
 | Code SHA | `7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe` |
+| Last application SHA | `6bdf54183cc4cd2181863a32103d3523b98fb753` |
 
-`7843659` is the commit that adds the dashboard, timesheet, clock reconcile, and GPS client. Later commits on the branch are documentation only. `git diff 7843659 HEAD` changes four markdown files and no application code. The working tree is clean. Nothing is uncommitted.
+`7843659` is the commit that adds the dashboard, timesheet, clock reconcile, and GPS client. `6bdf541` is the last commit that still has the same application files. Commits after `7843659` are documentation only. `git diff 7843659 6bdf541` changes four markdown files and no application code. The working tree has no uncommitted application edits.
 
 JobSync PR #55 is `https://github.com/Luxurywashent/jobsync`, branch `cursor/hsc-phase1-repairs-3e4f`, tip `f7fdab14ac5e609c3dd5525b3b7b5b3aa0ab6299`. That pull request is the API. It does not contain the Expo app.
 
@@ -63,9 +63,7 @@ The separate Finance tab still calls `GET /api/mobile/v1/finance` through `Compa
 
 ## 9. What Manus must receive
 
-Check out this exact commit. Do not copy `main`.
-
-`6bdf54183cc4cd2181863a32103d3523b98fb753`
+Check out branch `cursor/hsc-phase1-repairs-3e4f`. The application files below are the tree at `6bdf54183cc4cd2181863a32103d3523b98fb753`. Do not copy `main`.
 
 Application and test files that differ from `origin/main` and must be in the Mobile workspace:
 
@@ -92,6 +90,6 @@ Do not deploy until there is an explicit approval.
 3. Publish the JobSync API before any Mobile build that calls `GET /api/mobile/v1/dashboard/summary`. Production currently returns 404 for that path. A Mobile build shipped first shows Revenue unavailable.
 4. Do not run a migration. The open-shift unique index is already present, and the duplicate-open preflight returned zero groups.
 5. Leave the EAS production JobSync URL unchanged.
-6. After approval, publish the API, then build Mobile from SHA `6bdf541`. Confirm `dashboard/summary` is no longer 404 before considering the Mobile rollout complete.
+6. After approval, publish the API, then build Mobile from branch `cursor/hsc-phase1-repairs-3e4f` at or after `6bdf541`. Confirm `dashboard/summary` is no longer 404 before considering the Mobile rollout complete.
 
 Waiting for approval.
