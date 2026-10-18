@@ -1,5 +1,7 @@
 # HSC Phase 1 pre-production verification
 
+Later blocker resolution is in `docs/HSC_PHASE1_BLOCKER_RESOLUTION.md`. Production remains not approved.
+
 Checked 2026-10-18. JobSync remains the authority for Company business data. Nothing in this check was deployed. No production migration was run. No production row was written. Production approval is still required.
 
 This environment has no database credential, no Company test account, and no physical device. Live checks that need those are **NOT VERIFIED**. They are not passes.
