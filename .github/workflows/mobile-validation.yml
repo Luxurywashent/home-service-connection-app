@@ -36,11 +36,17 @@ jobs:
       - name: Run Expo diagnostics
         run: npx expo-doctor
 
-      - name: Run deterministic Company contract tests
-        run: pnpm exec vitest run tests/jobsync-mobile-api.test.ts tests/jobsync-native-session.test.ts --pool=forks --poolOptions.forks.singleFork=true
+      - name: Run complete offline regression suite
+        run: pnpm test
 
       - name: Type check
         run: pnpm check
 
+      - name: Build server
+        run: pnpm build
+
       - name: Export a disposable iOS JavaScript bundle
         run: npx expo export --platform ios --output-dir /tmp/hsc-ios-export
+
+      - name: Export a disposable Android JavaScript bundle
+        run: npx expo export --platform android --output-dir /tmp/hsc-android-export
