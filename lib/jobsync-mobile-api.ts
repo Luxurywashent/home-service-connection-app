@@ -12,6 +12,11 @@ export type JobSyncNativeSession = {
     email: string | null;
     role: JobSyncCompanyRole | JobSyncPlatformRole;
     memberId?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    hireDate?: string | null;
   };
   company?: {
     id: number;
@@ -93,6 +98,7 @@ const COMPANY_UNPAID_JOBS_PATH = "/api/mobile/v1/payments/unpaid-jobs";
 const COMPANY_CUSTOMERS_PATH = "/api/mobile/v1/customers";
 const COMPANY_FINANCE_PATH = "/api/mobile/v1/finance";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const COMPANY_PROFILE_PATH = "/api/mobile/v1/company/profile";
 const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
@@ -166,6 +172,19 @@ function isActiveMember(value: unknown) {
   return value !== false && value !== 0 && value !== "0" && value !== "false";
 }
 
+/** Explicit fieldwork flag. Boolean("0") is true, so string and numeric zero must stay ineligible. */
+export function isExplicitCalendarEligible(value: unknown): boolean {
+  if (value === true) return true;
+  if (value === false || value == null || value === "") return false;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") return Number(value.trim()) === 1;
+  return false;
+}
+
+export function isCompanyScheduleColumnMember(member: { isActive?: boolean; calendarEligible?: unknown }) {
+  return member.isActive !== false && isExplicitCalendarEligible(member.calendarEligible);
+}
+
 function errorMessage(payload: unknown, fallback: string) {
   const root = asRecord(payload);
   const error = asRecord(root?.error);
@@ -195,9 +214,61 @@ function getJobSyncBaseUrl() {
   return resolveJobSyncBaseUrl();
 }
 
+export class JobSyncRequestCanceledError extends Error {
+  readonly canceled = true;
+
+  constructor() {
+    super("Home Service Connected request was canceled.");
+    this.name = "JobSyncRequestCanceledError";
+  }
+}
+
+const REQUEST_TIMEOUT_MESSAGE = "Home Service Connected took too long to respond. Check your connection and try again.";
+
+/** True for caller aborts and Expo's native URLSession cancellation. A timeout is classified separately. */
+export function isRequestCancellation(error: unknown): boolean {
+  if (error instanceof JobSyncRequestCanceledError) return true;
+  if (!error || (typeof error !== "object" && typeof error !== "string")) return false;
+  if (typeof error === "object" && error !== null && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause && cause !== error && isRequestCancellation(cause)) return true;
+  }
+  const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = typeof error === "string"
+    ? error
+    : typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  if (name === "AbortError" || name === "JobSyncRequestCanceledError" || name === "FetchRequestCanceledException") return true;
+  const blob = `${name} ${message}`;
+  return blob.includes("FetchRequestCanceledException")
+    || blob.includes("Fetch request has been canceled")
+    || blob.includes("The operation was aborted");
+}
+
+function transportFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/Network request failed|Failed to fetch|NetworkError|The Internet connection appears to be offline|network connection was lost/i.test(message)) {
+    return new Error("No connection to Home Service Connected. Check your network and try again.");
+  }
+  return error instanceof Error ? error : new Error("Unable to reach Home Service Connected.");
+}
+
 async function requestJson(path: string, init: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), COMPANY_TIME_REQUEST_TIMEOUT_MS);
+  const external = init.signal;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, COMPANY_TIME_REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => {
+    controller.abort();
+  };
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener("abort", abortFromCaller);
+  }
   try {
     const response = await fetch(`${getJobSyncBaseUrl()}${path}`, {
       ...init,
@@ -214,12 +285,12 @@ async function requestJson(path: string, init: RequestInit) {
     }
     return payload;
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Home Service Connected took too long to respond. Check your connection and try again.");
-    }
-    throw error;
+    if (timedOut) throw new Error(REQUEST_TIMEOUT_MESSAGE);
+    if (external?.aborted || isRequestCancellation(error)) throw new JobSyncRequestCanceledError();
+    throw transportFailure(error);
   } finally {
     clearTimeout(timeout);
+    external?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -909,6 +980,11 @@ export function normalizeJobSyncMobileSession(payload: unknown, token: string): 
     email: firstString(user.email, profile.email),
     role,
     memberId: firstString(user.memberId, user.identifier, user.ownerIdentifier, profile.memberId, profile.identifier) ?? undefined,
+    firstName: firstString(user.firstName, user.first_name),
+    lastName: firstString(user.lastName, user.last_name),
+    phone: firstString(user.phone, user.phoneNumber, user.phone_number),
+    city: firstString(user.city),
+    hireDate: firstString(user.hireDate, user.hire_date),
   };
 
   if (platform) {
@@ -998,7 +1074,7 @@ export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyI
       city: firstString(member.city, member.serviceCity, member.service_city),
       positionId: firstNumber(member.positionId, member.position_id),
       positionName: firstString(member.positionName, member.position_name),
-      calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
+      calendarEligible: isExplicitCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
     }];
   });
 
@@ -1044,7 +1120,7 @@ export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMe
     role: firstString(member.role, member.memberRole) ?? "team_member",
     positionId: firstNumber(member.positionId, member.position_id),
     positionName: firstString(member.positionName, member.position_name),
-    calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
+    calendarEligible: isExplicitCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
     availability: firstString(member.availability),
     workDays: stringList(member.workDays ?? member.work_days ?? member.customWorkDays),
     hourlyRate: nullableNumber(member.hourlyRate, member.hourly_rate),
@@ -1071,6 +1147,34 @@ export async function getJobSyncCompanyMemberDetail(token: string, memberId: num
   const detail = normalizeJobSyncCompanyMemberDetail(payload, memberId);
   if (!detail) throw new Error("Home Service Connected returned an invalid Team Member profile.");
   return detail;
+}
+
+export type JobSyncOwnProfileUpdate = {
+  firstName?: string;
+  lastName?: string;
+  phone?: string | null;
+  city?: string | null;
+};
+
+export function createJobSyncOwnProfilePayload(input: JobSyncOwnProfileUpdate) {
+  const payload: Record<string, string | null> = {};
+  if (typeof input.firstName === "string") payload.firstName = input.firstName.trim();
+  if (typeof input.lastName === "string") payload.lastName = input.lastName.trim();
+  if (input.phone !== undefined) payload.phone = input.phone?.trim() ? input.phone.trim() : null;
+  if (input.city !== undefined) payload.city = input.city?.trim() ? input.city.trim() : null;
+  return payload;
+}
+
+export async function updateJobSyncOwnProfile(token: string, input: JobSyncOwnProfileUpdate) {
+  const payload = createJobSyncOwnProfilePayload(input);
+  if (!Object.keys(payload).length) {
+    throw new Error("Enter a name, phone number, or city to update your profile.");
+  }
+  return requestJson(COMPANY_PROFILE_PATH, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateJobSyncCompanyMember(
@@ -1607,8 +1711,12 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   };
 }
 
-export async function getHomeServiceConnectedTimeState(token: string) {
-  const payload = await requestJson(TIME_CURRENT_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+export async function getHomeServiceConnectedTimeState(token: string, init?: { signal?: AbortSignal }) {
+  const payload = await requestJson(TIME_CURRENT_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+    ...(init?.signal ? { signal: init.signal } : {}),
+  });
   return normalizeHomeServiceConnectedTimeState(payload);
 }
 

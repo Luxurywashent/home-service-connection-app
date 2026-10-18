@@ -15,7 +15,7 @@ import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   allowsLegacyJobAuthority,
   companyCanonicalListState,
-  companyCanonicalReadError,
+  companyReadFailure,
   invoicePresentationFromCanonicalJob,
   resolveCompanyJobAuthority,
   usesCompanyJobAuthority,
@@ -80,10 +80,11 @@ export default function AdminInvoicesScreen() {
         }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setCompanyInvoices([]);
-          setCompanyError(companyCanonicalReadError(error));
-        }
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
+        setCompanyInvoices([]);
+        setCompanyError(message);
       })
       .finally(() => {
         if (!cancelled) setCompanyLoading(false);

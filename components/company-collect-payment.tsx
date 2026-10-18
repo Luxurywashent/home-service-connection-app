@@ -12,7 +12,7 @@ import {
 import * as WebBrowser from "expo-web-browser";
 
 import { useColors } from "@/hooks/use-colors";
-import { type CompanyJobAuthorityMode } from "@/lib/jobsync-company-authority";
+import { companyWriteFailure, type CompanyJobAuthorityMode } from "@/lib/jobsync-company-authority";
 import {
   COMPANY_PAYMENT_REFRESH_FAILED,
   canonicalJobArSnapshot,
@@ -204,7 +204,7 @@ export function CompanyCollectPayment({
         paymentAcceptedRef.current = false;
       }
     } catch (recordError) {
-      setNotice(recordError instanceof Error ? recordError.message : "Payment could not be recorded.");
+      setNotice(companyWriteFailure(recordError, "Payment could not be recorded."));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -232,7 +232,7 @@ export function CompanyCollectPayment({
         if (job) setJob({ ...job, paymentStatus: statusBeforeReturn });
       }
     } catch (checkoutError) {
-      setNotice(checkoutError instanceof Error ? checkoutError.message : "Secure Checkout is unavailable.");
+      setNotice(companyWriteFailure(checkoutError, "Secure Checkout is unavailable."));
     } finally {
       setCheckoutBusy(false);
     }

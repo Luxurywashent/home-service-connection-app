@@ -5,7 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import * as TaskManager from "expo-task-manager";
 
 import { shouldPublishCompanyLocation, shouldUseBackgroundCompanyLocation } from "@/lib/company-location-policy";
-import { getHomeServiceConnectedTimeState, publishJobSyncCompanyLocation } from "@/lib/jobsync-mobile-api";
+import { getHomeServiceConnectedTimeState, isRequestCancellation, publishJobSyncCompanyLocation } from "@/lib/jobsync-mobile-api";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "@/components/location-disclosure-modal";
 
 const COMPANY_LOCATION_TASK = "HSC_COMPANY_LOCATION_TASK";
@@ -77,11 +77,13 @@ export function CompanyLocationPublisher({ token, role }: { token: string; role?
     };
 
     const syncTracking = async () => {
+      if (AppState.currentState !== "active") return;
       let clockedIn = false;
       try {
         const time = await getHomeServiceConnectedTimeState(token);
         clockedIn = time.isClockedIn;
-      } catch {
+      } catch (error) {
+        if (isRequestCancellation(error)) return;
         clockedIn = false;
       }
       if (cancelled) return;

@@ -40,12 +40,12 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJob, getJobSyncCompanyJobs, getJobSyncCompanyMembers, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJob, getJobSyncCompanyJobs, getJobSyncCompanyMembers, isCompanyScheduleColumnMember, updateJobSyncCompanyJobStatus, type JobSyncCompanyMember } from "@/lib/jobsync-mobile-api";
 import {
   allowsLegacyJobAuthority,
   canonicalJobId,
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
   companyScheduleCheckoutMounted,
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
@@ -2795,8 +2795,10 @@ export default function ScheduleScreen() {
         setCompanyJobsError(null);
         setJobs(mappedCompanyJobs);
       } catch (error) {
+        const message = companyReadFailure(error);
+        if (!message) return;
         setJobs([]);
-        setCompanyJobsError(companyCanonicalReadError(error));
+        setCompanyJobsError(message);
       }
       return;
     }
@@ -4270,7 +4272,7 @@ export default function ScheduleScreen() {
             detailers={
               isJobSyncCompany
                 ? companyCalendarMembers
-                    .filter((member) => member.isActive && member.calendarEligible)
+                    .filter(isCompanyScheduleColumnMember)
                     .map((member) => ({ employeeId: String(member.id), fullName: member.city ? `${member.name} · ${member.city}` : member.name }))
                 : (detailerList as any[] | undefined ?? []).filter((d: any) =>
                     d.city ? cityToSlug(d.city) === selectedLocation : true
