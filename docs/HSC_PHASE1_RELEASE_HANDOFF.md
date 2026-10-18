@@ -12,11 +12,12 @@ Earlier notes named Mobile application tree `6bdf54183cc4cd2181863a32103d3523b98
 | Backend commit that adds the isolated authorization tests | `f7fdab14ac5e609c3dd5525b3b7b5b3aa0ab6299` |
 | Backend branch tip before this handoff file | `611ffefc79b41b5724d73964854736bcc53609c9` |
 | Mobile application code | `7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe` |
-| Mobile commit to build, including the customer test fix | `34c93f677223a118f827f43b114f3a20320f60c2` |
+| Mobile customer test fix | `34c93f677223a118f827f43b114f3a20320f60c2` |
+| Mobile commit to build, including the Expo SDK 57 patch alignment | `d6adc56e4698c8d3eb4d052a6a2348d0cd630d70` |
 
 `git diff bd6c211a6ba02a2155c7fda46529071dca1e519e f7fdab14ac5e609c3dd5525b3b7b5b3aa0ab6299` is documentation, `server/phase1.mobileAuthz.isolation.test.ts`, and `vitest.config.ts`. `git diff f7fdab14ac5e609c3dd5525b3b7b5b3aa0ab6299 611ffefc79b41b5724d73964854736bcc53609c9` is `docs/HSC_PHASE1_MOBILE_SOURCE_RECONCILIATION.md` only.
 
-`git diff 7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe 34c93f677223a118f827f43b114f3a20320f60c2 -- ':!docs'` is `tests/m3a-company-financial-containment.test.ts` only.
+`git diff 7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe 34c93f677223a118f827f43b114f3a20320f60c2 -- ':!docs'` is `tests/m3a-company-financial-containment.test.ts` only. `git diff 34c93f677223a118f827f43b114f3a20320f60c2 d6adc56e4698c8d3eb4d052a6a2348d0cd630d70` is `package.json` and `pnpm-lock.yaml` only. Those files move nine Expo packages to the SDK 57 patch ranges required by `npx expo install --check`. SDK 58 is not installed. `eas.json` is unchanged.
 
 The commit that adds this file is documentation only. Publish and build the SHAs in the table. A later documentation commit on the same branch does not change the server bundle or the Mobile application code.
 
@@ -79,7 +80,7 @@ No `eas.json`, `.env`, payment file, payroll file, or `.sql` migration is in the
 
 This handoff adds `docs/HSC_PHASE1_RELEASE_HANDOFF.md` after that tip.
 
-No `eas.json`, `app.json`, `.env`, or `.sql` migration is in the Mobile diff. `package.json` and the lockfile are unchanged versus `main`.
+No `eas.json`, `app.json`, `.env`, or `.sql` migration is in the Mobile diff. `d6adc56e4698c8d3eb4d052a6a2348d0cd630d70` adds `package.json` and `pnpm-lock.yaml` for the nine Expo SDK 57 patches.
 
 `migrations/20261003_fs_clock_records_open_shift_lock.sql` exists in JobSync history and is not part of either branch diff. It was not applied by this work. The production index `uq_fs_clock_records_open_shift` is already present, and the duplicate-open preflight returned zero groups.
 
@@ -104,27 +105,14 @@ Result: 30 test files passed, 1 skipped (`tests/auth.logout.test.ts`, `describe.
 
 Import noise from the skipped `auth.logout` file (OAuth and mysql2, because `DATABASE_URL` is unset in this shell) is not a failing test.
 
-### Mobile GitHub check — FAIL
+### Mobile GitHub check — PASS
 
 Check: `SDK, TypeScript, Company contracts, and iOS bundle`.
-Run: `39085128569`.
-Head: `d7e9ce2f1418838369473dbe29451ae5a69de0ed`.
-Completed: 2026-10-18T01:04:48Z.
-Failed step: `npx expo install --check`, exit code 1, before vitest and before `pnpm check`.
+Run: `39087139367`.
+Head: `d6adc56e4698c8d3eb4d052a6a2348d0cd630d70`.
+Result: every step passed, including `npx expo install --check`, `npx expo-doctor`, the Company contract tests, `pnpm check`, and the iOS export.
 
-Reported drift:
-
-- `@expo/metro-runtime@57.0.16` expected `~57.0.17`
-- `expo@57.0.27` expected `~57.0.30`
-- `expo-asset@57.0.19` expected `~57.0.20`
-- `expo-constants@57.0.21` expected `~57.0.22`
-- `expo-linking@57.0.12` expected `~57.0.13`
-- `expo-location@57.0.20` expected `~57.0.21`
-- `expo-notifications@57.0.22` expected `~57.0.23`
-- `expo-router@57.0.25` expected `~57.0.28`
-- `expo-splash-screen@57.0.9` expected `~57.0.10`
-
-This branch does not change those package versions. The same `Verify Expo SDK alignment` step failed on `7843659`, `bac1ecf`, `6bdf541`, and `d7e9ce2`. The last successful run of this workflow was `fix/asc-app-id-submit` at `d0b291a66e842bf66d9a431031d43692f6bcd771` on 2026-10-11. Expo packages were not bumped in this task. Run `39086180818` on Mobile tip `e6e2faf9beeba9d235974b1b4f799c9c6b570eaf` failed at the same step, with the same nine packages.
+Earlier runs failed at `Verify Expo SDK alignment` because the lockfile was behind the SDK 57 catalog. `d6adc56` installs the catalog patches. The packages moved from `@expo/metro-runtime` 57.0.16 to 57.0.17, `expo` 57.0.27 to 57.0.30, `expo-asset` 57.0.19 to 57.0.20, `expo-constants` 57.0.21 to 57.0.22, `expo-linking` 57.0.12 to 57.0.13, `expo-location` 57.0.20 to 57.0.21, `expo-notifications` 57.0.22 to 57.0.23, `expo-router` 57.0.25 to 57.0.28, and `expo-splash-screen` 57.0.9 to 57.0.10.
 
 ## Deployment order
 
@@ -132,7 +120,7 @@ Do not perform these steps until production approval is explicit.
 
 1. Publish the JobSync API from branch `cursor/hsc-phase1-repairs-3e4f` at `611ffefc79b41b5724d73964854736bcc53609c9` or a later documentation-only commit. Runtime code is `bd6c211a6ba02a2155c7fda46529071dca1e519e`.
 2. Confirm `GET /api/mobile/v1/dashboard/summary` is no longer 404 on the host Mobile will call. A missing bearer should be 401. A 404 means the previous API is still published.
-3. Build Mobile from `34c93f677223a118f827f43b114f3a20320f60c2` or a later documentation-only commit. Do not build Mobile `main`.
+3. Build Mobile from `d6adc56e4698c8d3eb4d052a6a2348d0cd630d70` or a later documentation-only commit. Do not build Mobile `main`.
 4. Leave EAS `EXPO_PUBLIC_JOBSYNC_API_BASE_URL` at `https://jobwash-veysiubh.manus.space`.
 5. Do not run the open-shift migration. Do not change payment, payroll, or customer SQL.
 
@@ -143,14 +131,13 @@ Production `GET /api/mobile/v1/dashboard/summary` returned 404 `Unknown mobile A
 No database rollback is required. This work did not apply a migration and did not write production rows.
 
 - JobSync: revert `bd6c211a6ba02a2155c7fda46529071dca1e519e` and every commit after it on this branch, then publish the previous API build. Closing PR #55 without publishing it leaves production on the current API.
-- Mobile: revert `7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe` and every commit after it, including `34c93f677223a118f827f43b114f3a20320f60c2`. Do not change the EAS production URL as the rollback.
+- Mobile: revert `7843659652fa3a0d72b3ed1e1ed1ffac317fc6fe` and every commit after it, including `d6adc56e4698c8d3eb4d052a6a2348d0cd630d70`. Do not change the EAS production URL as the rollback.
 - If the new API is removed while a Mobile build from this branch is installed, `dashboard/summary` returns 404 and Operations Overview shows "Revenue unavailable". Roll the Mobile build back in the same window.
 
 ## Remaining release blockers
 
 - Explicit production approval has not been given. PR #55 stays unmerged.
 - Whether `www.homeserviceconnected.com` and `jobwash-veysiubh.manus.space` use the same database is NOT VERIFIED. Matching public health JSON is not that proof. `DATABASE_URL` was not readable here.
-- The GitHub Mobile check is FAIL on Expo patch drift, as recorded above. Local TypeScript and the full vitest suite passed.
 - An isolated live Web-to-Mobile pass, including physical GPS, was not run.
 - `dashboard/summary` stays 404 in production until the API is published.
 - Phase 2 is still open: Company notes, receptionist, invoice send, customer history, and employee performance. The plan is in `docs/HSC_PHASE2_LEGACY_MIGRATION_PLAN.md`. Those legacy calls were not removed.
