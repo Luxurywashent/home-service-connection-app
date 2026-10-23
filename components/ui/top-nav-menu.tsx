@@ -158,9 +158,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     } finally {
       const results = await Promise.allSettled([logout(), logoutJobSync()]);
       if (results.some((result) => result.status === "rejected")) {
-        const message = "This device is signed out, but server sign-out could not be confirmed. Reconnect and sign in again before relying on remote session revocation.";
+        const message = "Sign-out could not be fully confirmed. The current screen session was cleared, but saved credentials or server access may remain valid. Do not treat this as confirmed server sign-out.";
         if (Platform.OS === "web") window.alert(message);
-        else Alert.alert("Device signed out", message);
+        else Alert.alert("Sign-out not fully confirmed", message);
       }
       router.replace("/login");
     }
