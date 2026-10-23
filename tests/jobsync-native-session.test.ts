@@ -24,4 +24,22 @@ describe("JobSync native session routing", () => {
     expect(employee?.companyId).toBe(9);
     expect(employee?.companyName).toBe("Test Company");
   });
+
+  it("carries JobSync city, phone, and hire date into the native profile", () => {
+    const employee = getNativeEmployeeSession({
+      ...companySession("technician"),
+      user: {
+        ...companySession("technician").user,
+        phone: "850-555-0100",
+        city: "Destin",
+        hireDate: "2024-03-01",
+        firstName: "Taylor",
+        lastName: "Test",
+      },
+    });
+    expect(employee?.phoneNumber).toBe("850-555-0100");
+    expect(employee?.city).toBe("Destin");
+    expect(employee?.hireDate).toBe("2024-03-01");
+    expect(employee?.role).toBe("detailer");
+  });
 });

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, Modal, Platform, Animated,
@@ -140,7 +140,7 @@ export default function CustomerBookingsScreen() {
     { enabled: !!token, refetchInterval: 60000 }
   );
   // Pulse animation for tracking banner
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!activeTracking) return;
     const pulse = Animated.loop(
@@ -151,7 +151,7 @@ export default function CustomerBookingsScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [activeTracking]);
+  }, [activeTracking, pulseAnim]);
   const cancelMutation = trpc.customer.cancelBooking.useMutation({
     onSuccess: () => { utils.customer.allJobs.invalidate(); utils.customer.listBookings.invalidate(); },
   });

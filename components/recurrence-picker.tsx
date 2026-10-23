@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -133,27 +133,21 @@ interface Props {
 }
 
 export function RecurrencePicker({ visible, rule, baseDate, onConfirm, onCancel }: Props) {
+  if (!visible) return null;
+  const ruleKey = [baseDate, rule?.type ?? "none", rule?.dayOfWeek ?? "", rule?.ordinal ?? "", rule?.endDate ?? "", rule?.neverEnds ?? false].join(":");
+  return <RecurrencePickerDraft key={ruleKey} rule={rule} baseDate={baseDate} onConfirm={onConfirm} onCancel={onCancel} />;
+}
+
+function RecurrencePickerDraft({ rule, baseDate, onConfirm, onCancel }: Omit<Props, "visible">) {
   const colors = useColors();
   const baseDow = new Date((baseDate || "2026-01-01") + "T12:00:00").getDay();
 
   const [type, setType] = useState<RecurrenceType>(rule?.type ?? "none");
   const [dayOfWeek, setDayOfWeek] = useState<number>(rule?.dayOfWeek ?? baseDow);
   const [ordinal, setOrdinal] = useState<number>(rule?.ordinal ?? 1);
-  const [endDate, setEndDate] = useState<string>(rule?.endDate ?? "");
+  const [endDate] = useState<string>(rule?.endDate ?? "");
   const [endPreset, setEndPreset] = useState<string>(rule?.endDate ? "custom" : "6m");
   const [neverEnds, setNeverEnds] = useState<boolean>(rule?.neverEnds ?? false);
-
-  // Reset state when opened
-  useEffect(() => {
-    if (visible) {
-      setType(rule?.type ?? "none");
-      setDayOfWeek(rule?.dayOfWeek ?? baseDow);
-      setOrdinal(rule?.ordinal ?? 1);
-      setEndDate(rule?.endDate ?? "");
-      setEndPreset(rule?.endDate ? "custom" : "6m");
-      setNeverEnds(rule?.neverEnds ?? false);
-    }
-  }, [visible]);
 
   const resolvedEndDate = (): string => {
     const base = new Date((baseDate || "2026-01-01") + "T12:00:00");
@@ -188,8 +182,6 @@ export function RecurrencePicker({ visible, rule, baseDate, onConfirm, onCancel 
     { label: "Monthly (same date)", value: "monthly_date", sub: "e.g. every 5th of the month" },
     { label: "Monthly (by day)", value: "monthly_ordinal", sub: "e.g. 1st Monday, 3rd Friday" },
   ];
-
-  if (!visible) return null;
 
   return (
     // Absolute overlay — works inside another Modal on iOS

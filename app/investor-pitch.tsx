@@ -69,8 +69,8 @@ export default function InvestorPitchScreen() {
                 <Text style={styles.heroHighlight}>Real Returns.</Text>
               </Text>
               <Text style={styles.heroSubtitle}>
-                Put your capital to work in a proven mobile detailing operation 
-                that's been delivering results for over 14 years.
+                Put your capital to work in a proven mobile detailing operation
+                that’s been delivering results for over 14 years.
               </Text>
             </Animated.View>
 
@@ -106,16 +106,16 @@ export default function InvestorPitchScreen() {
               </View>
             </View>
             <Text style={styles.messageText}>
-              "I started Luxury Wash On Wheels 14 years ago with one van and a vision. 
-              Today, we operate across 5 cities with a fleet of vans serving premium clients 
+              “I started Luxury Wash On Wheels 14 years ago with one van and a vision.
+              Today, we operate across 5 cities with a fleet of vans serving premium clients
               who trust us with their Ferraris, BMWs, and everything in between.{"\n\n"}
-              Here's what I'm offering you — a chance to be part of this growth. You invest 
-              in a van, we put it through our proven system, and you earn returns. It's that simple.{"\n\n"}
-              This isn't some startup gamble. This is a 14-year-old machine that prints results. 
-              Your money goes in, our system works it, and dividends come back to you. 
+              Here’s what I’m offering you — a chance to be part of this growth. You invest
+              in a van, we put it through our proven system, and you earn returns. It’s that simple.{"\n\n"}
+              This isn’t some startup gamble. This is a 14-year-old machine that prints results.
+              Your money goes in, our system works it, and dividends come back to you.
               Fast turnaround. Real returns. No guesswork.{"\n\n"}
-              I want partners who believe in what we're building. People who want to grow 
-              with us — not just watch from the sidelines."
+              I want partners who believe in what we’re building. People who want to grow
+              with us — not just watch from the sidelines.”
             </Text>
           </View>
         </View>
@@ -211,7 +211,7 @@ export default function InvestorPitchScreen() {
           <Text style={styles.sectionEyebrow}>VIP EXCLUSIVE</Text>
           <Text style={styles.sectionTitle}>More Than an Investor</Text>
           <Text style={styles.sectionSubtitle}>
-            Top-tier investors don't just earn — they become part of the inner circle
+            Top-tier investors don’t just earn — they become part of the inner circle
           </Text>
 
           {VIP_BENEFITS.map((benefit, i) => (
@@ -231,9 +231,9 @@ export default function InvestorPitchScreen() {
         <View style={styles.section}>
           <View style={styles.proofCard}>
             <Text style={styles.proofQuote}>
-              "I've been in business 14 years. I've built this from nothing to a multi-city 
-              operation. Now I'm giving you the opportunity to ride with us. 
-              Your money works while you sleep."
+              “I’ve been in business 14 years. I’ve built this from nothing to a multi-city
+              operation. Now I’m giving you the opportunity to ride with us.
+              Your money works while you sleep.”
             </Text>
             <Text style={styles.proofAuthor}>— Adrian Miller, Founder</Text>
           </View>
@@ -272,7 +272,7 @@ export default function InvestorPitchScreen() {
             Luxury Wash On Wheels © 2012-2026
           </Text>
           <Text style={styles.footerDisclaimer}>
-            Investment involves risk. Past performance does not guarantee future results. 
+            Investment involves risk. Past performance does not guarantee future results.
             All investment terms are subject to individual agreements.
           </Text>
         </View>

@@ -176,21 +176,7 @@ function InlinePhotoLogger({ onClose }: { onClose: () => void }) {
 
   const createEntryMutation = trpc.doorHanger.createEntry.useMutation();
 
-  useEffect(() => {
-    (async () => {
-      let granted = locationPermission?.granted;
-      if (!granted) {
-        const result = await requestLocationPermission();
-        granted = result.granted;
-        if (!granted && !result.canAskAgain) {
-          Alert.alert("Location Access Required", "Enable location in Settings to geo-tag entries.");
-        }
-      }
-      if (granted) prefetchLocation();
-    })();
-  }, []);
-
-  const prefetchLocation = async () => {
+  const prefetchLocation = useCallback(async () => {
     if (isFetchingLocation.current) return;
     isFetchingLocation.current = true;
     try {
@@ -207,7 +193,21 @@ function InlinePhotoLogger({ onClose }: { onClose: () => void }) {
       cachedLocation.current = { latitude, longitude, address };
     } catch {}
     finally { isFetchingLocation.current = false; }
-  };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      let granted = locationPermission?.granted;
+      if (!granted) {
+        const result = await requestLocationPermission();
+        granted = result.granted;
+        if (!granted && !result.canAskAgain) {
+          Alert.alert("Location Access Required", "Enable location in Settings to geo-tag entries.");
+        }
+      }
+      if (granted) prefetchLocation();
+    })();
+  }, []);
 
   const getLocation = async (): Promise<{ latitude: number; longitude: number; address: string }> => {
     if (cachedLocation.current) { const loc = cachedLocation.current; prefetchLocation(); return loc; }
@@ -465,21 +465,22 @@ export default function SalesDashboard() {
   );
   const dhGoalsQuery = trpc.doorHanger.getGoals.useQuery({} as any);
 
-  const [dhStats, setDhStats] = useState<any>(null);
-  const [dhGoals, setDhGoals] = useState<any>(null);
-  const [suggestedCity, setSuggestedCity] = useState<any>(null);
+  const [dismissedSuggestedCityAddress, setDismissedSuggestedCityAddress] = useState<string | null>(null);
 
   // Get suggested door hanger location
   const suggestedCityQuery = trpc.doorHanger.getSuggestedCity.useQuery(
     undefined,
     { refetchInterval: 60000 }
   );
-
-  useEffect(() => {
-    if (suggestedCityQuery.data) {
-      setSuggestedCity(suggestedCityQuery.data);
-    }
-  }, [suggestedCityQuery.data]);
+  const suggestedCity = suggestedCityQuery.data?.startingAddress === dismissedSuggestedCityAddress
+    ? null
+    : suggestedCityQuery.data ?? null;
+  const dhStats = dhStatsQuery.data !== undefined || dhStatsQuery.isError
+    ? { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0, ...(dhStatsQuery.data as any) }
+    : null;
+  const dhGoals = dhGoalsQuery.data !== undefined || dhGoalsQuery.isError
+    ? dhGoalsQuery.data || { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 }
+    : null;
 
   const handleTakeMeThere = async () => {
     if (!suggestedCity?.startingAddress) return;
@@ -492,24 +493,11 @@ export default function SalesDashboard() {
     try {
       await Linking.openURL(url);
       // Clear the suggestion after navigation
-      setSuggestedCity(null);
+      setDismissedSuggestedCityAddress(suggestedCity.startingAddress);
     } catch (err) {
       Alert.alert('Error', 'Could not open maps application');
     }
   };
-
-  useEffect(() => {
-    if (dhStatsQuery.data !== undefined || dhStatsQuery.isError) {
-      const s = dhStatsQuery.data as any;
-      setDhStats(s ? { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0, ...s } : { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0 });
-    }
-  }, [dhStatsQuery.data, dhStatsQuery.isError]);
-
-  useEffect(() => {
-    if (dhGoalsQuery.data !== undefined || dhGoalsQuery.isError) {
-      setDhGoals(dhGoalsQuery.data || { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 });
-    }
-  }, [dhGoalsQuery.data, dhGoalsQuery.isError]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -652,7 +640,7 @@ export default function SalesDashboard() {
             </Text>
             <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: "center", gap: 8 }}>
               <Text style={{ fontSize: 28, fontWeight: "900", color: "#34D399" }}>${((dhStats?.doorHangers || 0) * 0.25).toFixed(2)}</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>This Week's Projected Paycheck</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.foreground }}>This Week’s Projected Paycheck</Text>
               <Text style={{ fontSize: 12, color: colors.muted }}>{(dhStats?.doorHangers || 0)} photos × $0.25</Text>
             </View>
           </View>

@@ -328,6 +328,7 @@ function InventoryTab({ categories, items, stock, locations, vans, utils }: any)
 
       {/* Modals */}
       <SimpleInputModal
+        key={`category:${showAddCat}`}
         visible={showAddCat}
         title="New Category"
         placeholder="Category name"
@@ -335,6 +336,7 @@ function InventoryTab({ categories, items, stock, locations, vans, utils }: any)
         onSave={(name: string) => { createCatMut.mutate({ name }); setShowAddCat(false); }}
       />
       <SimpleInputModal
+        key={`item:${showAddItem ?? "closed"}`}
         visible={!!showAddItem}
         title="New Item"
         placeholder="Item name"
@@ -342,6 +344,7 @@ function InventoryTab({ categories, items, stock, locations, vans, utils }: any)
         onSave={(name: string) => { if (showAddItem) createItemMut.mutate({ categoryId: showAddItem, name, minThreshold: 5 }); setShowAddItem(null); }}
       />
       <SimpleInputModal
+        key={`edit-category:${editCat?.categoryId ?? "closed"}`}
         visible={!!editCat}
         title="Rename Category"
         placeholder="Category name"
@@ -350,6 +353,7 @@ function InventoryTab({ categories, items, stock, locations, vans, utils }: any)
         onSave={(name: string) => { if (editCat) updateCatMut.mutate({ categoryId: editCat.categoryId, name }); setEditCat(null); }}
       />
       <EditItemModal
+        key={`edit-item:${editItem?.itemId ?? "closed"}`}
         visible={!!editItem}
         item={editItem}
         categories={categories}
@@ -428,8 +432,8 @@ function LocationsTab({ locations, vans, utils }: any) {
           </View>
         );
       })}
-      <LocationInputModal visible={showAdd} title="New Blue Box Location" onClose={() => setShowAdd(false)} onSave={(name: string, city?: string, address?: string, gateCode?: string, boxCode?: string) => { createMut.mutate({ name, city, address, gateCode, boxCode }); setShowAdd(false); }} />
-      <LocationInputModal visible={!!editLoc} title="Edit Location" initialName={editLoc?.name} initialCity={editLoc?.city} initialAddress={editLoc?.address} initialGateCode={editLoc?.gateCode} initialBoxCode={editLoc?.boxCode} onClose={() => setEditLoc(null)} onSave={(name: string, city?: string, address?: string, gateCode?: string, boxCode?: string) => { if (editLoc) updateMut.mutate({ locationId: editLoc.locationId, name, city, address, gateCode, boxCode }); setEditLoc(null); }} />
+      <LocationInputModal key={`new-location:${showAdd}`} visible={showAdd} title="New Blue Box Location" onClose={() => setShowAdd(false)} onSave={(name: string, city?: string, address?: string, gateCode?: string, boxCode?: string) => { createMut.mutate({ name, city, address, gateCode, boxCode }); setShowAdd(false); }} />
+      <LocationInputModal key={`edit-location:${editLoc?.locationId ?? "closed"}`} visible={!!editLoc} title="Edit Location" initialName={editLoc?.name} initialCity={editLoc?.city} initialAddress={editLoc?.address} initialGateCode={editLoc?.gateCode} initialBoxCode={editLoc?.boxCode} onClose={() => setEditLoc(null)} onSave={(name: string, city?: string, address?: string, gateCode?: string, boxCode?: string) => { if (editLoc) updateMut.mutate({ locationId: editLoc.locationId, name, city, address, gateCode, boxCode }); setEditLoc(null); }} />
     </View>
   );
 }
@@ -475,8 +479,8 @@ function VansTab({ vans, locations, utils }: any) {
           </View>
         );
       })}
-      <VanInputModal visible={showAdd} title="New Van" locations={locations} onClose={() => setShowAdd(false)} onSave={(name: string, locationId: string) => { createMut.mutate({ name, locationId }); setShowAdd(false); }} />
-      <VanInputModal visible={!!editVan} title="Edit Van" locations={locations} initialName={editVan?.name} initialLocationId={editVan?.locationId} onClose={() => setEditVan(null)} onSave={(name: string, locationId: string) => { if (editVan) updateMut.mutate({ vanId: editVan.vanId, name, locationId }); setEditVan(null); }} />
+      <VanInputModal key={`new-van:${showAdd}`} visible={showAdd} title="New Van" locations={locations} onClose={() => setShowAdd(false)} onSave={(name: string, locationId: string) => { createMut.mutate({ name, locationId }); setShowAdd(false); }} />
+      <VanInputModal key={`edit-van:${editVan?.vanId ?? "closed"}`} visible={!!editVan} title="Edit Van" locations={locations} initialName={editVan?.name} initialLocationId={editVan?.locationId} onClose={() => setEditVan(null)} onSave={(name: string, locationId: string) => { if (editVan) updateMut.mutate({ vanId: editVan.vanId, name, locationId }); setEditVan(null); }} />
     </View>
   );
 }
@@ -780,7 +784,6 @@ function ActionModal({ visible, mode, item, currentQty, selectedLocation, locati
 function SimpleInputModal({ visible, title, placeholder, initialValue, onClose, onSave }: any) {
   const colors = useColors();
   const [value, setValue] = useState(initialValue ?? "");
-  React.useEffect(() => { if (visible) setValue(initialValue ?? ""); }, [visible, initialValue]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -802,7 +805,6 @@ function EditItemModal({ visible, item, categories, onClose, onSave }: any) {
   const colors = useColors();
   const [name, setName] = useState(item?.name ?? "");
   const [threshold, setThreshold] = useState(String(item?.minThreshold ?? 0));
-  React.useEffect(() => { if (visible && item) { setName(item.name); setThreshold(String(item.minThreshold)); } }, [visible, item]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -830,15 +832,6 @@ function LocationInputModal({ visible, title, initialName, initialCity, initialA
   const [address, setAddress] = useState(initialAddress ?? "");
   const [gateCode, setGateCode] = useState(initialGateCode ?? "");
   const [boxCode, setBoxCode] = useState(initialBoxCode ?? "");
-  React.useEffect(() => {
-    if (visible) {
-      setName(initialName ?? "");
-      setCity(initialCity ?? "");
-      setAddress(initialAddress ?? "");
-      setGateCode(initialGateCode ?? "");
-      setBoxCode(initialBoxCode ?? "");
-    }
-  }, [visible, initialName, initialCity, initialAddress, initialGateCode, initialBoxCode]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -871,7 +864,6 @@ function VanInputModal({ visible, title, locations, initialName, initialLocation
   const colors = useColors();
   const [name, setName] = useState(initialName ?? "");
   const [locationId, setLocationId] = useState(initialLocationId ?? locations[0]?.locationId ?? "");
-  React.useEffect(() => { if (visible) { setName(initialName ?? ""); setLocationId(initialLocationId ?? locations[0]?.locationId ?? ""); } }, [visible, initialName, initialLocationId]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>

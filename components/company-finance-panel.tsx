@@ -6,7 +6,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
-  companyCanonicalReadError,
+  companyReadFailure,
   resolveCompanyFinanceDisplay,
 } from "@/lib/jobsync-company-authority";
 import { getJobSyncCompanyFinance, type JobSyncCompanyFinanceSummary } from "@/lib/jobsync-mobile-api";
@@ -45,21 +45,39 @@ export function CompanyFinancePanel({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       setFinance(await getJobSyncCompanyFinance(token));
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setFinance(null);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    getJobSyncCompanyFinance(token)
+      .then((nextFinance) => {
+        if (cancelled) return;
+        setFinance(nextFinance);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        const message = companyReadFailure(refreshError);
+        if (!message) return;
+        setFinance(null);
+        setError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [revision, token]);
 
   const display = resolveCompanyFinanceDisplay({
     mode: "company",

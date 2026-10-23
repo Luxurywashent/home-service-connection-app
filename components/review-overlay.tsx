@@ -153,7 +153,7 @@ export function ReviewOverlay({
             {/* Copy-paste section */}
             <View style={styles.copyBox}>
               <Text style={styles.copyLabel}>
-                Don't have time to write your own review?
+                {"Don't have time to write your own review?"}
               </Text>
               <Text style={styles.copyHint}>
                 Tap the button below to copy a pre-written review — then paste it directly into Google!

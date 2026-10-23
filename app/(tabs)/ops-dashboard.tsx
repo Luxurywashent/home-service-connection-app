@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MorningMeetingBanner } from "@/components/morning-meeting-banner";
 import { CompanyMeetingBanner } from "@/components/company-meeting-banner";
 import {
@@ -282,6 +282,76 @@ function LateClockSection({ colors }: { colors: any }) {
 
 type ChecklistField = "siteInspections" | "vanInspections" | "doorHangers" | "inventoryCheck" | "morningTeamCheckIn" | "afternoonTeamCheckIn" | "qcCallsDone";
 
+const CHECKLIST_ACCENT = "#0a7ea4";
+
+function ChecklistCounterRow({
+  colors, emoji, label, field, value, goal, onIncrement,
+}: {
+  colors: any; emoji: string; label: string; field: ChecklistField; value: number; goal: number;
+  onIncrement: (field: ChecklistField, value: number) => void;
+}) {
+  const done = value >= goal;
+  return (
+    <View style={{
+      flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14,
+      backgroundColor: done ? colors.success + "12" : colors.surface, borderRadius: 12,
+      borderWidth: 1, borderColor: done ? colors.success + "40" : colors.border, gap: 10,
+    }}>
+      <Text style={{ fontSize: 20 }}>{emoji}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{label}</Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{value} / {goal} completed</Text>
+      </View>
+      {done ? <Text style={{ fontSize: 20 }}>✅</Text> : (
+        <TouchableOpacity
+          onPress={() => {
+            onIncrement(field, value);
+            if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          style={{ backgroundColor: CHECKLIST_ACCENT, borderRadius: 20, width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700", lineHeight: 22 }}>+</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+function ChecklistToggleRow({
+  colors, emoji, label, field, value, note, onToggle,
+}: {
+  colors: any; emoji: string; label: string; field: ChecklistField; value: number; note?: string;
+  onToggle: (field: ChecklistField, value: number) => void;
+}) {
+  const done = value === 1;
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        onToggle(field, value);
+        if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }}
+      style={{
+        flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14,
+        backgroundColor: done ? colors.success + "12" : colors.surface, borderRadius: 12,
+        borderWidth: 1, borderColor: done ? colors.success + "40" : colors.border, gap: 10,
+      }}
+    >
+      <Text style={{ fontSize: 20 }}>{emoji}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{label}</Text>
+        {note ? <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{note}</Text> : null}
+      </View>
+      <View style={{
+        width: 26, height: 26, borderRadius: 13, borderWidth: 2,
+        borderColor: done ? colors.success : colors.border, backgroundColor: done ? colors.success : "transparent",
+        alignItems: "center", justifyContent: "center",
+      }}>
+        {done && <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>✓</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 function OpsDailyChecklistSection({ colors, opsManagerId }: { colors: any; opsManagerId: string }) {
   const utils = trpc.useUtils();
   const { data: checklist, isLoading } = trpc.ops.getDailyChecklist.useQuery(
@@ -317,98 +387,6 @@ function OpsDailyChecklistSection({ colors, opsManagerId }: { colors: any; opsMa
   ].filter(Boolean).length;
   const allDone = completedItems === totalItems;
 
-  const ACCENT = "#0a7ea4";
-
-  function CounterRow({
-    emoji, label, field, value, goal,
-  }: { emoji: string; label: string; field: ChecklistField; value: number; goal: number }) {
-    const done = value >= goal;
-    return (
-      <View style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        backgroundColor: done ? colors.success + "12" : colors.surface,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: done ? colors.success + "40" : colors.border,
-        gap: 10,
-      }}>
-        <Text style={{ fontSize: 20 }}>{emoji}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{label}</Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
-            {value} / {goal} completed
-          </Text>
-        </View>
-        {done ? (
-          <Text style={{ fontSize: 20 }}>✅</Text>
-        ) : (
-          <TouchableOpacity
-            onPress={() => {
-              increment(field, value);
-              if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-            style={{
-              backgroundColor: ACCENT,
-              borderRadius: 20,
-              width: 36,
-              height: 36,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700", lineHeight: 22 }}>+</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  }
-
-  function ToggleRow({
-    emoji, label, field, value, note,
-  }: { emoji: string; label: string; field: ChecklistField; value: number; note?: string }) {
-    const done = value === 1;
-    return (
-      <TouchableOpacity
-        onPress={() => {
-          toggle(field, value, true);
-          if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingVertical: 12,
-          paddingHorizontal: 14,
-          backgroundColor: done ? colors.success + "12" : colors.surface,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: done ? colors.success + "40" : colors.border,
-          gap: 10,
-        }}
-      >
-        <Text style={{ fontSize: 20 }}>{emoji}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.foreground }}>{label}</Text>
-          {note ? <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{note}</Text> : null}
-        </View>
-        <View style={{
-          width: 26,
-          height: 26,
-          borderRadius: 13,
-          borderWidth: 2,
-          borderColor: done ? colors.success : colors.border,
-          backgroundColor: done ? colors.success : "transparent",
-          alignItems: "center",
-          justifyContent: "center",
-        }}>
-          {done && <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>✓</Text>}
-        </View>
-      </TouchableOpacity>
-    );
-  }
-
   if (isLoading) return <ActivityIndicator color={colors.primary} style={{ marginBottom: 28 }} />;
 
   return (
@@ -417,25 +395,25 @@ function OpsDailyChecklistSection({ colors, opsManagerId }: { colors: any; opsMa
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground }}>📋 Daily Checklist</Text>
         <View style={{
-          backgroundColor: allDone ? colors.success + "20" : ACCENT + "20",
+          backgroundColor: allDone ? colors.success + "20" : CHECKLIST_ACCENT + "20",
           paddingHorizontal: 10,
           paddingVertical: 3,
           borderRadius: 12,
         }}>
-          <Text style={{ fontSize: 12, fontWeight: "700", color: allDone ? colors.success : ACCENT }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: allDone ? colors.success : CHECKLIST_ACCENT }}>
             {completedItems}/{totalItems} Done
           </Text>
         </View>
       </View>
 
       <View style={{ gap: 8 }}>
-        <CounterRow emoji="🔍" label="Site Inspections" field="siteInspections" value={si} goal={2} />
-        <CounterRow emoji="🚐" label="Van Inspections" field="vanInspections" value={vi} goal={2} />
-        <CounterRow emoji="🚪" label="Door Hangers" field="doorHangers" value={dh} goal={100} />
-        <ToggleRow emoji="📦" label="Blue Box Inventory Check" field="inventoryCheck" value={inv} />
-        <ToggleRow emoji="☀️" label="Morning Team Check-In" field="morningTeamCheckIn" value={am} note="Check in with all working team members before noon" />
-        <ToggleRow emoji="🕑" label="Afternoon Team Check-In" field="afternoonTeamCheckIn" value={pm} note="Follow up with all Detailers around 2:30 PM" />
-        <ToggleRow emoji="✅" label="QC Calls Complete" field="qcCallsDone" value={qc} note="All quality control calls done for today" />
+        <ChecklistCounterRow colors={colors} onIncrement={increment} emoji="🔍" label="Site Inspections" field="siteInspections" value={si} goal={2} />
+        <ChecklistCounterRow colors={colors} onIncrement={increment} emoji="🚐" label="Van Inspections" field="vanInspections" value={vi} goal={2} />
+        <ChecklistCounterRow colors={colors} onIncrement={increment} emoji="🚪" label="Door Hangers" field="doorHangers" value={dh} goal={100} />
+        <ChecklistToggleRow colors={colors} onToggle={(field, value) => toggle(field, value, true)} emoji="📦" label="Blue Box Inventory Check" field="inventoryCheck" value={inv} />
+        <ChecklistToggleRow colors={colors} onToggle={(field, value) => toggle(field, value, true)} emoji="☀️" label="Morning Team Check-In" field="morningTeamCheckIn" value={am} note="Check in with all working team members before noon" />
+        <ChecklistToggleRow colors={colors} onToggle={(field, value) => toggle(field, value, true)} emoji="🕑" label="Afternoon Team Check-In" field="afternoonTeamCheckIn" value={pm} note="Follow up with all Detailers around 2:30 PM" />
+        <ChecklistToggleRow colors={colors} onToggle={(field, value) => toggle(field, value, true)} emoji="✅" label="QC Calls Complete" field="qcCallsDone" value={qc} note="All quality control calls done for today" />
       </View>
 
       {allDone && (
@@ -531,6 +509,12 @@ export default function OpsDashboard() {
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [weatherRefreshVersion, setWeatherRefreshVersion] = useState(0);
+
+  const retryWeather = () => {
+    setWeatherLoading(true);
+    setWeatherRefreshVersion((version) => version + 1);
+  };
 
   // Alerts summary (for pending time off count)
   const { data: alerts } = trpc.alerts.getSummary.useQuery(undefined, { refetchInterval: 60000 });
@@ -540,13 +524,11 @@ export default function OpsDashboard() {
     refetchInterval: 30000,
   });
 
-  // ── Fetch weather for all service cities ──────────────────────────────────
-  const fetchWeather = async () => {
-    setWeatherLoading(true);
-    setWeatherError(null);
-    try {
-      const results: CityWeather[] = await Promise.all(
-        SERVICE_CITIES.map(async (city) => {
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWeather = () => {
+      Promise.all(
+        SERVICE_CITIES.map((city) => {
           const url =
             `https://api.open-meteo.com/v1/forecast` +
             `?latitude=${city.lat}&longitude=${city.lon}` +
@@ -554,37 +536,47 @@ export default function OpsDashboard() {
             `wind_speed_10m,precipitation,weather_code,uv_index` +
             `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
             `&timezone=America%2FChicago`;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Weather fetch failed for ${city.name}`);
-          const json = await res.json();
-          const c = json.current;
-          return {
-            name: city.name,
-            tempF: Math.round(c.temperature_2m),
-            feelsLikeF: Math.round(c.apparent_temperature),
-            humidity: Math.round(c.relative_humidity_2m),
-            windMph: Math.round(c.wind_speed_10m),
-            precipMm: parseFloat((c.precipitation ?? 0).toFixed(2)),
-            weatherCode: c.weather_code,
-            uvIndex: Math.round(c.uv_index ?? 0),
-          } as CityWeather;
+          return fetch(url)
+            .then((res) => {
+              if (!res.ok) throw new Error(`Weather fetch failed for ${city.name}`);
+              return res.json();
+            })
+            .then((json) => {
+              const c = json.current;
+              return {
+                name: city.name,
+                tempF: Math.round(c.temperature_2m),
+                feelsLikeF: Math.round(c.apparent_temperature),
+                humidity: Math.round(c.relative_humidity_2m),
+                windMph: Math.round(c.wind_speed_10m),
+                precipMm: parseFloat((c.precipitation ?? 0).toFixed(2)),
+                weatherCode: c.weather_code,
+                uvIndex: Math.round(c.uv_index ?? 0),
+              } as CityWeather;
+            });
         })
-      );
-      setWeatherData(results);
-      setLastUpdated(new Date());
-    } catch (e: any) {
-      setWeatherError(e.message ?? "Failed to load weather");
-    } finally {
-      setWeatherLoading(false);
-    }
-  };
-
-  useEffect(() => {
+      )
+        .then((results) => {
+          if (cancelled) return;
+          setWeatherData(results);
+          setWeatherError(null);
+          setLastUpdated(new Date());
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setWeatherError(error instanceof Error ? error.message : "Failed to load weather");
+        })
+        .finally(() => {
+          if (!cancelled) setWeatherLoading(false);
+        });
+    };
     fetchWeather();
     // Refresh every 10 minutes
     const interval = setInterval(fetchWeather, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [weatherRefreshVersion]);
 
   const selectedWeather = weatherData[selectedCity] ?? null;
   const weatherInfo = selectedWeather ? getWeatherInfo(selectedWeather.weatherCode) : null;
@@ -763,7 +755,7 @@ export default function OpsDashboard() {
               <Text style={{ fontSize: 24 }}>⚠️</Text>
               <Text style={{ color: colors.error, marginTop: 8, fontSize: 13, textAlign: "center" }}>{weatherError}</Text>
               <TouchableOpacity
-                onPress={fetchWeather}
+                onPress={retryWeather}
                 style={{ marginTop: 12, paddingHorizontal: 20, paddingVertical: 8, backgroundColor: colors.primary, borderRadius: 12 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Retry</Text>

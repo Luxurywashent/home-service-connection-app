@@ -735,7 +735,7 @@ export default function AdminPointsScreen() {
                   <Text style={{ fontSize: 32 }}>🏖️</Text>
                   <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>No days off scheduled</Text>
                   <Text style={{ color: colors.muted, fontSize: 14, textAlign: "center", paddingHorizontal: 32 }}>
-                    Tap "+ Assign" to mark a team member as off for a specific day.
+                    Tap &quot;+ Assign&quot; to mark a team member as off for a specific day.
                   </Text>
                 </View>
               }
@@ -900,7 +900,7 @@ export default function AdminPointsScreen() {
                     }}
                   />
                   <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
-                    This title will appear in the detailer's Alerts tab and requires their acknowledgment.
+                    This title will appear in the detailer&apos;s Alerts tab and requires their acknowledgment.
                   </Text>
                 </View>
               )}
@@ -993,7 +993,7 @@ export default function AdminPointsScreen() {
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "85%" }}>
             <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "700" }}>This Week's Violations</Text>
+              <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "700" }}>This Week&apos;s Violations</Text>
               <Text style={{ color: colors.muted, fontSize: 13 }}>Week of {getCurrentWeekLabel()}</Text>
             </View>
             <FlatList

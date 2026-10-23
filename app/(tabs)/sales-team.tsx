@@ -78,9 +78,8 @@ export default function SalesTeamTab() {
   const [activeView, setActiveView] = React.useState<ViewType>("callbacks");
   const [refreshing, setRefreshing] = React.useState(false);
   const [filter, setFilter] = React.useState<FilterType>("all");
-  const [doorHangerStats, setDoorHangerStats] = React.useState<Stats | null>(null);
-  const [doorHangerGoals, setDoorHangerGoals] = React.useState<Goals | null>(null);
-  const [isLoadingDoorHanger, setIsLoadingDoorHanger] = React.useState(true);
+  const defaultDoorHangerStats: Stats = { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0, totalEntries: 0 };
+  const defaultDoorHangerGoals: Goals = { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 };
   const [showDoorHangerModal, setShowDoorHangerModal] = React.useState(false);
   const [doorHangerModalTab, setDoorHangerModalTab] = React.useState<"log" | "history" | "map">("log");
 
@@ -101,19 +100,14 @@ export default function SalesTeamTab() {
   const getStats = trpc.doorHanger.getStats.useQuery({} as any);
   const getGoals = trpc.doorHanger.getGoals.useQuery({} as any);
 
-  // Load door hanger data
-  React.useEffect(() => {
-    if (getStats.data || getGoals.data || getStats.isError || getGoals.isError) {
-      const defaultStats: Stats = { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0, totalEntries: 0 };
-      const statsData = getStats.data as any;
-      if (statsData && !statsData.tableToppers) {
-        statsData.tableToppers = 0;
-      }
-      setDoorHangerStats(statsData || defaultStats);
-      setDoorHangerGoals(getGoals.data || { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 });
-      setIsLoadingDoorHanger(false);
-    }
-  }, [getStats.data, getStats.isError, getGoals.data, getGoals.isError]);
+  const rawDoorHangerStats = getStats.data as Partial<Stats> | undefined;
+  const doorHangerStats: Stats = {
+    ...defaultDoorHangerStats,
+    ...(rawDoorHangerStats ?? {}),
+    tableToppers: rawDoorHangerStats?.tableToppers ?? 0,
+  };
+  const doorHangerGoals: Goals = getGoals.data ?? defaultDoorHangerGoals;
+  const isLoadingDoorHanger = getStats.isLoading || getGoals.isLoading;
 
   const onRefresh = async () => {
     setRefreshing(true);

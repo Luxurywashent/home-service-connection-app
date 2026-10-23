@@ -5,7 +5,16 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJobs } from "@/lib/jobsync-mobile-api";
+import {
+  getJobSyncCompanyDashboardSummary,
+  getJobSyncCompanyDispatchBoard,
+  isCompanyLocationStale,
+  type JobSyncCompanyDashboardSummary,
+  type JobSyncCompanyDispatchLocation,
+} from "@/lib/jobsync-mobile-api";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
+import { companyReadFailure } from "@/lib/jobsync-company-authority";
+import { companyRequestLoading, companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
 import { useEmployeePush } from "@/hooks/use-employee-push";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
@@ -38,6 +47,16 @@ const REGION_DEFAULT = {
   longitude: -86.48,
   latitudeDelta: 0.9,
   longitudeDelta: 0.9,
+};
+
+type CompanySummaryRequestState = {
+  summary: JobSyncCompanyDashboardSummary | null;
+  error: string | null;
+};
+
+type CompanyLocationsRequestState = {
+  locations: JobSyncCompanyDispatchLocation[] | null;
+  error: string | null;
 };
 
 // Custom van marker component
@@ -93,6 +112,7 @@ export default function AdminDashboard() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: companySyncRevision } = useJobSyncSync();
   const router = useRouter();
   // Register push token so admins receive job and chat notifications
   useEmployeePush();
@@ -101,8 +121,32 @@ export default function AdminDashboard() {
 
   // State for day/week toggle
   const [period, setPeriod] = useState<"day" | "week">("day");
-  const [canonicalWeekJobs, setCanonicalWeekJobs] = useState<any[]>([]);
-  const [canonicalJobsLoading, setCanonicalJobsLoading] = useState(false);
+  const [companySummaryResource, setCompanySummaryResource] = useState<CompanyRequestResource<CompanySummaryRequestState> | null>(null);
+  const [companyLocationsResource, setCompanyLocationsResource] = useState<CompanyRequestResource<CompanyLocationsRequestState> | null>(null);
+  const [lastCompanySummaryResource, setLastCompanySummaryResource] = useState<CompanyRequestResource<JobSyncCompanyDashboardSummary> | null>(null);
+  const [companyOperationsRetry, setCompanyOperationsRetry] = useState(0);
+  const companyOperationsRequest = useMemo(() => {
+    const token = jobSyncSession?.token;
+    if (!token) return null;
+    const sessionPeriodKey = `${token}:${period}:${today}`;
+    return {
+      key: `${sessionPeriodKey}:${companySyncRevision}:${companyOperationsRetry}`,
+      sessionPeriodKey,
+      token,
+      period,
+      today,
+    };
+  }, [companyOperationsRetry, companySyncRevision, jobSyncSession?.token, period, today]);
+  const companySummaryResponse = companyRequestValue(companyOperationsRequest?.key ?? null, companySummaryResource);
+  const lastCompanySummary = companyRequestValue(companyOperationsRequest?.sessionPeriodKey ?? null, lastCompanySummaryResource);
+  const companySummary = companySummaryResponse?.summary ?? lastCompanySummary;
+  const companySummaryError = companySummaryResponse?.error ?? null;
+  const companySummaryLoading = companyRequestLoading(companyOperationsRequest?.key ?? null, companySummaryResource);
+  const companySummaryStale = !companySummaryResponse?.summary && Boolean(lastCompanySummary);
+  const companyLocationsResponse = companyRequestValue(companyOperationsRequest?.key ?? null, companyLocationsResource);
+  const companyLocations = companyLocationsResponse?.locations ?? [];
+  const companyLocationsError = companyLocationsResponse?.error ?? null;
+  const companyLocationsLoading = companyRequestLoading(companyOperationsRequest?.key ?? null, companyLocationsResource);
 
   // Queries
   const { data: detailers, isLoading: loadingDetailers } = trpc.employee.listDetailers.useQuery(undefined, { enabled: !jobSyncSession });
@@ -125,33 +169,44 @@ export default function AdminDashboard() {
     enabled: !jobSyncSession,
   });
   useEffect(() => {
-    if (!jobSyncSession?.token) {
-      setCanonicalWeekJobs([]);
-      return;
-    }
+    if (!companyOperationsRequest) return;
     let cancelled = false;
-    setCanonicalJobsLoading(true);
-    getJobSyncCompanyJobs(jobSyncSession.token, { start: `${start}T00:00:00.000Z`, end: `${end}T23:59:59.999Z` })
-      .then((jobs) => {
+    const request = companyOperationsRequest;
+
+    void getJobSyncCompanyDashboardSummary(request.token, { period: request.period })
+      .then((summary) => {
         if (cancelled) return;
-        setCanonicalWeekJobs(jobs.map((job) => ({
-          ...job,
-          date: job.scheduledStartAt?.slice(0, 10) ?? null,
-          assignedTo: job.assignedName ?? "",
-          totalPrice: job.amount,
-          upsellTotal: 0,
-          discountAmount: 0,
-        })));
+        setCompanySummaryResource({ requestKey: request.key, data: { summary, error: null } });
+        // A prior response can only be shown after an error for this same session and period.
+        setLastCompanySummaryResource({ requestKey: request.sessionPeriodKey, data: summary });
       })
-      .catch(() => {
-        if (!cancelled) setCanonicalWeekJobs([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCanonicalJobsLoading(false);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        // Navigation and native fetch cancellation are expected and should remain silent.
+        if (!message) return;
+        setCompanySummaryResource({ requestKey: request.key, data: { summary: null, error: message } });
       });
+
+    void getJobSyncCompanyDispatchBoard(request.token, { date: request.today })
+      .then((board) => {
+        if (cancelled) return;
+        setCompanyLocationsResource({ requestKey: request.key, data: { locations: board.locations, error: null } });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        // Do not turn a cancelled request into an empty, misleading dispatch board.
+        if (!message) return;
+        setCompanyLocationsResource({ requestKey: request.key, data: { locations: null, error: message } });
+      });
+
     return () => { cancelled = true; };
-  }, [end, jobSyncSession?.token, start]);
-  const dashboardJobs = jobSyncSession ? canonicalWeekJobs : (weekJobs as any[] | undefined);
+  }, [companyOperationsRequest]);
+  const retryCompanyOperations = () => {
+    if (companyOperationsRequest) setCompanyOperationsRetry((retry) => retry + 1);
+  };
+  const dashboardJobs = jobSyncSession ? undefined : (weekJobs as any[] | undefined);
   // Note: We'll fetch break data from detailers' timesheet status instead
   // const { data: timesheets } = trpc.timesheet.getWeeklyLogs.useQuery(
   //   { startDate: start, endDate: end },
@@ -199,7 +254,10 @@ export default function AdminDashboard() {
   // Break alerts feature - will be implemented with timesheet API integration
   const breakAlerts: any[] = [];
 
-  const isLoading = jobSyncSession ? canonicalJobsLoading : loadingDetailers || loadingPerf;
+  const isLoading = jobSyncSession ? companySummaryLoading && !companySummary && !companySummaryError : loadingDetailers || loadingPerf;
+  const companyMoney = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
+  const liveCompanyLocations = companyLocations.filter((location) => !isCompanyLocationStale(location));
+  const staleCompanyLocations = companyLocations.filter((location) => isCompanyLocationStale(location));
 
   return (
     <ScreenContainer edges={["left", "right"]} className="px-5">
@@ -308,17 +366,73 @@ export default function AdminDashboard() {
                   </TouchableOpacity>
                 </View>
               </View>
-              <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
-                <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 8 }}>{period === "day" ? "Today's" : "This Week's"} Revenue</Text>
-                <Text style={{ fontSize: 48, fontWeight: "900", color: colors.primary }}>
-                  ${metrics.revenue.toFixed(0)}
-                </Text>
-              </View>
+              {jobSyncSession ? (
+                companySummaryError && !companySummary ? (
+                  <View style={{ backgroundColor: colors.error + "12", borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.error + "40" }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: colors.error, marginBottom: 8 }}>Revenue unavailable</Text>
+                    <Text style={{ fontSize: 13, color: colors.foreground, marginBottom: 12 }}>{companySummaryError}</Text>
+                    <TouchableOpacity accessibilityRole="button" onPress={retryCompanyOperations} style={{ alignSelf: "flex-start", backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+                      <Text style={{ color: "#fff", fontWeight: "700" }}>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : companySummary ? (
+                  <View style={{ gap: 12 }}>
+                    {companySummaryStale ? (
+                      <View style={{ backgroundColor: colors.warning + "18", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.warning + "40" }}>
+                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700" }}>Showing the last successful summary</Text>
+                        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>{companySummaryError ?? "Refreshing canonical Company data…"}</Text>
+                        <TouchableOpacity accessibilityRole="button" onPress={retryCompanyOperations} style={{ marginTop: 8 }}>
+                          <Text style={{ color: colors.primary, fontWeight: "700" }}>Retry</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>Booked</Text>
+                        <Text style={{ fontSize: 28, fontWeight: "900", color: colors.primary }}>{companyMoney(companySummary.bookedRevenue)}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{companySummary.jobsBooked} jobs · {companySummary.timezone}</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>Collected</Text>
+                        <Text style={{ fontSize: 28, fontWeight: "900", color: colors.success }}>{companyMoney(companySummary.collected)}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>Payments in this period</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>Completed value</Text>
+                        <Text style={{ fontSize: 22, fontWeight: "800", color: colors.foreground }}>{companyMoney(companySummary.completedJobValue)}</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>Outstanding</Text>
+                        <Text style={{ fontSize: 22, fontWeight: "800", color: colors.foreground }}>{companyMoney(companySummary.outstandingBalance)}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>All open Company balances</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <ActivityIndicator color={colors.primary} />
+                )
+              ) : (
+                <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+                  <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 8 }}>{period === "day" ? "Today's" : "This Week's"} Revenue</Text>
+                  <Text style={{ fontSize: 48, fontWeight: "900", color: colors.primary }}>
+                    ${metrics.revenue.toFixed(0)}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Upsells Section */}
             <View style={{ marginBottom: 24 }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Upsells</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Upsells and discounts</Text>
+              {jobSyncSession ? (
+                <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 8 }}>
+                  <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: "700" }}>Not tracked as separate totals</Text>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>{companySummary?.upsellDefinition ?? "Upsell dollars are not stored separately from the job amount."}</Text>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>{companySummary?.discountDefinition ?? "Discount dollars are not stored separately from the job amount."}</Text>
+                </View>
+              ) : (
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 8 }}>Percentage</Text>
@@ -335,13 +449,51 @@ export default function AdminDashboard() {
                   <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>{metrics.jobsWithUpsells} jobs</Text>
                 </View>
               </View>
+              )}
             </View>
 
             {/* Map View */}
             <View style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, marginBottom: 12 }}>Team Locations</Text>
               <View style={{ height: 200, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
-                {vans && vans.length > 0 ? (
+                {jobSyncSession ? (
+                  companyLocationsError && companyLocations.length === 0 ? (
+                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface, padding: 16 }}>
+                      <Text style={{ fontSize: 14, color: colors.error, fontWeight: "700" }}>Locations unavailable</Text>
+                      <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, textAlign: "center" }}>{companyLocationsError}</Text>
+                      <TouchableOpacity accessibilityRole="button" onPress={retryCompanyOperations} style={{ marginTop: 10 }}>
+                        <Text style={{ color: colors.primary, fontWeight: "700" }}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : liveCompanyLocations.length > 0 && Platform.OS !== "web" ? (
+                    <MapView
+                      provider={(Platform.OS as string) !== "web" ? PROVIDER_GOOGLE : undefined}
+                      ref={mapRef}
+                      style={{ flex: 1 }}
+                      initialRegion={REGION_DEFAULT}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                    >
+                      {liveCompanyLocations.map((location) => (
+                        <Marker
+                          key={location.userId}
+                          coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+                          title={`${location.name} · live`}
+                          description={location.recordedAt ? `Updated ${new Date(location.recordedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Updated time unavailable"}
+                        >
+                          <VanMarker color="#8B5CF6" label={location.name.split(" ")[0] || "Tech"} />
+                        </Marker>
+                      ))}
+                    </MapView>
+                  ) : (
+                    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface, padding: 16 }}>
+                      <Text style={{ fontSize: 14, color: colors.muted }}>{companyLocationsLoading ? "Loading locations…" : liveCompanyLocations.length > 0 ? `📍 ${liveCompanyLocations.length} live location${liveCompanyLocations.length === 1 ? "" : "s"}` : "📍 No live locations"}</Text>
+                      <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, textAlign: "center" }}>
+                        {staleCompanyLocations.length > 0 ? `${staleCompanyLocations.length} older update${staleCompanyLocations.length === 1 ? "" : "s"} hidden. An old point is not shown as live.` : "Technicians appear after they clock in and share a fresh location."}
+                      </Text>
+                    </View>
+                  )
+                ) : vans && vans.length > 0 ? (
                   Platform.OS === "web" ? (
                     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface }}>
                       <Text style={{ fontSize: 14, color: colors.muted }}>📍 Map view available on mobile</Text>
@@ -379,6 +531,20 @@ export default function AdminDashboard() {
                   </View>
                 )}
               </View>
+              {jobSyncSession ? (
+                <View style={{ marginTop: 10, gap: 6 }}>
+                  {liveCompanyLocations.map((location) => (
+                    <Text key={`live-${location.userId}`} style={{ color: colors.muted, fontSize: 12 }}>
+                      {location.name} · live · {location.recordedAt ? new Date(location.recordedAt).toLocaleString() : "time unavailable"}
+                    </Text>
+                  ))}
+                  {staleCompanyLocations.map((location) => (
+                    <Text key={`stale-${location.userId}`} style={{ color: colors.muted, fontSize: 12 }}>
+                      {location.name} · not live · {location.recordedAt ? new Date(location.recordedAt).toLocaleString() : "time unavailable"}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
 
             {/* Quick Actions */}

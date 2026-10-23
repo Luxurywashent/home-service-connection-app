@@ -84,17 +84,18 @@ function emptyForm(): Omit<PBService, "sortOrder"> {
 }
 
 // ─── Service Edit Sheet ───────────────────────────────────────────────────────
-function ServiceSheet({
-  visible,
-  initial,
-  onClose,
-  onSave,
-}: {
+type ServiceSheetProps = {
   visible: boolean;
   initial: Omit<PBService, "sortOrder"> | null;
   onClose: () => void;
   onSave: (data: Omit<PBService, "sortOrder">) => void;
-}) {
+};
+
+function ServiceSheet(props: ServiceSheetProps) {
+  return <ServiceSheetForm key={`${props.visible}:${props.initial?.serviceId ?? "new"}`} {...props} />;
+}
+
+function ServiceSheetForm({ visible, initial, onClose, onSave }: ServiceSheetProps) {
   const colors = useColors();
   const utils = trpc.useUtils();
   const [form, setForm] = useState<Omit<PBService, "sortOrder">>(initial ?? emptyForm());
@@ -116,13 +117,6 @@ function ServiceSheet({
       Alert.alert("Upload failed", err.message);
     },
   });
-
-  React.useEffect(() => {
-    if (visible) {
-      setForm(initial ?? emptyForm());
-      setImagePreview(null);
-    }
-  }, [visible, initial]);
 
   const setPrice = (key: keyof VehiclePrices, val: string) => {
     const n = parseFloat(val.replace(/[^0-9.]/g, "")) || 0;
@@ -356,17 +350,11 @@ function LegacyAdminPricebookScreen() {
   const [editing, setEditing] = useState<PBService | null>(null);
 
   // Local ordered list for optimistic sort UI
-  const [localOrder, setLocalOrder] = useState<PBService[]>([]);
+  const [optimisticOrder, setOptimisticOrder] = useState<{ sourceUpdatedAt: number; services: PBService[] } | null>(null);
   const serverServices: PBService[] = listQ.data ?? [];
-
-  // Sync local order when server data arrives (but not while reordering)
-  React.useEffect(() => {
-    if (serverServices.length > 0) {
-      setLocalOrder(serverServices);
-    }
-  }, [listQ.dataUpdatedAt]);
-
-  const services = localOrder.length > 0 ? localOrder : serverServices;
+  const services = optimisticOrder?.sourceUpdatedAt === listQ.dataUpdatedAt
+    ? optimisticOrder.services
+    : serverServices;
 
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -418,7 +406,7 @@ function LegacyAdminPricebookScreen() {
     if (targetIndex < 0 || targetIndex >= newOrder.length) return;
     // Swap
     [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
-    setLocalOrder(newOrder);
+    setOptimisticOrder({ sourceUpdatedAt: listQ.dataUpdatedAt, services: newOrder });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     // Persist to server
     reorderM.mutate({ orderedIds: newOrder.map((s) => s.serviceId) });

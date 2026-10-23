@@ -28,6 +28,7 @@ import {
   getJobSyncCompanyJob,
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
+  moveJobSyncCompanyJob,
   rescheduleJobSyncCompanyJob,
   resolveJobSyncBaseUrl,
   sanitizeCompanyMutationBody,
@@ -276,8 +277,23 @@ describe("Phase 1 — canonical Jobs / Schedule / AR / Unpaid", () => {
       });
       expect(String(fetchMock.mock.calls[0][0])).toContain("/assignment");
       expect(String(fetchMock.mock.calls[1][0])).toContain("/schedule");
-      expect(adminScheduleSource).toContain("assignJobSyncCompanyJob");
-      expect(adminScheduleSource).toContain("rescheduleJobSyncCompanyJob");
+      await moveJobSyncCompanyJob("company-token", 44, {
+        assignedUserId: 41,
+        scheduledStartAt: "2026-09-12T15:00:00.000Z",
+        scheduledEndAt: "2026-09-12T16:00:00.000Z",
+        expectedUpdatedAt: "2026-09-11T15:00:00.000Z",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(String(fetchMock.mock.calls[2][0])).toContain("/jobs/44/schedule");
+      expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
+        assignedUserId: 41,
+        scheduledStartAt: "2026-09-12T15:00:00.000Z",
+        scheduledEndAt: "2026-09-12T16:00:00.000Z",
+        expectedUpdatedAt: "2026-09-11T15:00:00.000Z",
+      });
+      expect(adminScheduleSource).toContain("moveJobSyncCompanyJob");
+      expect(adminScheduleSource).not.toMatch(/await\s+assignJobSyncCompanyJob\(/);
+      expect(adminScheduleSource).not.toMatch(/await\s+rescheduleJobSyncCompanyJob\(/);
       expect(companyScheduleWritesLocalMirror()).toBe(false);
       const mapped = mapCanonicalJobToScheduleFields(canonicalJob, "crestview");
       expect(mapped.assignedTo).toBe("jobsync-41");

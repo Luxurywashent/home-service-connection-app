@@ -738,7 +738,7 @@ export default function AdminAICoachScreen() {
                               returnKeyType="done"
                             />
                             {parsedBooking.preferredDay && (
-                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected: "{parsedBooking.preferredDay}" — enter the exact date above</Text>
+                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected: &quot;{parsedBooking.preferredDay}&quot; — enter the exact date above</Text>
                             )}
                           </View>
 
@@ -762,7 +762,7 @@ export default function AdminAICoachScreen() {
                               </View>
                             </ScrollView>
                             {parsedBooking.preferredTime && (
-                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected: "{parsedBooking.preferredTime}"</Text>
+                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected: &quot;{parsedBooking.preferredTime}&quot;</Text>
                             )}
                           </View>
 
@@ -786,7 +786,7 @@ export default function AdminAICoachScreen() {
                               </View>
                             </ScrollView>
                             {parsedBooking.city && (
-                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected city: "{parsedBooking.city}"</Text>
+                              <Text style={{ fontSize: 12, color: "#666", marginTop: 4 }}>AI detected city: &quot;{parsedBooking.city}&quot;</Text>
                             )}
                           </View>
                         </View>

@@ -419,7 +419,7 @@ function ModuleCompleteScreen({ moduleName, emoji, onBack }: { moduleName: strin
         Module Complete!
       </Text>
       <Text style={{ fontSize: 16, color: "#9CA3AF", textAlign: "center", marginBottom: 32 }}>
-        You've completed{"\n"}
+        {"You've completed"}{"\n"}
         <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>{moduleName}</Text>
       </Text>
       <View style={styles.completeBadge}>
@@ -573,11 +573,12 @@ export default function ModuleDetailScreen() {
       Alert.alert("Preview Mode", "Module completion is disabled in preview mode.");
       return;
     }
-    if (!employee?.employeeId) return;
+    const employeeId = employee?.employeeId;
+    if (!employeeId) return;
     setIsMarkingComplete(true);
     try {
       await updateProgressMutation.mutateAsync({
-        employeeId: employee.employeeId,
+        employeeId,
         moduleId: resolvedModuleId,
         isModuleCompleted: "yes",
         completedAt: new Date(),
@@ -592,7 +593,7 @@ export default function ModuleDetailScreen() {
     } finally {
       setIsMarkingComplete(false);
     }
-  }, [employee?.employeeId, resolvedModuleId, isPreview, updateProgressMutation, progressQuery]);
+  }, [employee, resolvedModuleId, isPreview, updateProgressMutation, progressQuery]);
 
   // ── Retake ────────────────────────────────────────────────────────────────────
   const handleRetake = useCallback(() => {
@@ -679,7 +680,7 @@ export default function ModuleDetailScreen() {
             {module.name}
           </Text>
           <Text style={{ fontSize: 14, color: "#9CA3AF", textAlign: "center" }}>
-            Content for this module hasn't been added yet. Check back soon.
+            {"Content for this module hasn't been added yet. Check back soon."}
           </Text>
         </View>
       </ScreenContainer>
@@ -772,7 +773,7 @@ export default function ModuleDetailScreen() {
             <Text style={{ fontSize: 32, marginBottom: 10 }}>🎬</Text>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#4ADE80", textAlign: "center", marginBottom: 6 }}>Video Complete</Text>
             <Text style={{ fontSize: 13, color: "#86EFAC", textAlign: "center", lineHeight: 20 }}>
-              You've watched the training video. Tap below to mark this module as complete.
+              {"You've watched the training video. Tap below to mark this module as complete."}
             </Text>
           </View>
           {isModuleCompleted ? (

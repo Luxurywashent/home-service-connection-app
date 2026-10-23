@@ -12,6 +12,11 @@ export type JobSyncNativeSession = {
     email: string | null;
     role: JobSyncCompanyRole | JobSyncPlatformRole;
     memberId?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    hireDate?: string | null;
   };
   company?: {
     id: number;
@@ -93,6 +98,8 @@ const COMPANY_UNPAID_JOBS_PATH = "/api/mobile/v1/payments/unpaid-jobs";
 const COMPANY_CUSTOMERS_PATH = "/api/mobile/v1/customers";
 const COMPANY_FINANCE_PATH = "/api/mobile/v1/finance";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
+const COMPANY_SETTINGS_PATH = "/api/mobile/v1/company/settings";
+const COMPANY_PROFILE_PATH = "/api/mobile/v1/company/profile";
 const COMPANY_FEATURE_ACCESS_PATH = "/api/mobile/v1/company/feature-access";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
 const TIME_CLOCK_IN_PATH = "/api/mobile/v1/time/clock-in";
@@ -101,6 +108,11 @@ const TIME_BREAK_START_PATH = "/api/mobile/v1/time/breaks/start";
 const TIME_BREAK_END_PATH = "/api/mobile/v1/time/breaks/end";
 const TIME_TIMESHEETS_PATH = "/api/mobile/v1/time/timesheets";
 const TIME_TEAM_SUMMARY_PATH = "/api/mobile/v1/time/team-summary";
+const DASHBOARD_SUMMARY_PATH = "/api/mobile/v1/dashboard/summary";
+const DISPATCH_BOARD_PATH = "/api/mobile/v1/dispatch/board";
+const DISPATCH_LOCATION_PATH = "/api/mobile/v1/dispatch/location";
+export const COMPANY_TIME_REQUEST_TIMEOUT_MS = 20_000;
+export const COMPANY_LOCATION_STALE_MS = 15 * 60 * 1000;
 const TIME_OFF_PATH = "/api/mobile/v1/time-off";
 const COMPANY_CHAT_GROUPS_PATH = "/api/mobile/v1/company/chat/groups";
 const COMPANY_CHAT_COMMUNITY_PATH = "/api/mobile/v1/chat/community";
@@ -161,6 +173,19 @@ function isActiveMember(value: unknown) {
   return value !== false && value !== 0 && value !== "0" && value !== "false";
 }
 
+/** Explicit fieldwork flag. Boolean("0") is true, so string and numeric zero must stay ineligible. */
+export function isExplicitCalendarEligible(value: unknown): boolean {
+  if (value === true) return true;
+  if (value === false || value == null || value === "") return false;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") return Number(value.trim()) === 1;
+  return false;
+}
+
+export function isCompanyScheduleColumnMember(member: { isActive?: boolean; calendarEligible?: unknown }) {
+  return member.isActive !== false && isExplicitCalendarEligible(member.calendarEligible);
+}
+
 function errorMessage(payload: unknown, fallback: string) {
   const root = asRecord(payload);
   const error = asRecord(root?.error);
@@ -190,9 +215,61 @@ function getJobSyncBaseUrl() {
   return resolveJobSyncBaseUrl();
 }
 
+export class JobSyncRequestCanceledError extends Error {
+  readonly canceled = true;
+
+  constructor() {
+    super("Home Service Connected request was canceled.");
+    this.name = "JobSyncRequestCanceledError";
+  }
+}
+
+const REQUEST_TIMEOUT_MESSAGE = "Home Service Connected took too long to respond. Check your connection and try again.";
+
+/** True for caller aborts and Expo's native URLSession cancellation. A timeout is classified separately. */
+export function isRequestCancellation(error: unknown): boolean {
+  if (error instanceof JobSyncRequestCanceledError) return true;
+  if (!error || (typeof error !== "object" && typeof error !== "string")) return false;
+  if (typeof error === "object" && error !== null && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause && cause !== error && isRequestCancellation(cause)) return true;
+  }
+  const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = typeof error === "string"
+    ? error
+    : typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  if (name === "AbortError" || name === "JobSyncRequestCanceledError" || name === "FetchRequestCanceledException") return true;
+  const blob = `${name} ${message}`;
+  return blob.includes("FetchRequestCanceledException")
+    || blob.includes("Fetch request has been canceled")
+    || blob.includes("The operation was aborted");
+}
+
+function transportFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (/Network request failed|Failed to fetch|NetworkError|The Internet connection appears to be offline|network connection was lost/i.test(message)) {
+    return new Error("No connection to Home Service Connected. Check your network and try again.");
+  }
+  return error instanceof Error ? error : new Error("Unable to reach Home Service Connected.");
+}
+
 async function requestJson(path: string, init: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const external = init.signal;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, COMPANY_TIME_REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => {
+    controller.abort();
+  };
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener("abort", abortFromCaller);
+  }
   try {
     const response = await fetch(`${getJobSyncBaseUrl()}${path}`, {
       ...init,
@@ -209,12 +286,12 @@ async function requestJson(path: string, init: RequestInit) {
     }
     return payload;
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Home Service Connected took too long to respond. Check your connection and try again.");
-    }
-    throw error;
+    if (timedOut) throw new Error(REQUEST_TIMEOUT_MESSAGE);
+    if (external?.aborted || isRequestCancellation(error)) throw new JobSyncRequestCanceledError();
+    throw transportFailure(error);
   } finally {
     clearTimeout(timeout);
+    external?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -305,6 +382,10 @@ export type JobSyncCompanyUnpaidJob = {
 };
 export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null; updatedAt: string | null };
 export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
+  billingContact: string | null;
+  leadSource: string | null;
+  referrer: string | null;
+  tags: string | null;
   vehicleMake: string | null;
   vehicleModel: string | null;
   vehicleYear: string | null;
@@ -312,7 +393,7 @@ export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
   preferredContact: string | null;
   updatedAt: string | null;
 };
-export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
+export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string; billingContact?: string; leadSource?: string; referrer?: string; tags?: string; initialNote?: string };
 export type JobSyncCompanyCustomerUpdateInput = {
   firstName: string;
   lastName: string;
@@ -322,6 +403,10 @@ export type JobSyncCompanyCustomerUpdateInput = {
   city?: string | null;
   region?: string | null;
   postalCode?: string | null;
+  billingContact?: string | null;
+  leadSource?: string | null;
+  referrer?: string | null;
+  tags?: string | null;
 };
 export type JobSyncCompanyFinanceTransaction = {
   id: string;
@@ -360,13 +445,20 @@ export type JobSyncCompanyJobCreateInput = {
   privateNotes?: string;
 };
 
+export type JobSyncCompanySettings = {
+  id: number;
+  name: string;
+  timezone: string;
+};
+
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   const row = asRecord(value) ?? {};
   const id = Number(row.id);
-  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const customerId = Number(row.customerId);
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(customerId) || customerId <= 0) return null;
   return {
     id,
-    customerId: Number(row.customerId),
+    customerId,
     assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
     title: firstString(row.title) ?? "",
     serviceName: firstString(row.serviceName) ?? "",
@@ -387,6 +479,20 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   };
 }
 
+export function normalizeJobSyncCompanySettings(payload: unknown): JobSyncCompanySettings | null {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const company = firstRecord(data.company, root?.company) ?? {};
+  const id = nullableNumber(company.id, company.companyId);
+  const name = firstString(company.name, company.companyName);
+  if (!id || !name) return null;
+  return {
+    id,
+    name,
+    timezone: firstString(company.timezone, company.timeZone) ?? "America/Chicago",
+  };
+}
+
 export function normalizeJobSyncIncrementalSync(payload: unknown, fallbackSince?: string | null): JobSyncIncrementalSync {
   const root = asRecord(payload) ?? {};
   const changesRoot = asRecord(root.changes) ?? {};
@@ -402,12 +508,83 @@ export async function getJobSyncCompanyIncrementalSync(token: string, since?: st
   return normalizeJobSyncIncrementalSync(await requestJson(`${COMPANY_SYNC_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) }), since);
 }
 
+const JOBSYNC_COLLECTION_PAGE_LIMIT = 300;
+
+function nextJobSyncCollectionCursor(payload: Record<string, unknown>): string | null {
+  const page = asRecord(payload.page);
+  // Older JobSync deployments returned a single unpaginated array. Treat a
+  // missing page envelope as that complete response instead of retrying it.
+  if (!page || page.nextCursor == null) return null;
+  if (typeof page.nextCursor === "string" && page.nextCursor.trim()) return page.nextCursor;
+  throw new Error("Home Service Connected returned an invalid pagination cursor.");
+}
+
+async function getAllJobSyncCollectionPages<T extends { id: number }>(input: {
+  token: string;
+  path: string;
+  search: URLSearchParams;
+  itemKey: string;
+  normalize: (value: unknown) => T | null;
+}): Promise<T[]> {
+  const items: T[] = [];
+  const itemIds = new Set<number>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+
+  do {
+    // Rebuild the query every time so each cursor request keeps the original
+    // range/search filter and never leaks a cursor into another Company query.
+    const query = new URLSearchParams(input.search);
+    query.set("limit", String(JOBSYNC_COLLECTION_PAGE_LIMIT));
+    if (cursor) query.set("cursor", cursor);
+    const payload = asRecord(await requestJson(`${input.path}?${query.toString()}`, {
+      method: "GET",
+      headers: createJobSyncBearerHeaders(input.token),
+    })) ?? {};
+
+    const collection = payload[input.itemKey];
+    const rows: unknown[] = Array.isArray(collection) ? collection : [];
+    for (const row of rows) {
+      const item = input.normalize(row);
+      // Keyset pagination can overlap during concurrent record updates.
+      if (item && !itemIds.has(item.id)) {
+        itemIds.add(item.id);
+        items.push(item);
+      }
+    }
+
+    cursor = nextJobSyncCollectionCursor(payload);
+    if (cursor) {
+      if (cursors.has(cursor)) {
+        throw new Error("Home Service Connected returned a repeated pagination cursor.");
+      }
+      cursors.add(cursor);
+    }
+  } while (cursor);
+
+  return items;
+}
+
 export async function getJobSyncCompanyJobs(token: string, range?: { start?: string; end?: string }): Promise<JobSyncMobileJob[]> {
   const search = new URLSearchParams();
   if (range?.start) search.set("start", range.start);
   if (range?.end) search.set("end", range.end);
-  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
-  return (Array.isArray(payload.jobs) ? payload.jobs : []).map(normalizeJobSyncMobileJob).filter((job): job is JobSyncMobileJob => Boolean(job));
+  return getAllJobSyncCollectionPages({
+    token,
+    path: COMPANY_JOBS_PATH,
+    search,
+    itemKey: "jobs",
+    normalize: normalizeJobSyncMobileJob,
+  });
+}
+
+export async function getJobSyncCompanySettings(token: string): Promise<JobSyncCompanySettings> {
+  const settings = normalizeJobSyncCompanySettings(await requestJson(COMPANY_SETTINGS_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  }));
+  if (!settings) throw new Error("Home Service Connected returned invalid Company settings.");
+  return settings;
 }
 
 function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer | null {
@@ -433,9 +610,15 @@ function normalizeJobSyncCompanyCustomer(value: unknown): JobSyncCompanyCustomer
 }
 
 export async function getJobSyncCompanyCustomers(token: string, search?: string): Promise<JobSyncCompanyCustomer[]> {
-  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
-  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}${query}`, { method: "GET", headers: createJobSyncBearerHeaders(token) })) ?? {};
-  return (Array.isArray(payload.customers) ? payload.customers : []).map(normalizeJobSyncCompanyCustomer).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
+  const query = new URLSearchParams();
+  if (search?.trim()) query.set("search", search.trim());
+  return getAllJobSyncCollectionPages({
+    token,
+    path: COMPANY_CUSTOMERS_PATH,
+    search: query,
+    itemKey: "customers",
+    normalize: normalizeJobSyncCompanyCustomer,
+  });
 }
 
 function normalizeJobSyncCompanyCustomerDetail(value: unknown): JobSyncCompanyCustomerDetail | null {
@@ -451,6 +634,10 @@ function normalizeJobSyncCompanyCustomerDetail(value: unknown): JobSyncCompanyCu
     vehicleType: firstString(row.vehicleType, vehicle.type) ?? base.vehicleType,
     doNotService: typeof row.doNotService === "boolean" ? row.doNotService : null,
     preferredContact: firstString(row.preferredContact),
+    billingContact: firstString(row.billingContact),
+    leadSource: firstString(row.leadSource),
+    referrer: firstString(row.referrer),
+    tags: firstString(row.tags),
     updatedAt: firstString(row.updatedAt),
   };
 }
@@ -544,6 +731,10 @@ export function createJobSyncCompanyCustomerUpdatePayload(input: JobSyncCompanyC
     ...(input.city !== undefined ? { city: input.city?.trim() ? input.city.trim() : null } : {}),
     ...(input.region !== undefined ? { region: input.region?.trim() ? input.region.trim() : null } : {}),
     ...(input.postalCode !== undefined ? { postalCode: input.postalCode?.trim() ? input.postalCode.trim() : null } : {}),
+    ...(input.billingContact !== undefined ? { billingContact: input.billingContact?.trim() ? input.billingContact.trim() : null } : {}),
+    ...(input.leadSource !== undefined ? { leadSource: input.leadSource?.trim() ? input.leadSource.trim() : null } : {}),
+    ...(input.referrer !== undefined ? { referrer: input.referrer?.trim() ? input.referrer.trim() : null } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags?.trim() ? input.tags.trim() : null } : {}),
   });
 }
 
@@ -797,6 +988,43 @@ export async function rescheduleJobSyncCompanyJob(token: string, jobId: number, 
   };
 }
 
+/**
+ * Atomically moves a Company Job on the canonical dispatch board.  A drag can
+ * change both its scheduled window and technician lane, so it must never fan
+ * out into independent schedule and assignment writes that can partially apply.
+ */
+export async function moveJobSyncCompanyJob(token: string, jobId: number, input: {
+  scheduledStartAt: string;
+  scheduledEndAt?: string | null;
+  assignedUserId?: number | null;
+  expectedUpdatedAt?: string;
+}) {
+  if (input.assignedUserId !== undefined && !Number.isSafeInteger(input.assignedUserId) && input.assignedUserId !== null) {
+    throw new Error("A Company Job assignment must be an active user ID or unassigned.");
+  }
+  const payload = asRecord(await requestJson(companyOperationalJobPath(jobId, "/schedule"), {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(sanitizeCompanyMutationBody({
+      scheduledStartAt: input.scheduledStartAt,
+      ...(input.scheduledEndAt !== undefined ? { scheduledEndAt: input.scheduledEndAt } : {}),
+      ...(input.assignedUserId !== undefined ? { assignedUserId: input.assignedUserId } : {}),
+      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+    })),
+  })) ?? {};
+  if (payload.success === false) {
+    throw new Error(errorMessage(payload, "Home Service Connected could not move this Job."));
+  }
+  const job = asRecord(payload.job) ?? payload;
+  return {
+    success: true,
+    jobId: firstNumber(job.jobId, job.id) ?? jobId,
+    scheduledStartAt: firstString(job.scheduledStartAt) ?? input.scheduledStartAt,
+    scheduledEndAt: firstString(job.scheduledEndAt) ?? input.scheduledEndAt ?? null,
+    assignedUserId: nullableNumber(job.assignedUserId) ?? input.assignedUserId ?? null,
+  };
+}
+
 function normalizeJobSyncCompanyInvoice(value: unknown): JobSyncCompanyInvoice | null {
   const row = asRecord(value) ?? {};
   const id = Number(row.id);
@@ -904,6 +1132,11 @@ export function normalizeJobSyncMobileSession(payload: unknown, token: string): 
     email: firstString(user.email, profile.email),
     role,
     memberId: firstString(user.memberId, user.identifier, user.ownerIdentifier, profile.memberId, profile.identifier) ?? undefined,
+    firstName: firstString(user.firstName, user.first_name),
+    lastName: firstString(user.lastName, user.last_name),
+    phone: firstString(user.phone, user.phoneNumber, user.phone_number),
+    city: firstString(user.city),
+    hireDate: firstString(user.hireDate, user.hire_date),
   };
 
   if (platform) {
@@ -964,6 +1197,13 @@ export async function getJobSyncMobileSession(token: string) {
   return session;
 }
 
+export async function logoutJobSyncMobile(token: string) {
+  await requestJson("/api/mobile/v1/auth/logout", {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+  });
+}
+
 export async function requestJobSyncCompanyPasswordReset(email: string) {
   await requestJson(PASSWORD_RESET_REQUEST_PATH, {
     method: "POST",
@@ -993,7 +1233,7 @@ export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyI
       city: firstString(member.city, member.serviceCity, member.service_city),
       positionId: firstNumber(member.positionId, member.position_id),
       positionName: firstString(member.positionName, member.position_name),
-      calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
+      calendarEligible: isExplicitCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
     }];
   });
 
@@ -1039,7 +1279,7 @@ export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMe
     role: firstString(member.role, member.memberRole) ?? "team_member",
     positionId: firstNumber(member.positionId, member.position_id),
     positionName: firstString(member.positionName, member.position_name),
-    calendarEligible: Boolean(member.calendarEligible ?? member.calendar_eligible),
+    calendarEligible: isExplicitCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
     availability: firstString(member.availability),
     workDays: stringList(member.workDays ?? member.work_days ?? member.customWorkDays),
     hourlyRate: nullableNumber(member.hourlyRate, member.hourly_rate),
@@ -1066,6 +1306,34 @@ export async function getJobSyncCompanyMemberDetail(token: string, memberId: num
   const detail = normalizeJobSyncCompanyMemberDetail(payload, memberId);
   if (!detail) throw new Error("Home Service Connected returned an invalid Team Member profile.");
   return detail;
+}
+
+export type JobSyncOwnProfileUpdate = {
+  firstName?: string;
+  lastName?: string;
+  phone?: string | null;
+  city?: string | null;
+};
+
+export function createJobSyncOwnProfilePayload(input: JobSyncOwnProfileUpdate) {
+  const payload: Record<string, string | null> = {};
+  if (typeof input.firstName === "string") payload.firstName = input.firstName.trim();
+  if (typeof input.lastName === "string") payload.lastName = input.lastName.trim();
+  if (input.phone !== undefined) payload.phone = input.phone?.trim() ? input.phone.trim() : null;
+  if (input.city !== undefined) payload.city = input.city?.trim() ? input.city.trim() : null;
+  return payload;
+}
+
+export async function updateJobSyncOwnProfile(token: string, input: JobSyncOwnProfileUpdate) {
+  const payload = createJobSyncOwnProfilePayload(input);
+  if (!Object.keys(payload).length) {
+    throw new Error("Enter a name, phone number, or city to update your profile.");
+  }
+  return requestJson(COMPANY_PROFILE_PATH, {
+    method: "PATCH",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateJobSyncCompanyMember(
@@ -1101,6 +1369,7 @@ export type HomeServiceConnectedTimeState = {
 
 export type HomeServiceConnectedTimesheetRecord = {
   id: number;
+  memberUserId: number | null;
   memberName: string;
   date: string;
   clockIn: string | null;
@@ -1108,6 +1377,43 @@ export type HomeServiceConnectedTimesheetRecord = {
   breakStart: string | null;
   breakEnd: string | null;
   totalHours: number | null;
+  approvalStatus: string;
+  reviewedAt: string | null;
+  reviewerNote: string | null;
+};
+
+export type HomeServiceConnectedTimesheetPage = {
+  records: HomeServiceConnectedTimesheetRecord[];
+  weekStart: string | null;
+  weekEnd: string | null;
+  timezone: string | null;
+};
+
+export type JobSyncCompanyDashboardSummary = {
+  period: string;
+  timezone: string;
+  generatedAt: string;
+  bookedRevenue: number;
+  scheduledRevenue: number;
+  completedJobValue: number;
+  collected: number;
+  outstandingBalance: number;
+  jobsBooked: number;
+  jobsCompleted: number;
+  upsellRevenue: number | null;
+  discountTotal: number | null;
+  upsellDefinition: string;
+  discountDefinition: string;
+};
+
+export type JobSyncCompanyDispatchLocation = {
+  userId: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  recordedAt: string | null;
+  ageSeconds: number | null;
+  stale: boolean;
 };
 
 export type HomeServiceConnectedTeamTimeMember = {
@@ -1564,8 +1870,12 @@ export function normalizeHomeServiceConnectedTimeState(payload: unknown): HomeSe
   };
 }
 
-export async function getHomeServiceConnectedTimeState(token: string) {
-  const payload = await requestJson(TIME_CURRENT_PATH, { method: "GET", headers: createJobSyncBearerHeaders(token) });
+export async function getHomeServiceConnectedTimeState(token: string, init?: { signal?: AbortSignal }) {
+  const payload = await requestJson(TIME_CURRENT_PATH, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+    ...(init?.signal ? { signal: init.signal } : {}),
+  });
   return normalizeHomeServiceConnectedTimeState(payload);
 }
 
@@ -1595,6 +1905,7 @@ export function normalizeHomeServiceConnectedTimesheetRecord(value: unknown): Ho
   if (!id) return null;
   return {
     id,
+    memberUserId: firstNumber(record?.memberUserId, record?.member_user_id),
     memberName: firstString(record?.memberName, record?.fullName, record?.full_name) ?? "Team Member",
     date: firstString(record?.date, record?.workDate, record?.work_date) ?? "",
     clockIn: firstString(record?.clockIn, record?.clock_in, record?.clockInAt),
@@ -1602,6 +1913,9 @@ export function normalizeHomeServiceConnectedTimesheetRecord(value: unknown): Ho
     breakStart: firstString(record?.breakStart, record?.break_start),
     breakEnd: firstString(record?.breakEnd, record?.break_end),
     totalHours: nullableNumber(record?.totalHours, record?.total_hours),
+    approvalStatus: firstString(record?.approvalStatus, record?.approval_status) ?? "pending",
+    reviewedAt: firstString(record?.reviewedAt, record?.reviewed_at),
+    reviewerNote: firstString(record?.reviewerNote, record?.reviewer_note),
   };
 }
 
@@ -1691,8 +2005,10 @@ export function normalizeHomeServiceConnectedTimeOffReview(payload: unknown): Ho
   };
 }
 
-function timeRangeQuery(input?: { start?: string; end?: string; memberId?: number }) {
+function timeRangeQuery(input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean }) {
   const params = new URLSearchParams();
+  if (input?.weekOffset !== undefined && Number.isInteger(input.weekOffset)) params.set("weekOffset", String(input.weekOffset));
+  if (input?.today) params.set("today", "1");
   if (input?.start) params.set("start", input.start);
   if (input?.end) params.set("end", input.end);
   if (input?.memberId && Number.isSafeInteger(input.memberId) && input.memberId > 0) {
@@ -1702,15 +2018,136 @@ function timeRangeQuery(input?: { start?: string; end?: string; memberId?: numbe
   return query ? `?${query}` : "";
 }
 
-export async function getHomeServiceConnectedTimesheets(
+export function normalizeHomeServiceConnectedTimesheetPage(payload: unknown): HomeServiceConnectedTimesheetPage {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  return {
+    records: normalizeHomeServiceConnectedTimesheets(payload),
+    weekStart: firstString(data.weekStart, data.week_start, root?.weekStart),
+    weekEnd: firstString(data.weekEnd, data.week_end, root?.weekEnd),
+    timezone: firstString(data.timezone, root?.timezone),
+  };
+}
+
+export async function getHomeServiceConnectedTimesheetPage(
   token: string,
-  input?: { start?: string; end?: string; memberId?: number },
+  input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean },
 ) {
   const payload = await requestJson(`${TIME_TIMESHEETS_PATH}${timeRangeQuery(input)}`, {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
   });
-  return normalizeHomeServiceConnectedTimesheets(payload);
+  return normalizeHomeServiceConnectedTimesheetPage(payload);
+}
+
+export async function getHomeServiceConnectedTimesheets(
+  token: string,
+  input?: { start?: string; end?: string; memberId?: number; weekOffset?: number; today?: boolean },
+) {
+  const page = await getHomeServiceConnectedTimesheetPage(token, input);
+  return page.records;
+}
+
+function requiredCompanyMoney(value: unknown, label: string) {
+  const parsed = nullableNumber(value);
+  if (parsed === null) throw new Error(`Home Service Connected did not return ${label}.`);
+  return parsed;
+}
+
+export function isCompanyLocationStale(location: { stale?: boolean; recordedAt?: string | null }, now = Date.now()) {
+  if (location.stale === true || !location.recordedAt) return true;
+  const recorded = new Date(location.recordedAt).getTime();
+  if (!Number.isFinite(recorded)) return true;
+  return now - recorded > COMPANY_LOCATION_STALE_MS;
+}
+
+export function normalizeJobSyncCompanyDashboardSummary(payload: unknown): JobSyncCompanyDashboardSummary {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.summary, root?.data, root);
+  if (!data) throw new Error("Home Service Connected did not return a Company revenue summary.");
+  const timezone = firstString(data.timezone);
+  const generatedAt = firstString(data.generatedAt, data.generated_at);
+  if (!timezone || !generatedAt) throw new Error("Home Service Connected did not return a Company revenue summary.");
+  return {
+    period: firstString(data.period) ?? "day",
+    timezone,
+    generatedAt,
+    bookedRevenue: requiredCompanyMoney(data.bookedRevenue, "booked revenue"),
+    scheduledRevenue: requiredCompanyMoney(data.scheduledRevenue, "scheduled revenue"),
+    completedJobValue: requiredCompanyMoney(data.completedJobValue, "completed job value"),
+    collected: requiredCompanyMoney(data.collected, "collected revenue"),
+    outstandingBalance: requiredCompanyMoney(data.outstandingBalance, "outstanding balance"),
+    jobsBooked: requiredCompanyMoney(data.jobsBooked, "booked jobs"),
+    jobsCompleted: requiredCompanyMoney(data.jobsCompleted, "completed jobs"),
+    upsellRevenue: nullableNumber(data.upsellRevenue),
+    discountTotal: nullableNumber(data.discountTotal),
+    upsellDefinition: firstString(data.upsellDefinition) ?? "Upsell dollars are not stored separately from the job amount.",
+    discountDefinition: firstString(data.discountDefinition) ?? "Discount dollars are not stored separately from the job amount.",
+  };
+}
+
+export async function getJobSyncCompanyDashboardSummary(token: string, input?: { period?: "day" | "week" | "month" | "custom"; customStart?: string; customEnd?: string }) {
+  const params = new URLSearchParams();
+  if (input?.period) params.set("period", input.period);
+  if (input?.customStart) params.set("customStart", input.customStart);
+  if (input?.customEnd) params.set("customEnd", input.customEnd);
+  const query = params.toString();
+  const payload = await requestJson(`${DASHBOARD_SUMMARY_PATH}${query ? `?${query}` : ""}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncCompanyDashboardSummary(payload);
+}
+
+export function normalizeJobSyncCompanyDispatchBoard(payload: unknown) {
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root) ?? {};
+  const locations = Array.isArray(data.locations) ? data.locations : [];
+  return {
+    date: firstString(data.date),
+    locations: locations.flatMap((value) => {
+      const row = asRecord(value);
+      const userId = firstNumber(row?.userId, row?.user_id);
+      const latitude = nullableNumber(row?.latitude);
+      const longitude = nullableNumber(row?.longitude);
+      if (!userId || latitude === null || longitude === null) return [];
+      const recordedAt = firstString(row?.recordedAt, row?.recorded_at);
+      const location = {
+        userId,
+        name: firstString(row?.name, row?.technicianName) ?? "Team Member",
+        latitude,
+        longitude,
+        recordedAt,
+        ageSeconds: nullableNumber(row?.ageSeconds, row?.age_seconds),
+        stale: false,
+      };
+      location.stale = isCompanyLocationStale({ stale: row?.stale === true, recordedAt });
+      return [location];
+    }),
+  };
+}
+
+export async function getJobSyncCompanyDispatchBoard(token: string, input?: { date?: string }) {
+  const params = new URLSearchParams();
+  if (input?.date) params.set("date", input.date);
+  const query = params.toString();
+  const payload = await requestJson(`${DISPATCH_BOARD_PATH}${query ? `?${query}` : ""}`, {
+    method: "GET",
+    headers: createJobSyncBearerHeaders(token),
+  });
+  return normalizeJobSyncCompanyDispatchBoard(payload);
+}
+
+export async function publishJobSyncCompanyLocation(token: string, input: { latitude: number; longitude: number; accuracyMeters?: number }) {
+  return requestJson(DISPATCH_LOCATION_PATH, {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({
+      latitude: input.latitude,
+      longitude: input.longitude,
+      ...(input.accuracyMeters !== undefined ? { accuracyMeters: input.accuracyMeters } : {}),
+    }),
+  });
 }
 
 export async function getHomeServiceConnectedTeamTimeSummary(token: string) {

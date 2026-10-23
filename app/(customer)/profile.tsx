@@ -101,7 +101,7 @@ export default function CustomerProfileScreen() {
     { token: token ?? "" },
     { enabled: !!token, refetchInterval: 60000 }
   );
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (!activeTracking) return;
     const pulse = Animated.loop(
@@ -112,7 +112,7 @@ export default function CustomerProfileScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [activeTracking]);
+  }, [activeTracking, pulseAnim]);
 
   const [activeSection, setActiveSection] = useState<"vehicles" | "addresses" | null>(null);
   const [showAddVehicle, setShowAddVehicle] = useState(false);

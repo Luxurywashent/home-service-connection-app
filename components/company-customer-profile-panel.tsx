@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
@@ -9,13 +9,16 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
   COMPANY_PAYMENT_CONTROLS,
-  companyCanonicalReadError,
+  companyReadFailure,
+  companyWriteFailure,
 } from "@/lib/jobsync-company-authority";
 import {
   getJobSyncCompanyCustomer,
   updateJobSyncCompanyCustomer,
   type JobSyncCompanyCustomerDetail,
 } from "@/lib/jobsync-mobile-api";
+import { companyRequestLoading, companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   const colors = useColors();
@@ -95,6 +98,15 @@ type EditForm = {
   city: string;
   region: string;
   postalCode: string;
+  billingContact: string;
+  leadSource: string;
+  referrer: string;
+  tags: string;
+};
+
+type CustomerProfileResource = {
+  customer: JobSyncCompanyCustomerDetail | null;
+  error: string | null;
 };
 
 function toEditForm(customer: JobSyncCompanyCustomerDetail): EditForm {
@@ -107,48 +119,59 @@ function toEditForm(customer: JobSyncCompanyCustomerDetail): EditForm {
     city: customer.city ?? "",
     region: customer.region ?? "",
     postalCode: customer.postalCode ?? "",
+    billingContact: customer.billingContact ?? "",
+    leadSource: customer.leadSource ?? "",
+    referrer: customer.referrer ?? "",
+    tags: customer.tags ?? "",
   };
 }
 
 export function CompanyCustomerProfilePanel({ token }: { token: string }) {
   const colors = useColors();
   const { session } = useJobSyncAuth();
+  const { revision, invalidateCanonicalSurfaces } = useJobSyncSync();
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = Number(params.customerId);
   const validId = Number.isSafeInteger(customerId) && customerId > 0;
   const canEdit = session?.user?.role === "owner" || session?.user?.role === "dispatcher";
-  const [customer, setCustomer] = useState<JobSyncCompanyCustomerDetail | null>(null);
-  const [loading, setLoading] = useState(validId);
-  const [error, setError] = useState<string | null>(validId ? null : "A valid Home Service Connected customer is required.");
+  const [customerResource, setCustomerResource] = useState<CompanyRequestResource<CustomerProfileResource> | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!validId) {
-      setCustomer(null);
-      setLoading(false);
-      setError("A valid Home Service Connected customer is required.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const next = await getJobSyncCompanyCustomer(token, customerId);
-      setCustomer(next);
-      setForm(toEditForm(next));
-      setError(null);
-    } catch (refreshError) {
-      setCustomer(null);
-      setError(companyCanonicalReadError(refreshError));
-    } finally {
-      setLoading(false);
-    }
-  }, [customerId, token, validId]);
+  const customerRequest = useMemo(
+    () => validId ? { key: `${token}:${customerId}:${revision}` } : null,
+    [customerId, revision, token, validId],
+  );
+  const customerResult = companyRequestValue(customerRequest?.key ?? null, customerResource);
+  const customer = customerResult?.customer ?? null;
+  const loading = companyRequestLoading(customerRequest?.key ?? null, customerResource);
+  const error = validId
+    ? customerResult?.error ?? null
+    : "A valid Home Service Connected customer is required.";
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!customerRequest) return;
+    let cancelled = false;
+    getJobSyncCompanyCustomer(token, customerId)
+      .then((next) => {
+        if (cancelled) return;
+        setCustomerResource({ requestKey: customerRequest.key, data: { customer: next, error: null } });
+        setForm(toEditForm(next));
+      })
+      .catch((refreshError) => {
+        if (!cancelled) {
+          const message = companyReadFailure(refreshError);
+          if (!message) return;
+          setCustomerResource({
+            requestKey: customerRequest.key,
+            data: { customer: null, error: message },
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [customerId, customerRequest, token]);
 
   const save = useCallback(async () => {
     if (!form || !validId) return;
@@ -168,16 +191,23 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
         city: form.city,
         region: form.region,
         postalCode: form.postalCode,
+        billingContact: form.billingContact,
+        leadSource: form.leadSource,
+        referrer: form.referrer,
+        tags: form.tags,
       });
-      setCustomer(updated);
+      if (customerRequest) {
+        setCustomerResource({ requestKey: customerRequest.key, data: { customer: updated, error: null } });
+      }
       setForm(toEditForm(updated));
       setEditing(false);
+      invalidateCanonicalSurfaces();
     } catch (updateError) {
-      setSaveError(companyCanonicalReadError(updateError));
+      setSaveError(companyWriteFailure(updateError));
     } finally {
       setSaving(false);
     }
-  }, [customerId, form, token, validId]);
+  }, [customerId, customerRequest, form, invalidateCanonicalSurfaces, token, validId]);
 
   return (
     <ScreenContainer edges={["left", "right"]} className="flex-1">
@@ -229,6 +259,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
             <EditField label="City" value={form.city} onChange={(city) => setForm({ ...form, city })} />
             <EditField label="Region" value={form.region} onChange={(region) => setForm({ ...form, region })} />
             <EditField label="Postal code" value={form.postalCode} onChange={(postalCode) => setForm({ ...form, postalCode })} />
+            <EditField label="Billing contact" value={form.billingContact} onChange={(billingContact) => setForm({ ...form, billingContact })} />
+            <EditField label="Lead source" value={form.leadSource} onChange={(leadSource) => setForm({ ...form, leadSource })} />
+            <EditField label="Referrer" value={form.referrer} onChange={(referrer) => setForm({ ...form, referrer })} />
+            <EditField label="Tags" value={form.tags} onChange={(tags) => setForm({ ...form, tags })} placeholder="VIP, repeat customer" />
             {saveError ? (
               <Text style={{ color: colors.error, fontSize: 13, marginBottom: 10 }}>{saveError}</Text>
             ) : null}
@@ -259,6 +293,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
             <Field label="Address" value={[customer.addressLine1, customer.city, customer.region, customer.postalCode].filter(Boolean).join(", ")} />
             <Field label="Vehicle" value={[customer.vehicleYear, customer.vehicleMake, customer.vehicleModel, customer.vehicleType].filter(Boolean).join(" ")} />
             <Field label="Preferred contact" value={customer.preferredContact} />
+            <Field label="Billing contact" value={customer.billingContact} />
+            <Field label="Lead source" value={customer.leadSource} />
+            <Field label="Referrer" value={customer.referrer} />
+            <Field label="Tags" value={customer.tags} />
             <Field label="Do not service" value={customer.doNotService == null ? "Unavailable" : customer.doNotService ? "Yes" : "No"} />
 
             <LimitedNotice

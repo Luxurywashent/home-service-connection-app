@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ScrollView, Text, View, ActivityIndicator, TouchableOpacity,
   Alert, TextInput, Modal, Platform, RefreshControl, Image,
@@ -68,21 +68,16 @@ interface EditModalProps {
   colors: any;
 }
 
-function EditEntryModal({ entry, visible, onClose, onSave, colors }: EditModalProps) {
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [outreachType, setOutreachType] = useState<OutreachType>("door_hangers");
-  const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
+function EditEntryModal(props: EditModalProps) {
+  return <EditEntryModalForm key={`${props.visible}:${props.entry?.entryId ?? "new"}`} {...props} />;
+}
 
-  useEffect(() => {
-    if (entry) {
-      setAddress(entry.address || "");
-      setCity(entry.city || "");
-      setOutreachType(entry.outreachType);
-      setNotes(entry.notes || "");
-    }
-  }, [entry]);
+function EditEntryModalForm({ entry, visible, onClose, onSave, colors }: EditModalProps) {
+  const [address, setAddress] = useState(entry?.address || "");
+  const [city, setCity] = useState(entry?.city || "");
+  const [outreachType, setOutreachType] = useState<OutreachType>(entry?.outreachType ?? "door_hangers");
+  const [notes, setNotes] = useState(entry?.notes || "");
+  const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!entry) return;
@@ -229,8 +224,6 @@ export default function AdminDoorHangersScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { employee } = useEmployeeAuth();
-  const [goals, setGoals] = useState<Goals | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [editingGoals, setEditingGoals] = useState(false);
   const [newGoals, setNewGoals] = useState({ doorHangers: 50, businessCards: 20, yardSigns: 2, tableToppers: 5 });
   const [activeTab, setActiveTab] = useState<"overview" | "entries" | "map" | "history">("overview");
@@ -260,27 +253,20 @@ export default function AdminDoorHangersScreen() {
   const deleteEntry = trpc.doorHanger.deleteEntry.useMutation();
   const updateEntry = trpc.doorHanger.updateEntry.useMutation();
 
-  // Use stable primitive values as deps to avoid re-firing on every tRPC object re-creation
-  const goalsDataId = getGoals.data?.goalId ?? null;
-  const goalsLoading = getGoals.isLoading;
-  const statsLoading = getStats.isLoading;
-  useEffect(() => {
-    if (!statsLoading && !goalsLoading) {
-      setIsLoading(false);
-      if (getGoals.data) {
-        setGoals(getGoals.data);
-        setNewGoals({
-          doorHangers: getGoals.data.dailyDoorHangerGoal || 50,
-          businessCards: getGoals.data.dailyBusinessCardGoal || 20,
-          yardSigns: getGoals.data.dailyYardSignGoal || 2,
-          tableToppers: getGoals.data.dailyTableTopperGoal || 5,
-        });
-      } else {
-        setGoals({ goalId: "default", dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statsLoading, goalsLoading, goalsDataId]);  // stable primitives only
+  const goals: Goals = getGoals.data ?? {
+    goalId: "default", dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20,
+    dailyYardSignGoal: 2, dailyTableTopperGoal: 5,
+  };
+  const isLoading = getStats.isLoading || getGoals.isLoading;
+  const openGoalEditor = () => {
+    setNewGoals({
+      doorHangers: goals.dailyDoorHangerGoal || 50,
+      businessCards: goals.dailyBusinessCardGoal || 20,
+      yardSigns: goals.dailyYardSignGoal || 2,
+      tableToppers: goals.dailyTableTopperGoal || 5,
+    });
+    setEditingGoals(true);
+  };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -298,15 +284,7 @@ export default function AdminDoorHangersScreen() {
         dailyTableTopperGoal: newGoals.tableToppers,
         updatedBy: employee?.employeeId || "admin",
       });
-      if (goals) {
-        setGoals({
-          goalId: goals.goalId,
-          dailyDoorHangerGoal: newGoals.doorHangers,
-          dailyBusinessCardGoal: newGoals.businessCards,
-          dailyYardSignGoal: newGoals.yardSigns,
-          dailyTableTopperGoal: newGoals.tableToppers,
-        });
-      }
+      await getGoals.refetch();
       setEditingGoals(false);
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Success", "Daily goals updated!");
@@ -354,7 +332,6 @@ export default function AdminDoorHangersScreen() {
 
   // ── Map state (must be above early return to satisfy Rules of Hooks) ──
   const mapRef = useRef<MapView>(null);
-  const [mapEntries, setMapEntries] = useState<Array<{ id: string; latitude: number; longitude: number; address: string; outreachType: OutreachType; employeeId: string; createdAt: string; photoUrls?: string | null }>>([]);
   const [selectedMapEntry, setSelectedMapEntry] = useState<{ id: string; latitude: number; longitude: number; address: string; outreachType: OutreachType; employeeId: string; createdAt: string; photoUrls?: string | null } | null>(null);
   const [userRegion, setUserRegion] = useState({ latitude: 30.4213, longitude: -87.2169, latitudeDelta: 0.08, longitudeDelta: 0.08 });
   const hasFittedRef = useRef(false);
@@ -368,37 +345,26 @@ export default function AdminDoorHangersScreen() {
 
   const entries = (getAllEntries.data || []) as Entry[];
 
-  // Map entries = all entries that have GPS coords
-  // Use getAllEntries.data directly (stable reference from tRPC cache) to avoid
-  // re-running the effect every render due to derived array identity changes.
+  // Map pins are a pure projection of the canonical entries query.
+  const mapEntries = useMemo(() => ((getAllEntries.data || []) as Entry[])
+    .filter((entry) => entry.latitude && entry.longitude)
+    .map((entry) => ({
+      id: String(entry.id), latitude: Number(entry.latitude), longitude: Number(entry.longitude),
+      address: entry.address || "Unknown", outreachType: entry.outreachType, employeeId: entry.employeeId,
+      createdAt: entry.date, photoUrls: (entry as any).photoUrls ?? null,
+    })), [getAllEntries.data]);
+
   useEffect(() => {
-    const rawEntries = (getAllEntries.data || []) as Entry[];
-    const mapped = rawEntries
-      .filter((e) => e.latitude && e.longitude)
-      .map((e) => ({
-        id: String(e.id),
-        latitude: Number(e.latitude),
-        longitude: Number(e.longitude),
-        address: e.address || "Unknown",
-        outreachType: e.outreachType,
-        employeeId: e.employeeId,
-        createdAt: e.date,
-        photoUrls: (e as any).photoUrls ?? null,
-      }));
-    setMapEntries(mapped);
-    if (mapped.length > 0 && !hasFittedRef.current && activeTab === "map") {
-      hasFittedRef.current = true;
-      setTimeout(() => {
-        if (mapRef.current && mapped.length > 0) {
-          mapRef.current.fitToCoordinates(
-            mapped.map((e) => ({ latitude: e.latitude, longitude: e.longitude })),
-            { edgePadding: { top: 80, right: 60, bottom: 120, left: 60 }, animated: true }
-          );
-        }
-      }, 600);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getAllEntries.data, activeTab]);  // depend on the cache reference, not derived array
+    if (mapEntries.length === 0 || hasFittedRef.current || activeTab !== "map") return;
+    hasFittedRef.current = true;
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(
+        mapEntries.map((entry) => ({ latitude: entry.latitude, longitude: entry.longitude })),
+        { edgePadding: { top: 80, right: 60, bottom: 120, left: 60 }, animated: true }
+      );
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [activeTab, mapEntries]);
 
   // Get user location for default map center
   useEffect(() => {
@@ -605,7 +571,7 @@ export default function AdminDoorHangersScreen() {
                 </View>
                 {!editingGoals && (
                   <TouchableOpacity
-                    onPress={() => setEditingGoals(true)}
+                    onPress={openGoalEditor}
                     style={{
                       backgroundColor: "rgba(255,255,255,0.2)",
                       borderRadius: 10,

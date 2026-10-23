@@ -69,7 +69,7 @@ function RepairHistoryCard({ item, colors }: { item: any; colors: any }) {
       {/* Notes */}
       {item.notes ? (
         <Text style={{ fontSize: 12, color: colors.muted, fontStyle: "italic", marginBottom: 4 }}>
-          "{item.notes}"
+          &quot;{item.notes}&quot;
         </Text>
       ) : null}
 

@@ -337,7 +337,7 @@ export default function AdminAlertsScreen() {
               <View style={{ alignItems: "center", marginTop: 60 }}>
                 <Text style={{ fontSize: 40, marginBottom: 12 }}>📅</Text>
                 <Text style={{ fontSize: 16, color: colors.muted }}>No meetings scheduled yet</Text>
-                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 6, textAlign: "center" }}>Tap "Schedule Meeting" to add your first company meeting</Text>
+                <Text style={{ fontSize: 13, color: colors.muted, marginTop: 6, textAlign: "center" }}>Tap &quot;Schedule Meeting&quot; to add your first company meeting</Text>
               </View>
             }
             renderItem={({ item }: { item: any }) => {
@@ -728,7 +728,7 @@ export default function AdminAlertsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: "600" }}>Also send via Email</Text>
-                    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Sends a Gmail to the team member's email address on file</Text>
+                    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Sends a Gmail to the team member&apos;s email address on file</Text>
                   </View>
                 </TouchableOpacity>
 

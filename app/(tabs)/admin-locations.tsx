@@ -124,13 +124,13 @@ function AdminLocationsLegacyScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
 
-  const openAdd = useCallback(() => {
+  const openAdd = () => {
     setEditingId(null);
     setForm(emptyForm());
     setModalVisible(true);
-  }, []);
+  };
 
-  const openEdit = useCallback((loc: ServiceLocation) => {
+  const openEdit = (loc: ServiceLocation) => {
     setEditingId(loc.locationId);
     setForm({
       name: loc.name,
@@ -152,7 +152,7 @@ function AdminLocationsLegacyScreen() {
       detailerIds: loc.detailers.map((d) => d.employeeId),
     });
     setModalVisible(true);
-  }, []);
+  };
 
   const closeModal = useCallback(() => {
     setModalVisible(false);

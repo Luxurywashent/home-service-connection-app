@@ -237,7 +237,7 @@ export default function CustomerMessagesScreen() {
             <Text style={{ fontSize: 48, marginBottom: 12 }}>💬</Text>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Start a Conversation</Text>
             <Text style={[styles.emptySub, { color: colors.muted }]}>
-              Have a question about your booking or service? Send us a message and we'll get back to you shortly.
+              Have a question about your booking or service? Send us a message and we’ll get back to you shortly.
             </Text>
           </View>
         ) : (

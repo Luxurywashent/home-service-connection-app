@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ChatUnreadBanner } from "@/components/chat-unread-banner";
 import { JobEventBanner } from "@/components/job-event-banner";
 import { useColors } from "@/hooks/use-colors";
@@ -10,6 +10,7 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Platform } from "react-native";
 import { trpc } from "@/lib/trpc";
+import { CompanyClockNotice } from "@/components/company-clock-notice";
 import { HeaderClockStatus } from "@/components/header-clock-status";
 
 export interface TopNavMenuProps {
@@ -155,7 +156,12 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     } catch (e) {
       console.warn("Legacy API logout failed; clearing device sessions anyway.", e);
     } finally {
-      await Promise.allSettled([logout(), logoutJobSync()]);
+      const results = await Promise.allSettled([logout(), logoutJobSync()]);
+      if (results.some((result) => result.status === "rejected")) {
+        const message = "Sign-out could not be fully confirmed. The current screen session was cleared, but saved credentials or server access may remain valid. Do not treat this as confirmed server sign-out.";
+        if (Platform.OS === "web") window.alert(message);
+        else Alert.alert("Sign-out not fully confirmed", message);
+      }
       router.replace("/login");
     }
   };
@@ -228,6 +234,8 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
             </Pressable>
           </View>
         </View>
+
+        <CompanyClockNotice />
 
         {/* ── Unread Chat Banner ── */}
         <View style={{ marginHorizontal: -12 }}>

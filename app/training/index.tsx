@@ -78,7 +78,7 @@ function QuizTaker({
         <Text style={{ fontSize: 32, marginBottom: 12 }}>📝</Text>
         <Text style={{ fontSize: 16, fontWeight: "700", color: colors.foreground, textAlign: "center" }}>No Questions Yet</Text>
         <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center", marginTop: 6 }}>
-          The admin hasn't added questions to this quiz yet.
+          {"The admin hasn't added questions to this quiz yet."}
         </Text>
         <Pressable onPress={() => onDone(0, 0, false)} style={({ pressed }) => ({ marginTop: 24, backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.8 : 1 })}>
           <Text style={{ fontWeight: "600", color: colors.foreground }}>← Back</Text>
@@ -447,7 +447,7 @@ export default function TrainingScreen() {
                 <View style={{ alignItems: "center", paddingTop: 40, gap: 8 }}>
                   <Text style={{ fontSize: 32 }}>📝</Text>
                   <Text style={{ fontSize: 15, fontWeight: "600", color: colors.muted }}>No quizzes yet</Text>
-                  <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>The admin hasn't created any quizzes yet.</Text>
+                  <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>{"The admin hasn't created any quizzes yet."}</Text>
                 </View>
               ) : (
                 <View style={{ gap: 12 }}>
