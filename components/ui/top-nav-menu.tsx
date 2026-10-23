@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ChatUnreadBanner } from "@/components/chat-unread-banner";
 import { JobEventBanner } from "@/components/job-event-banner";
 import { useColors } from "@/hooks/use-colors";
@@ -156,7 +156,12 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     } catch (e) {
       console.warn("Legacy API logout failed; clearing device sessions anyway.", e);
     } finally {
-      await Promise.allSettled([logout(), logoutJobSync()]);
+      const results = await Promise.allSettled([logout(), logoutJobSync()]);
+      if (results.some((result) => result.status === "rejected")) {
+        const message = "This device is signed out, but server sign-out could not be confirmed. Reconnect and sign in again before relying on remote session revocation.";
+        if (Platform.OS === "web") window.alert(message);
+        else Alert.alert("Device signed out", message);
+      }
       router.replace("/login");
     }
   };
