@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
@@ -6,6 +7,7 @@ import { Platform } from "react-native";
 import {
   getJobSyncMobileSession,
   loginJobSyncMobile,
+  logoutJobSyncMobile,
   type JobSyncNativeSession,
 } from "@/lib/jobsync-mobile-api";
 import {
@@ -13,6 +15,7 @@ import {
   invalidateCompanyLocationBackgroundAuthorization,
 } from "@/lib/company-location-session-authorization";
 import { createJobSyncSessionGenerationGuard } from "@/lib/jobsync-session-generation";
+import { completeJobSyncLogout } from "@/lib/jobsync-logout";
 export { getNativeEmployeeSession } from "@/lib/jobsync-role-map";
 export type { JobSyncNativeSession, JobSyncPortalKind } from "@/lib/jobsync-mobile-api";
 
@@ -59,6 +62,7 @@ export function JobSyncAuthProvider({ children }: { children: React.ReactNode })
   const [session, setSession] = useState<JobSyncNativeSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionGeneration] = useState(createJobSyncSessionGenerationGuard);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     let cancelled = false;
@@ -117,10 +121,14 @@ export function JobSyncAuthProvider({ children }: { children: React.ReactNode })
 
   const logout = useCallback(async () => {
     sessionGeneration.advance();
-    await invalidateCompanyLocationBackgroundAuthorization().catch(() => {});
     setSession(null);
-    await clearStoredToken();
-  }, [sessionGeneration]);
+    await completeJobSyncLogout({
+      revokeBackground: () => invalidateCompanyLocationBackgroundAuthorization().catch(() => {}),
+      clearQueries: async () => { await queryClient.cancelQueries(); queryClient.clear(); },
+      revokeRemote: async () => { if (session?.portal === "company") await logoutJobSyncMobile(session.token); },
+      clearStoredSession: clearStoredToken,
+    });
+  }, [queryClient, session, sessionGeneration]);
 
   const refresh = useCallback(async () => {
     const refreshGeneration = sessionGeneration.snapshot();

@@ -1180,6 +1180,13 @@ export async function getJobSyncMobileSession(token: string) {
   return session;
 }
 
+export async function logoutJobSyncMobile(token: string) {
+  await requestJson("/api/mobile/v1/auth/logout", {
+    method: "POST",
+    headers: createJobSyncBearerHeaders(token),
+  });
+}
+
 export async function requestJobSyncCompanyPasswordReset(email: string) {
   await requestJson(PASSWORD_RESET_REQUEST_PATH, {
     method: "POST",
