@@ -85,6 +85,8 @@ export const STANDALONE_INVOICE_CLASSIFICATION = {
 
 export type CompanyScheduleJobFields = {
   id: string;
+  /** Canonical tenant-scoped customer identity for exact Job → profile navigation. */
+  canonicalCustomerId: number;
   location: string;
   firstName: string;
   lastName: string;
@@ -442,6 +444,7 @@ export function mapCanonicalJobToScheduleFields(
     "scheduled";
   return {
     id: String(job.id),
+    canonicalCustomerId: job.customerId,
     location: companyScheduleLocation(job.city) || fallbackLocation,
     firstName: customerParts[0] || "",
     lastName: customerParts.slice(1).join(" "),

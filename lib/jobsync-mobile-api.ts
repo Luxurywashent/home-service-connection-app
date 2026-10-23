@@ -454,10 +454,11 @@ export type JobSyncCompanySettings = {
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   const row = asRecord(value) ?? {};
   const id = Number(row.id);
-  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const customerId = Number(row.customerId);
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(customerId) || customerId <= 0) return null;
   return {
     id,
-    customerId: Number(row.customerId),
+    customerId,
     assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
     title: firstString(row.title) ?? "",
     serviceName: firstString(row.serviceName) ?? "",

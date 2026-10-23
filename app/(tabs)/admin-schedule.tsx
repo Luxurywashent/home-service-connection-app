@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -246,6 +246,8 @@ interface AdditionalVehicle {
 
 interface Job {
   id: string;
+  /** Canonical HSC customer id. Present only for authenticated Company Jobs. */
+  canonicalCustomerId?: number;
   firstName: string;
   lastName: string;
   phone: string;
@@ -1317,6 +1319,7 @@ async function adminLoadCustomerHistory(jobId: string, phone?: string, email?: s
 
 export default function AdminScheduleScreen() {
   const colors = useColors();
+  const router = useRouter();
   const utils = trpc.useUtils();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
@@ -2927,6 +2930,20 @@ export default function AdminScheduleScreen() {
                       ) : null}
                     </View>
                   </View>
+                  {isJobSyncCompany && Number.isSafeInteger(selectedJob.canonicalCustomerId) && (selectedJob.canonicalCustomerId ?? 0) > 0 ? (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="View linked customer profile"
+                      onPress={() => {
+                        const customerId = selectedJob.canonicalCustomerId!;
+                        setSelectedJob(null);
+                        router.push({ pathname: "/(tabs)/admin-customer-profile" as any, params: { customerId: String(customerId) } });
+                      }}
+                      style={{ alignSelf: "flex-start", backgroundColor: colors.primary + "18", borderColor: colors.primary + "66", borderWidth: 1, borderRadius: 8, marginBottom: 10, paddingHorizontal: 10, paddingVertical: 7 }}
+                    >
+                      <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "700" }}>View profile</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <TouchableOpacity
                       onPress={() => selectedJob.address ? Linking.openURL(`https://maps.apple.com/?q=${encodeURIComponent(selectedJob.address)}`) : null}
