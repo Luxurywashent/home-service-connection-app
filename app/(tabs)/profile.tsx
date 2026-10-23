@@ -16,7 +16,7 @@ const PROJECTED_PAYCHECK_VISIBILITY_KEY = "hsc_projected_paycheck_visible";
 export default function ProfileScreen() {
   const colors = useColors();
   const { employee, logout, isAdmin } = useEmployeeAuth();
-  const { session: jobSyncSession, refresh: refreshJobSyncSession } = useJobSyncAuth();
+  const { session: jobSyncSession, refresh: refreshJobSyncSession, logout: logoutJobSync } = useJobSyncAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
   const router = useRouter();
   const [showPinReset, setShowPinReset] = useState(false);
@@ -101,13 +101,23 @@ export default function ProfileScreen() {
     }
   };
 
+  const finishLogout = async () => {
+    const results = await Promise.allSettled([logout(), logoutJobSync()]);
+    const remoteFailed = results.some((result) => result.status === "rejected");
+    if (remoteFailed) {
+      const message = "Sign-out could not be fully confirmed. The current screen session was cleared, but saved credentials or server access may remain valid. Do not treat this as confirmed server sign-out.";
+      if (Platform.OS === "web") window.alert(message);
+      else Alert.alert("Sign-out not fully confirmed", message);
+    }
+    router.replace("/login");
+  };
   const handleLogout = () => {
     if (Platform.OS === "web") {
-      logout().then(() => router.replace("/login"));
+      void finishLogout();
     } else {
       Alert.alert("Sign Out", "Are you sure you want to sign out?", [
         { text: "Cancel", style: "cancel" },
-        { text: "Sign Out", style: "destructive", onPress: () => logout().then(() => router.replace("/login")) },
+        { text: "Sign Out", style: "destructive", onPress: () => { void finishLogout(); } },
       ]);
     }
   };

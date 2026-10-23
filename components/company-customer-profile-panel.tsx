@@ -98,6 +98,10 @@ type EditForm = {
   city: string;
   region: string;
   postalCode: string;
+  billingContact: string;
+  leadSource: string;
+  referrer: string;
+  tags: string;
 };
 
 type CustomerProfileResource = {
@@ -115,6 +119,10 @@ function toEditForm(customer: JobSyncCompanyCustomerDetail): EditForm {
     city: customer.city ?? "",
     region: customer.region ?? "",
     postalCode: customer.postalCode ?? "",
+    billingContact: customer.billingContact ?? "",
+    leadSource: customer.leadSource ?? "",
+    referrer: customer.referrer ?? "",
+    tags: customer.tags ?? "",
   };
 }
 
@@ -183,6 +191,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
         city: form.city,
         region: form.region,
         postalCode: form.postalCode,
+        billingContact: form.billingContact,
+        leadSource: form.leadSource,
+        referrer: form.referrer,
+        tags: form.tags,
       });
       if (customerRequest) {
         setCustomerResource({ requestKey: customerRequest.key, data: { customer: updated, error: null } });
@@ -247,6 +259,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
             <EditField label="City" value={form.city} onChange={(city) => setForm({ ...form, city })} />
             <EditField label="Region" value={form.region} onChange={(region) => setForm({ ...form, region })} />
             <EditField label="Postal code" value={form.postalCode} onChange={(postalCode) => setForm({ ...form, postalCode })} />
+            <EditField label="Billing contact" value={form.billingContact} onChange={(billingContact) => setForm({ ...form, billingContact })} />
+            <EditField label="Lead source" value={form.leadSource} onChange={(leadSource) => setForm({ ...form, leadSource })} />
+            <EditField label="Referrer" value={form.referrer} onChange={(referrer) => setForm({ ...form, referrer })} />
+            <EditField label="Tags" value={form.tags} onChange={(tags) => setForm({ ...form, tags })} placeholder="VIP, repeat customer" />
             {saveError ? (
               <Text style={{ color: colors.error, fontSize: 13, marginBottom: 10 }}>{saveError}</Text>
             ) : null}
@@ -277,6 +293,10 @@ export function CompanyCustomerProfilePanel({ token }: { token: string }) {
             <Field label="Address" value={[customer.addressLine1, customer.city, customer.region, customer.postalCode].filter(Boolean).join(", ")} />
             <Field label="Vehicle" value={[customer.vehicleYear, customer.vehicleMake, customer.vehicleModel, customer.vehicleType].filter(Boolean).join(" ")} />
             <Field label="Preferred contact" value={customer.preferredContact} />
+            <Field label="Billing contact" value={customer.billingContact} />
+            <Field label="Lead source" value={customer.leadSource} />
+            <Field label="Referrer" value={customer.referrer} />
+            <Field label="Tags" value={customer.tags} />
             <Field label="Do not service" value={customer.doNotService == null ? "Unavailable" : customer.doNotService ? "Yes" : "No"} />
 
             <LimitedNotice
