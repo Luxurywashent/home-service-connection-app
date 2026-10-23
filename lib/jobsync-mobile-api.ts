@@ -382,6 +382,10 @@ export type JobSyncCompanyUnpaidJob = {
 };
 export type JobSyncCompanyCustomer = { id: number; firstName: string; lastName: string; name: string; email: string | null; phone: string | null; addressLine1: string | null; city: string | null; region: string | null; postalCode: string | null; vehicleType: string | null; updatedAt: string | null };
 export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
+  billingContact: string | null;
+  leadSource: string | null;
+  referrer: string | null;
+  tags: string | null;
   vehicleMake: string | null;
   vehicleModel: string | null;
   vehicleYear: string | null;
@@ -389,7 +393,7 @@ export type JobSyncCompanyCustomerDetail = JobSyncCompanyCustomer & {
   preferredContact: string | null;
   updatedAt: string | null;
 };
-export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string };
+export type JobSyncCompanyCustomerCreateInput = { firstName: string; lastName: string; email?: string; phone?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; vehicleType?: string; billingContact?: string; leadSource?: string; referrer?: string; tags?: string; initialNote?: string };
 export type JobSyncCompanyCustomerUpdateInput = {
   firstName: string;
   lastName: string;
@@ -399,6 +403,10 @@ export type JobSyncCompanyCustomerUpdateInput = {
   city?: string | null;
   region?: string | null;
   postalCode?: string | null;
+  billingContact?: string | null;
+  leadSource?: string | null;
+  referrer?: string | null;
+  tags?: string | null;
 };
 export type JobSyncCompanyFinanceTransaction = {
   id: string;
@@ -625,6 +633,10 @@ function normalizeJobSyncCompanyCustomerDetail(value: unknown): JobSyncCompanyCu
     vehicleType: firstString(row.vehicleType, vehicle.type) ?? base.vehicleType,
     doNotService: typeof row.doNotService === "boolean" ? row.doNotService : null,
     preferredContact: firstString(row.preferredContact),
+    billingContact: firstString(row.billingContact),
+    leadSource: firstString(row.leadSource),
+    referrer: firstString(row.referrer),
+    tags: firstString(row.tags),
     updatedAt: firstString(row.updatedAt),
   };
 }
@@ -718,6 +730,10 @@ export function createJobSyncCompanyCustomerUpdatePayload(input: JobSyncCompanyC
     ...(input.city !== undefined ? { city: input.city?.trim() ? input.city.trim() : null } : {}),
     ...(input.region !== undefined ? { region: input.region?.trim() ? input.region.trim() : null } : {}),
     ...(input.postalCode !== undefined ? { postalCode: input.postalCode?.trim() ? input.postalCode.trim() : null } : {}),
+    ...(input.billingContact !== undefined ? { billingContact: input.billingContact?.trim() ? input.billingContact.trim() : null } : {}),
+    ...(input.leadSource !== undefined ? { leadSource: input.leadSource?.trim() ? input.leadSource.trim() : null } : {}),
+    ...(input.referrer !== undefined ? { referrer: input.referrer?.trim() ? input.referrer.trim() : null } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags?.trim() ? input.tags.trim() : null } : {}),
   });
 }
 
