@@ -12,12 +12,42 @@ on:
           - production
           - testflight
           - preview
+      status_build_id:
+        description: Optional EAS build ID to monitor instead of creating a build
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  status:
+    if: ${{ inputs.status_build_id != '' }}
+    name: Monitor private Expo iOS build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Monitor EAS build status
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          test -n "$EXPO_TOKEN"
+          for attempt in $(seq 1 35); do
+            npx eas-cli@latest build:view "${{ inputs.status_build_id }}" --json > eas-build.json
+            cat eas-build.json
+            status=$(node -e 'const build=require("./eas-build.json"); console.log(build.status || "")')
+            case "$status" in
+              finished|errored|canceled)
+                exit 0
+                ;;
+            esac
+            sleep 60
+          done
+          echo "EAS build did not reach a terminal status before the monitor timeout." >&2
+          exit 1
+
   build:
+    if: ${{ inputs.status_build_id == '' }}
     name: Submit Expo iOS build
     runs-on: ubuntu-latest
     timeout-minutes: 30
