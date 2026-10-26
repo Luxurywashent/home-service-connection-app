@@ -27,13 +27,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
       - name: Monitor EAS build status
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           test -n "$EXPO_TOKEN"
           for attempt in $(seq 1 35); do
+            set +e
             npx eas-cli@latest build:view "${{ inputs.status_build_id }}" --json > eas-build.json
+            result=$?
+            set -e
+            if [ "$result" -ne 0 ]; then
+              cat eas-build.json
+              exit "$result"
+            fi
             cat eas-build.json
             status=$(node -e 'const build=require("./eas-build.json"); console.log(build.status || "")')
             case "$status" in
