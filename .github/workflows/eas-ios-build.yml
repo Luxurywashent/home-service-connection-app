@@ -12,17 +12,13 @@ on:
           - production
           - testflight
           - preview
-      cancel_build_id:
-        description: Optional EAS build ID to cancel instead of creating a build
-        required: false
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Submit or cancel private Expo iOS build
+    name: Submit Expo iOS build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -42,21 +38,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify Expo project
-        if: ${{ inputs.cancel_build_id == '' }}
         run: |
           npx expo install --check
           npx expo-doctor
 
-      - name: Cancel private EAS iOS build
-        if: ${{ inputs.cancel_build_id != '' }}
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          test -n "$EXPO_TOKEN"
-          npx eas-cli@latest build:cancel "${{ inputs.cancel_build_id }}" --non-interactive
-
       - name: Submit EAS iOS build
-        if: ${{ inputs.cancel_build_id == '' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_NO_VCS: "1"
