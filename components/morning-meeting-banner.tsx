@@ -69,7 +69,6 @@ function minutesRemainingInWindow(): number {
 
 export function MorningMeetingBanner() {
   const { employee } = useEmployeeAuth();
-  const [config, setConfig] = useState<MorningMeetingConfig | null>(null);
   const [visible, setVisible] = useState<boolean>(false);
   const [minutesLeft, setMinutesLeft] = useState<number>(0);
   const [attended, setAttended] = useState<boolean>(false);
@@ -81,11 +80,7 @@ export function MorningMeetingBanner() {
     { enabled: !!employee?.employeeId }
   );
 
-  useEffect(() => {
-    if (query.data && query.data.enabled === "yes") {
-      setConfig(query.data as MorningMeetingConfig);
-    }
-  }, [query.data]);
+  const config = query.data?.enabled === "yes" ? query.data as MorningMeetingConfig : null;
 
   useEffect(() => {
     const checkWindow = () => {

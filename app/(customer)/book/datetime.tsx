@@ -45,7 +45,7 @@ export default function BookDateTimeStep() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { booking, setDateTime } = useBooking();
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDateOverride, setSelectedDate] = useState<Date | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ label: string; startHour: number; endHour: number } | null>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [calMonth, setCalMonth] = useState(() => {
@@ -60,7 +60,6 @@ export default function BookDateTimeStep() {
 
   const city = booking.address?.city ?? "";
   const packageName = booking.pkg?.name ?? "Basic Detail";
-  const dateKey = selectedDate ? formatDateKey(selectedDate) : "";
   // Fetch all available dates in one efficient query (checks shift schedule + job conflicts)
   const { data: availableDatesData, isLoading: datesLoading } = trpc.employee.getAvailableDates.useQuery(
     { city, daysAhead: 90 },
@@ -86,24 +85,20 @@ export default function BookDateTimeStep() {
     if (!availableDatesData) return null;
     return upcomingDates.find(d => availableDateSet.has(formatDateKey(d))) ?? null;
   }, [availableDatesData, availableDateSet, upcomingDates]);
+  const selectedDate = selectedDateOverride ?? firstAvailableDate;
+  const dateKey = selectedDate ? formatDateKey(selectedDate) : "";
 
-  // Auto-select the first available date once the data loads (only if user hasn't already picked one)
-  // Also scroll the carousel to it
+  // Keep the carousel aligned with the derived default when availability loads.
   useEffect(() => {
-    if (!datesLoading && availableDatesData && availableDatesData.length > 0 && !selectedDate) {
-      const firstAvailable = upcomingDates.find(d => availableDateSet.has(formatDateKey(d)));
-      if (firstAvailable) {
-        setSelectedDate(firstAvailable);
-        // Scroll carousel to the first available date
-        const idx = carouselDates.findIndex(d => formatDateKey(d) === formatDateKey(firstAvailable));
-        if (idx >= 0) {
-          setTimeout(() => {
-            carouselRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.1 });
-          }, 150);
-        }
-      }
-    }
-  }, [datesLoading, availableDatesData]);
+    if (!firstAvailableDate) return;
+    const idx = carouselDates.findIndex(d => formatDateKey(d) === formatDateKey(firstAvailableDate));
+    if (idx < 0) return;
+
+    const scrollTimeout = setTimeout(() => {
+      carouselRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.1 });
+    }, 150);
+    return () => clearTimeout(scrollTimeout);
+  }, [carouselDates, firstAvailableDate]);
 
   // Query available time slots
   const { data: slots, isLoading: slotsLoading } = trpc.employee.getAvailableSlots.useQuery(
@@ -244,7 +239,11 @@ export default function BookDateTimeStep() {
                       <TouchableOpacity
                         key={slot.label}
                         style={[styles.timeChip, isSel && styles.timeChipSelected, isUnavail && styles.timeChipUnavailable]}
-                        onPress={() => !isUnavail && setSelectedSlot(slot)}
+                        onPress={() => {
+                          if (isUnavail || !selectedDate) return;
+                          setSelectedDate(selectedDate);
+                          setSelectedSlot(slot);
+                        }}
                         disabled={isUnavail}
                         activeOpacity={0.8}
                       >

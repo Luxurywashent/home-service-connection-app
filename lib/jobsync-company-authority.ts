@@ -1,10 +1,12 @@
-import type {
-  JobSyncCanonicalJobStatus,
-  JobSyncCompanyInvoice,
-  JobSyncCompanyUnpaidJob,
-  JobSyncMobileJob,
-  JobSyncNativeSession,
+import {
+  isRequestCancellation,
+  type JobSyncCanonicalJobStatus,
+  type JobSyncCompanyInvoice,
+  type JobSyncCompanyUnpaidJob,
+  type JobSyncMobileJob,
+  type JobSyncNativeSession,
 } from "@/lib/jobsync-mobile-api";
+import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 
 export const COMPANY_LEGACY_FALLTHROUGH_BLOCKED =
   "Company Jobs cannot use local schedule, invoice, or payment authority.";
@@ -83,6 +85,8 @@ export const STANDALONE_INVOICE_CLASSIFICATION = {
 
 export type CompanyScheduleJobFields = {
   id: string;
+  /** Canonical tenant-scoped customer identity for exact Job → profile navigation. */
+  canonicalCustomerId: number;
   location: string;
   firstName: string;
   lastName: string;
@@ -112,6 +116,7 @@ export type CompanyScheduleJobFields = {
   upsellTotal: number;
   additionalVehicles: never[];
   createdAt: string;
+  canonicalUpdatedAt: string | null;
 };
 
 export type CompanyJobAuthorityMode = "company" | "legacy" | "unknown";
@@ -379,27 +384,57 @@ export function companyCanonicalReadError(error: unknown) {
   return error instanceof Error && error.message.trim() ? error.message : COMPANY_LEGACY_FALLTHROUGH_BLOCKED;
 }
 
+/** Screen-level read failure. Expected cancellation is not a connection error. */
+export function companyReadFailure(error: unknown): string | null {
+  if (isRequestCancellation(error)) return null;
+  return companyCanonicalReadError(error);
+}
+
+/** Write failure that must not be retried automatically. Cancellation means the saved state is unconfirmed. */
+export function companyWriteFailure(error: unknown, fallback?: string) {
+  if (isRequestCancellation(error)) {
+    return "Home Service Connected did not confirm this change. Check the saved result before trying again.";
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback ?? companyCanonicalReadError(error);
+}
+
 export function companyScheduleWritesLocalMirror(): false {
   return false;
 }
 
-export function hourFromIso(value: string | null, fallback: number) {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return date.getHours() + date.getMinutes() / 60;
+export function hourFromIso(value: string | null, fallback: number, timezone?: string | null) {
+  return companyCalendarSlot(value, null, timezone)?.startHour ?? fallback;
 }
 
-export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackLocation: string): CompanyScheduleJobFields {
+/** Company cities are canonical display data, not Luxury Wash location slugs. */
+export function companyScheduleLocation(city: string | null | undefined): string {
+  return city?.trim() ?? "";
+}
+
+/** Legacy service-area filtering must never narrow an authenticated Company board. */
+export function scheduleJobMatchesCity(location: string | null | undefined, selectedCity: string, isCompany: boolean): boolean {
+  return isCompany || !location || location.toLowerCase() === selectedCity.toLowerCase();
+}
+
+/** A technician may only see canonical Jobs assigned to their authenticated user. */
+export function companyScheduleJobIsAssignedToUser(
+  job: Pick<CompanyScheduleJobFields, "assignedTo">,
+  userId: number | null | undefined,
+): boolean {
+  return Number.isSafeInteger(userId) && (userId as number) > 0 && job.assignedTo === `jobsync-${userId}`;
+}
+
+export function mapCanonicalJobToScheduleFields(
+  job: JobSyncMobileJob,
+  fallbackLocation: string,
+  timezone?: string | null,
+): CompanyScheduleJobFields {
   const start = job.scheduledStartAt ? new Date(job.scheduledStartAt) : new Date();
-  const end = job.scheduledEndAt ? new Date(job.scheduledEndAt) : null;
-  const todayMonday = new Date();
-  todayMonday.setDate(todayMonday.getDate() - (todayMonday.getDay() + 6) % 7);
-  todayMonday.setHours(0, 0, 0, 0);
-  const dayIndex = (start.getDay() + 6) % 7;
-  const scheduledMonday = new Date(start);
-  scheduledMonday.setDate(start.getDate() - dayIndex);
-  scheduledMonday.setHours(0, 0, 0, 0);
+  const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, timezone);
+  const position = slot
+    ? companyCalendarWeekPosition(slot.date, new Date(), timezone)
+    : { dayIndex: 0, weekOffset: 0 };
   const customerParts = job.customerName.split(" ").filter(Boolean);
   const uiStatus =
     job.status === "completed" ? "finished" :
@@ -409,7 +444,8 @@ export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackL
     "scheduled";
   return {
     id: String(job.id),
-    location: job.city || fallbackLocation,
+    canonicalCustomerId: job.customerId,
+    location: companyScheduleLocation(job.city) || fallbackLocation,
     firstName: customerParts[0] || "",
     lastName: customerParts.slice(1).join(" "),
     email: "",
@@ -423,10 +459,10 @@ export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackL
     appliedEstimateCredit: job.appliedEstimateCredit,
     balance: job.balance,
     paymentStatus: job.paymentStatus,
-    startHour: hourFromIso(job.scheduledStartAt, 8),
-    endHour: end ? hourFromIso(job.scheduledEndAt, hourFromIso(job.scheduledStartAt, 8) + 1) : hourFromIso(job.scheduledStartAt, 8) + 1,
-    dayIndex,
-    weekOffset: Math.round((scheduledMonday.getTime() - todayMonday.getTime()) / (7 * 24 * 60 * 60 * 1000)),
+    startHour: slot?.startHour ?? 8,
+    endHour: slot?.endHour ?? ((slot?.startHour ?? 8) + 1),
+    dayIndex: position.dayIndex,
+    weekOffset: position.weekOffset,
     status: uiStatus,
     _rawStatus: job.status,
     detailerName: job.assignedName || undefined,
@@ -438,6 +474,7 @@ export function mapCanonicalJobToScheduleFields(job: JobSyncMobileJob, fallbackL
     upsellTotal: 0,
     additionalVehicles: [],
     createdAt: job.updatedAt || start.toISOString(),
+    canonicalUpdatedAt: job.updatedAt,
   };
 }
 
@@ -471,10 +508,10 @@ export function companyAssignedUserId(assignedTo: string | null | undefined): nu
   return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null;
 }
 
-export function companyScheduleDateTime(dateStr: string, hour: number): string {
-  const hours = Math.floor(hour);
-  const minutes = hour % 1 >= 0.5 ? 30 : 0;
-  return new Date(`${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`).toISOString();
+export function companyScheduleDateTime(dateStr: string, hour: number, timezone?: string | null): string {
+  const companyInstant = companyCalendarInstant(dateStr, hour, timezone);
+  if (companyInstant) return companyInstant;
+  throw new Error("The selected Company calendar time is invalid or does not exist.");
 }
 
 export function invoicePresentationFromCanonicalJob(job: JobSyncMobileJob | JobSyncCompanyInvoice) {

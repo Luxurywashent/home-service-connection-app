@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Modal, ScrollView, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/use-colors";
@@ -17,7 +17,12 @@ export interface EditTrainingModalProps {
   isLoading?: boolean;
 }
 
-export function EditTrainingModal({
+export function EditTrainingModal(props: EditTrainingModalProps) {
+  if (!props.visible) return null;
+  return <EditTrainingModalForm key={props.module?.moduleId ?? "new-module"} {...props} />;
+}
+
+function EditTrainingModalForm({
   visible,
   module,
   onClose,
@@ -25,20 +30,11 @@ export function EditTrainingModal({
   isLoading = false,
 }: EditTrainingModalProps) {
   const colors = useColors();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
+  const [name, setName] = useState(module?.name ?? "");
+  const [description, setDescription] = useState(module?.description ?? "");
+  const [icon, setIcon] = useState(module?.icon ?? "");
+  const [videoUrl, setVideoUrl] = useState(module?.videoUrl ?? "");
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (module && visible) {
-      setName(module.name || "");
-      setDescription(module.description || "");
-      setIcon(module.icon || "");
-      setVideoUrl(module.videoUrl || "");
-    }
-  }, [module, visible]);
 
   const handleSave = async () => {
     if (!name.trim()) {

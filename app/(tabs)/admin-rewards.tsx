@@ -142,7 +142,7 @@ export default function AdminRewardsScreen() {
           <View style={s.center}>
             <Text style={s.emptyIcon}>🎁</Text>
             <Text style={s.emptyTitle}>No Reward Tiers Yet</Text>
-            <Text style={s.emptyText}>Tap "+ Add Reward" to create your first redeemable reward.</Text>
+            <Text style={s.emptyText}>Tap &quot;+ Add Reward&quot; to create your first redeemable reward.</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} style={{ flex: 1 }}>
@@ -179,7 +179,7 @@ export default function AdminRewardsScreen() {
           <View style={s.center}>
             <Text style={s.emptyIcon}>✅</Text>
             <Text style={s.emptyTitle}>No Pending Redemptions</Text>
-            <Text style={s.emptyText}>When customers redeem points, they'll appear here for you to apply.</Text>
+            <Text style={s.emptyText}>When customers redeem points, they&apos;ll appear here for you to apply.</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} style={{ flex: 1 }}>

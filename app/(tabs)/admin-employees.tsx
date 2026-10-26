@@ -5,6 +5,8 @@ import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyMemberDetail, getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember, type JobSyncCompanyMemberDetail } from "@/lib/jobsync-mobile-api";
+import { companyRequestLoading, companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
 
 function getWeekRange() {
   const now = new Date();
@@ -77,6 +79,7 @@ function formatWorkDays(days: string[]) {
 export default function AdminEmployeesScreen() {
   const colors = useColors();
   const { session: jobSyncSession } = useJobSyncAuth();
+  const { revision: companySyncRevision, invalidateCanonicalSurfaces } = useJobSyncSync();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
@@ -86,10 +89,8 @@ export default function AdminEmployeesScreen() {
   const [editData, setEditData] = useState<any>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
-  const [companyMembers, setCompanyMembers] = useState<JobSyncCompanyMember[]>([]);
-  const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
-  const [companyMemberDetail, setCompanyMemberDetail] = useState<JobSyncCompanyMemberDetail | null>(null);
-  const [companyMemberDetailLoading, setCompanyMemberDetailLoading] = useState(false);
+  const [companyRosterResource, setCompanyRosterResource] = useState<CompanyRequestResource<JobSyncCompanyMember[]> | null>(null);
+  const [companyMemberDetailResource, setCompanyMemberDetailResource] = useState<CompanyRequestResource<JobSyncCompanyMemberDetail | null> | null>(null);
   const { start, end } = useMemo(() => getWeekRange(), []);
 
   const utils = trpc.useUtils();
@@ -218,48 +219,50 @@ export default function AdminEmployeesScreen() {
 
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
-  useEffect(() => {
-    if (!isJobSyncCompany) return;
+  const companyRosterRequest = useMemo(() => {
     const token = jobSyncSession?.token;
     const companyId = jobSyncSession?.company?.id;
-    if (!token || !companyId) return;
-    let cancelled = false;
-    setCompanyMembersLoading(true);
-    getJobSyncCompanyMembers(token, companyId)
-      .then((roster) => {
-        if (!cancelled) setCompanyMembers(roster.members);
-      })
-      .catch(() => {
-        if (!cancelled) setCompanyMembers([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCompanyMembersLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id]);
+    if (!isJobSyncCompany || !token || !companyId) return null;
+    return { key: `${token}:${companyId}:${companySyncRevision}`, token, companyId };
+  }, [companySyncRevision, isJobSyncCompany, jobSyncSession?.company?.id, jobSyncSession?.token]);
 
-  useEffect(() => {
+  const companyMemberDetailRequest = useMemo(() => {
     const memberId = Number(selectedEmp?.jobSyncMemberId);
     const token = jobSyncSession?.token;
-    if (!isJobSyncCompany || !selectedEmp?.isJobSyncMember || !token || !Number.isInteger(memberId)) {
-      setCompanyMemberDetail(null);
-      setCompanyMemberDetailLoading(false);
-      return;
-    }
+    if (!isJobSyncCompany || !selectedEmp?.isJobSyncMember || !token || !Number.isInteger(memberId)) return null;
+    return { key: `${token}:${memberId}:${companySyncRevision}`, token, memberId };
+  }, [companySyncRevision, isJobSyncCompany, jobSyncSession?.token, selectedEmp?.isJobSyncMember, selectedEmp?.jobSyncMemberId]);
+
+  const companyMembers = companyRequestValue(companyRosterRequest?.key ?? null, companyRosterResource) ?? [];
+  const companyMembersLoading = companyRequestLoading(companyRosterRequest?.key ?? null, companyRosterResource);
+  const companyMemberDetail = companyRequestValue(companyMemberDetailRequest?.key ?? null, companyMemberDetailResource);
+  const companyMemberDetailLoading = companyRequestLoading(companyMemberDetailRequest?.key ?? null, companyMemberDetailResource);
+
+  useEffect(() => {
+    if (!companyRosterRequest) return;
     let cancelled = false;
-    setCompanyMemberDetailLoading(true);
-    getJobSyncCompanyMemberDetail(token, memberId)
-      .then((detail) => {
-        if (!cancelled) setCompanyMemberDetail(detail);
+    getJobSyncCompanyMembers(companyRosterRequest.token, companyRosterRequest.companyId)
+      .then((roster) => {
+        if (!cancelled) setCompanyRosterResource({ requestKey: companyRosterRequest.key, data: roster.members });
       })
       .catch(() => {
-        if (!cancelled) setCompanyMemberDetail(null);
-      })
-      .finally(() => {
-        if (!cancelled) setCompanyMemberDetailLoading(false);
+        if (!cancelled) setCompanyRosterResource({ requestKey: companyRosterRequest.key, data: [] });
       });
     return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, selectedEmp?.isJobSyncMember, selectedEmp?.jobSyncMemberId]);
+  }, [companyRosterRequest]);
+
+  useEffect(() => {
+    if (!companyMemberDetailRequest) return;
+    let cancelled = false;
+    getJobSyncCompanyMemberDetail(companyMemberDetailRequest.token, companyMemberDetailRequest.memberId)
+      .then((detail) => {
+        if (!cancelled) setCompanyMemberDetailResource({ requestKey: companyMemberDetailRequest.key, data: detail });
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyMemberDetailResource({ requestKey: companyMemberDetailRequest.key, data: null });
+      });
+    return () => { cancelled = true; };
+  }, [companyMemberDetailRequest]);
 
   const empWithPerf = useMemo(() => {
     if (!employees) return [];
@@ -358,7 +361,10 @@ export default function AdminEmployeesScreen() {
           hireDate: toApiDate(editData.hireDate),
         });
         const roster = await getJobSyncCompanyMembers(token, companyId);
-        setCompanyMembers(roster.members);
+        setCompanyRosterResource({
+          requestKey: `${token}:${companyId}:${companySyncRevision}`,
+          data: roster.members,
+        });
         const refreshedMember = roster.members.find((member) => member.id === memberId);
         if (refreshedMember) {
           setSelectedEmp({
@@ -368,6 +374,7 @@ export default function AdminEmployeesScreen() {
           });
         }
         setEditMode(false);
+        invalidateCanonicalSurfaces();
         return;
       }
       const hourlyRateNum = parseFloat(editData.hourlyRate);

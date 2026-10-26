@@ -13,16 +13,22 @@ import {
   getJobSyncCompanyCustomer,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyFinance,
+  getJobSyncCompanySettings,
   getJobSyncCompanyInvoices,
   getJobSyncCompanyJobs,
   getJobSyncCompanyUnpaidJobs,
   getJobSyncUnpaidJobs,
+  moveJobSyncCompanyJob,
   rescheduleJobSyncCompanyJob,
   updateJobSyncCompanyJobStatus,
   resolveJobSyncBaseUrl,
   normalizeJobSyncCompanyMemberDetail,
   normalizeJobSyncCompanyRoster,
+  normalizeJobSyncCompanySettings,
   normalizeJobSyncMobileSession,
+  isCompanyScheduleColumnMember,
+  isExplicitCalendarEligible,
+  createJobSyncOwnProfilePayload,
   normalizeJobSyncFeatureAccess,
   normalizeHomeServiceConnectedTimeState,
   normalizeHomeServiceConnectedChatGroups,
@@ -111,6 +117,26 @@ describe("JobSync mobile API contract", () => {
     expect(session?.token).toBe("company-token");
   });
 
+  it("reads a canonical Company timezone for schedule rendering and writes", async () => {
+    expect(normalizeJobSyncCompanySettings({ company: { id: 9, name: "Casey Services", timeZone: "America/Chicago" } }))
+      .toEqual({ id: 9, name: "Casey Services", timezone: "America/Chicago" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ company: { id: 9, name: "Casey Services", timezone: "America/Chicago" } }),
+    } as Response);
+    try {
+      await expect(getJobSyncCompanySettings("company-token")).resolves.toEqual({
+        id: 9,
+        name: "Casey Services",
+        timezone: "America/Chicago",
+      });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/company/settings");
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer company-token" } });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("normalizes a Platform Admin profile without Company context", () => {
     const session = normalizeJobSyncMobileSession({
       data: {
@@ -175,6 +201,66 @@ describe("JobSync mobile API contract", () => {
       calendarEligible: false,
     }]);
     expect(normalizeJobSyncCompanyRoster({ company: { id: 10, name: "Other Company" }, members: [] }, 9)).toBeNull();
+  });
+
+  it("keeps string-zero calendar flags off the technician columns", () => {
+    expect(Boolean("0")).toBe(true);
+    expect(isExplicitCalendarEligible("0")).toBe(false);
+    expect(isExplicitCalendarEligible("1")).toBe(true);
+    const roster = normalizeJobSyncCompanyRoster({
+      company: { id: 9, name: "Casey Services" },
+      members: [
+        { id: 41, name: "Office Admin", role: "dispatcher", isActive: true, calendarEligible: "0" },
+        { id: 42, name: "Field Tech", role: "technician", isActive: true, calendarEligible: "1" },
+        { id: 43, name: "Dual Role", role: "dispatcher", isActive: true, calendarEligible: true },
+        { id: 44, name: "Inactive Tech", role: "technician", isActive: false, calendarEligible: 1 },
+      ],
+    }, 9);
+    expect(roster?.members.filter(isCompanyScheduleColumnMember).map((member) => member.name)).toEqual(["Field Tech", "Dual Role"]);
+  });
+
+  it("sends only permitted self-profile fields and keeps email read-only", () => {
+    const payload = createJobSyncOwnProfilePayload({
+      firstName: " Taylor ",
+      lastName: " Field ",
+      phone: " 850-555-0100 ",
+      city: " Destin ",
+    });
+    expect(payload).toEqual({
+      firstName: "Taylor",
+      lastName: "Field",
+      phone: "850-555-0100",
+      city: "Destin",
+    });
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("role");
+    expect(payload).not.toHaveProperty("hireDate");
+    expect(payload).not.toHaveProperty("memberId");
+  });
+
+  it("maps city, phone, and hire date from the JobSync session profile", () => {
+    const session = normalizeJobSyncMobileSession({
+      accountType: "company",
+      user: {
+        id: 41,
+        name: "Taylor Field",
+        firstName: "Taylor",
+        lastName: "Field",
+        email: "taylor@example.com",
+        phone: "850-555-0100",
+        city: "Destin",
+        hireDate: "2024-03-01",
+        role: "technician",
+      },
+      company: { id: 9, name: "Casey Services" },
+    }, "company-token");
+    expect(session?.user).toMatchObject({
+      phone: "850-555-0100",
+      city: "Destin",
+      hireDate: "2024-03-01",
+      firstName: "Taylor",
+      lastName: "Field",
+    });
   });
 
   it("normalizes an authoritative detailed Company member profile", () => {
@@ -283,6 +369,46 @@ describe("JobSync mobile API contract", () => {
       fetchMock.mockRestore();
     }
   });
+  it("fetches every Company jobs page with its original date range and de-duplicates boundary overlaps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            { id: 44, customerId: 8, title: "First", serviceName: "Mow", status: "scheduled", amount: 90, customerName: "First Customer" },
+            { id: 45, customerId: 9, title: "Boundary", serviceName: "Mow", status: "scheduled", amount: 100, customerName: "Boundary Customer" },
+          ],
+          page: { limit: 300, nextCursor: "opaque-next-page" },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            { id: 45, customerId: 9, title: "Boundary", serviceName: "Mow", status: "scheduled", amount: 100, customerName: "Boundary Customer" },
+            { id: 46, customerId: 10, title: "Last", serviceName: "Mow", status: "scheduled", amount: 110, customerName: "Last Customer" },
+          ],
+          page: { limit: 300, nextCursor: null },
+        }),
+      } as Response);
+    try {
+      const jobs = await getJobSyncCompanyJobs("company-token", {
+        start: "2026-09-11T00:00:00.000Z",
+        end: "2026-09-12T00:00:00.000Z",
+      });
+      expect(jobs.map((job) => job.id)).toEqual([44, 45, 46]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("start=2026-09-11T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("end=2026-09-12T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("limit=300");
+      expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("cursor=");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("start=2026-09-11T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("end=2026-09-12T00%3A00%3A00.000Z");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("limit=300");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("cursor=opaque-next-page");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
   it("fetches Company customers through the authenticated searchable endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -291,8 +417,39 @@ describe("JobSync mobile API contract", () => {
     try {
       const customers = await getJobSyncCompanyCustomers("company-token", "Ruby Abac");
       expect(customers).toEqual([{ id: 51, firstName: "Ruby", lastName: "Abac", name: "Ruby Abac", email: null, phone: "8505550100", addressLine1: null, city: null, region: null, postalCode: null, vehicleType: null, updatedAt: null }]);
-      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/customers?search=Ruby%20Abac");
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/customers?search=Ruby+Abac&limit=300");
       expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer company-token" } });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  it("fetches every searchable Company customers page with the original search and de-duplicates boundary overlaps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customers: [
+            { id: 51, firstName: "Ruby", lastName: "Abac" },
+            { id: 52, firstName: "Ruby", lastName: "Baker" },
+          ],
+          page: { limit: 300, nextCursor: "opaque-customer-page" },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customers: [
+            { id: 52, firstName: "Ruby", lastName: "Baker" },
+            { id: 53, firstName: "Ruby", lastName: "Clark" },
+          ],
+          page: { limit: 300, nextCursor: null },
+        }),
+      } as Response);
+    try {
+      const customers = await getJobSyncCompanyCustomers("company-token", "Ruby");
+      expect(customers.map((customer) => customer.id)).toEqual([51, 52, 53]);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("customers?search=Ruby&limit=300");
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain("customers?search=Ruby&limit=300&cursor=opaque-customer-page");
     } finally {
       fetchMock.mockRestore();
     }
@@ -351,6 +508,37 @@ describe("JobSync mobile API contract", () => {
       expect(String(fetchMock.mock.calls[0][0])).toContain("/api/mobile/v1/company/jobs/45/status");
       expect(String(fetchMock.mock.calls[1][0])).toContain("/api/mobile/v1/company/jobs/45/assignment");
       expect(String(fetchMock.mock.calls[2][0])).toContain("/api/mobile/v1/company/jobs/45/schedule");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("uses one revision-guarded atomic schedule request and does not retry a failed move as a second effect", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: { message: "This Job changed before it could be moved." } }),
+    } as Response);
+    try {
+      await expect(moveJobSyncCompanyJob("company-token", 45, {
+        scheduledStartAt: "2026-09-11T15:00:00.000Z",
+        scheduledEndAt: "2026-09-11T16:30:00.000Z",
+        assignedUserId: 41,
+        expectedUpdatedAt: "2026-09-11T14:00:00.000Z",
+      })).rejects.toThrow("This Job changed before it could be moved.");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/mobile/v1/jobs/45/schedule");
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+        method: "PATCH",
+        headers: { Authorization: "Bearer company-token" },
+      });
+      expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+        scheduledStartAt: "2026-09-11T15:00:00.000Z",
+        scheduledEndAt: "2026-09-11T16:30:00.000Z",
+        assignedUserId: 41,
+        expectedUpdatedAt: "2026-09-11T14:00:00.000Z",
+      });
     } finally {
       fetchMock.mockRestore();
     }

@@ -309,7 +309,7 @@ function AddTransactionSheet({
                           ? <ActivityIndicator size="small" color="#0a7ea4" />
                           : <Text style={{ color: "#0a7ea4", fontSize: 22, fontWeight: "700", width: 28, textAlign: "center" }}>+</Text>
                         }
-                        <Text style={{ color: "#0a7ea4", fontSize: 15, fontWeight: "600" }}>Add "{vendorSearch.trim()}" as new vendor</Text>
+                        <Text style={{ color: "#0a7ea4", fontSize: 15, fontWeight: "600" }}>Add &quot;{vendorSearch.trim()}&quot; as new vendor</Text>
                       </TouchableOpacity>
                     ) : null
                   }
@@ -336,7 +336,7 @@ function AddTransactionSheet({
                             ? <ActivityIndicator size="small" color="#0a7ea4" />
                             : <Text style={{ color: "#0a7ea4", fontSize: 20, fontWeight: "700" }}>+</Text>
                           }
-                          <Text style={{ color: "#0a7ea4", fontSize: 15, fontWeight: "600" }}>Add "{vendorSearch.trim()}" as new vendor</Text>
+                          <Text style={{ color: "#0a7ea4", fontSize: 15, fontWeight: "600" }}>Add &quot;{vendorSearch.trim()}&quot; as new vendor</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1685,6 +1685,7 @@ function VendorsTab({ vendors, adminId, onRefresh }: { vendors: any[]; adminId: 
 
       {/* Add / Edit Modal */}
       <VendorFormModal
+        key={`${showAdd || !!editing}:${editing?.vendorId ?? "new"}`}
         visible={showAdd || !!editing}
         initial={editing}
         onClose={() => { setShowAdd(false); setEditing(null); }}
@@ -1706,30 +1707,14 @@ function VendorFormModal({ visible, initial, onClose, onSave, saving }: {
   visible: boolean; initial: any; onClose: () => void;
   onSave: (data: any) => void; saving: boolean;
 }) {
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [website, setWebsite] = useState("");
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [notes, setNotes] = useState("");
-
-  useEffect(() => {
-    if (initial) {
-      setName(initial.name ?? "");
-      setCategory(initial.category ?? "");
-      setPhone(initial.phone ?? "");
-      setEmail(initial.email ?? "");
-      setWebsite(initial.website ?? "");
-      setLoginEmail(initial.loginEmail ?? "");
-      setLoginPassword(initial.loginPassword ?? "");
-      setNotes(initial.notes ?? "");
-    } else {
-      setName(""); setCategory(""); setPhone(""); setEmail("");
-      setWebsite(""); setLoginEmail(""); setLoginPassword(""); setNotes("");
-    }
-  }, [initial, visible]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [email, setEmail] = useState(initial?.email ?? "");
+  const [website, setWebsite] = useState(initial?.website ?? "");
+  const [loginEmail, setLoginEmail] = useState(initial?.loginEmail ?? "");
+  const [loginPassword, setLoginPassword] = useState(initial?.loginPassword ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
 
   const field = (label: string, value: string, onChange: (v: string) => void, opts?: { placeholder?: string; secureTextEntry?: boolean }) => (
     <View style={{ marginBottom: 14 }}>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator,
   StyleSheet, RefreshControl, Modal, ScrollView, Alert, TextInput, Linking,
@@ -46,8 +46,8 @@ function formatUpcomingTime(isoString: string, timezone: string): { dayLabel: st
 }
 
 /** Minutes until a scheduled callback */
-function minutesUntil(isoString: string): number {
-  return (new Date(isoString).getTime() - Date.now()) / 60000;
+function minutesUntil(isoString: string, now: number): number {
+  return (new Date(isoString).getTime() - now) / 60000;
 }
 
 type Callback = {
@@ -96,6 +96,12 @@ export default function AdminCallbacks() {
   const [activeTab, setActiveTab] = useState<"callbacks" | "revenue">("callbacks");
   const [revenueValue, setRevenueValue] = useState("");
   const [savingRevenue, setSavingRevenue] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -144,16 +150,15 @@ export default function AdminCallbacks() {
 
   // Upcoming callbacks: scheduled, in the next 7 days, sorted soonest first
   const upcomingCallbacks = useMemo(() => {
-    const now = Date.now();
-    const sevenDays = now + 7 * 24 * 60 * 60 * 1000;
+    const sevenDays = currentTime + 7 * 24 * 60 * 60 * 1000;
     return (callbacks as Callback[])
       .filter(c => {
         if (c.status !== "scheduled") return false;
         const t = new Date(c.scheduledAt as string).getTime();
-        return t >= now - 5 * 60 * 1000 && t <= sevenDays; // include up to 5 min past
+        return t >= currentTime - 5 * 60 * 1000 && t <= sevenDays; // include up to 5 min past
       })
       .sort((a, b) => new Date(a.scheduledAt as string).getTime() - new Date(b.scheduledAt as string).getTime());
-  }, [callbacks]);
+  }, [callbacks, currentTime]);
 
   const filtered = useMemo(() => {
     let list = callbacks as Callback[];
@@ -254,7 +259,7 @@ export default function AdminCallbacks() {
   const router = useRouter();
 
   // Upcoming section rendered inside FlatList header
-  const UpcomingSection = () => {
+  const upcomingSection = (() => {
     if (upcomingCallbacks.length === 0) return null;
     return (
       <View style={{ marginHorizontal: 14, marginBottom: 18 }}>
@@ -268,7 +273,7 @@ export default function AdminCallbacks() {
         {upcomingCallbacks.map((cb) => {
           const scheduledStr = cb.scheduledAt as string;
           const { dayLabel, timeLabel, isToday, isTomorrow } = formatUpcomingTime(scheduledStr, cb.timezone);
-          const mins = minutesUntil(scheduledStr);
+          const mins = minutesUntil(scheduledStr, currentTime);
           const isOverdue = mins < 0;
           const isSoon = mins >= 0 && mins <= 30;
 
@@ -372,7 +377,7 @@ export default function AdminCallbacks() {
         })}
       </View>
     );
-  };
+  })();
 
   return (
     <ScreenContainer edges={["left", "right"]}>
@@ -487,7 +492,7 @@ export default function AdminCallbacks() {
         ListHeaderComponent={
           <>
             {/* ── Upcoming Callbacks ── */}
-            {!isLoading && <UpcomingSection />}
+            {!isLoading && upcomingSection}
 
             {/* Metrics */}
             <View style={styles.metricsGrid}>

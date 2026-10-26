@@ -224,7 +224,7 @@ export default function AdminGeofenceScreen() {
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyIcon}>📡</Text>
-              <Text style={styles.emptyText}>No zones yet. Tap "+ Add Zone" to create one.</Text>
+              <Text style={styles.emptyText}>No zones yet. Tap &quot;+ Add Zone&quot; to create one.</Text>
             </View>
           }
           renderItem={({ item: zone }) => (

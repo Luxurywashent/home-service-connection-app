@@ -90,21 +90,14 @@ function buildViewModel(item: Record<string, unknown>): RowViewModel {
 export default function DoorHangerHistoryScreen() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
-  const [entries, setEntries] = useState<Record<string, unknown>[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
-
   const { data, isLoading: queryLoading, refetch, isRefetching } = trpc.doorHanger.getEntries.useQuery(
     { employeeId: employee?.employeeId ?? "" },
     { enabled: !!employee?.employeeId }
   );
 
-  useEffect(() => {
-    if (data !== undefined || !queryLoading) {
-      setEntries(Array.isArray(data) ? (data as Record<string, unknown>[]) : []);
-      setIsLoading(false);
-    }
-  }, [data, queryLoading]);
+  const entries = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const isLoading = queryLoading;
 
   // Totals by type
   const totals: Record<string, number> = {};

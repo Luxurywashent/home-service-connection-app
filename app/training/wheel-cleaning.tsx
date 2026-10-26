@@ -152,7 +152,7 @@ function ChoiceCard({
   state: "idle" | "correct" | "wrong" | "disabled";
   colors: any;
 }) {
-  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useState(() => new Animated.Value(0))[0];
 
   const triggerShake = useCallback(() => {
     Animated.sequence([

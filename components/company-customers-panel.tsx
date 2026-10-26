@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, RefreshControl, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, Platform, RefreshControl, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
 
 import { CompanyAuthorityLoading, CompanyAuthorityMessage } from "@/components/company-authority-state";
 import { ScreenContainer } from "@/components/screen-container";
@@ -10,7 +9,7 @@ import { useColors } from "@/hooks/use-colors";
 import {
   COMPANY_FINANCIAL_LEGACY_FALLTHROUGH_BLOCKED,
   companyCanonicalListState,
-  companyCanonicalReadError,
+  companyReadFailure,
 } from "@/lib/jobsync-company-authority";
 import { getJobSyncCompanyCustomers, type JobSyncCompanyCustomer } from "@/lib/jobsync-mobile-api";
 import { useJobSyncSync } from "@/lib/jobsync-sync-context";
@@ -30,21 +29,39 @@ export function CompanyCustomersPanel({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
       setCustomers(await getJobSyncCompanyCustomers(token));
       setError(null);
     } catch (refreshError) {
+      const message = companyReadFailure(refreshError);
+      if (!message) return;
       setCustomers([]);
-      setError(companyCanonicalReadError(refreshError));
+      setError(message);
     } finally {
       setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, revision]);
+    let cancelled = false;
+    getJobSyncCompanyCustomers(token)
+      .then((nextCustomers) => {
+        if (cancelled) return;
+        setCustomers(nextCustomers);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        const message = companyReadFailure(refreshError);
+        if (!message) return;
+        setCustomers([]);
+        setError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [revision, token]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

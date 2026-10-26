@@ -78,7 +78,7 @@ export default function ResetPasswordScreen() {
           </View>
           <Text style={styles.successTitle}>Password Set!</Text>
           <Text style={styles.successSubtitle}>
-            You're now logged in. Taking you to your portal…
+            You’re now logged in. Taking you to your portal…
           </Text>
           <ActivityIndicator color="#0a7ea4" style={{ marginTop: 24 }} />
         </View>

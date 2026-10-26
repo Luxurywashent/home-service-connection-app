@@ -604,7 +604,7 @@ function InteractiveModuleEditor({ mod, onClose }: { mod: any; onClose: () => vo
   const [title, setTitle] = useState(mod?.title || "");
   const [subtitle, setSubtitle] = useState(mod?.subtitle || "");
   const [emoji, setEmoji] = useState(mod?.emoji || "");
-  const [moduleVideoUrl, setModuleVideoUrl] = useState("");
+  const [moduleVideoUrl, setModuleVideoUrl] = useState<string | null>(null);
   const moduleKey = mod?.moduleKey || "";
   const defaultSteps: DefaultStep[] = INTERACTIVE_STEPS_MAP[moduleKey] || [];
   const overridesQuery = trpc.training.getInteractiveOverrides.useQuery(
@@ -613,13 +613,8 @@ function InteractiveModuleEditor({ mod, onClose }: { mod: any; onClose: () => vo
   );
   const overrides: any[] = (overridesQuery.data || []).filter((o: any) => !o.isDeleted);
   const deletedStepIndices: number[] = (overridesQuery.data || []).filter((o: any) => o.isDeleted).map((o: any) => o.stepIndex);
-  useEffect(() => {
-    if (overridesQuery.isFetched) {
-      const videoOverride = overrides.find((o) => o.stepIndex === -1);
-      setModuleVideoUrl(videoOverride?.videoUrl ?? "");
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overridesQuery.isFetched]);
+  const videoOverride = overrides.find((override) => override.stepIndex === -1);
+  const displayedModuleVideoUrl = moduleVideoUrl ?? videoOverride?.videoUrl ?? "";
   const upsertMutation = trpc.training.upsertInteractiveOverride.useMutation({
     onSuccess: () => { overridesQuery.refetch(); Alert.alert("Saved", "Step saved successfully."); },
     onError: () => Alert.alert("Error", "Failed to save step."),
@@ -803,7 +798,7 @@ function InteractiveModuleEditor({ mod, onClose }: { mod: any; onClose: () => vo
   const handleSaveModuleCard = () => {
     if (!title.trim()) { Alert.alert("Required", "Title is required."); return; }
     updateModuleMutation.mutate({ moduleKey, title: title.trim(), subtitle: subtitle.trim() || undefined, emoji: emoji.trim() || undefined });
-    upsertMutation.mutate({ moduleId: moduleKey, stepIndex: -1, videoUrl: moduleVideoUrl.trim() || null });
+    upsertMutation.mutate({ moduleId: moduleKey, stepIndex: -1, videoUrl: displayedModuleVideoUrl.trim() || null });
   };
 
   const inputStyle = {
@@ -1083,7 +1078,7 @@ function InteractiveModuleEditor({ mod, onClose }: { mod: any; onClose: () => vo
             <SectionHeader title="Emoji Icon" />
             <TextInput style={inputStyle} value={emoji} onChangeText={setEmoji} placeholder="e.g. 🔧" placeholderTextColor={colors.muted} />
             <SectionHeader title="Intro Video URL" />
-            <TextInput style={inputStyle} value={moduleVideoUrl} onChangeText={setModuleVideoUrl} placeholder="https://www.loom.com/share/..." placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+            <TextInput style={inputStyle} value={displayedModuleVideoUrl} onChangeText={setModuleVideoUrl} placeholder="https://www.loom.com/share/..." placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" />
             <Pressable onPress={handleSaveModuleCard} disabled={updateModuleMutation.isPending} style={({ pressed }) => ({ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 10, alignItems: "center", opacity: pressed || updateModuleMutation.isPending ? 0.8 : 1 })}>
               {updateModuleMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Save Card</Text>}
             </Pressable>
@@ -1303,7 +1298,7 @@ function InteractiveModuleEditor({ mod, onClose }: { mod: any; onClose: () => vo
             <View style={{ padding: 24, alignItems: "center", backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 28, marginBottom: 8 }}>📋</Text>
               <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>No steps yet</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>Add steps to build this module's training flow.</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>Add steps to build this module&apos;s training flow.</Text>
             </View>
           ) : (
             <View style={{ gap: 10 }}>
@@ -2088,7 +2083,7 @@ export default function AdminTrainingScreen() {
             <View style={{ alignItems: "center", paddingTop: 40, gap: 8 }}>
               <Text style={{ fontSize: 32 }}>📁</Text>
               <Text style={{ fontSize: 15, fontWeight: "600", color: colors.muted }}>No folders yet</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>Tap "+ New Folder" to create your first folder.</Text>
+              <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>Tap &quot;+ New Folder&quot; to create your first folder.</Text>
             </View>
           ) : (
             <View style={{ gap: 10 }}>

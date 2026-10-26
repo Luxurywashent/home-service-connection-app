@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   ActivityIndicator, Platform, KeyboardAvoidingView, Modal,
-  StyleSheet, Pressable,
+  StyleSheet,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "@/components/screen-container";
@@ -10,7 +10,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
-import PttScreen, { InlinePttButton, VoiceBubble } from "@/components/chat/ptt-screen";
+import { InlinePttButton, VoiceBubble } from "@/components/chat/ptt-screen";
 import CommunityScreen from "@/components/chat/community-screen";
 import { CompanyChatScreen } from "@/components/chat/company-chat-screen";
 import { useLocalSearchParams } from "expo-router";
@@ -167,7 +167,7 @@ function ConversationScreen({
     } finally {
       setIsSending(false);
     }
-  }, [messageText, isSending, currentEmployeeId, currentFullName, channel, recipientId]);
+  }, [channel, channelQuery, currentEmployeeId, currentFullName, dmQuery, isSending, messageText, recipientId, sendMessageMutation]);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -292,7 +292,6 @@ interface NewDmModalProps {
 
 function NewDmModal({ visible, members, currentEmployeeId, onSelect, onClose }: NewDmModalProps) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -364,6 +363,47 @@ function NewDmModal({ visible, members, currentEmployeeId, onSelect, onClose }: 
 // ─── Main Chat Screen ─────────────────────────────────────────────────────────
 
 type View_ = "inbox" | "conversation";
+type LegacyConversation = Omit<ConversationProps, "onBack">;
+type LegacyChatParams = { openChannel?: string; openSenderId?: string; openSenderName?: string; openTab?: string };
+type LegacyChatEmployee = { employeeId: string; fullName: string } | null | undefined;
+
+function initialLegacyNavigation(employee: LegacyChatEmployee, params: LegacyChatParams) {
+  if (employee && params.openChannel === "dm" && params.openSenderId) {
+    return {
+      activeTab: "dms" as const,
+      view: "conversation" as const,
+      activeConversation: {
+        title: params.openSenderName ?? params.openSenderId,
+        subtitle: "Direct message",
+        channel: "dm",
+        recipientId: params.openSenderId,
+        currentEmployeeId: employee.employeeId,
+        currentFullName: employee.fullName,
+      } satisfies LegacyConversation,
+    };
+  }
+  if (employee && params.openChannel && params.openChannel !== "dm") {
+    const channel = GROUP_CHANNELS.find((candidate) => candidate.key === params.openChannel);
+    if (channel) {
+      return {
+        activeTab: "groups" as const,
+        view: "conversation" as const,
+        activeConversation: {
+          title: channel.label,
+          subtitle: channel.description,
+          channel: channel.key,
+          currentEmployeeId: employee.employeeId,
+          currentFullName: employee.fullName,
+        } satisfies LegacyConversation,
+      };
+    }
+  }
+  return {
+    activeTab: params.openTab === "community" ? "community" as const : "community" as const,
+    view: "inbox" as const,
+    activeConversation: null,
+  };
+}
 
 export default function ChatScreen() {
   const { session } = useJobSyncAuth();
@@ -374,16 +414,19 @@ export default function ChatScreen() {
 }
 
 function LegacyChatScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { employee } = useEmployeeAuth();
-  const params = useLocalSearchParams<{ openChannel?: string; openSenderId?: string; openSenderName?: string; openTab?: string }>();
+  const params = useLocalSearchParams<LegacyChatParams>();
+  const navigationKey = [employee?.employeeId ?? "pending", params.openChannel ?? "", params.openSenderId ?? "", params.openSenderName ?? "", params.openTab ?? ""].join(":");
+  return <LegacyChatScreenContent key={navigationKey} employee={employee} params={params} />;
+}
 
-  const [activeTab, setActiveTab] = useState<"groups" | "dms" | "community">("community");
-  const [view, setView] = useState<View_>("inbox");
-  const [activeConversation, setActiveConversation] = useState<ConversationProps | null>(null);
+function LegacyChatScreenContent({ employee, params }: { employee: LegacyChatEmployee; params: LegacyChatParams }) {
+  const colors = useColors();
+  const initialNavigation = initialLegacyNavigation(employee, params);
+  const [activeTab, setActiveTab] = useState<"groups" | "dms" | "community">(initialNavigation.activeTab);
+  const [view, setView] = useState<View_>(initialNavigation.view);
+  const [activeConversation, setActiveConversation] = useState<LegacyConversation | null>(initialNavigation.activeConversation);
   const [showNewDm, setShowNewDm] = useState(false);
-  const deepLinkHandled = useRef(false);
 
   const teamMembersQuery = trpc.chat.getTeamMembers.useQuery(undefined, { staleTime: 60_000 });
   const dmConvsQuery = trpc.chat.getDmConversations.useQuery(
@@ -421,48 +464,6 @@ function LegacyChatScreen() {
     return `${m}/${d}/${y} ${hr}:${min} ${period}`;
   };
 
-  // Handle deep-link from push notification tap
-  useEffect(() => {
-    if (deepLinkHandled.current) return;
-    if (!employee) return;
-    const { openChannel, openSenderId, openSenderName, openTab } = params;
-    if (!openChannel && !openSenderId) return;
-    deepLinkHandled.current = true;
-
-    if (openChannel === 'dm' && openSenderId) {
-      // Open a specific DM conversation
-      const name = openSenderName ?? openSenderId;
-      setActiveTab('dms');
-      setActiveConversation({
-        title: name,
-        subtitle: 'Direct message',
-        channel: 'dm',
-        recipientId: openSenderId,
-        currentEmployeeId: employee.employeeId,
-        currentFullName: employee.fullName,
-        onBack: () => setView('inbox'),
-      });
-      setView('conversation');
-    } else if (openChannel && openChannel !== 'dm') {
-      // Open a group channel
-      const ch = GROUP_CHANNELS.find(c => c.key === openChannel);
-      if (ch) {
-        setActiveTab('groups');
-        setActiveConversation({
-          title: ch.label,
-          subtitle: ch.description,
-          channel: ch.key,
-          currentEmployeeId: employee.employeeId,
-          currentFullName: employee.fullName,
-          onBack: () => setView('inbox'),
-        });
-        setView('conversation');
-      }
-    } else if (openTab === 'community') {
-      setActiveTab('community');
-    }
-  }, [params, employee]);
-
   const openGroupChannel = useCallback((ch: typeof GROUP_CHANNELS[number]) => {
     if (!employee) return;
     setActiveConversation({
@@ -471,7 +472,6 @@ function LegacyChatScreen() {
       channel: ch.key,
       currentEmployeeId: employee.employeeId,
       currentFullName: employee.fullName,
-      onBack: () => setView("inbox"),
     });
     setView("conversation");
   }, [employee]);
@@ -485,7 +485,6 @@ function LegacyChatScreen() {
       recipientId: otherId,
       currentEmployeeId: employee.employeeId,
       currentFullName: employee.fullName,
-      onBack: () => setView("inbox"),
     });
     setView("conversation");
   }, [employee]);

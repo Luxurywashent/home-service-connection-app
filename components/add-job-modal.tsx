@@ -34,6 +34,7 @@ import {
   createJobSyncCompanyJob,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyMembers,
+  isCompanyScheduleColumnMember,
   type JobSyncCompanyCustomer,
 } from "@/lib/jobsync-mobile-api";
 import {
@@ -143,6 +144,10 @@ function todayStr(): string {
   return `${y}-${m}-${day}`;
 }
 
+function createManualJobId(): string {
+  return Date.now().toString();
+}
+
 // ─── CustomerSearchField ──────────────────────────────────────────────────────
 
 function CustomerSearchField({
@@ -180,7 +185,7 @@ function CustomerSearchField({
       })
       .slice(0, 8)
       .map((customer) => ({ id: customer.id, fullName: customer.name, phone: customer.phone, email: customer.email, address: customer.addressLine1 }))
-    : results as Array<{ id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }>;
+    : results as { id?: number; fullName: string; phone: string | null; email: string | null; address: string | null }[];
 
   const handleChange = (text: string) => {
     setQuery(text);
@@ -309,7 +314,12 @@ interface AddJobModalProps {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
+export function AddJobModal(props: AddJobModalProps) {
+  if (!props.visible) return null;
+  return <AddJobModalForm {...props} />;
+}
+
+function AddJobModalForm({ visible, onClose, onSaved, prefill }: AddJobModalProps) {
   const colors = useColors();
   const { employee: currentEmployee } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
@@ -461,56 +471,12 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
 
   useEffect(() => {
     let cancelled = false;
-    if (!visible || !isJobSyncCompany || !jobSyncSession?.token) {
-      if (!isJobSyncCompany) {
-        setCompanyCustomers([]);
-        setCompanyCustomersError(null);
-      }
-      return () => { cancelled = true; };
-    }
+    if (!isJobSyncCompany || !jobSyncSession?.token) return () => { cancelled = true; };
     void getJobSyncCompanyCustomers(jobSyncSession.token)
       .then((customers) => { if (!cancelled) { setCompanyCustomers(customers); setCompanyCustomersError(null); } })
       .catch((error) => { if (!cancelled) setCompanyCustomersError(error instanceof Error ? error.message : "Home Service Connected could not load Company customers."); });
     return () => { cancelled = true; };
-  }, [visible, isJobSyncCompany, jobSyncSession?.token]);
-
-  // ── Reset on open ──
-  useEffect(() => {
-    if (visible) {
-      setFirstName(prefill?.firstName ?? "");
-      setLastName(prefill?.lastName   ?? "");
-      setPhone(prefill?.phone         ?? "");
-      setEmail(prefill?.email         ?? "");
-      setAddress(prefill?.address     ?? "");
-      setSelectedCity((prefill?.city as CitySlug) ?? "crestview");
-      setCustomerSearch("");
-      setShowCustomerDropdown(false);
-      setSelectedCompanyCustomerId(null);
-      setSelectedDate(todayStr());
-      setShowDatePicker(false);
-      setVehicleType(undefined);
-      setPackageId(undefined);
-      setAddonIds([]);
-      setAddonQtys({});
-      setAddonsExpanded(false);
-      setPrice("");
-      setPriceOverridden(false);
-      setShowPriceInput(false);
-      setExtraVehicles([]);
-      setDiscountType("fixed");
-      setDiscountInput("");
-      setShowDiscountRow(false);
-      setJobNotes("");
-      setShowNotesInput(false);
-      setPaymentMethod(null);
-      setStartHour(8);
-      setEndHour(10);
-      setRecurrenceRule(null);
-      setShowRecurrencePicker(false);
-      setNotifyCustomer(true);
-      setSaving(false);
-    }
-  }, [visible]);
+  }, [isJobSyncCompany, jobSyncSession?.token]);
 
   // ── Fetch detailers when city changes ──
   useEffect(() => {
@@ -519,7 +485,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
         try {
           const roster = await getJobSyncCompanyMembers(jobSyncSession.token, jobSyncSession.company.id);
           const entries = roster.members
-            .filter((member) => member.calendarEligible)
+            .filter(isCompanyScheduleColumnMember)
             .map((member, index) => ({
               employeeId: String(member.id),
               name: member.name,
@@ -647,7 +613,9 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
               phone,
               email,
               addressLine1: address,
-              city: cityLabel,
+              // Company customer cities come only from an explicit caller
+              // prefill. Do not inherit the hidden legacy Crestview selector.
+              city: prefill?.city?.trim() || undefined,
               vehicleType,
             });
         const start = new Date(`${selectedDate}T${String(startHour).padStart(2, "0")}:00`);
@@ -672,7 +640,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
         });
         Alert.alert("Recurring Jobs Created", `${res.count} job${res.count === 1 ? "" : "s"} scheduled.`);
       } else {
-        await jobUpsertMutation.mutateAsync({ ...basePayload, jobId: Date.now().toString(), notifyCustomer });
+        await jobUpsertMutation.mutateAsync({ ...basePayload, jobId: createManualJobId(), notifyCustomer });
         Alert.alert("Job Saved", `Job for ${firstName} ${lastName} on ${selectedDate} has been saved.`);
       }
       onSaved?.();
@@ -706,7 +674,7 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <View>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>New Job</Text>
-                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{cityLabel} · {selectedDate}</Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{isJobSyncCompany ? selectedDate : `${cityLabel} · ${selectedDate}`}</Text>
               </View>
               <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
                 <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
@@ -735,32 +703,36 @@ export function AddJobModal({ visible, onClose, onSaved, prefill }: AddJobModalP
                 </View>
               )}
 
-              {/* ── City ── */}
-              <Text style={[s.sectionLabel, { color: colors.muted }]}>Location</Text>
-              <TouchableOpacity
-                onPress={() => setShowCityPicker((v) => !v)}
-                style={[s.rowBtn, { borderColor: colors.border, backgroundColor: colors.background, marginBottom: showCityPicker ? 8 : 16 }]}
-                activeOpacity={0.75}
-              >
-                <Text style={{ color: colors.foreground, fontSize: 15 }}>{cityLabel}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{showCityPicker ? "▲" : "▼"}</Text>
-              </TouchableOpacity>
-              {showCityPicker && (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                  {CITY_LIST.map((c) => {
-                    const sel = selectedCity === c.slug;
-                    return (
-                      <TouchableOpacity
-                        key={c.slug}
-                        onPress={() => { setSelectedCity(c.slug); setShowCityPicker(false); }}
-                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13 }}>{c.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+              {!isJobSyncCompany && (
+                <>
+                  {/* ── City ── */}
+                  <Text style={[s.sectionLabel, { color: colors.muted }]}>Location</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCityPicker((v) => !v)}
+                    style={[s.rowBtn, { borderColor: colors.border, backgroundColor: colors.background, marginBottom: showCityPicker ? 8 : 16 }]}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={{ color: colors.foreground, fontSize: 15 }}>{cityLabel}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>{showCityPicker ? "▲" : "▼"}</Text>
+                  </TouchableOpacity>
+                  {showCityPicker && (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                      {CITY_LIST.map((c) => {
+                        const sel = selectedCity === c.slug;
+                        return (
+                          <TouchableOpacity
+                            key={c.slug}
+                            onPress={() => { setSelectedCity(c.slug); setShowCityPicker(false); }}
+                            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13 }}>{c.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
               )}
 
               {/* ── Customer ── */}

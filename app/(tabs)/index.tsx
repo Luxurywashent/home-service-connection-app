@@ -9,8 +9,12 @@ import { CompanyMeetingBanner } from "@/components/company-meeting-banner";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { useJobSyncSync } from "@/lib/jobsync-sync-context";
+import { companyRequestValue, type CompanyRequestResource } from "@/lib/company-request-resource";
+import { companyHomeTimesheetRange } from "@/lib/company-home-timesheet-range";
 import {
   allowsLegacyTimekeepingAuthority,
+  companyReadFailure,
   resolveCompanyDisplayedHours,
   resolveCompanyTimekeepingAuthority,
   usesCompanyTimekeepingAuthority,
@@ -21,7 +25,7 @@ import { useAfter5pmCheckIn } from "@/hooks/use-after-5pm-check-in";
 import { useEmployeePush } from "@/hooks/use-employee-push";
 import { trpc } from "@/lib/trpc";
 import { useRouter, useFocusEffect } from "expo-router";
-import { useRef, useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { HeroCard } from "@/components/ui/hero-card";
 import { MetricCard } from "@/components/ui/metric-card";
 import { PremiumButton } from "@/components/ui/premium-button";
@@ -72,17 +76,17 @@ function TreasureChestReveal({ prizeName, prizeEmoji, onClose, colors }: {
   // Phase 2: chest shakes (1→1)
   // Phase 3: lid swings open (0→1)
   // Phase 4: prize pops up from inside chest
-  const chestY = useRef(new Animated.Value(-300)).current;   // starts above screen
-  const chestScale = useRef(new Animated.Value(0.5)).current;
-  const lidAngle = useRef(new Animated.Value(0)).current;    // 0 = closed, 1 = open
-  const prizeY = useRef(new Animated.Value(0)).current;      // 0 = inside chest, -1 = popped out
-  const prizeScale = useRef(new Animated.Value(0)).current;
-  const prizeOpacity = useRef(new Animated.Value(0)).current;
-  const sparkle1 = useRef(new Animated.Value(0)).current;
-  const sparkle2 = useRef(new Animated.Value(0)).current;
-  const sparkle3 = useRef(new Animated.Value(0)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
-  const shake = useRef(new Animated.Value(0)).current;
+  const [chestY] = useState(() => new Animated.Value(-300));   // starts above screen
+  const [chestScale] = useState(() => new Animated.Value(0.5));
+  const [lidAngle] = useState(() => new Animated.Value(0));    // 0 = closed, 1 = open
+  const [prizeY] = useState(() => new Animated.Value(0));      // 0 = inside chest, -1 = popped out
+  const [prizeScale] = useState(() => new Animated.Value(0));
+  const [prizeOpacity] = useState(() => new Animated.Value(0));
+  const [sparkle1] = useState(() => new Animated.Value(0));
+  const [sparkle2] = useState(() => new Animated.Value(0));
+  const [sparkle3] = useState(() => new Animated.Value(0));
+  const [textOpacity] = useState(() => new Animated.Value(0));
+  const [shake] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.sequence([
@@ -355,7 +359,7 @@ function DetailerDashboard() {
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [selectedBreakType, setSelectedBreakType] = useState<"morning_15min" | "afternoon_15min" | "lunch_30min" | null>(null);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
-  const [suggestedCity, setSuggestedCity] = useState<any>(null);
+  const [dismissedSuggestedCityKey, setDismissedSuggestedCityKey] = useState<string | null>(null);
 
   const weekRange = getWeekRange();
   
@@ -364,12 +368,8 @@ function DetailerDashboard() {
     undefined,
     { refetchInterval: 60000, enabled: isSalesRep }
   );
-
-  useEffect(() => {
-    if (suggestedCityQuery.data) {
-      setSuggestedCity(suggestedCityQuery.data);
-    }
-  }, [suggestedCityQuery.data]);
+  const suggestedCityKey = suggestedCityQuery.data?.startingAddress ?? null;
+  const suggestedCity = suggestedCityKey === dismissedSuggestedCityKey ? null : suggestedCityQuery.data ?? null;
 
   const handleTakeMeThere = async () => {
     if (!suggestedCity?.startingAddress) return;
@@ -382,7 +382,7 @@ function DetailerDashboard() {
     try {
       await Linking.openURL(url);
       // Clear the suggestion after navigation
-      setSuggestedCity(null);
+      setDismissedSuggestedCityKey(suggestedCityKey);
     } catch (err) {
       Alert.alert('Error', 'Could not open maps application');
     }
@@ -423,8 +423,14 @@ function DetailerDashboard() {
     },
     { enabled: allowLegacyTimekeeping && !!employee?.employeeId, refetchOnWindowFocus: false, refetchInterval: 60000 }
   );
-  const [companyHours, setCompanyHours] = useState<number | null>(null);
-  const [companyHoursError, setCompanyHoursError] = useState<string | null>(null);
+  const { revision: companySyncRevision } = useJobSyncSync();
+  const [companyHoursResource, setCompanyHoursResource] = useState<CompanyRequestResource<{ hours: number | null; error: string | null }> | null>(null);
+  const companyHoursRequestKey = isCompanyTimekeeping && jobSyncSession?.token
+    ? `${jobSyncSession.token}:${view}:${weekRange.start}:${weekRange.end}:${weekRange.today}:${companySyncRevision}`
+    : null;
+  const companyHoursState = companyRequestValue(companyHoursRequestKey, companyHoursResource);
+  const companyHours = companyHoursState?.hours ?? null;
+  const companyHoursError = companyHoursState?.error ?? null;
 
   // Query completed schedule jobs to include their revenue in dashboard metrics
   const completedJobsQuery = trpc.jobs.completedForDetailer.useQuery(
@@ -460,29 +466,21 @@ function DetailerDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!isCompanyTimekeeping || !jobSyncSession?.token) {
-      setCompanyHours(null);
-      setCompanyHoursError(null);
-      return () => { cancelled = true; };
-    }
-    getHomeServiceConnectedTimesheets(jobSyncSession.token, {
-      start: view === "today" ? weekRange.today : view === "week" ? weekRange.start : "2020-01-01",
-      end: view === "today" ? weekRange.today : view === "week" ? weekRange.end : weekRange.today,
-    })
+    if (!companyHoursRequestKey || !jobSyncSession?.token) return () => { cancelled = true; };
+    getHomeServiceConnectedTimesheets(jobSyncSession.token, companyHomeTimesheetRange(view))
       .then((records) => {
         if (!cancelled) {
-          setCompanyHours(sumHomeServiceConnectedTimesheetHours(records));
-          setCompanyHoursError(null);
+          setCompanyHoursResource({ requestKey: companyHoursRequestKey, data: { hours: sumHomeServiceConnectedTimesheetHours(records), error: null } });
         }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setCompanyHours(null);
-          setCompanyHoursError(error instanceof Error ? error.message : "Company hours are unavailable.");
-        }
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
+        setCompanyHoursResource({ requestKey: companyHoursRequestKey, data: { hours: null, error: message } });
       });
     return () => { cancelled = true; };
-  }, [isCompanyTimekeeping, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
+  }, [companyHoursRequestKey, jobSyncSession?.token, view, weekRange.end, weekRange.start, weekRange.today]);
   const clockInMutation = trpc.timesheet.clockIn.useMutation();
   const clockOutMutation = trpc.timesheet.clockOut.useMutation();
 
@@ -674,35 +672,19 @@ function DetailerDashboard() {
 
   // ─── Live Pay Ticker ───────────────────────────────────────────────────────
   // While clocked in, add live earnings on top of the stored projected income.
-  // Ticks every second so the number visibly increments.
-  const [liveExtraSeconds, setLiveExtraSeconds] = useState(0);
-  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The timestamp tick drives rerenders; the elapsed value itself is derived.
+  const [liveClockNow, setLiveClockNow] = useState(() => Date.now());
+  const isLiveClocking = clockStatus?.status === "clocked_in" && !!clockStatus?.clockInTime && view === "today";
 
   useEffect(() => {
-    const isClockedIn = clockStatus?.status === "clocked_in" && clockStatus?.clockInTime;
-    if (isClockedIn && view === "today") {
-      // Calculate how many seconds have elapsed since clock-in that are NOT yet in stored hours
-      const clockInMs = new Date(clockStatus.clockInTime!).getTime();
-      const storedHours = metrics.hours; // hours already logged in DB
-      const storedSeconds = storedHours * 3600;
+    if (!isLiveClocking) return;
+    const ticker = setInterval(() => setLiveClockNow(Date.now()), 1000);
+    return () => clearInterval(ticker);
+  }, [isLiveClocking]);
 
-      const getElapsed = () => {
-        const elapsedMs = Date.now() - clockInMs;
-        const elapsedSec = Math.max(0, elapsedMs / 1000);
-        // Live extra = total elapsed minus what's already stored
-        return Math.max(0, elapsedSec - storedSeconds);
-      };
-
-      setLiveExtraSeconds(getElapsed());
-      tickerRef.current = setInterval(() => {
-        setLiveExtraSeconds(getElapsed());
-      }, 1000);
-    } else {
-      setLiveExtraSeconds(0);
-      if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
-    }
-    return () => { if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; } };
-  }, [clockStatus?.status, clockStatus?.clockInTime, metrics.hours, view]);
+  const liveExtraSeconds = isLiveClocking
+    ? Math.max(0, (liveClockNow - new Date(clockStatus!.clockInTime!).getTime()) / 1000 - metrics.hours * 3600)
+    : 0;
 
   // Live projected income = stored projected + live extra hours earnings (after tax) + upsell bonus
   const HOURLY_RATE = employee?.hourlyRate ?? 17;
@@ -815,7 +797,7 @@ function DetailerDashboard() {
             {greeting} 👋
           </Text>
           <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
-            {firstName}, let's see how you're doing
+            {firstName}, let&apos;s see how you&apos;re doing
           </Text>
         </View>
 
@@ -1335,7 +1317,7 @@ function DetailerDashboard() {
               Still Working?
             </Text>
             <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20, marginBottom: 28 }}>
-              Are you still on the clock? If you don't respond by 7:00 PM you will be automatically clocked out.
+              Are you still on the clock? If you don&apos;t respond by 7:00 PM you will be automatically clocked out.
             </Text>
             <TouchableOpacity
               onPress={() => respondToClockCheck("still_working")}

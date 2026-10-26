@@ -214,6 +214,7 @@ export default function PayrollScreen() {
   const { session, isLoading: jobSyncLoading } = useJobSyncAuth();
   const authority = resolveCompanyTimekeepingAuthority({ session, sessionLoading: jobSyncLoading });
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+  const payPeriods = useMemo(() => generatePayPeriods(12), []);
 
   if (authority === "unknown") {
     return (
@@ -239,8 +240,6 @@ export default function PayrollScreen() {
       </ScreenContainer>
     );
   }
-
-  const payPeriods = useMemo(() => generatePayPeriods(12), []);
 
   if (!employee) {
     return (

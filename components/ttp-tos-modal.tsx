@@ -79,7 +79,7 @@ export function TTPTosModal({ visible, isAdmin, onAccept, onDecline }: TTPTosMod
                 Stripe Terminal — Tap to Pay on iPhone
               </Text>
               <Text style={[styles.tosBody, { color: colors.muted }]}>
-                By enabling Tap to Pay on iPhone, you agree to Stripe's Terminal Terms of Service and the following conditions:
+                {"By enabling Tap to Pay on iPhone, you agree to Stripe's Terminal Terms of Service and the following conditions:"}
               </Text>
 
               <Text style={[styles.tosHeading, { color: colors.foreground }]}>1. Eligibility</Text>
@@ -94,7 +94,7 @@ export function TTPTosModal({ visible, isAdmin, onAccept, onDecline }: TTPTosMod
 
               <Text style={[styles.tosHeading, { color: colors.foreground }]}>3. Transaction Limits</Text>
               <Text style={[styles.tosBody, { color: colors.muted }]}>
-                Tap to Pay on iPhone supports contactless payments up to the contactless limit set by the card network (typically $250 for US transactions). Higher amounts may require PIN entry on the customer's device.
+                {"Tap to Pay on iPhone supports contactless payments up to the contactless limit set by the card network (typically $250 for US transactions). Higher amounts may require PIN entry on the customer's device."}
               </Text>
 
               <Text style={[styles.tosHeading, { color: colors.foreground }]}>4. Accepted Payment Methods</Text>
@@ -104,12 +104,12 @@ export function TTPTosModal({ visible, isAdmin, onAccept, onDecline }: TTPTosMod
 
               <Text style={[styles.tosHeading, { color: colors.foreground }]}>5. Refunds & Disputes</Text>
               <Text style={[styles.tosBody, { color: colors.muted }]}>
-                All refunds and dispute resolutions are handled through your Stripe dashboard. Luxury Wash On Wheels is responsible for resolving customer disputes in accordance with Stripe's dispute policy.
+                {"All refunds and dispute resolutions are handled through your Stripe dashboard. Luxury Wash On Wheels is responsible for resolving customer disputes in accordance with Stripe's dispute policy."}
               </Text>
 
               <Text style={[styles.tosHeading, { color: colors.foreground }]}>6. Stripe Terminal Terms</Text>
               <Text style={[styles.tosBody, { color: colors.muted }]}>
-                This feature is powered by Stripe Terminal. By accepting these terms, you also agree to Stripe's Terminal Terms of Service available at stripe.com/terminal/legal.
+                {"This feature is powered by Stripe Terminal. By accepting these terms, you also agree to Stripe's Terminal Terms of Service available at stripe.com/terminal/legal."}
               </Text>
 
               <TouchableOpacity

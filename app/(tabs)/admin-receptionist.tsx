@@ -90,6 +90,18 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+async function getReceptionistStatus(): Promise<ReceptionistStatus | null> {
+  const res = await fetch(`${API_BASE}/api/receptionist/status`);
+  return res.ok ? res.json() : null;
+}
+
+async function getReceptionistCalls(): Promise<CallLog[]> {
+  const res = await fetch(`${API_BASE}/api/receptionist/calls`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.calls ?? [];
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 function CompanyReceptionistUnavailable() {
   const colors = useColors();
@@ -138,7 +150,7 @@ function AdminReceptionistLegacyScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStartTimeRef = useRef<number>(0);
-  const ringAnim = useRef(new Animated.Value(1)).current;
+  const [ringAnim] = useState(() => new Animated.Value(1));
   const ringAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const router = useRouter();
   const [playingCallId, setPlayingCallId] = useState<number | null>(null);
@@ -339,7 +351,6 @@ function AdminReceptionistLegacyScreen() {
         clearInterval(callTimerRef.current);
         callTimerRef.current = null;
       }
-      if (callState === "idle") setCallDuration(0);
     }
     return () => {
       if (callTimerRef.current) clearInterval(callTimerRef.current);
@@ -367,20 +378,33 @@ function AdminReceptionistLegacyScreen() {
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchStatus(), fetchCalls()]);
-    setLoading(false);
-  }, [fetchStatus, fetchCalls]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([fetchStatus(), fetchCalls(), fetchKnowledge()]);
     setRefreshing(false);
   }, [fetchStatus, fetchCalls, fetchKnowledge]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
-  useEffect(() => { if (activeTab === "training") fetchKnowledge(); }, [activeTab, fetchKnowledge]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getReceptionistStatus(), getReceptionistCalls()])
+      .then(([nextStatus, nextCalls]) => {
+        if (cancelled) return;
+        if (nextStatus) setStatus(nextStatus);
+        setCallLogs(nextCalls);
+      })
+      .catch((error) => {
+        console.warn("[Receptionist] Initial load error:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleTabChange = useCallback((tab: "status" | "calls" | "test" | "training") => {
+    setActiveTab(tab);
+    if (tab === "training") void fetchKnowledge();
+  }, [fetchKnowledge]);
 
   // TTS helper
   const speakText = useCallback((text: string) => {
@@ -529,7 +553,7 @@ function AdminReceptionistLegacyScreen() {
         {(["status", "calls", "test", "training"] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => handleTabChange(tab)}
             style={[styles.tab, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.primary }]}
             activeOpacity={0.7}
           >
@@ -683,10 +707,10 @@ function AdminReceptionistLegacyScreen() {
               <Text style={[styles.lineInfoText, { color: colors.muted }]}>
                 1. Go to Settings → Secrets and add your TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.{"\n\n"}
                 2. Add each phone line above with the exact number as it appears in Twilio (e.g. +18505551234).{"\n\n"}
-                3. In your Twilio console, set each number's webhook URL to:{"\n"}
+                3. In your Twilio console, set each number&apos;s webhook URL to:{"\n"}
                 <Text style={{ color: colors.primary }}>{"{"}your-api-url{"}"}/api/phone/sms</Text> for SMS{"\n"}
                 <Text style={{ color: colors.primary }}>{"{"}your-api-url{"}"}/api/phone/voice</Text> for Voice{"\n\n"}
-                4. To port your Grasshopper numbers, submit a port request in Twilio's console — it typically takes 2–4 weeks.
+                4. To port your Grasshopper numbers, submit a port request in Twilio&apos;s console — it typically takes 2–4 weeks.
               </Text>
             </View>
           </View>
@@ -1067,7 +1091,7 @@ function AdminReceptionistLegacyScreen() {
               <Text style={styles.emptyIcon}>🧠</Text>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Knowledge Yet</Text>
               <Text style={[styles.emptyText, { color: colors.muted }]}>
-                Tap "+ Add" to teach the AI about your services, pricing, and policies.
+                Tap &quot;+ Add&quot; to teach the AI about your services, pricing, and policies.
               </Text>
             </View>
           )}
@@ -1265,15 +1289,19 @@ const styles = StyleSheet.create({
 });
 
 // ─── LineModal Component ────────────────────────────────────────────────────────────────────
-function LineModal({
-  visible, line, onClose, onSave, colors,
-}: {
+type LineModalProps = {
   visible: boolean;
   line: PhoneLine | null;
   onClose: () => void;
   onSave: (data: { id?: number; lineName: string; phoneNumber: string; twilioSid?: string; color: string; aiReceptionistEnabled: boolean; forwardToEmployees: boolean }) => void;
   colors: ReturnType<typeof useColors>;
-}) {
+};
+
+function LineModal(props: LineModalProps) {
+  return <LineModalForm key={`${props.visible}:${props.line?.id ?? "new"}`} {...props} />;
+}
+
+function LineModalForm({ visible, line, onClose, onSave, colors }: LineModalProps) {
   const LINE_COLORS = ["#0a7ea4", "#7c3aed", "#059669", "#dc2626", "#d97706", "#db2777", "#0891b2", "#65a30d"];
   const [lineName, setLineName] = useState(line?.line_name ?? "");
   const [phoneNumber, setPhoneNumber] = useState(line?.phone_number ?? "");
@@ -1281,16 +1309,6 @@ function LineModal({
   const [selectedColor, setSelectedColor] = useState(line?.color ?? LINE_COLORS[0]);
   const [aiEnabled, setAiEnabled] = useState(line ? line.ai_receptionist_enabled === 1 : false);
   const [forwardToEmp, setForwardToEmp] = useState(line ? line.forward_to_employees === 1 : true);
-  React.useEffect(() => {
-    if (visible) {
-      setLineName(line?.line_name ?? "");
-      setPhoneNumber(line?.phone_number ?? "");
-      setTwilioSid(line?.twilio_sid ?? "");
-      setSelectedColor(line?.color ?? LINE_COLORS[0]);
-      setAiEnabled(line ? line.ai_receptionist_enabled === 1 : false);
-      setForwardToEmp(line ? line.forward_to_employees === 1 : true);
-    }
-  }, [visible, line]);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.lineModalOverlay}>

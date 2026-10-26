@@ -99,6 +99,7 @@ function LegacyAdminCustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefetching, setIsRefetching] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const router = useRouter();
 
   // Debounce search input so we don't fire a request on every keystroke
@@ -107,22 +108,38 @@ function LegacyAdminCustomersScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const loadCustomers = useCallback(async (refresh = false) => {
-    if (!session?.token) return;
-    if (refresh) setIsRefetching(true); else setIsLoading(true);
-    try {
-      const rows = await getJobSyncCompanyCustomers(session.token, debouncedSearch);
-      setCustomers(rows.map((row) => ({
-        customerId: String(row.id), fullName: row.name, phone: row.phone, email: row.email,
-        address: row.addressLine1, city: row.city, lifetimeValue: 0, jobCount: 0,
-        lastServiceDate: null, firstServiceDate: null, source: "manual",
-      })));
-    } finally {
-      setIsLoading(false);
-      setIsRefetching(false);
-    }
-  }, [debouncedSearch, session?.token]);
-  useEffect(() => { void loadCustomers(); }, [loadCustomers]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.token) return () => { cancelled = true; };
+
+    getJobSyncCompanyCustomers(session.token, debouncedSearch)
+      .then((rows) => {
+        if (cancelled) return;
+        setCustomers(rows.map((row) => ({
+          customerId: String(row.id), fullName: row.name, phone: row.phone, email: row.email,
+          address: row.addressLine1, city: row.city, lifetimeValue: 0, jobCount: 0,
+          lastServiceDate: null, firstServiceDate: null, source: "manual",
+        })));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+        setIsRefetching(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [debouncedSearch, refreshVersion, session?.token]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setIsLoading(true);
+  }, []);
+
+  const refreshCustomers = useCallback(() => {
+    setIsRefetching(true);
+    setIsLoading(true);
+    setRefreshVersion((version) => version + 1);
+  }, []);
 
   // ── Filtered list (sorted A–Z by name) ──
   // Server already filters by search; sort client-side for display
@@ -217,7 +234,7 @@ function LegacyAdminCustomersScreen() {
           placeholder="Search by name, phone, email..."
           placeholderTextColor={colors.muted}
           value={search}
-          onChangeText={setSearch}
+          onChangeText={handleSearchChange}
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
@@ -257,7 +274,7 @@ function LegacyAdminCustomersScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={() => loadCustomers(true)}
+              onRefresh={refreshCustomers}
               tintColor={colors.primary}
             />
           }

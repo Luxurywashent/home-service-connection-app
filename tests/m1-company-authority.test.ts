@@ -9,6 +9,8 @@ import {
   companyAssignedUserId,
   companyCanonicalListState,
   companyCanonicalReadError,
+  companyScheduleJobIsAssignedToUser,
+  companyScheduleLocation,
   companyScheduleDateTime,
   companyScheduleWritesLocalMirror,
   forbidLegacyCompanyJobAuthority,
@@ -17,6 +19,7 @@ import {
   mapCanonicalJobToScheduleFields,
   nextCanonicalJobStatus,
   resolveCompanyJobAuthority,
+  scheduleJobMatchesCity,
   unpaidJobFromCanonical,
   usesCompanyJobAuthority,
 } from "../lib/jobsync-company-authority";
@@ -102,11 +105,30 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(mapped.assignedTo).toBe("jobsync-41");
     expect(mapped.detailerName).toBe("Alex Tech");
     expect(mapped._rawStatus).toBe("scheduled");
+    expect(companyScheduleLocation(" Austin ")).toBe("Austin");
+    expect(companyScheduleLocation(null)).toBe("");
+    expect(mapCanonicalJobToScheduleFields({ ...canonicalJob, city: "Austin" }, "crestview").location).toBe("Austin");
+    expect(mapCanonicalJobToScheduleFields({ ...canonicalJob, city: null }, "").location).toBe("");
+    expect(companyScheduleJobIsAssignedToUser(mapped, 41)).toBe(true);
+    expect(companyScheduleJobIsAssignedToUser(mapped, 42)).toBe(false);
     expect(companyScheduleWritesLocalMirror()).toBe(false);
     expect(scheduleSource).toContain("mapCanonicalJobToScheduleFields");
     expect(adminScheduleSource).toContain("mapCanonicalJobToScheduleFields");
     expect(scheduleSource).toContain("getJobSyncCompanyJobs");
+    expect(scheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "", companySettings.timezone)');
+    expect(scheduleSource).not.toContain("cityToSlug(job.city)");
+    expect(adminScheduleSource).toContain('mapCanonicalJobToScheduleFields(job, "", companySettings.timezone)');
+    expect(addJobSource).toContain("city: prefill?.city?.trim() || undefined");
+    expect(addJobSource).toContain("{!isJobSyncCompany && (");
     expect(scheduleSource).not.toContain("trpc.jobs.upsert.useMutation();\n    if (isJobSyncCompany)");
+  });
+
+  it("keeps Austin jobs visible on the Company admin timeline and day indicators", () => {
+    expect(scheduleJobMatchesCity("Austin", "crestview", true)).toBe(true);
+    expect(scheduleJobMatchesCity(null, "crestview", true)).toBe(true);
+    expect(scheduleJobMatchesCity("Austin", "crestview", false)).toBe(false);
+    expect(scheduleJobMatchesCity("Crestview", "crestview", false)).toBe(true);
+    expect(adminScheduleSource.match(/scheduleJobMatchesCity\(j.location, selectedCity, isJobSyncCompany\)/g)).toHaveLength(2);
   });
 
   it("routes Company reschedule, assignment, and status to canonical Job mutations without client company overrides", async () => {
@@ -136,8 +158,9 @@ describe("M1 Company Jobs / Schedule / AR", () => {
     expect(companyAssignedUserId("jobsync-41")).toBe(41);
     expect(Number.isNaN(new Date(companyScheduleDateTime("2026-09-12", 15)).getTime())).toBe(false);
     expect(scheduleSource).toContain("updateJobSyncCompanyJobStatus");
-    expect(adminScheduleSource).toContain("rescheduleJobSyncCompanyJob");
-    expect(adminScheduleSource).toContain("assignJobSyncCompanyJob");
+    expect(adminScheduleSource).toContain("moveJobSyncCompanyJob");
+    expect(adminScheduleSource).not.toContain("rescheduleJobSyncCompanyJob");
+    expect(adminScheduleSource).not.toContain("assignJobSyncCompanyJob");
   });
 
   it("rejects client-supplied Company identity on Job mutations", async () => {

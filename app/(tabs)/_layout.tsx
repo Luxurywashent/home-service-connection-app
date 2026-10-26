@@ -83,7 +83,12 @@ export default function TabLayout() {
     nativeJobSyncEmployee &&
     employee?.sessionSource === "jobsync" &&
     employee.employeeId === nativeJobSyncEmployee.employeeId &&
-    employee.companyId === nativeJobSyncEmployee.companyId,
+    employee.companyId === nativeJobSyncEmployee.companyId &&
+    employee.fullName === nativeJobSyncEmployee.fullName &&
+    employee.email === nativeJobSyncEmployee.email &&
+    employee.phoneNumber === nativeJobSyncEmployee.phoneNumber &&
+    employee.city === nativeJobSyncEmployee.city &&
+    employee.hireDate === nativeJobSyncEmployee.hireDate,
   );
 
   useEffect(() => {

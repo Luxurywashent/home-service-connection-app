@@ -3,7 +3,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
-import { useEffect, useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useAfter5pmCheckIn } from "@/hooks/use-after-5pm-check-in";
 import { useBreakNotifications } from "@/hooks/use-break-notifications";
 import * as Haptics from "expo-haptics";
@@ -143,9 +143,6 @@ export default function DoorHangerDashboard() {
   const router = useRouter();
   const { employee } = useEmployeeAuth();
   const insets = useSafeAreaInsets();
-  const [stats, setStats] = useState<any>(null);
-  const [goals, setGoals] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const today = todayLocal();
 
   const getStats = trpc.doorHanger.getStats.useQuery(
@@ -157,15 +154,11 @@ export default function DoorHangerDashboard() {
   useBreakNotifications();
   useAfter5pmCheckIn();
 
-  useEffect(() => {
-    if (getStats.data !== undefined || getGoals.data !== undefined || getStats.isError || getGoals.isError) {
-      const s = getStats.data as any;
-      const baseStats = { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0 };
-      setStats(s ? { ...baseStats, ...s, tableToppers: s.tableToppers ?? 0 } : baseStats);
-      setGoals(getGoals.data || { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 });
-      setIsLoading(false);
-    }
-  }, [getStats.data, getStats.isError, getGoals.data, getGoals.isError]);
+  const baseStats = { doorHangers: 0, businessCards: 0, yardSigns: 0, tableToppers: 0 };
+  const queriedStats = getStats.data as any;
+  const stats = queriedStats ? { ...baseStats, ...queriedStats, tableToppers: queriedStats.tableToppers ?? 0 } : baseStats;
+  const goals = getGoals.data || { dailyDoorHangerGoal: 50, dailyBusinessCardGoal: 20, dailyYardSignGoal: 2, dailyTableTopperGoal: 5 };
+  const isLoading = getStats.data === undefined && getGoals.data === undefined && !getStats.isError && !getGoals.isError;
 
   const handleRefresh = useCallback(async () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

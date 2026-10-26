@@ -182,9 +182,12 @@ describe("M2 Company Clock / Timesheets / Time Off", () => {
   });
 
   it("treats duplicate active clock-in as a canonical server conflict", () => {
-    expect(companyClockSource).toContain("already\\s+(?:clocked\\s+)?in");
-    expect(companyClockSource).toContain("activeShiftRecovery");
+    expect(companyClockSource).toContain("reconcileClockAction");
+    expect(companyClockSource).toContain("getHomeServiceConnectedTimeState");
+    expect(companyClockSource).not.toContain("12_000");
+    expect(companyClockSource).not.toContain("activeShiftRecovery");
     expect(apiSource).toContain("/api/mobile/v1/time/current");
+    expect(apiSource).toContain("COMPANY_TIME_REQUEST_TIMEOUT_MS = 20_000");
   });
 
   it("does not let unknown auth fall into legacy Clock", () => {
@@ -217,7 +220,8 @@ describe("M2 Company Clock / Timesheets / Time Off", () => {
     expect(timesheetSource).toContain("CompanyTimesheetPanel");
     expect(adminTimesheetSource).toContain("CompanyTimesheetPanel");
     expect(salesTimesheetSource).toContain("CompanyTimesheetPanel");
-    expect(timesheetPanelSource).toContain("getHomeServiceConnectedTimesheets");
+    expect(timesheetPanelSource).toContain("getHomeServiceConnectedTimesheetPage");
+    expect(timesheetPanelSource).toContain("weekOffset");
     expect(timesheetPanelSource).not.toContain("trpc.timesheet");
     expect(timesheetPanelSource).toContain("does not keep a second timesheet ledger");
   });

@@ -303,21 +303,11 @@ function LeadDetailModal({
   refetch: () => void;
 }) {
   const colors = useColors();
-  const [notes, setNotes] = useState("");
-  const [convertDate, setConvertDate] = useState("");
+  const [notes, setNotes] = useState(lead?.pipelineNotes ?? "");
+  const [convertDate, setConvertDate] = useState(todayStr());
   const [convertTime, setConvertTime] = useState("");
   const [selectedDetailer, setSelectedDetailer] = useState("");
   const [showConvertForm, setShowConvertForm] = useState(false);
-
-  React.useEffect(() => {
-    if (lead) {
-      setNotes(lead.pipelineNotes ?? "");
-      setConvertDate(todayStr());
-      setConvertTime("");
-      setSelectedDetailer("");
-      setShowConvertForm(false);
-    }
-  }, [lead]);
 
   if (!lead) return null;
 
@@ -539,12 +529,8 @@ function BookingDetailModal({
   onRecovery: (booking: Booking) => void;
 }) {
   const colors = useColors();
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(booking?.pipelineNotes ?? "");
   const [showStageMenu, setShowStageMenu] = useState(false);
-
-  React.useEffect(() => {
-    if (booking) setNotes(booking.pipelineNotes ?? "");
-  }, [booking]);
 
   if (!booking) return null;
 
@@ -583,7 +569,7 @@ function BookingDetailModal({
           {isAbandoned && (
             <View style={styles.abandonedBanner}>
               <Text style={styles.abandonedBannerText}>
-                🛒 This customer started booking but didn't complete it. Send a recovery SMS to bring them back.
+                🛒 This customer started booking but didn&apos;t complete it. Send a recovery SMS to bring them back.
               </Text>
             </View>
           )}
@@ -823,7 +809,7 @@ function LeadsTab({
             <Text style={styles.emptyStateIcon}>📬</Text>
             <Text style={[styles.emptyStateTitle, { color: colors.foreground }]}>No leads yet</Text>
             <Text style={[styles.emptyStateSub, { color: colors.muted }]}>
-              When customers fill out a Maintenance or Ceramic Coating form on your website, they'll appear here.
+              When customers fill out a Maintenance or Ceramic Coating form on your website, they&apos;ll appear here.
             </Text>
           </View>
         ) : (
@@ -841,6 +827,7 @@ function LeadsTab({
       </ScrollView>
 
       <LeadDetailModal
+        key={`${leadModalVisible}:${selectedLead?.bookingId ?? "none"}`}
         lead={selectedLead}
         visible={leadModalVisible}
         onClose={() => { setLeadModalVisible(false); setSelectedLead(null); }}
@@ -1237,6 +1224,7 @@ export default function AdminPipelineScreen() {
 
           {/* Detail Modal */}
           <BookingDetailModal
+            key={`${modalVisible}:${selectedBooking?.bookingId ?? "none"}`}
             booking={selectedBooking}
             visible={modalVisible}
             onClose={() => { setModalVisible(false); setSelectedBooking(null); }}

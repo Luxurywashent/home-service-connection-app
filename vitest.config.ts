@@ -11,6 +11,7 @@ const liveSmokeTests = [
   "tests/stripe-key.test.ts",
   "tests/stripe-pk.test.ts",
   "tests/twilio-credentials.test.ts",
+  "tests/weather-geocoding.test.ts",
 ];
 
 export default defineConfig(({ mode }) => {

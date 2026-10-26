@@ -15,7 +15,7 @@ import {
   COMPANY_LEGACY_FALLTHROUGH_BLOCKED,
   allowsLegacyJobAuthority,
   companyCanonicalListState,
-  companyCanonicalReadError,
+  companyReadFailure,
   invoicePresentationFromCanonicalJob,
   resolveCompanyJobAuthority,
   usesCompanyJobAuthority,
@@ -54,42 +54,39 @@ export default function AdminInvoicesScreen() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [selectedCompanyInvoice, setSelectedCompanyInvoice] = useState<ReturnType<typeof invoicePresentationFromCanonicalJob> | null>(null);
   const [companyInvoices, setCompanyInvoices] = useState<JobSyncCompanyInvoice[]>([]);
-  const [companyLoading, setCompanyLoading] = useState(false);
-  const [companyError, setCompanyError] = useState<string | null>(null);
+  const [companyFetchError, setCompanyFetchError] = useState<string | null>(null);
+  const [completedCompanyLoadKey, setCompletedCompanyLoadKey] = useState<string | null>(null);
+  const companyLoadKey = `${isCompany ? jobSyncSession?.token ?? "blocked" : "legacy"}:${companySyncRevision}`;
+  const companyLoading = isCompany && !!jobSyncSession?.token && completedCompanyLoadKey !== companyLoadKey;
+  const companyError = isCompany && !jobSyncSession?.token
+    ? COMPANY_LEGACY_FALLTHROUGH_BLOCKED
+    : companyFetchError;
 
   const { data: invoices = [], refetch, isLoading } = trpc.standaloneInvoices.list.useQuery({ search }, { enabled: allowLegacy });
 
   useEffect(() => {
     let cancelled = false;
-    if (!isCompany) {
-      setCompanyInvoices([]);
-      setCompanyError(null);
-      return () => { cancelled = true; };
-    }
-    if (!jobSyncSession?.token) {
-      setCompanyInvoices([]);
-      setCompanyError(COMPANY_LEGACY_FALLTHROUGH_BLOCKED);
-      return () => { cancelled = true; };
-    }
-    setCompanyLoading(true);
+    if (!isCompany || !jobSyncSession?.token) return () => { cancelled = true; };
+
     getJobSyncCompanyInvoices(jobSyncSession.token)
       .then((rows) => {
         if (!cancelled) {
           setCompanyInvoices(rows);
-          setCompanyError(null);
+          setCompanyFetchError(null);
         }
       })
       .catch((error) => {
-        if (!cancelled) {
-          setCompanyInvoices([]);
-          setCompanyError(companyCanonicalReadError(error));
-        }
+        if (cancelled) return;
+        const message = companyReadFailure(error);
+        if (!message) return;
+        setCompanyInvoices([]);
+        setCompanyFetchError(message);
       })
       .finally(() => {
-        if (!cancelled) setCompanyLoading(false);
+        if (!cancelled) setCompletedCompanyLoadKey(companyLoadKey);
       });
     return () => { cancelled = true; };
-  }, [companySyncRevision, isCompany, jobSyncSession?.token]);
+  }, [companyLoadKey, isCompany, jobSyncSession?.token]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return invoices;

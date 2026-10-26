@@ -53,8 +53,8 @@ function formatETA(seconds: number): string {
 
 // ─── Pulse animation for the van marker ──────────────────────────────────────
 function PulseRing() {
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0.6)).current;
+  const [scale] = useState(() => new Animated.Value(1));
+  const [opacity] = useState(() => new Animated.Value(0.6));
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -71,7 +71,7 @@ function PulseRing() {
     );
     loop.start();
     return () => loop.stop();
-  }, []);
+  }, [opacity, scale]);
 
   return (
     <Animated.View
@@ -85,15 +85,15 @@ function PulseRing() {
 
 // ─── Arrived overlay ─────────────────────────────────────────────────────────
 function ArrivedOverlay({ detailerName, onClose }: { detailerName?: string; onClose: () => void }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [scaleAnim] = useState(() => new Animated.Value(0.8));
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [fadeAnim, scaleAnim]);
 
   return (
     <Animated.View style={[styles.arrivedOverlay, { opacity: fadeAnim }]}>
@@ -328,9 +328,6 @@ export default function CustomerTrackScreen() {
   // bookingRef: strip portal_ prefix if present, or use jobId directly
   const bookingRef = (jobId ?? "").replace(/^portal_/, "");
 
-  // Route state — resolved via server-side getRoute (handles geocoding + OSRM)
-  const [routeKey, setRouteKey] = useState("");
-
   // Poll every 5 seconds
   const trackQuery = trpc.location.getByJobId.useQuery(
     { jobId: jobId ?? "" },
@@ -357,13 +354,6 @@ export default function CustomerTrackScreen() {
   const destLng = token?.customerLng ? parseFloat(String(token.customerLng)) : null;
   const hasDestPos = destLat !== null && destLng !== null && !isNaN(destLat) && !isNaN(destLng);
   const customerAddress = token?.customerAddress ?? undefined;
-
-  // Update routeKey when van moves meaningfully (>~11m) to trigger re-fetch
-  useEffect(() => {
-    if (!hasVanPos || arrived) return;
-    const newKey = `${vanLat!.toFixed(4)},${vanLng!.toFixed(4)}`;
-    setRouteKey(prev => prev.startsWith(newKey) ? prev : newKey);
-  }, [hasVanPos, arrived, vanLat, vanLng]);
 
   // Server-side route query: geocodes address if needed, fetches OSRM road route
   const routeQuery = trpc.location.getRoute.useQuery(
@@ -443,7 +433,7 @@ export default function CustomerTrackScreen() {
           <MaterialIcons name="location-off" size={64} color="#374151" />
           <Text style={styles.emptyTitle}>Tracking Not Available</Text>
           <Text style={styles.emptySubtitle}>
-            The detailer hasn't started sharing their location yet. Check back when your appointment is closer.
+            The detailer hasn’t started sharing their location yet. Check back when your appointment is closer.
           </Text>
           <TouchableOpacity style={styles.emptyBtn} onPress={() => router.back()}>
             <Text style={styles.emptyBtnText}>Go Back</Text>

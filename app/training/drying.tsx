@@ -98,7 +98,7 @@ const STEPS: Step[] = [
 ];
 
 function ChoiceCard({ choice, onPress, state, colors }: { choice: Choice; onPress: () => void; state: "idle" | "correct" | "wrong" | "disabled"; colors: any; }) {
-  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useState(() => new Animated.Value(0))[0];
   const triggerShake = useCallback(() => {
     Animated.sequence([
       Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),

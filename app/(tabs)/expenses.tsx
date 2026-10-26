@@ -185,7 +185,7 @@ function LegacyExpensesScreen() {
           <View style={s.empty}>
             <Text style={{ fontSize: 40 }}>🧾</Text>
             <Text style={[s.emptyTitle, { color: colors.foreground }]}>No Expenses Yet</Text>
-            <Text style={[s.emptySubtitle, { color: colors.muted }]}>Tap "+ Submit" to submit a receipt for reimbursement.</Text>
+            <Text style={[s.emptySubtitle, { color: colors.muted }]}>Tap &quot;+ Submit&quot; to submit a receipt for reimbursement.</Text>
           </View>
         ) : (
           expenses.map((exp: any) => (

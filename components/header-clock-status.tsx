@@ -8,6 +8,7 @@ import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { BreakModal } from "./break-modal";
 import { CompanyClockStatus } from "./company-clock-status";
+import { CompanyLocationPublisher } from "./company-location-publisher";
 import { EndBreakConfirmationModal } from "./end-break-confirmation-modal";
 import { LocationDisclosureModal, hasAcceptedLocationDisclosure, markLocationDisclosureAccepted } from "./location-disclosure-modal";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
@@ -37,7 +38,12 @@ export function HeaderClockStatus() {
     return <ActivityIndicator color="#0a7ea4" size="small" />;
   }
   if (usesCompanyTimekeepingAuthority(authority) && session?.token) {
-    return <CompanyClockStatus token={session.token} />;
+    return (
+      <>
+        <CompanyLocationPublisher token={session.token} role={session.user.role} />
+        <CompanyClockStatus token={session.token} />
+      </>
+    );
   }
   if (!allowsLegacyTimekeepingAuthority(authority)) {
     return <ActivityIndicator color="#0a7ea4" size="small" />;
@@ -48,7 +54,7 @@ export function HeaderClockStatus() {
 function LegacyHeaderClockStatus() {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
-  const [elapsedTime, setElapsedTime] = useState("00:00:00");
+  const [, setElapsedTick] = useState(0);
   const [clockingInOut, setClockinginOut] = useState(false);
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [endingBreak, setEndingBreak] = useState(false);
@@ -74,19 +80,17 @@ function LegacyHeaderClockStatus() {
   const clockStatus = clockStatusQuery.data;
   const isClockedIn = clockStatus?.status === "clocked_in";
 
-  // Update elapsed time every second when clocked in
+  // Re-render each second while clocked in; elapsed text itself is derived from the clock-in timestamp.
   useEffect(() => {
-    if (!isClockedIn || !clockStatus?.clockInTime) {
-      setElapsedTime("00:00:00");
-      return;
-    }
-
+    if (!isClockedIn || !clockStatus?.clockInTime) return;
     const interval = setInterval(() => {
-      setElapsedTime(formatElapsedTime(clockStatus.clockInTime));
+      setElapsedTick((tick) => tick + 1);
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isClockedIn, clockStatus?.clockInTime]);
+  const elapsedTime = isClockedIn && clockStatus?.clockInTime
+    ? formatElapsedTime(clockStatus.clockInTime)
+    : "00:00:00";
 
   // Continuous background location updates every 5 minutes while clocked in.
   // This keeps the fleet map pin current even when no job is active.
@@ -202,7 +206,7 @@ function LegacyHeaderClockStatus() {
     setShowLocationDisclosure(false);
   };
 
-  const handleConfirmEndBreak = async () => {
+  async function handleConfirmEndBreak() {
     if (!activeBreakQuery.data?.breakId) {
       console.error("No active break found");
       return;
@@ -243,7 +247,7 @@ function LegacyHeaderClockStatus() {
     } finally {
       setEndingBreak(false);
     }
-  };
+  }
 
   const handleEndBreak = () => {
     setShowEndBreakConfirmation(true);

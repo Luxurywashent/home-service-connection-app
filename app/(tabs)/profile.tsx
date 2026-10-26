@@ -4,6 +4,8 @@ import { Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { updateJobSyncOwnProfile } from "@/lib/jobsync-mobile-api";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
 import { useThemeContext } from "@/lib/theme-provider";
@@ -14,6 +16,7 @@ const PROJECTED_PAYCHECK_VISIBILITY_KEY = "hsc_projected_paycheck_visible";
 export default function ProfileScreen() {
   const colors = useColors();
   const { employee, logout, isAdmin } = useEmployeeAuth();
+  const { session: jobSyncSession, refresh: refreshJobSyncSession, logout: logoutJobSync } = useJobSyncAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
   const router = useRouter();
   const [showPinReset, setShowPinReset] = useState(false);
@@ -22,6 +25,15 @@ export default function ProfileScreen() {
   const [pinError, setPinError] = useState("");
   const [pinSuccess, setPinSuccess] = useState(false);
   const [showProjectedPaycheck, setShowProjectedPaycheck] = useState(true);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileCity, setProfileCity] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const canEditProfile = employee?.sessionSource === "jobsync" && jobSyncSession?.portal === "company";
 
   const resetPinMutation = trpc.employee.resetPin.useMutation();
   useEffect(() => {
@@ -51,13 +63,61 @@ export default function ProfileScreen() {
     }
   };
 
+  const openProfileEditor = () => {
+    const [firstName, ...rest] = (employee?.fullName ?? "").trim().split(/\s+/);
+    setProfileFirstName(jobSyncSession?.user.firstName || firstName || "");
+    setProfileLastName(jobSyncSession?.user.lastName || rest.join(" "));
+    setProfilePhone(employee?.phoneNumber ?? "");
+    setProfileCity(employee?.city ?? "");
+    setProfileError("");
+    setProfileSuccess(false);
+    setEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!jobSyncSession?.token || jobSyncSession.portal !== "company") return;
+    const firstName = profileFirstName.trim();
+    const lastName = profileLastName.trim();
+    if (!firstName || !lastName) {
+      setProfileError("First and last name are required.");
+      return;
+    }
+    setProfileError("");
+    setProfileSaving(true);
+    try {
+      await updateJobSyncOwnProfile(jobSyncSession.token, {
+        firstName,
+        lastName,
+        phone: profilePhone,
+        city: profileCity,
+      });
+      await refreshJobSyncSession();
+      setProfileSuccess(true);
+      setEditingProfile(false);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Profile could not be saved.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const finishLogout = async () => {
+    const results = await Promise.allSettled([logout(), logoutJobSync()]);
+    const remoteFailed = results.some((result) => result.status === "rejected");
+    if (remoteFailed) {
+      const message = "Sign-out could not be fully confirmed. The current screen session was cleared, but saved credentials or server access may remain valid. Do not treat this as confirmed server sign-out.";
+      if (Platform.OS === "web") window.alert(message);
+      else Alert.alert("Sign-out not fully confirmed", message);
+    }
+    router.replace("/login");
+  };
   const handleLogout = () => {
     if (Platform.OS === "web") {
-      logout().then(() => router.replace("/login"));
+      void finishLogout();
     } else {
       Alert.alert("Sign Out", "Are you sure you want to sign out?", [
         { text: "Cancel", style: "cancel" },
-        { text: "Sign Out", style: "destructive", onPress: () => logout().then(() => router.replace("/login")) },
+        { text: "Sign Out", style: "destructive", onPress: () => { void finishLogout(); } },
       ]);
     }
   };
@@ -191,13 +251,60 @@ export default function ProfileScreen() {
         )}
 
         {/* Info Cards */}
-        <View style={{ gap: 12, marginBottom: 28 }}>
+        <View style={{ gap: 12, marginBottom: 16 }}>
           <InfoRow label="Team Member ID" value={employee?.employeeId ?? "-"} colors={colors} />
           <InfoRow label="Email" value={employee?.email ?? "-"} colors={colors} />
-          <InfoRow label="City" value={employee?.city ?? "-"} colors={colors} />
-          <InfoRow label="Phone" value={employee?.phoneNumber ?? "-"} colors={colors} />
-          <InfoRow label="Hire Date" value={employee?.hireDate ?? "-"} colors={colors} />
+          <InfoRow label="City" value={employee?.city || "Not on file"} colors={colors} />
+          <InfoRow label="Phone" value={employee?.phoneNumber || "Not on file"} colors={colors} />
+          <InfoRow label="Hire Date" value={employee?.hireDate || "Not on file"} colors={colors} />
         </View>
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 16, lineHeight: 18 }}>
+          Hire date, role, and employee ID are managed by your company. City and phone show &quot;Not on file&quot; when JobSync has no value saved.
+        </Text>
+
+        {canEditProfile && (
+          <TouchableOpacity
+            onPress={() => editingProfile ? setEditingProfile(false) : openProfileEditor()}
+            activeOpacity={0.7}
+            style={{
+              backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 12,
+              borderWidth: 1, borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>
+              {editingProfile ? "Cancel Edit Profile" : "Edit Profile"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {canEditProfile && editingProfile && (
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 12,
+            borderWidth: 1, borderColor: colors.border, gap: 12,
+          }}>
+            <ProfileField label="First name" value={profileFirstName} onChangeText={setProfileFirstName} colors={colors} />
+            <ProfileField label="Last name" value={profileLastName} onChangeText={setProfileLastName} colors={colors} />
+            <ProfileField label="Phone" value={profilePhone} onChangeText={setProfilePhone} colors={colors} keyboardType="phone-pad" />
+            <ProfileField label="City" value={profileCity} onChangeText={setProfileCity} colors={colors} />
+            <View>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>Email</Text>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>{employee?.email || "Not on file"}</Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6, lineHeight: 18 }}>
+                Email stays read-only. Changing it requires a verified email update, which is not available in the app yet.
+              </Text>
+            </View>
+            {profileError ? <Text style={{ color: colors.error, fontSize: 13 }}>{profileError}</Text> : null}
+            <TouchableOpacity
+              onPress={handleSaveProfile}
+              disabled={profileSaving}
+              activeOpacity={0.8}
+              style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14, alignItems: "center" }}
+            >
+              {profileSaving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: "#FFF", fontSize: 15, fontWeight: "600" }}>Save Profile</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+        {profileSuccess ? <Text style={{ color: colors.success, fontSize: 13, fontWeight: "600", marginBottom: 12 }}>Profile saved.</Text> : null}
 
         {/* Reset PIN */}
         <TouchableOpacity
@@ -280,6 +387,24 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
     </ScreenContainer>
+  );
+}
+
+function ProfileField({ label, value, onChangeText, colors, keyboardType }: { label: string; value: string; onChangeText: (value: string) => void; colors: any; keyboardType?: "default" | "phone-pad" }) {
+  return (
+    <View>
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType ?? "default"}
+        autoCapitalize={keyboardType === "phone-pad" ? "none" : "words"}
+        style={{
+          backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+          borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, color: colors.foreground,
+        }}
+      />
+    </View>
   );
 }
 

@@ -107,10 +107,6 @@ function MaskedCallModal({
   const colors = useColors();
   const [phone, setPhone] = useState(defaultPhone);
 
-  React.useEffect(() => {
-    if (visible) setPhone(defaultPhone);
-  }, [visible, defaultPhone]);
-
   if (!item) return null;
 
   return (
@@ -137,7 +133,7 @@ function MaskedCallModal({
             </View>
 
             <Text style={[styles.inputLabel, { color: colors.muted }]}>
-              YOUR PHONE NUMBER (we'll call this first)
+              YOUR PHONE NUMBER (we&apos;ll call this first)
             </Text>
             <TextInput
               style={[styles.phoneInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
@@ -621,6 +617,7 @@ export default function OpsQcScreen() {
       )}
 
       <MaskedCallModal
+        key={`${callModalItem?.jobId ?? "closed"}:${employee?.phoneNumber ?? ""}`}
         visible={!!callModalItem}
         item={callModalItem}
         defaultPhone={employee?.phoneNumber ?? ""}
