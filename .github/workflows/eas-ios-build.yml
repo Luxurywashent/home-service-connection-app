@@ -30,18 +30,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up pnpm
-        if: ${{ inputs.cancel_build_id == '' }}
         uses: pnpm/action-setup@v4
 
       - name: Set up Node
-        if: ${{ inputs.cancel_build_id == '' }}
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install locked dependencies
-        if: ${{ inputs.cancel_build_id == '' }}
         run: pnpm install --frozen-lockfile
 
       - name: Verify Expo project
