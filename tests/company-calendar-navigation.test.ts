@@ -43,8 +43,8 @@ describe("Company calendar and customer navigation", () => {
 
     expect(mobileApi).toContain('DEFAULT_JOBSYNC_BASE_URL = "https://www.homeserviceconnected.com"');
     expect(mobileApi).toContain('cache: "no-store"');
-    expect(eas).toContain('"EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://www.homeserviceconnected.com"');
-    expect(eas).toContain('"EXPO_PUBLIC_API_BASE_URL": "https://www.homeserviceconnected.com"');
+    expect(eas).toContain('"EXPO_PUBLIC_JOBSYNC_API_BASE_URL": "https://jobwash-veysiubh.manus.space"');
+    expect(eas).toContain('"EXPO_PUBLIC_API_BASE_URL": "https://jobwash-veysiubh.manus.space"');
   });
 
   it("refreshes an open Company calendar from the authoritative API", () => {
