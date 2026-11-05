@@ -54,6 +54,7 @@ import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPositio
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
+import { CustomerContactActions } from "@/components/customer-contact-actions";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
 
@@ -223,6 +224,7 @@ interface AdditionalVehicle {
 
 interface Job {
   id: string;
+  customerId?: string;
   firstName: string;
   lastName: string;
   phone: string;
@@ -1781,6 +1783,7 @@ export default function AdminScheduleScreen() {
                   : "scheduled";
             return [{
               id: String(job.id),
+              customerId: String(job.customerId),
               // A Company calendar has one authenticated workspace, not legacy city partitions.
               location: selectedCity,
               firstName: customerParts[0] || "",
@@ -2935,19 +2938,8 @@ export default function AdminScheduleScreen() {
                       <Text style={{ color: colors.foreground, fontSize: 17, fontWeight: "700" }}>{selectedJob.firstName} {selectedJob.lastName}</Text>
                       {selectedJob.email ? <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>✉️ {selectedJob.email}</Text> : null}
                     </View>
-                    <View style={{ flexDirection: "row", gap: 10 }}>
-                      {selectedJob.phone ? (
-                        <>
-                          <TouchableOpacity onPress={() => Linking.openURL(`sms:${selectedJob.phone}`)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#007AFF22", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ fontSize: 16 }}>💬</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedJob.phone}`)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#34C75922", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ fontSize: 16 }}>📞</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : null}
-                    </View>
                   </View>
+                  <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} />
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <TouchableOpacity
                       onPress={() => selectedJob.address ? Linking.openURL(`https://maps.apple.com/?q=${encodeURIComponent(selectedJob.address)}`) : null}

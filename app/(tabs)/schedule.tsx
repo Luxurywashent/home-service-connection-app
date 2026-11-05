@@ -38,6 +38,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
+import { CustomerContactActions } from "@/components/customer-contact-actions";
 import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
@@ -2337,7 +2338,7 @@ export default function ScheduleScreen() {
   // ─── Reward Redemption (detailer view) ───────────────────────────────────────
   const pendingRedemptionsQ = trpc.referral.getPendingForCustomer.useQuery(
     { customerId: selectedJob?.customerId ?? "" },
-    { enabled: !!selectedJob?.customerId, staleTime: 30000, refetchOnWindowFocus: false }
+    { enabled: !isJobSyncCompany && !!selectedJob?.customerId, staleTime: 30000, refetchOnWindowFocus: false }
   );
   const fulfillRedemptionMutation = trpc.referral.fulfillRedemption.useMutation({
     onSuccess: () => {
@@ -2357,11 +2358,6 @@ export default function ScheduleScreen() {
   const [savingUpsells, setSavingUpsells] = useState(false);
   const [customUpsellName, setCustomUpsellName] = useState("");
   const [customUpsellPrice, setCustomUpsellPrice] = useState("");
-
-  // Recommendations state
-  const [showRecsPanel, setShowRecsPanel] = useState(false);
-  const [pendingRecIds, setPendingRecIds] = useState<string[]>([]);
-  const [savingRecs, setSavingRecs] = useState(false);
 
   // ─── Edit Services State ─────────────────────────────────────────────────────
   const [showEditServicesSheet, setShowEditServicesSheet] = useState(false);
@@ -2737,6 +2733,7 @@ export default function ScheduleScreen() {
                 : "scheduled";
           return [{
             id: String(job.id),
+            customerId: String(job.customerId),
             location,
             firstName: customerParts[0] || "",
             lastName: customerParts.slice(1).join(" "),
@@ -3928,27 +3925,6 @@ export default function ScheduleScreen() {
   };
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // ─── Save Recommendations ────────────────────────────────────────────────────
-  const saveRecommendations = async () => {
-    if (!selectedJob) return;
-    setSavingRecs(true);
-    try {
-      const updatedJob: Job = { ...selectedJob, recommendedIds: pendingRecIds };
-      const updatedJobs = jobs.map((j) => j.id === selectedJob.id ? updatedJob : j);
-      persistJobs(updatedJobs);
-      setSelectedJob(updatedJob);
-      // Sync to server
-      syncJobToServer(updatedJob);
-      setShowRecsPanel(false);
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      Alert.alert("Error", "Failed to save recommendations. Please try again.");
-    } finally {
-      setSavingRecs(false);
-    }
-  };
-  // ─────────────────────────────────────────────────────────────────────────────
-
   const handleMoveJob = useCallback((jobId: string, newStartHour: number) => {
     setJobs((prev) => {
       const job = prev.find((j) => j.id === jobId);
@@ -4456,17 +4432,8 @@ export default function ScheduleScreen() {
                           </View>
                         )}
                       </View>
-                      {selectedJob.phone ? (
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                          <TouchableOpacity onPress={() => Linking.openURL(`sms:${selectedJob.phone}`)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#34C75922", borderWidth: 1, borderColor: "#34C75944", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ fontSize: 16 }}>💬</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedJob.phone}`)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary + "22", borderWidth: 1, borderColor: colors.primary + "44", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ fontSize: 16 }}>📞</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
                     </View>
+                    <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} />
                     {/* Address row with navigate button */}
                     {selectedJob.address ? (
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -4476,10 +4443,9 @@ export default function ScheduleScreen() {
                         </TouchableOpacity>
                       </View>
                     ) : null}
-                    {selectedJob.phone ? <Text style={[s.detailSub, { color: colors.muted }]}>📞 {selectedJob.phone}</Text> : null}
                     {selectedJob.email ? <Text style={[s.detailSub, { color: colors.muted, marginTop: 2 }]}>✉️ {selectedJob.email}</Text> : null}
                     {/* ── Pending Reward Redemptions (detailer view) ── */}
-                    {!isAdminRole && selectedJob.customerId && (pendingRedemptionsQ.data ?? []).length > 0 && (
+                    {!isJobSyncCompany && !isAdminRole && selectedJob.customerId && (pendingRedemptionsQ.data ?? []).length > 0 && (
                       <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
                         <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700", marginBottom: 8, letterSpacing: 0.3 }}>🎁 PENDING REWARDS</Text>
                         {(pendingRedemptionsQ.data as any[]).map((r: any) => (
@@ -5070,50 +5036,6 @@ export default function ScheduleScreen() {
                     )}
                   </View>
 
-                  {/* ─── Recommended Services Section ─── */}
-                  <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <View>
-                        <Text style={[s.sectionLabel, { color: colors.muted }]}>RECOMMENDED FOR NEXT VISIT</Text>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Services to suggest to the customer</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setPendingRecIds(selectedJob.recommendedIds ?? []);
-                          setShowRecsPanel(true);
-                        }}
-                        activeOpacity={0.75}
-                        style={{ backgroundColor: "#8B5CF6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
-                      >
-                        <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "700" }}>
-                          {selectedJob.recommendedIds && selectedJob.recommendedIds.length > 0 ? "Edit" : "+ Add"}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    {selectedJob.recommendedIds && selectedJob.recommendedIds.length > 0 ? (
-                      <View style={{ gap: 6 }}>
-                        {selectedJob.recommendedIds.map((id) => {
-                          const ad = ADDONS.find((a) => a.id === id);
-                          if (!ad) return null;
-                          return (
-                            <View key={id} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(139,92,246,0.08)", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
-                              <Text style={{ fontSize: 18 }}>{ad.emoji}</Text>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{ad.title}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 11 }}>${ad.price.toFixed(2)}</Text>
-                              </View>
-                              <View style={{ backgroundColor: "#8B5CF6", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                                <Text style={{ color: "#FFF", fontSize: 10, fontWeight: "700" }}>RECOMMENDED</Text>
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    ) : (
-                      <Text style={{ color: colors.muted, fontSize: 13 }}>No recommendations yet. Tap + Add to suggest services for the next visit.</Text>
-                    )}
-                  </View>
-
                   {/* Delete Job removed — admin-only action */}
                   </View>{/* end paddingHorizontal wrapper */}
                 </ScrollView>
@@ -5529,73 +5451,6 @@ export default function ScheduleScreen() {
                           </Text>
                         </TouchableOpacity>
                       </ScrollView>
-                    </View>
-                  </View>
-                )}
-
-                {/* ─── Recommendations Panel ─── */}
-                {showRecsPanel && (
-                  <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 0, zIndex: 100 }}>
-                    {/* Dim overlay */}
-                    <TouchableOpacity
-                      activeOpacity={1}
-                      onPress={() => setShowRecsPanel(false)}
-                      style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)" }}
-                    />
-                    {/* Panel */}
-                    <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%" }}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                        <View>
-                          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Recommend Services</Text>
-                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>Select add-ons to recommend for the next visit</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setShowRecsPanel(false)}>
-                          <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
-                        {ADDONS.map((ad) => {
-                          const selected = pendingRecIds.includes(ad.id);
-                          return (
-                            <TouchableOpacity
-                              key={ad.id}
-                              onPress={() => {
-                                if (selected) {
-                                  setPendingRecIds((prev) => prev.filter((id) => id !== ad.id));
-                                } else {
-                                  setPendingRecIds((prev) => [...prev, ad.id]);
-                                }
-                              }}
-                              activeOpacity={0.75}
-                              style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 12 }}
-                            >
-                              <View style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: selected ? "#8B5CF6" : colors.border, backgroundColor: selected ? "#8B5CF6" : "transparent", alignItems: "center", justifyContent: "center" }}>
-                                {selected && <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "800" }}>✓</Text>}
-                              </View>
-                              <Text style={{ fontSize: 20 }}>{ad.emoji}</Text>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>{ad.title}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 12 }}>${ad.price.toFixed(2)}</Text>
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-                      {pendingRecIds.length > 0 && (
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
-                          <Text style={{ color: colors.muted, fontSize: 13 }}>{pendingRecIds.length} service{pendingRecIds.length !== 1 ? "s" : ""} selected</Text>
-                        </View>
-                      )}
-                      <TouchableOpacity
-                        onPress={saveRecommendations}
-                        disabled={savingRecs}
-                        activeOpacity={0.8}
-                        style={{ marginTop: 16, backgroundColor: pendingRecIds.length === 0 ? colors.muted : "#8B5CF6", borderRadius: 14, paddingVertical: 14, alignItems: "center" }}
-                      >
-                        <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>
-                          {savingRecs ? "Saving..." : pendingRecIds.length === 0 ? "Clear Recommendations" : `Save ${pendingRecIds.length} Recommendation${pendingRecIds.length !== 1 ? "s" : ""}`}
-                        </Text>
-                      </TouchableOpacity>
                     </View>
                   </View>
                 )}
