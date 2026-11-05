@@ -57,7 +57,7 @@ jobs:
               exit "$result"
             fi
             cat eas-build.json
-            status=$(node -e 'const build=require("./eas-build.json"); console.log(build.status || "")')
+            status=$(node -e 'const build=require("./eas-build.json"); console.log(String(build.status || "").toLowerCase())')
             case "$status" in
               finished|errored|canceled)
                 exit 0
