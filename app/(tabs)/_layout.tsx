@@ -9,6 +9,7 @@ import { useEffect, useMemo } from "react";
 import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { trpc } from "@/lib/trpc";
 import { startGeofencing, stopGeofencing } from "@/lib/geofence-task";
+import { isTechnicianFeatureDisabled, isTechnicianRole } from "@/lib/technician-features";
 
 function InboxTabIcon({ color }: { color: string }) {
   const { data } = trpc.portalInbox.unreadCount.useQuery(undefined, { refetchInterval: 30000 });
@@ -85,6 +86,10 @@ export default function TabLayout() {
     employee.employeeId === nativeJobSyncEmployee.employeeId &&
     employee.companyId === nativeJobSyncEmployee.companyId,
   );
+  // The authenticated HSC role is authoritative while the native bridge refreshes.
+  const currentRole = nativeJobSyncEmployee?.role ?? employee?.role;
+  const isTechnician = isTechnicianRole(currentRole);
+  const isDisabledTechnicianRoute = isTechnicianFeatureDisabled(currentRole, pathname);
 
   useEffect(() => {
     if (!nativeJobSyncEmployee || hasMatchingCompanySession) return;
@@ -107,6 +112,11 @@ export default function TabLayout() {
     );
     if (isHiddenAdminRoute) router.replace("/(tabs)/admin-dashboard");
   }, [isAdmin, isOpsManager, jobSyncLoading, loading, pathname, router]);
+
+  useEffect(() => {
+    if (loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession) return;
+    if (isDisabledTechnicianRoute) router.replace("/(tabs)");
+  }, [hasMatchingCompanySession, isAuthenticated, isDisabledTechnicianRoute, jobSyncLoading, loading, router]);
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {
@@ -133,6 +143,8 @@ export default function TabLayout() {
   }, [employeeId, employeeName, isAdmin, zonesQuery.data]);
 
   if (loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession) return null;
+  // Do not mount a disabled tab's UI/queries while the redirect is pending.
+  if (isDisabledTechnicianRoute) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -181,7 +193,7 @@ export default function TabLayout() {
           options={{
             title: "Alerts",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="bell.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/notifications",
+            href: (isAdmin || isTechnician) ? null : "/(tabs)/notifications",
           }}
         />
         <Tabs.Screen
@@ -197,7 +209,7 @@ export default function TabLayout() {
           options={{
             title: "Training",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="book.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/training" as any,
+            href: (isAdmin || isTechnician) ? null : "/(tabs)/training" as any,
           }}
         />
         <Tabs.Screen
@@ -221,7 +233,7 @@ export default function TabLayout() {
           options={{
             title: "Repairs",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="wrench.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/repair-request",
+            href: (isAdmin || isTechnician) ? null : "/(tabs)/repair-request",
           }}
         />
         <Tabs.Screen
@@ -237,7 +249,7 @@ export default function TabLayout() {
           options={{
             title: "Door Hangers",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="tag.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/door-hangers",
+            href: (isAdmin || isTechnician) ? null : "/(tabs)/door-hangers",
           }}
         />
         <Tabs.Screen
@@ -509,7 +521,7 @@ export default function TabLayout() {
           options={{
             title: "EOD Check",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="checkmark.circle.fill" color={color} />,
-            href: !isAdmin ? ("/(tabs)/eod-checklist" as any) : null,
+            href: (!isAdmin && !isTechnician) ? ("/(tabs)/eod-checklist" as any) : null,
           }}
         />
         {/* Ops Manager Screens */}

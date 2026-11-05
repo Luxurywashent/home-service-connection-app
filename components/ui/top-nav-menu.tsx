@@ -9,6 +9,7 @@ import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
 import { HeaderClockStatus } from "@/components/header-clock-status";
+import { isTechnicianFeatureDisabled, isTechnicianRole } from "@/lib/technician-features";
 
 export interface TopNavMenuProps {
   onMenuToggle?: (isOpen: boolean) => void;
@@ -110,6 +111,9 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
     : "Home Service Connection";
 
   const allItems = isOpsManager ? OPS_MANAGER_ITEMS : isAdmin ? ADMIN_ALL_ITEMS : isSalesRep ? SALES_ITEMS : DETAILER_ITEMS;
+  const visibleItems = allItems.filter(
+    (item) => !isTechnicianFeatureDisabled(currentEmployee?.role, item.route),
+  );
   const { data: chatUnread } = trpc.chat.getUnreadCount.useQuery(
     { employeeId: currentEmployee?.employeeId ?? "" },
     { enabled: !!currentEmployee?.employeeId, refetchInterval: 15_000, staleTime: 5_000 }
@@ -117,15 +121,15 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const chatUnreadTotal = chatUnread?.total ?? 0;
   const { data: openRepairCount = 0 } = trpc.fleet.countOpenRepairs.useQuery(
     undefined,
-    { refetchInterval: 60000 }
+    { enabled: !isTechnicianRole(currentEmployee?.role), refetchInterval: 60000 }
   );
 
   // Determine active route label for center display
-  const currentPage = allItems.find((item) =>
+  const currentPage = visibleItems.find((item) =>
     isAdmin
       ? pathname.includes(item.route.replace("/", ""))
       : pathname === item.route || pathname.startsWith(item.route + "/") || pathname.includes(item.route.replace(/^\/(sales)\//, ""))
-  ) || allItems[0];
+  ) || visibleItems[0];
 
   const haptic = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -139,6 +143,7 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   };
 
   const navigate = (route: string) => {
+    if (isTechnicianFeatureDisabled(currentEmployee?.role, route)) return;
     haptic();
     router.push(route as any);
     setIsOpen(false);
@@ -289,7 +294,7 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
             {/* Grid — 4 columns */}
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {allItems.map((item) => {
+                {visibleItems.map((item) => {
                   const active = isRouteActive(item.route);
                   return (
                     <Pressable

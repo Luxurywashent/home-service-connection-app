@@ -9,6 +9,7 @@ import { CompanyMeetingBanner } from "@/components/company-meeting-banner";
 
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import { isTechnicianFeatureDisabled } from "@/lib/technician-features";
 import { useBreakNotifications } from "@/hooks/use-break-notifications";
 import { useAfter5pmCheckIn } from "@/hooks/use-after-5pm-check-in";
 import { useEmployeePush } from "@/hooks/use-employee-push";
@@ -316,6 +317,8 @@ function DetailerDashboard() {
   const colors = useColors();
   const { employee, isSalesRep } = useEmployeeAuth();
   const router = useRouter();
+  const showEodChecklist = !isTechnicianFeatureDisabled(employee?.role, "/eod-checklist");
+  const showTraining = !isTechnicianFeatureDisabled(employee?.role, "/training");
 
   // Initialize break notifications
   useBreakNotifications();
@@ -1047,7 +1050,7 @@ function DetailerDashboard() {
             </View>
 
             {/* EOD Checklist Button */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+            {showEodChecklist && <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
@@ -1081,7 +1084,7 @@ function DetailerDashboard() {
                 </View>
                 <Text style={{ fontSize: 18, color: colors.muted }}>›</Text>
               </TouchableOpacity>
-            </View>
+            </View>}
 
             {/* Timecard Display */}
             <TimecardDisplay />
@@ -1156,9 +1159,9 @@ function DetailerDashboard() {
             </View>
 
             {/* Training Section */}
-            <View style={{ paddingHorizontal: 20 }}>
+            {showTraining && <View style={{ paddingHorizontal: 20 }}>
               <TrainingSection colors={colors} />
-            </View>
+            </View>}
           </>
         )}
       </ScrollView>

@@ -53,6 +53,7 @@ import {
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
+import { formatJobMapAddress } from "@/lib/job-street-view";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
 
@@ -227,6 +228,11 @@ interface Job {
   phone: string;
   email?: string;
   address: string;
+  /** City/state context for maps, kept separate from the editable street. */
+  addressCity?: string | null;
+  addressLine2?: string | null;
+  addressRegion?: string | null;
+  addressPostalCode?: string | null;
   serviceTitle: string;
   serviceDescription?: string;
   price: number;
@@ -1782,6 +1788,10 @@ export default function AdminScheduleScreen() {
               email: undefined,
               phone: "",
               address: job.addressLine1 || "",
+              addressCity: job.city,
+              addressLine2: job.addressLine2,
+              addressRegion: job.region,
+              addressPostalCode: job.postalCode,
               serviceTitle: job.serviceName || job.title || "Service",
               serviceDescription: job.title || job.serviceName || "",
               price: job.amount,
@@ -2835,8 +2845,8 @@ export default function AdminScheduleScreen() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 {/* ─── Native Google Maps job header ─── */}
                 {selectedJob.address ? (
-                  <View style={{ position: "relative", height: 320 }}>
-                    <JobLocationMap address={selectedJob.address} />
+                  <View style={{ position: "relative", height: 320, marginBottom: 0 }}>
+                    <JobLocationMap address={formatJobMapAddress({ addressLine1: selectedJob.address, addressLine2: selectedJob.addressLine2, city: selectedJob.addressCity, region: selectedJob.addressRegion, postalCode: selectedJob.addressPostalCode })} />
                     <TouchableOpacity
                       accessibilityRole="button"
                       accessibilityLabel="Close job details"

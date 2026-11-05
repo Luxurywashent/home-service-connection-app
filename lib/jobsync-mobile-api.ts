@@ -255,7 +255,10 @@ export type JobSyncMobileJob = {
   scheduledEndAt: string | null;
   updatedAt: string | null;
   addressLine1: string | null;
+  addressLine2?: string | null;
   city: string | null;
+  region?: string | null;
+  postalCode?: string | null;
   amount: number;
   customerName: string;
   assignedName: string | null;
@@ -293,7 +296,10 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
     scheduledEndAt: firstString(row.scheduledEndAt),
     updatedAt: firstString(row.updatedAt),
     addressLine1: firstString(row.addressLine1),
+    addressLine2: firstString(row.addressLine2, row.address_line2),
     city: firstString(row.city),
+    region: firstString(row.region, row.state),
+    postalCode: firstString(row.postalCode, row.postal_code, row.zipCode),
     amount: Number(row.amount || 0),
     customerName: firstString(row.customerName) ?? "",
     assignedName: firstString(row.assignedName),

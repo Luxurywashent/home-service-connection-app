@@ -36,6 +36,8 @@ import { Image } from "react-native";
 import Svg, { Rect, Text as SvgText, G, Path } from "react-native-svg";
 import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
+import { JobLocationMap } from "@/components/job-location-map";
+import { formatJobMapAddress } from "@/lib/job-street-view";
 import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
@@ -317,6 +319,10 @@ interface Job {
   email: string;
   phone: string;
   address: string;
+  addressCity?: string | null;
+  addressLine2?: string | null;
+  addressRegion?: string | null;
+  addressPostalCode?: string | null;
   vehicleType?: VehicleType;
   packageId?: string;
   addonIds?: string[];
@@ -2737,6 +2743,10 @@ export default function ScheduleScreen() {
             email: "",
             phone: "",
             address: job.addressLine1 || "",
+            addressCity: job.city,
+            addressLine2: job.addressLine2,
+            addressRegion: job.region,
+            addressPostalCode: job.postalCode,
             serviceTitle: job.serviceName || job.title || "Service",
             serviceDescription: job.title || job.serviceName || "",
             price: job.amount,
@@ -4256,13 +4266,7 @@ export default function ScheduleScreen() {
                   {/* ─── Street View Hero ─── */}
                   {selectedJob.address ? (
                     <View style={{ position: "relative", height: 320, marginBottom: 0 }}>
-                     <Image
-                         source={{ uri: `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${encodeURIComponent(selectedJob.address)}&fov=90&pitch=10&key=${(Constants.expoConfig?.extra?.googleMapsApiKey as string) || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || ""}` }}
-                         style={{ width: "100%", height: 320 }}
-                         resizeMode="cover"
-                       />
-                      {/* Gradient overlay for readability */}
-                      <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 60 }} />
+                      <JobLocationMap address={formatJobMapAddress({ addressLine1: selectedJob.address, addressLine2: selectedJob.addressLine2, city: selectedJob.addressCity, region: selectedJob.addressRegion, postalCode: selectedJob.addressPostalCode })} />
                       {/* Close button */}
                       <TouchableOpacity
                         onPress={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}

@@ -1,6 +1,11 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import easConfig from "./eas.json";
+
+// Reuse the existing public mobile key for both preview and EAS builds.
+const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+  || easConfig.build.production.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
@@ -89,8 +94,8 @@ const config: ExpoConfig = {
     [
       "react-native-maps",
       {
-        iosGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
-        androidGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+        iosGoogleMapsApiKey: googleMapsApiKey,
+        androidGoogleMapsApiKey: googleMapsApiKey,
       },
     ],
     "@react-native-community/datetimepicker",
@@ -174,7 +179,7 @@ const config: ExpoConfig = {
     eas: {
       projectId: "e6614385-618a-460d-a650-06ae63b97563",
     },
-    googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+    googleMapsApiKey,
   },
 };
 
