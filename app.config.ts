@@ -38,7 +38,8 @@ const env = {
   logoUrl: "/manus-storage/hearthline-crm-icon_9e1dc1f0.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
-  androidPackage: bundleId,
+  // Google Play's existing app uses a different identifier from the iOS app.
+  androidPackage: "com.homeserviceconnected",
 };
 
 const config: ExpoConfig = {
