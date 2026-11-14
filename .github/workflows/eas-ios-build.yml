@@ -24,6 +24,11 @@ on:
         description: Optional EAS build ID to monitor instead of creating a build
         required: false
         type: string
+      reuse_original_android_upload_key:
+        description: Reuse the verified original Play upload key for the corrected Android package
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -102,6 +107,16 @@ jobs:
           npx expo install --check
           npx expo-doctor
 
+      - name: Verify Android upload certificate
+        if: ${{ inputs.platform == 'android' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          REUSE_ORIGINAL_KEY: ${{ inputs.reuse_original_android_upload_key }}
+        run: |
+          args=()
+          if [ "$REUSE_ORIGINAL_KEY" = "true" ]; then args+=(--reuse-original); fi
+          node scripts/verify-android-upload-key.mjs "${args[@]}"
+
       - name: Create EAS mobile build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -112,8 +127,11 @@ jobs:
           test -n "$EXPO_TOKEN"
           case "$BUILD_PLATFORM" in ios|android) ;; *) exit 2 ;; esac
           case "$BUILD_PROFILE" in production|testflight|preview) ;; *) exit 2 ;; esac
+          signing_args=()
+          if [ "$BUILD_PLATFORM" = "android" ]; then signing_args+=(--freeze-credentials); fi
           npx eas-cli@latest build \
             --platform "$BUILD_PLATFORM" \
             --profile "$BUILD_PROFILE" \
             --non-interactive \
+            "${signing_args[@]}" \
             --no-wait
