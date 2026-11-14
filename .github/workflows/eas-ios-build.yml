@@ -1,8 +1,16 @@
-name: Home Service Connection iOS build
+name: Home Service Connection mobile build
 
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: Mobile platform to build
+        required: true
+        default: ios
+        type: choice
+        options:
+          - ios
+          - android
       profile:
         description: EAS build profile
         required: true
@@ -23,7 +31,7 @@ permissions:
 jobs:
   status:
     if: ${{ inputs.status_build_id != '' }}
-    name: Monitor private Expo iOS build
+    name: Monitor private Expo build
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -70,7 +78,7 @@ jobs:
 
   build:
     if: ${{ inputs.status_build_id == '' }}
-    name: Submit Expo iOS build
+    name: Create Expo mobile build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -94,14 +102,18 @@ jobs:
           npx expo install --check
           npx expo-doctor
 
-      - name: Submit EAS iOS build
+      - name: Create EAS mobile build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_NO_VCS: "1"
+          BUILD_PLATFORM: ${{ inputs.platform || 'ios' }}
+          BUILD_PROFILE: ${{ inputs.profile }}
         run: |
           test -n "$EXPO_TOKEN"
+          case "$BUILD_PLATFORM" in ios|android) ;; *) exit 2 ;; esac
+          case "$BUILD_PROFILE" in production|testflight|preview) ;; *) exit 2 ;; esac
           npx eas-cli@latest build \
-            --platform ios \
-            --profile "${{ inputs.profile }}" \
+            --platform "$BUILD_PLATFORM" \
+            --profile "$BUILD_PROFILE" \
             --non-interactive \
             --no-wait
