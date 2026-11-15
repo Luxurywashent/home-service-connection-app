@@ -20,6 +20,7 @@ import {
   type CompanyPhotoDraftInput,
   type LocalPhotoDraft,
 } from "@/lib/company-photo-draft";
+import { useCompanyPhotoOperation } from "@/lib/company-photo-operation";
 
 type Source = "Camera" | "Library";
 type Identity = { scope: string | null; focused: boolean };
@@ -38,6 +39,8 @@ type DraftState = {
 export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
   const colors = useColors();
   const focused = useIsFocused();
+  const ownOperation = useCompanyPhotoOperation({ ...props, onRefresh: props.onRefresh ?? (() => undefined) });
+  const sending = props.onUpload ? Boolean(props.operationPending) : ownOperation.pending;
   const scope = companyPhotoDraftScope(props);
   const mounted = useRef(true);
   const live = useRef({ props, focused, scope });
@@ -81,10 +84,10 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
       ? state
       : null;
   const busy = Boolean(visible?.pending);
-  const disabled = !scope || !focused || busy;
+  const disabled = !scope || !focused || busy || sending || (!props.onUpload && ownOperation.blocked);
 
   const pick = async (source: Source) => {
-    if (!current() || pendingLock.current) return;
+    if (!current() || disabled || pendingLock.current) return;
     pendingLock.current = true; // Protect repeated native taps before React commits.
     const operation = ++generation.current;
     const initial: DraftState = {
@@ -171,6 +174,16 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
     if (!visible?.draft || !current(visible.generation)) return;
     setState({ ...visible, imageStatus });
   };
+  const upload = () => {
+    if (!visible?.draft || disabled || pendingLock.current || !current(visible.generation)) return;
+    pendingLock.current = true;
+    const draft = { ...visible.draft }; // Operation owns this snapshot, never resurrect the preview.
+    generation.current++;
+    setState(null);
+    void (props.onUpload ?? ownOperation.upload)(draft).finally(() => {
+      if (mounted.current && identityRef.current === identity) pendingLock.current = false;
+    });
+  };
   return (
     <View style={styles.container}>
       <View style={styles.row}>
@@ -197,8 +210,7 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
         {COMPANY_PHOTO_DRAFT_BACKEND_PENDING}
       </Text>
       <Text style={[styles.help, { color: colors.muted }]}>
-        Actual device capture, upload persistence and authorized deletion are
-        NOT VERIFIED. Local JPEG, PNG or WebP drafts only, up to 15 MiB.
+        Still JPEG, PNG or WebP files only, up to 15 MiB. HEIC and video are not supported.
       </Text>
       {!scope ? (
         <Text style={[styles.help, { color: colors.muted }]}>
@@ -211,6 +223,9 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
           color={colors.primary}
         />
       ) : null}
+      {!props.onUpload && ownOperation.pending ? <ActivityIndicator accessibilityLabel="Sending Company Job photo" color={colors.primary} /> : null}
+      {!props.onUpload && ownOperation.message ? <Text style={{ color: colors.muted }}>{ownOperation.message}</Text> : null}
+      {!props.onUpload && ownOperation.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{ownOperation.error}</Text> : null}
       {visible?.notice ? (
         <Text style={{ color: colors.muted }}>{visible.notice}</Text>
       ) : null}
@@ -277,7 +292,7 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
             accessibilityRole="button"
             accessibilityLabel="Discard local draft"
             onPress={() => {
-              if (!current(visible.generation)) return;
+              if (sending || !current(visible.generation)) return;
               generation.current++;
               setState(null); // Release the in-memory preview only; never delete a library/camera file.
             }}
@@ -285,16 +300,17 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
             <Text style={{ color: colors.primary }}>Discard local draft</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            disabled
+            disabled={disabled}
             accessibilityRole="button"
-            accessibilityLabel="Upload local draft unavailable"
-            accessibilityState={{ disabled: true }}
+            accessibilityLabel="Upload local draft"
+            accessibilityState={{ disabled, busy: sending }}
+            onPress={upload}
             style={[
               styles.button,
-              { backgroundColor: colors.primary, opacity: 0.35 },
+              { backgroundColor: colors.primary, opacity: disabled ? 0.35 : 1 },
             ]}
           >
-            <Text style={styles.buttonText}>Upload unavailable</Text>
+            <Text style={styles.buttonText}>{sending ? "Sending photo…" : "Upload"}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

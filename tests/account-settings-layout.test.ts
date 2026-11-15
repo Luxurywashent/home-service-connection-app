@@ -71,13 +71,18 @@ describe("account settings layout", () => {
     expect(profile).toContain("Shared Company records stay intact.");
   });
 
-  it("does not add a management fieldwork setter to self-service Settings", () => {
+  it("uses only a distinct management-self setter with explicit ON/OFF controls", () => {
     expect(profile).toContain("PROFILE_FIELDWORK_LABEL");
-    expect(profile).toContain("PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION");
+    expect(profile).toContain("PROFILE_FIELDWORK_SELF_DESCRIPTION");
     expect(profile).toContain("UNKNOWN · not verified");
     expect(profile).toContain("ON · server TRUE");
     expect(profile).toContain("OFF · server verified");
-    expect(profile).toContain("read-only");
+    expect(profile).toContain("updateCompanyOwnFieldwork");
+    expect(profile).toContain('"Turn ON your field-job override"');
+    expect(profile).toContain('"Turn OFF your field-job override"');
+    expect(profile).toContain("fieldworkWriteLock.current = true");
+    expect(profile).toContain("refreshSession(expected");
+    expect(profile).not.toContain("read-only");
     expect(profile).not.toContain("calendarEligibleOverride");
     expect(profile).not.toContain("updateCompanyMemberFieldwork");
     expect(profile).not.toContain("onValueChange");
@@ -93,7 +98,7 @@ describe("account settings layout", () => {
     expect(profile).toContain("setVerifiedSelf(null)");
     expect(profile).toContain("COMPANY_PROFILE_SESSION_MAX_AGE_MS");
     expect(profile).toContain('accessibilityLabel="Retry signed field-job status"');
-    expect(profile).toContain("disabled={fieldworkLoading}");
+    expect(profile).toContain("disabled={fieldworkLoading || fieldworkPending}");
   });
 
   it("makes the redesigned screen reachable as Settings for Company users", () => {

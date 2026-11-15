@@ -8,7 +8,7 @@ export const COMPANY_PHOTO_DRAFT_MAX_BYTES = 15 * 1024 * 1024;
 export const COMPANY_PHOTO_DRAFT_LABEL =
   "Local draft — not uploaded or saved to this Job";
 export const COMPANY_PHOTO_DRAFT_BACKEND_PENDING =
-  "Camera and Library prepare a local preview only. Upload persistence and authorized deletion are unavailable until JobSync connects bearer-authenticated Company Job photo upload/delete routes. Existing server photos remain read-only.";
+  "Camera and Library prepare a local preview. Upload sends the actual file using your signed Company account; only a fresh Job gallery confirms it was saved.";
 
 export type CompanyPhotoDraftInput = {
   session: JobSyncNativeSession | null;
@@ -19,6 +19,9 @@ export type CompanyPhotoDraftInput = {
     pending: boolean;
     error: string | null;
   };
+  onRefresh?: () => void | Promise<void>;
+  onUpload?: (draft: LocalPhotoDraft) => Promise<boolean>;
+  operationPending?: boolean;
 };
 export type LocalPhotoDraft = {
   uri: string;
@@ -96,7 +99,7 @@ export async function prepareCompanyPhotoDraft(
   // Do not guess how to resolve ph://, content://, remote URLs or web blobs.
   if (
     typeof uri !== "string" ||
-    !/^file:\/\/\/[^?#\u0000-\u0020]+$/.test(uri) ||
+    !/^file:\/\/\/[^?#\\\u0000-\u001f\u007f]+$/.test(uri) ||
     uri === "file:///"
   )
     throw new LocalPhotoDraftError(
@@ -123,4 +126,34 @@ export async function prepareCompanyPhotoDraft(
       "Photo file is missing or unreadable. Choose another photo and retry.",
     );
   return { uri, mimeType, size: checkedSize(info.size) };
+}
+
+/** Re-read the prepared file, not picker-provided base64. No HEIC/video conversion is implied. */
+export async function encodeCompanyPhotoDraft(
+  draft: LocalPhotoDraft,
+  getInfo: ReadLocalFileInfo,
+  readBase64: (uri: string) => Promise<string>,
+): Promise<{ contentType: LocalPhotoDraft["mimeType"]; base64: string }> {
+  const fresh = await prepareCompanyPhotoDraft({ uri: draft.uri, type: "image", mimeType: draft.mimeType }, getInfo);
+  let base64: string;
+  try { base64 = await readBase64(fresh.uri); }
+  catch { throw new LocalPhotoDraftError("Could not read this local photo. Choose another photo and retry."); }
+  if (typeof base64 !== "string" || base64.length < 16 || base64.length > 21_000_000 || base64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(base64) || !/^[^=]*={0,2}$/.test(base64))
+    throw new LocalPhotoDraftError("Photo bytes could not be read as a supported image. Choose another photo.");
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const byteSize = checkedSize(base64.length / 4 * 3 - padding);
+  if (byteSize !== fresh.size || byteSize !== draft.size)
+    throw new LocalPhotoDraftError("Photo file changed after selection. Choose the photo again before uploading.");
+  // Decode only the signature prefix; avoid a second 15 MiB allocation on mobile.
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const bytes: number[] = [];
+  for (let i = 0; i < Math.min(base64.length, 16); i += 4) {
+    const word = alphabet.indexOf(base64[i]) << 18 | alphabet.indexOf(base64[i + 1]) << 12 | Math.max(0, alphabet.indexOf(base64[i + 2])) << 6 | Math.max(0, alphabet.indexOf(base64[i + 3]));
+    bytes.push(word >>> 16 & 255, word >>> 8 & 255, word & 255);
+  }
+  const matches = fresh.mimeType === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+    : fresh.mimeType === "image/png" ? [137, 80, 78, 71, 13, 10, 26, 10].every((byte, i) => bytes[i] === byte)
+      : [82, 73, 70, 70].every((byte, i) => bytes[i] === byte) && [87, 69, 66, 80].every((byte, i) => bytes[i + 8] === byte);
+  if (!matches) throw new LocalPhotoDraftError("Photo bytes do not match JPEG, PNG or WebP format. Choose another photo.");
+  return { contentType: fresh.mimeType, base64 };
 }

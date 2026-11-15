@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JobSyncNativeSession } from "../lib/jobsync-mobile-api";
-import { refreshCompanyProfileSession, updateCompanyMemberFieldwork, validateCompanyFieldworkUpdateAcknowledgment } from "../lib/profile-fieldwork-update";
+import { refreshCompanyProfileSession, updateCompanyMemberFieldwork, updateCompanyOwnFieldwork, validateCompanyOwnFieldworkUpdateAcknowledgment, validateCompanyFieldworkUpdateAcknowledgment } from "../lib/profile-fieldwork-update";
 import { getCompanySelfFieldworkStatus } from "../lib/profile-fieldwork-policy";
 
 const session: JobSyncNativeSession = { token: "fixture-bearer-no-live-use", portal: "company",
@@ -32,7 +32,7 @@ describe("signed self-session status requests", () => {
     expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
     expect(getCompanySelfFieldworkStatus(session, verified, 101).status).toBe("on");
   });
-  it.each([[false, true, "off"], [null, true, "off"], [undefined, false, "unknown"]] as const)(
+  it.each([[false, true, "off"], [null, true, "unknown"], [undefined, false, "unknown"]] as const)(
     "wire value %j present %s becomes %s", async (value, present, status) => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fetchResponse(wireSession(value, present))));
       const verified = await refreshCompanyProfileSession({ session, isCurrent: () => true, now: () => 100 });
@@ -151,5 +151,79 @@ describe("capability-only Team Member updates", () => {
     update.mockImplementation(async () => { current = false; return acknowledgment(); });
     await expect(updateCompanyMemberFieldwork({ ...input, isCurrent: () => current })).rejects.toThrow("Company or target changed");
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("distinct management-self fieldwork updates", () => {
+  function ownSetup(role: "owner" | "dispatcher" = "owner", value = true) {
+    const actor = { ...session, user: { ...session.user, role } };
+    const raw = { accountType: "company", company: actor.company, user: { ...actor.user, calendarEligible: value } };
+    const readSession = vi.fn().mockResolvedValue({ ...actor, user: { ...actor.user, calendarEligible: value } });
+    const update = vi.fn().mockResolvedValue(raw);
+    return { actor, raw, update, readSession, input: { session: actor, value, isCurrent: () => true, api: { readSession, update } } };
+  }
+  it.each(["owner", "dispatcher"] as const)("uses exact self route for %s and only Boolean body in both directions", async (role) => {
+    for (const value of [true, false]) {
+      const { actor, raw } = ownSetup(role, value);
+      const fetchMock = vi.fn().mockImplementation(async () => fetchResponse(raw));
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await updateCompanyOwnFieldwork({ session: actor, value, isCurrent: () => true });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+        "/api/mobile/v1/auth/session", "/api/mobile/v1/company/profile", "/api/mobile/v1/auth/session",
+      ]);
+      expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH", cache: "no-store",
+        headers: { Authorization: `Bearer ${actor.token}` }, body: JSON.stringify({ calendarEligibleOverride: value }) });
+      expect(result.acknowledgment).toMatchObject({ id: actor.user.id, role, calendarEligibleOverride: value });
+      expect(result.verified.session.token).toBe(actor.token);
+    }
+  });
+  it("requires direct raw exact account, user, Company, canonical role and Boolean acknowledgment", () => {
+    const { actor, raw } = ownSetup();
+    for (const invalid of [{ member: raw.user }, { data: raw }, { ...raw, accountType: "platform_admin" },
+      { ...raw, company: { ...raw.company, id: 99 } }, { ...raw, user: { ...raw.user, id: "17" } },
+      ...["admin", "Owner", "technician", "dispatcher"].map((role) => ({ ...raw, user: { ...raw.user, role } })),
+      ...[undefined, null, false, "true", 1, {}].map((calendarEligible) => ({ ...raw, user: { ...raw.user, calendarEligible } }))]) {
+      expect(validateCompanyOwnFieldworkUpdateAcknowledgment(invalid, actor, true)).toBeNull();
+    }
+    expect(validateCompanyOwnFieldworkUpdateAcknowledgment(raw, actor, true)).not.toBeNull();
+  });
+  it.each(["denial", "offline", "timeout", "ambiguous"])("always signed-reconciles a sent %s request without a saved claim", async (failure) => {
+    const { input, readSession, update } = ownSetup();
+    if (failure === "ambiguous") update.mockResolvedValue({ member: {} });
+    else update.mockRejectedValue(new Error(failure));
+    await expect(updateCompanyOwnFieldwork(input)).rejects.toThrow("no saved result");
+    expect(readSession).toHaveBeenCalledTimes(2);
+    expect(readSession).toHaveBeenLastCalledWith(session.token);
+  });
+  it("does not claim saved on failed reconciliation or a different signed Boolean", async () => {
+    const first = ownSetup(); first.readSession.mockResolvedValueOnce(response()).mockRejectedValueOnce(new Error("offline"));
+    await expect(updateCompanyOwnFieldwork(first.input)).rejects.toThrow("UNKNOWN");
+    const second = ownSetup(); second.readSession.mockResolvedValueOnce(response()).mockResolvedValueOnce(response(false));
+    await expect(updateCompanyOwnFieldwork(second.input)).rejects.toThrow("differs");
+  });
+  it("rejects cached or live demotion and malformed input before any PATCH", async () => {
+    const { input, update, readSession } = ownSetup();
+    for (const invalid of [{ value: null }, { session: { ...session, user: { ...session.user, role: "technician" } } },
+      { session: { ...session, token: " " } }, { isCurrent: () => false }]) {
+      await expect(updateCompanyOwnFieldwork({ ...input, ...invalid } as never)).rejects.toThrow();
+    }
+    expect(readSession).not.toHaveBeenCalled();
+    readSession.mockResolvedValue({ ...session, user: { ...session.user, role: "dispatcher" } });
+    await expect(updateCompanyOwnFieldwork(input)).rejects.toThrow("live management role");
+    expect(update).not.toHaveBeenCalled();
+  });
+  it("reconciles captured bearer even after blur or a session switch but discards success", async () => {
+    const { input, update, readSession, raw } = ownSetup(); let current = true;
+    update.mockImplementation(async () => { current = false; return raw; });
+    await expect(updateCompanyOwnFieldwork({ ...input, isCurrent: () => current })).rejects.toThrow("No result was applied");
+    expect(readSession).toHaveBeenCalledTimes(2);
+    expect(readSession).toHaveBeenLastCalledWith(session.token);
+  });
+  it("cannot redirect an in-place mutated caller identity", async () => {
+    const { input, update, readSession, actor } = ownSetup();
+    readSession.mockImplementation(async () => { actor.company = { ...actor.company!, id: 99 }; return response(); });
+    await expect(updateCompanyOwnFieldwork(input)).rejects.toThrow();
+    expect(update).not.toHaveBeenCalled();
   });
 });

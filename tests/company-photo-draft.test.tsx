@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   camera: vi.fn(),
   library: vi.fn(),
   info: vi.fn(),
+  bytes: vi.fn(),
+  fetch: vi.fn(),
 }));
 vi.mock("expo-router", () => ({
   useIsFocused: () => mocks.focused,
@@ -37,7 +39,7 @@ vi.mock("expo-image-picker", () => ({
   launchCameraAsync: mocks.camera,
   launchImageLibraryAsync: mocks.library,
 }));
-vi.mock("expo-file-system/legacy", () => ({ getInfoAsync: mocks.info }));
+vi.mock("expo-file-system/legacy", () => ({ getInfoAsync: mocks.info, readAsStringAsync: mocks.bytes, EncodingType: { Base64: "base64" } }));
 vi.mock("@/hooks/use-colors", () => ({
   useColors: () => ({
     primary: "blue",
@@ -85,6 +87,7 @@ vi.mock("react-native", async () => {
         ),
       ),
     StyleSheet: { create: (styles: unknown) => styles },
+    Platform: { OS: "ios" },
   };
 });
 const { createRoot } = createRequire(import.meta.url)("react-dom/client") as {
@@ -217,6 +220,8 @@ beforeEach(() => {
   mocks.camera.mockResolvedValue(result());
   mocks.library.mockResolvedValue(result());
   mocks.info.mockResolvedValue({ exists: true, isDirectory: false, size: 512 });
+  vi.stubGlobal("fetch", mocks.fetch);
+  mocks.bytes.mockResolvedValue(Buffer.concat([Buffer.from([255, 216, 255]), Buffer.alloc(509)]).toString("base64"));
   const document = installPhotoTestDOM();
   container = document.createElement("main");
   document.body.appendChild(container);
@@ -228,6 +233,7 @@ afterEach(async () => {
     await act(async () => {
       root.unmount();
     });
+  vi.unstubAllGlobals();
 });
 
 describe("bounded local-file preparation", () => {
@@ -366,7 +372,7 @@ describe("bounded local-file preparation", () => {
 
 describe("local draft component (real React lifecycle, mocked RN and Expo)", () => {
   it.each(["Camera", "Library"])(
-    "requests %s permission, chooses images only, previews ONE draft and disables upload",
+    "requests %s permission, chooses images only, previews ONE draft and enables guarded upload",
     async (source) => {
       const props = input();
       const original = JSON.stringify(props.job.detail);
@@ -385,13 +391,13 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
       });
       expect(nodes("native-image")).toHaveLength(1);
       expect(container.textContent).toContain(COMPANY_PHOTO_DRAFT_LABEL);
-      expect(container.textContent).toContain("bearer-authenticated");
+      expect(container.textContent).toContain("signed Company account");
       expect(
-        button("Upload local draft unavailable").nativeProps.disabled,
-      ).toBe(true);
+        button("Upload local draft").nativeProps.disabled,
+      ).toBe(false);
       expect(
-        button("Upload local draft unavailable").nativeProps.onPress,
-      ).toBeUndefined();
+        button("Upload local draft").nativeProps.onPress,
+      ).toBeTypeOf("function");
       expect(JSON.stringify(props.job.detail)).toBe(original);
       expect(container.textContent).not.toContain(props.session!.token);
       await event(nodes("native-image")[0], "onLoad");
@@ -749,5 +755,132 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
     await settle(wait, undefined);
     expect(nodes("native-image")).toHaveLength(0);
     expect(button("Camera").nativeProps.disabled).toBe(false);
+  });
+});
+
+function mockPhotoServer(options: { failure?: number; actor?: JobSyncNativeSession; readFailure?: boolean; missingUploadedId?: boolean } = {}) {
+  const saved = { id: 7, imageUrl: "https://fixture.invalid/manus-storage/companies/9/jobs/12/photos/fixture.jpg?expires=300&signature=fixture", caption: null, uploadedByUserId: 42, createdAt: null };
+  let persisted = false;
+  let reads = 0;
+  mocks.fetch.mockImplementation(async (url: string, init: RequestInit) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/auth/session")) return { ok: true, status: 200, json: async () => options.actor ?? session() };
+    if (init.method === "POST") {
+      persisted = true;
+      return { ok: !options.failure, status: options.failure ?? 201, json: async () => options.failure ? { error: { code: "BAD_REQUEST", message: "A valid Job photo upload request is required." } } : { photo: saved } };
+    }
+    reads++;
+    if (options.readFailure && reads > 1) throw new Error("fixture read offline");
+    return { ok: true, status: 200, json: async () => ({ job: detail({ photos: persisted && !options.missingUploadedId ? [saved] : [] }) }) };
+  });
+  return saved;
+}
+async function renderUploadingGallery(props = input(), onRefresh: () => void | Promise<void> = vi.fn().mockResolvedValue(undefined)) {
+  await act(async () => { root.render(<CompanyJobPhotos {...props} job={{ ...props.job, refresh: async () => { await onRefresh(); } }} onRefresh={onRefresh} onPreview={vi.fn()} />); });
+}
+describe("shared photo upload: actual encode, mocked bearer fetch and canonical reload", () => {
+  it("sends actual fs bytes, confirms fresh gallery ID, and never saves a local draft or bare ack", async () => {
+    mockPhotoServer(); const props=input(); const onRefresh=vi.fn().mockResolvedValue(undefined);
+    await renderUploadingGallery(props,onRefresh); await event(button("Camera"));
+    const press=button("Upload local draft").nativeProps.onPress;
+    await act(async () => { press(); press(); });
+    expect(mocks.bytes).toHaveBeenCalledWith(asset().uri,{encoding:"base64"});
+    const writes=mocks.fetch.mock.calls.filter(([,init]) => init.method==="POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1].body)).toEqual({contentType:"image/jpeg",base64:await mocks.bytes.mock.results[0].value});
+    expect(writes[0][1].headers.Authorization).toBe(`Bearer ${props.session!.token}`);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("upload confirmed by fresh");
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    expect(props.job.detail!.photos).toEqual([]);
+    expect(nodes("native-image")).toHaveLength(1);
+    expect(nodes("native-image")[0].nativeProps.source).toEqual({uri:expect.stringContaining("signature=fixture")});
+  });
+  it.each([{failure:400},{readFailure:true},{missingUploadedId:true}])("does not falsely save a draft or retry an uncertain upload %#", async options => {
+    mockPhotoServer(options); await renderUploadingGallery(); await event(button("Library")); await event(button("Upload local draft"));
+    expect(mocks.fetch.mock.calls.filter(([,init]) => init.method==="POST")).toHaveLength(1);
+    expect(container.textContent).not.toContain("upload confirmed by fresh");
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    expect(container.textContent).toMatch(/may already have been saved|confirmation failed|does not confirm/);
+    if(options.readFailure) expect(button("Camera").nativeProps.disabled).toBe(true);
+  });
+  it("keeps indeterminate sending feedback and blocks all capture taps while bytes are pending", async () => {
+    mockPhotoServer(); const wait=deferred<string>(); mocks.bytes.mockReturnValue(wait.promise);
+    await renderUploadingGallery(); await event(button("Camera")); await event(button("Upload local draft"));
+    expect(container.textContent).toContain("Checking current Company Job photo access");
+    expect(button("Library").nativeProps.disabled).toBe(true);
+    await event(button("Library")); expect(mocks.libraryPermission).not.toHaveBeenCalled();
+    await settle(wait,Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(509)]).toString("base64"));
+    expect(container.textContent).toContain("upload confirmed");
+  });
+  it.each(["Job","Company","token","user","role","blur","pending","reassignment"])("does not send late encoded upload after %s change or returning", async change => {
+    const wait=deferred<string>(); mocks.bytes.mockReturnValue(wait.promise); mockPhotoServer();
+    await renderUploadingGallery(); await event(button("Camera")); await event(button("Upload local draft"));
+    await renderUploadingGallery(changed(change)); mocks.focused=true; await renderUploadingGallery();
+    await settle(wait,Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(509)]).toString("base64"));
+    expect(mocks.fetch.mock.calls.filter(([,init])=>init.method==="POST")).toHaveLength(0);
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    expect(container.textContent).not.toContain("upload confirmed");
+  });
+  it("signed live-role denial preflight sends no POST and blocks unrefreshed controls", async () => {
+    const actor=session(); actor.user.role="technician"; mockPhotoServer({actor});
+    await renderUploadingGallery(); await event(button("Camera")); await event(button("Upload local draft"));
+    expect(mocks.fetch.mock.calls.filter(([,init])=>init.method==="POST")).toHaveLength(0);
+    expect(container.textContent).toContain("No photo request was sent");
+    expect(button("Camera").nativeProps.disabled).toBe(true);
+  });
+  it("upload survives its own caller refresh draft invalidation but never resurrects the preview", async () => {
+    mockPhotoServer(); const wait=deferred<void>(); const props=input(); let finish=()=>{};
+    const refresh=vi.fn();
+    function Sheet() {
+      const [loading,setLoading]=React.useState(false);
+      refresh.mockImplementation(async () => { setLoading(true); await wait.promise; setLoading(false); });
+      finish=()=>wait.resolve(undefined);
+      return <CompanyJobPhotos {...props} job={{...props.job,detail:loading?null:props.job.detail,loading,refresh}} onRefresh={refresh} onPreview={vi.fn()} />;
+    }
+    await act(async()=>root.render(<Sheet />)); await event(button("Camera")); await event(button("Upload local draft"));
+    expect(container.textContent).toContain("Reloading authoritative Job photos");
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    await act(async()=>finish());
+    expect(container.textContent).toContain("upload confirmed");
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("shared photo upload late transport and cancellation regression",()=>{
+  it.each(["Job","Company","token","user","role","blur","pending","reassignment"])("drops late POST acknowledgement after %s change without refresh or saved-draft resurrection",async change=>{
+    const saved=mockPhotoServer(); const server=mocks.fetch.getMockImplementation()!; const wait=deferred<any>();
+    mocks.fetch.mockImplementation((url,init)=>init.method==="POST"?wait.promise:server(url,init));
+    const onRefresh=vi.fn().mockResolvedValue(undefined);
+    await renderUploadingGallery(input(),onRefresh);await event(button("Camera"));await event(button("Upload local draft"));
+    expect(container.textContent).toContain("Sending photo");
+    await renderUploadingGallery(changed(change),onRefresh);mocks.focused=true;await renderUploadingGallery(input(),onRefresh);
+    await settle(wait,{ok:true,status:201,json:async()=>({photo:saved})});
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("upload confirmed");
+    expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+  });
+  it("unmount during sending drops late response and never refreshes",async()=>{
+    const saved=mockPhotoServer();const server=mocks.fetch.getMockImplementation()!;const wait=deferred<any>();
+    mocks.fetch.mockImplementation((url,init)=>init.method==="POST"?wait.promise:server(url,init));
+    const refresh=vi.fn().mockResolvedValue(undefined);await renderUploadingGallery(input(),refresh);await event(button("Camera"));await event(button("Upload local draft"));await act(async()=>root.unmount());unmounted=true;
+    await settle(wait,{ok:true,status:201,json:async()=>({photo:saved})});expect(refresh).not.toHaveBeenCalled();expect(container.textContent).toBe("");
+  });
+  it("timeout after mock persistence reconciles fresh gallery without replaying POST",async()=>{
+    mockPhotoServer();const server=mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async(url,init)=>{const response=await server(url,init);if(init.method==="POST"){const error=new Error("mock abort");error.name="AbortError";throw error;}return response;});
+    await renderUploadingGallery();await event(button("Camera"));await event(button("Upload local draft"));
+    expect(mocks.fetch.mock.calls.filter(([,init])=>init.method==="POST")).toHaveLength(1);
+    expect(container.textContent).toContain("may already have been saved");expect(container.textContent).toContain("duplicates are possible");expect(container.textContent).not.toContain("upload confirmed");expect(nodes("native-image")).toHaveLength(1);
+  });
+  it("cancelled pending operation does not resurrect its state after a fresh same-scope Job renders",async()=>{
+    mockPhotoServer();const wait=deferred<string>();mocks.bytes.mockReturnValue(wait.promise);
+    await renderUploadingGallery();await event(button("Camera"));await event(button("Upload local draft"));await renderUploadingGallery(changed("pending"));
+    await settle(wait,Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(509)]).toString("base64"));
+    await renderUploadingGallery(input());
+    expect(container.textContent).not.toContain("Checking current");expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
+    expect(button("Camera").nativeProps.disabled).toBe(false);
+    expect(mocks.fetch.mock.calls.filter(([,init])=>init.method==="POST")).toHaveLength(0);
   });
 });

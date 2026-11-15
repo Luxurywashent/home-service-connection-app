@@ -1,6 +1,6 @@
-import { getJobSyncMobileSession, updateJobSyncCompanyMember, type JobSyncNativeSession } from "./jobsync-mobile-api";
+import { getJobSyncMobileSession, normalizeJobSyncMobileSession, updateJobSyncCompanyMember, updateJobSyncCompanyOwnFieldwork, type JobSyncNativeSession } from "./jobsync-mobile-api";
 import {
-  canUpdateCompanyMemberFieldwork, companyProfileSessionKey, verifyCompanyProfileSession,
+  canUpdateCompanyMemberFieldwork, canUpdateCompanyOwnFieldwork, companyProfileSessionKey, verifyCompanyProfileSession,
   type CompanyProfileMember, type VerifiedCompanyProfileSession,
 } from "./profile-fieldwork-policy";
 
@@ -95,4 +95,67 @@ export async function updateCompanyMemberFieldwork(input: {
   if (!input.isCurrent()) throw new Error("Company or target changed during refresh. No success can be claimed.");
   if (failure) throw failure;
   return ack!;
+}
+
+export type CompanyOwnFieldworkUpdateTransport = (
+  token: string, input: { calendarEligibleOverride: boolean },
+) => Promise<unknown>;
+
+/** The self PATCH returns a direct Company profile, not a member envelope or replacement token. */
+export function validateCompanyOwnFieldworkUpdateAcknowledgment(
+  payload: unknown, session: JobSyncNativeSession, value: boolean,
+): CompanyFieldworkUpdateAcknowledgment | null {
+  if (!canUpdateCompanyOwnFieldwork(session) || typeof value !== "boolean") return null;
+  const root = object(payload);
+  const user = object(root?.user);
+  const company = object(root?.company);
+  if (!root || root.accountType !== "company" || !user || !company
+    || user.id !== session.user.id || company.id !== session.company!.id
+    || user.role !== session.user.role || user.calendarEligible !== value) return null;
+  const normalized = normalizeJobSyncMobileSession(payload, session.token);
+  if (!verifyCompanyProfileSession(session, normalized, Date.now())) return null;
+  return { id: session.user.id, role: session.user.role, calendarEligibleOverride: value,
+    message: `Server confirmed your individual override ${value ? "TRUE" : "FALSE"}; management role unchanged. Candidate lanes are not a guarantee of assignment or automatic booking.` };
+}
+
+/** Always reconcile a sent request, even if it failed or focus/identity was invalidated.
+ * Reconciliation uses the captured bearer only; stale results must never reach current UI/context.
+ * Local generations are not backend optimistic versions. No target ID or protected field is sent.
+ */
+export async function updateCompanyOwnFieldwork(input: {
+  session: JobSyncNativeSession;
+  value: boolean;
+  isCurrent: () => boolean;
+  reconcile?: (expected: JobSyncNativeSession) => Promise<JobSyncNativeSession>;
+  api?: { readSession: CompanyProfileSessionTransport; update: CompanyOwnFieldworkUpdateTransport };
+}): Promise<{ acknowledgment: CompanyFieldworkUpdateAcknowledgment; verified: VerifiedCompanyProfileSession }> {
+  if (!canUpdateCompanyOwnFieldwork(input.session) || typeof input.value !== "boolean" || !input.isCurrent()) {
+    throw new Error("A current signed Company owner or Admin self session and explicit ON/OFF are required.");
+  }
+  const session = { ...input.session, company: { ...input.session.company! }, user: { ...input.session.user } };
+  const value = input.value;
+  const current = () => input.isCurrent() && companyProfileSessionKey(input.session) === companyProfileSessionKey(session);
+  const api = input.api ?? { readSession: getJobSyncMobileSession, update: updateJobSyncCompanyOwnFieldwork };
+  await refreshCompanyProfileSession({ session, isCurrent: current, readSession: api.readSession });
+  if (!current()) throw new Error("Company identity changed before sending. No update was sent.");
+  let acknowledgment: CompanyFieldworkUpdateAcknowledgment | null = null;
+  let failure: unknown;
+  try {
+    const payload = await api.update(session.token, { calendarEligibleOverride: value });
+    acknowledgment = validateCompanyOwnFieldworkUpdateAcknowledgment(payload, session, value);
+    if (!acknowledgment) throw new Error("The server did not acknowledge your exact Company, user, unchanged raw role and requested Boolean override. Do not assume it was saved.");
+  } catch (error) { failure = error; }
+  let verified: VerifiedCompanyProfileSession | null = null;
+  try {
+    // Do not skip the captured-token GET after blur/switch; only discard its result.
+    const live = await (input.reconcile ? input.reconcile(session) : api.readSession(session.token));
+    verified = verifyCompanyProfileSession(session, live, Date.now());
+    if (!verified) throw new Error("Signed Company identity or live management role changed.");
+  } catch {
+    throw new Error("Could not verify the signed session after the fieldwork request. Current value is UNKNOWN; do not assume it was saved.");
+  }
+  if (!current()) throw new Error("Company, user, token, role or focus changed. No result was applied; refresh the current account.");
+  if (failure) throw new Error(`${failure instanceof Error ? failure.message : "Fieldwork request failed."} Signed session reconciliation was attempted; no saved result is claimed.`);
+  if (verified.session.user.calendarEligible !== value) throw new Error("The refreshed signed override differs from the request. Current value is UNKNOWN; no saved result is claimed.");
+  return { acknowledgment: acknowledgment!, verified };
 }

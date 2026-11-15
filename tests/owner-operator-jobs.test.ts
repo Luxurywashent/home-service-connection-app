@@ -325,18 +325,25 @@ describe("shared job screen integration boundaries", () => {
     expect(tech.match(/if \(!JOB_VIDEOS_ENABLED \|\| companyJobMode\) return;/g)).toHaveLength(2);
     expect(tech).not.toContain("videoUrls: []");
   });
-  it("Company photo mutations are unavailable, no guessed endpoints or cookie fallback", () => {
+  it("Company photo mutations use guarded shared bearer operations, no guessed endpoints or cookie fallback", () => {
     expect(COMPANY_PHOTO_MUTATIONS_PENDING).toContain("unavailable");
     const photos = source("components/company-job-photos.tsx");
     expect(photos).toContain("<CompanyPhotoDraft");
     const draft = source("components/company-photo-draft.tsx");
     expect(draft).toContain('(["Camera", "Library"] as const)');
-    expect(draft).toMatch(/disabled\s+accessibilityRole/);
-    expect(draft).toContain('accessibilityLabel="Upload local draft unavailable"');
+    expect(draft).toContain('disabled={disabled}');
+    expect(draft).toContain('accessibilityLabel="Upload local draft"');
     expect(source("lib/company-photo-draft.ts")).toContain("not uploaded or saved to this Job");
     expect(draft).not.toMatch(/uploadPhoto|deletePhoto|trpc|fetch\(/);
     expect(photos).not.toMatch(/uploadPhoto|deletePhoto|trpc|fetch\(/);
-    expect(source("lib/jobsync-mobile-api.ts")).not.toMatch(/requestJson\([^\n]*\/photos/);
+    const operation = source("lib/company-photo-operation.ts");
+    expect(operation).toContain("uploadJobSyncCompanyJobPhoto");
+    expect(operation).toContain("deleteJobSyncCompanyJobPhoto");
+    expect(operation).toContain("getJobSyncMobileSession");
+    expect(operation).toContain("getJobSyncCompanyJobDetail");
+    expect(operation).not.toMatch(/trpc|AsyncStorage|credentials\s*:|fetch\(/);
+    expect(photos).toContain('accessibilityLabel="Confirm remove photo from Job"');
+    expect(photos).toContain('Platform.OS !== "web"');
     const hook = source("hooks/use-company-job.ts");
     expect(hook).toContain("instance.current === identity");
     expect(hook).toContain("snapshot.identity === instance.current");

@@ -158,3 +158,54 @@ describe("screen integration safeguards", () => {
     expect(source).toContain("member.employeeId === job.assignedTo");
   });
 });
+
+describe("exact-self dispatcher calendar lifecycle", () => {
+  function dispatcher(value?: boolean | null) {
+    const actor = fixture(value); actor.user.role = "dispatcher";
+    if (arguments.length === 0) actor.user.calendarEligible = true;
+    else if (value === undefined) delete actor.user.calendarEligible;
+    return actor;
+  }
+  function dispatcherRoster() {
+    const rows = roster(); rows.members[0].role = "dispatcher";
+    rows.members.push({ id: 60, name: "Other Dispatcher", role: "dispatcher", isActive: true, calendarEligible: true });
+    return rows;
+  }
+  it("reads exact-self dispatcher ON on focus and denies other position-enabled managers", async () => {
+    mocks.roster.mockResolvedValue(dispatcherRoster()); mocks.session.mockResolvedValue(dispatcher());
+    await render(dispatcher());
+    expect(latest.members.map((row) => row.employeeId)).toEqual(["jobsync-40", "jobsync-50"]);
+    expect(latest.members[0].fieldworkSource).toBe("signed-self-dispatcher");
+    expect(mocks.session).toHaveBeenCalledTimes(1);
+    expect(await latest.verifyAssignment("jobsync-40")).toBe(true);
+    expect(mocks.session).toHaveBeenCalledTimes(2);
+    mocks.session.mockResolvedValue(dispatcher(false));
+    expect(await latest.verifyAssignment("jobsync-40")).toBe(false);
+  });
+  it.each([false, null, undefined])("removes dispatcher candidate after fresh %s override", async (value) => {
+    mocks.roster.mockResolvedValue(dispatcherRoster()); mocks.session.mockResolvedValue(dispatcher());
+    await render(dispatcher()); mocks.session.mockResolvedValue(dispatcher(value)); await render(dispatcher(value));
+    expect(latest.members.map((row) => row.id)).toEqual([50]);
+  });
+  it("expiry, blur, demotion and signed refusal never retain dispatcher candidacy", async () => {
+    mocks.roster.mockResolvedValue(dispatcherRoster()); mocks.session.mockResolvedValue(dispatcher()); await render(dispatcher());
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(latest.members.map((row) => row.id)).toEqual([50]);
+    await render(dispatcher(), 1); mocks.focused = false; await render(dispatcher()); expect(latest.members).toEqual([]);
+    mocks.focused = true; mocks.session.mockRejectedValue(new Error("Fixture refusal")); await render(dispatcher());
+    expect(latest.members.map((row) => row.id)).toEqual([50]);
+    const demoted = dispatcher(); demoted.user.role = "technician"; mocks.session.mockResolvedValue(demoted); await render(dispatcher(), 2);
+    expect(latest.members.map((row) => row.id)).toEqual([50]);
+  });
+  it.each(["token", "company", "user"])("rejects late dispatcher signed evidence after %s changes", async (change) => {
+    const old = deferred<JobSyncNativeSession>(); mocks.roster.mockResolvedValue(dispatcherRoster()); mocks.session.mockReturnValueOnce(old.promise);
+    await render(dispatcher()); const next = dispatcher();
+    if (change === "token") next.token = "fixture-rotated";
+    if (change === "company") next.company = { ...next.company!, id: 10 };
+    if (change === "user") next.user.id = 41;
+    mocks.session.mockResolvedValue(next);
+    mocks.roster.mockResolvedValue({ company: { id: next.company!.id, name: "Fixture" }, members: [roster().members[1]] });
+    await render(next); await act(async () => { old.resolve(dispatcher()); });
+    expect(latest.members.map((row) => row.id)).toEqual([50]);
+  });
+});

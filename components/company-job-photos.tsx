@@ -3,19 +3,23 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+import { useIsFocused } from "expo-router";
 import { CompanyPhotoDraft } from "@/components/company-photo-draft";
 import {
   companyPhotoScope,
   currentCompanyGallery,
   currentCompanyPhotos,
   sameCompanyPhoto,
+  canDeleteCompanyPhoto,
 } from "@/lib/company-photo-view";
+import { useCompanyPhotoOperation } from "@/lib/company-photo-operation";
 import type {
   JobSyncJobPhoto,
   JobSyncNativeSession,
@@ -174,11 +178,12 @@ function CompanyPhotoImage({
 }
 
 export function CompanyJobPhotos(props: GalleryProps) {
+  const focused = useIsFocused();
   const scope = companyPhotoScope(props.session, props.jobId);
   // Keying by signed identity resets all errors, locks and child-image callbacks on a context change.
   return (
     <ScopedCompanyJobPhotos
-      key={scope ?? "unavailable"}
+      key={`${scope ?? "unavailable"}:${focused}`}
       {...props}
       scope={scope}
     />
@@ -197,13 +202,26 @@ function ScopedCompanyJobPhotos(
     Boolean(props.scope) &&
     companyPhotoScope(live.current.session, live.current.jobId) === props.scope;
   const { refreshing, error, refresh } = usePhotoRefresh(props, current);
-  const photos = currentCompanyPhotos(props);
+  const operation = useCompanyPhotoOperation({ ...props, onRefresh: props.onRefresh ?? props.job.refresh });
+  const canonicalProps = operation.detail ? { ...props, job: { ...props.job, detail: operation.detail } } : props;
+  const photos = operation.focused ? currentCompanyPhotos(canonicalProps) : [];
+  const [confirmation, setConfirmation] = useState<{ photoId: number; detail: unknown } | null>(null);
+  const removeLock = useRef(false);
+  const canonicalLive = useRef({ props: canonicalProps, focused: operation.focused, blocked: operation.blocked, pending: operation.pending, refreshing });
+  canonicalLive.current = { props: canonicalProps, focused: operation.focused, blocked: operation.blocked, pending: operation.pending, refreshing };
+  const canRemove = (photoId: number) => current() && canonicalLive.current.focused && !canonicalLive.current.blocked && !canonicalLive.current.pending && !canonicalLive.current.refreshing && Platform.OS !== "web" && canDeleteCompanyPhoto(canonicalLive.current.props, photoId);
+  const validConfirmation = confirmation && confirmation.detail === canonicalProps.job.detail && canRemove(confirmation.photoId) ? confirmation : null;
+  const confirmationRef = useRef(validConfirmation);
+  confirmationRef.current = validConfirmation;
+  useEffect(() => { if (confirmation && !validConfirmation) setConfirmation(null); }, [confirmation, validConfirmation]);
   const canUse = (photo: JobSyncJobPhoto) =>
     current() &&
-    !refreshing &&
-    sameCompanyPhoto(currentCompanyPhotos(live.current), photo);
-  const busy = props.job.loading || props.job.pending || refreshing;
-  const authoritative = !busy && currentCompanyGallery(props) !== null;
+    canonicalLive.current.focused &&
+    !canonicalLive.current.pending &&
+    !canonicalLive.current.refreshing &&
+    sameCompanyPhoto(currentCompanyPhotos(canonicalLive.current.props), photo);
+  const busy = props.job.loading || props.job.pending || refreshing || operation.pending;
+  const authoritative = operation.focused && !busy && currentCompanyGallery(canonicalProps) !== null;
   return (
     <View
       style={[
@@ -217,7 +235,10 @@ function ScopedCompanyJobPhotos(
       <CompanyPhotoDraft
         session={props.session}
         jobId={props.jobId}
-        job={{ ...props.job, loading: props.job.loading || refreshing }}
+        job={{ ...canonicalProps.job, loading: busy || operation.blocked || !operation.focused }}
+        onRefresh={props.onRefresh ?? props.job.refresh}
+        onUpload={operation.upload}
+        operationPending={operation.pending}
       />
       {busy ? (
         <ActivityIndicator
@@ -225,6 +246,8 @@ function ScopedCompanyJobPhotos(
           color={colors.primary}
         />
       ) : null}
+      {operation.message ? <Text style={{ color: colors.muted }}>{operation.message}</Text> : null}
+      {operation.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{operation.error}</Text> : null}
       {props.job.error || error ? (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {props.job.error || error}
@@ -259,21 +282,40 @@ function ScopedCompanyJobPhotos(
                   });
               }}
             />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`Remove Job photo ${item.id}`}
+              accessibilityState={{ disabled: !canRemove(item.id) }}
+              disabled={!canRemove(item.id)}
+              onPress={() => { if (canRemove(item.id)) setConfirmation({ photoId: item.id, detail: canonicalProps.job.detail }); }}
+              style={styles.refresh}
+            ><Text style={{ color: colors.error, opacity: canRemove(item.id) ? 1 : 0.35 }}>Remove photo</Text></TouchableOpacity>
           </View>
         )}
       />
+      {validConfirmation ? <View style={styles.confirmation}>
+        <Text style={{ color: colors.foreground }}>Remove this photo from this Job? Stored media erasure is not guaranteed.</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel photo removal" onPress={() => setConfirmation(null)}><Text style={{ color: colors.primary }}>Cancel</Text></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirm remove photo from Job" onPress={() => {
+          if (removeLock.current || !validConfirmation || confirmationRef.current !== validConfirmation || !canRemove(validConfirmation.photoId)) return;
+          confirmationRef.current = null;
+          removeLock.current = true;
+          const photoId = validConfirmation.photoId;
+          setConfirmation(null);
+          void operation.remove(photoId).finally(() => { removeLock.current = false; });
+        }}><Text style={{ color: colors.error }}>Remove from Job</Text></TouchableOpacity>
+      </View> : null}
       {photos.length && !busy ? (
         <Text style={[styles.help, { color: colors.muted }]}>
-          {IMAGE_ERROR} Tap a photo for an in-sheet preview. Deletion is
-          unavailable until the backend connection is verified.
+          {IMAGE_ERROR} Tap a photo for an in-sheet preview. {Platform.OS === "web" ? "Browser removal is unavailable: the backend does not allow DELETE in CORS. Use the native app." : "Removal requires confirmation and fresh signed access."}
         </Text>
       ) : null}
       <TouchableOpacity
-        disabled={!props.scope || busy}
+        disabled={!props.scope || busy || !operation.focused}
         accessibilityRole="button"
-        accessibilityState={{ disabled: !props.scope || busy }}
+        accessibilityState={{ disabled: !props.scope || busy || !operation.focused }}
         onPress={() => {
-          void refresh();
+          if (!busy && operation.focused) void refresh();
         }}
         style={styles.refresh}
       >
@@ -287,11 +329,12 @@ function ScopedCompanyJobPhotos(
 
 /** Render last inside the existing Job sheet/Modal; never stack another iOS Modal. */
 export function CompanyJobPhotoPreview(props: PreviewProps) {
+  const focused = useIsFocused();
   const scope = companyPhotoScope(props.session, props.jobId);
   const selection = props.photo;
   const photos = currentCompanyPhotos(props);
   const photo =
-    selection && selection.scope === scope
+    focused && selection && selection.scope === scope
       ? photos.find(
           (item) =>
             item.id === selection.photoId &&
@@ -373,6 +416,7 @@ const styles = StyleSheet.create({
   heading: { fontSize: 13, fontWeight: "700" },
   help: { fontSize: 12 },
   row: { flexDirection: "row", gap: 8 },
+  confirmation: { gap: 10, paddingVertical: 10 },
   button: {
     borderRadius: 10,
     paddingHorizontal: 16,

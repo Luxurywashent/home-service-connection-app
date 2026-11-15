@@ -21,12 +21,14 @@ import {
   COMPANY_PROFILE_SESSION_MAX_AGE_MS,
   companyProfileSessionKey,
   getCompanySelfFieldworkStatus,
+  isFreshCompanyProfileSession,
   isCompanyProfileManagementSession,
   PROFILE_FIELDWORK_LABEL,
-  PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION,
+  PROFILE_FIELDWORK_SELF_DESCRIPTION,
+  verifyCompanyProfileSession,
   type VerifiedCompanyProfileSession,
 } from "@/lib/profile-fieldwork-policy";
-import { refreshCompanyProfileSession } from "@/lib/profile-fieldwork-update";
+import { refreshCompanyProfileSession, updateCompanyOwnFieldwork } from "@/lib/profile-fieldwork-update";
 import { trpc } from "@/lib/trpc";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -42,7 +44,7 @@ export default function ProfileScreen() {
   const colors = useColors();
   const { width } = useWindowDimensions();
   const { employee, logout } = useEmployeeAuth();
-  const { session: jobSyncSession, logout: logoutJobSync } = useJobSyncAuth();
+  const { session: jobSyncSession, logout: logoutJobSync, refreshSession } = useJobSyncAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AccountSettingsTab>("account");
   const [showPinReset, setShowPinReset] = useState(false);
@@ -54,50 +56,130 @@ export default function ProfileScreen() {
   const [verifiedSelf, setVerifiedSelf] = useState<VerifiedCompanyProfileSession | null>(null);
   const [fieldworkLoading, setFieldworkLoading] = useState(false);
   const [fieldworkError, setFieldworkError] = useState<string | null>(null);
+  const [fieldworkPending, setFieldworkPending] = useState(false);
+  const [fieldworkMessage, setFieldworkMessage] = useState<string | null>(null);
+  const fieldworkWriteLock = useRef(false);
+  const latestVerifiedSelf = useRef(verifiedSelf);
+  latestVerifiedSelf.current = verifiedSelf;
   const profileSessionKey = companyProfileSessionKey(jobSyncSession);
   const currentProfileKey = useRef(profileSessionKey);
   currentProfileKey.current = profileSessionKey;
+  const observedProfileKey = useRef(profileSessionKey);
+  const signedTransitionKey = useRef<string | null>(null);
+  const currentSession = useRef(jobSyncSession);
+  currentSession.current = jobSyncSession;
+  // Capability changes invalidate evidence separately; identity/focus changes cancel the lifecycle.
+  const profileIdentityKey = jobSyncSession ? JSON.stringify([jobSyncSession.portal, jobSyncSession.token,
+    jobSyncSession.company?.id, jobSyncSession.user.id, jobSyncSession.user.role]) : null;
   const profileFocused = useRef(false);
   const profileReadVersion = useRef(0);
 
   const refreshFieldworkStatus = useCallback(async () => {
-    const requestKey = companyProfileSessionKey(jobSyncSession);
-    if (!requestKey || !jobSyncSession || !profileFocused.current) return;
+    const session = currentSession.current;
+    const requestKey = companyProfileSessionKey(session);
+    if (!requestKey || !session || !profileFocused.current || fieldworkWriteLock.current) return;
+    signedTransitionKey.current = null;
     const version = ++profileReadVersion.current;
     const isCurrent = () => profileFocused.current && currentProfileKey.current === requestKey
       && profileReadVersion.current === version;
     // Every retry removes old evidence before reading; never keep an old ON during failure/loading.
+    latestVerifiedSelf.current = null;
     setVerifiedSelf(null);
     setFieldworkError(null);
+    setFieldworkMessage(null);
     setFieldworkLoading(true);
     try {
-      const verified = await refreshCompanyProfileSession({ session: jobSyncSession, isCurrent });
+      const verified = await refreshCompanyProfileSession({ session, isCurrent });
       if (isCurrent()) setVerifiedSelf(verified);
     } catch (error) {
       if (isCurrent()) setFieldworkError(error instanceof Error ? error.message : "Unable to verify your signed Company session. Retry to check the server.");
     } finally {
       if (isCurrent()) setFieldworkLoading(false);
     }
-  }, [jobSyncSession]);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     profileFocused.current = true;
     setVerifiedSelf(null);
     setFieldworkError(null);
+    setFieldworkMessage(null);
     setFieldworkLoading(false);
-    if (profileSessionKey) void refreshFieldworkStatus();
+    if (companyProfileSessionKey(currentSession.current)) void refreshFieldworkStatus();
     return () => {
       profileFocused.current = false;
       profileReadVersion.current += 1;
+      latestVerifiedSelf.current = null;
       setVerifiedSelf(null);
       setFieldworkLoading(false);
+      setFieldworkMessage(null);
     };
-  }, [profileSessionKey, refreshFieldworkStatus]));
+  }, [profileIdentityKey, refreshFieldworkStatus]));
+
+  useEffect(() => {
+    // Own signed reconciliation rebases its evidence; unrelated capability changes clear old observations.
+    if (observedProfileKey.current === profileSessionKey) return;
+    observedProfileKey.current = profileSessionKey;
+    if (signedTransitionKey.current === profileSessionKey) return;
+    if (latestVerifiedSelf.current?.requestKey === profileSessionKey) return;
+    profileReadVersion.current += 1;
+    latestVerifiedSelf.current = null;
+    setVerifiedSelf(null);
+    setFieldworkMessage(null);
+    if (profileFocused.current && !fieldworkWriteLock.current) void refreshFieldworkStatus();
+  }, [profileSessionKey, refreshFieldworkStatus]);
+
+  const handleOwnFieldwork = async (value: boolean) => {
+    const session = jobSyncSession;
+    let requestKey = profileSessionKey;
+    const version = profileReadVersion.current;
+    const evidence = verifiedSelf;
+    const isCurrent = () => profileFocused.current && currentProfileKey.current === requestKey
+      && profileReadVersion.current === version && Boolean(evidence)
+      && Date.now() >= evidence!.verifiedAt && Date.now() - evidence!.verifiedAt < COMPANY_PROFILE_SESSION_MAX_AGE_MS;
+    if (fieldworkWriteLock.current || !session || !isCurrent()
+      || latestVerifiedSelf.current !== evidence || !isFreshCompanyProfileSession(session, evidence, Date.now())) return;
+    fieldworkWriteLock.current = true;
+    setFieldworkPending(true);
+    latestVerifiedSelf.current = null;
+    setVerifiedSelf(null);
+    setFieldworkMessage(null);
+    setFieldworkError(null);
+    try {
+      const result = await updateCompanyOwnFieldwork({ session, value, isCurrent,
+        reconcile: (expected) => refreshSession(expected, { isCurrent, onVerified: (live) => {
+          if (live.user.role !== expected.user.role) return;
+          // Accept only this freshly read same-identity transition, before the context rerender.
+          requestKey = companyProfileSessionKey(live);
+          signedTransitionKey.current = requestKey;
+          currentProfileKey.current = requestKey;
+          currentSession.current = live;
+        } }),
+      });
+      if (isCurrent()) {
+        const rebased = verifyCompanyProfileSession(result.verified.session, result.verified.session, result.verified.verifiedAt);
+        latestVerifiedSelf.current = rebased;
+        setVerifiedSelf(rebased);
+        setFieldworkMessage(result.acknowledgment.message);
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        latestVerifiedSelf.current = null;
+        setVerifiedSelf(null);
+        setFieldworkError(error instanceof Error ? error.message : "Fieldwork update could not be verified. Current value is UNKNOWN; retry status.");
+      }
+    } finally {
+      fieldworkWriteLock.current = false;
+      setFieldworkPending(false);
+    }
+  };
 
   useEffect(() => {
     if (!verifiedSelf) return;
     const expiry = setTimeout(() => {
+      profileReadVersion.current += 1;
+      latestVerifiedSelf.current = null;
       setVerifiedSelf(null);
+      setFieldworkMessage(null);
       setFieldworkError("Your signed field-job status has expired. Retry to check the current server value.");
     }, Math.max(0, COMPANY_PROFILE_SESSION_MAX_AGE_MS - (Date.now() - verifiedSelf.verifiedAt)));
     return () => clearTimeout(expiry);
@@ -277,28 +359,38 @@ export default function ProfileScreen() {
               {showSelfFieldwork && <>
                 <SettingsSectionHeader
                   title={PROFILE_FIELDWORK_LABEL}
-                  description="Individual scheduling opt-in · Default OFF · Management role preserved"
+                  description="Individual scheduling override · Management role preserved"
                   colors={colors}
                 />
                 <View style={[styles.fieldworkCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={styles.fieldworkHeading}>
                     <Text accessibilityLiveRegion="polite" style={[styles.assignmentTitle, { color: fieldworkStatus.status === "on" ? colors.success : colors.foreground }]}>
-                      {fieldworkStatus.status === "on" ? "ON · server TRUE" : fieldworkStatus.status === "off" ? "OFF · server verified" : "UNKNOWN · not verified"} · read-only
+                      {fieldworkPending ? "Saving and reconciling…" : fieldworkStatus.status === "on" ? "ON · server TRUE" : fieldworkStatus.status === "off" ? "OFF · server verified" : "UNKNOWN · not verified"}
                     </Text>
-                    {fieldworkLoading && <ActivityIndicator size="small" color={colors.primary} />}
+                    {(fieldworkLoading || fieldworkPending) && <ActivityIndicator size="small" color={colors.primary} />}
                   </View>
                   <Text style={[styles.assignmentText, { color: colors.muted }]}>{fieldworkStatus.reason}</Text>
                   {fieldworkError && <Text accessibilityLiveRegion="polite" style={[styles.assignmentText, { color: colors.error }]}>{fieldworkError}</Text>}
-                  <Text style={[styles.assignmentText, { color: colors.muted }]}>
-                    {jobSyncSession?.user.role === "owner" ? PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION : "Mobile cannot change your own Dispatcher/Admin override: the existing capability-only Team Member PATCH allows only a live signed owner to manage dispatcher targets. Company roster and detail reads still cannot verify full scheduling inclusion."}
-                  </Text>
+                  {fieldworkMessage && <Text accessibilityLiveRegion="polite" style={[styles.assignmentText, { color: colors.success }]}>{fieldworkMessage}</Text>}
+                  <Text style={[styles.assignmentText, { color: colors.muted }]}>{PROFILE_FIELDWORK_SELF_DESCRIPTION}</Text>
+                  <View style={styles.fieldworkHeading}>
+                    {[true, false].map((value) => <TouchableOpacity
+                      key={String(value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={value ? "Turn ON your field-job override" : "Turn OFF your field-job override"}
+                      onPress={() => { void handleOwnFieldwork(value); }}
+                      disabled={fieldworkPending || fieldworkLoading || !isFreshCompanyProfileSession(jobSyncSession, verifiedSelf, Date.now())}
+                      activeOpacity={0.8}
+                      style={[styles.outlineButton, { borderColor: colors.primary, opacity: fieldworkPending || fieldworkLoading || !verifiedSelf ? 0.65 : 1 }]}
+                    ><Text style={[styles.outlineButtonText, { color: colors.primary }]}>{value ? "ON" : "OFF"}</Text></TouchableOpacity>)}
+                  </View>
                   <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel="Retry signed field-job status"
                     onPress={() => { void refreshFieldworkStatus(); }}
-                    disabled={fieldworkLoading}
+                    disabled={fieldworkLoading || fieldworkPending}
                     activeOpacity={0.8}
-                    style={[styles.outlineButton, styles.fieldworkRetry, { borderColor: colors.primary, opacity: fieldworkLoading ? 0.65 : 1 }]}
+                    style={[styles.outlineButton, styles.fieldworkRetry, { borderColor: colors.primary, opacity: fieldworkLoading || fieldworkPending ? 0.65 : 1 }]}
                   >
                     <Text style={[styles.outlineButtonText, { color: colors.primary }]}>{fieldworkLoading ? "Checking server…" : "Retry status"}</Text>
                   </TouchableOpacity>

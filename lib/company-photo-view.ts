@@ -4,6 +4,7 @@ import type {
   JobSyncJobPhoto,
   JobSyncNativeSession,
 } from "./jobsync-mobile-api";
+import { positiveJobSyncId } from "./jobsync-mobile-api";
 
 /** Opaque, memory-only scope. Never use this token-bearing key in test IDs or logs. */
 export function companyPhotoScope(
@@ -62,4 +63,13 @@ export function sameCompanyPhoto(
   return photos.some(
     (current) => current.id === photo.id && current.imageUrl === photo.imageUrl,
   );
+}
+
+/** Derived from canonical signed inputs, NOT a server canDelete flag. Server always authorizes. */
+export function canDeleteCompanyPhoto(input: GalleryInput, photoId: number): boolean {
+  if (typeof photoId !== "number" || !positiveJobSyncId(photoId)) return false;
+  const photo = currentCompanyGallery(input)?.find((item) => item.id === photoId);
+  if (!photo || typeof photo.uploadedByUserId !== "number" || !positiveJobSyncId(photo.uploadedByUserId)) return false;
+  return input.session?.user.role === "owner" || input.session?.user.role === "dispatcher"
+    || (input.session?.user.role === "technician" && input.job.detail?.assignedUserId === input.session.user.id && photo.uploadedByUserId === input.session.user.id);
 }

@@ -430,11 +430,11 @@ describe("JobSync mobile API contract", () => {
     })).toEqual({ id: 9, name: "Lawn Sharks", timezone: "America/Chicago" });
   });
 
-  it("normalizes pinned-main lifecycle/photo DTO without inventing assignment or milestones", () => {
+  it("normalizes final-backend lifecycle/photo DTO without inventing assignment or milestones", () => {
     const detail = normalizeJobSyncCompanyJobDetail({ job: {
       id: 47, company_id: 9, assignedUserId: null, status: "on_site", updatedAt: "2026-11-14T18:00:00.000Z",
       enRouteAt: "2026-11-14T17:00:00.000Z", onSiteAt: "2026-11-14T17:20:00.000Z", completedAt: null,
-      photos: [{ id: 7, image_url: "https://unit.test/photo.jpg", caption: "Existing caption", uploadedByUserId: 41, created_at: "2026-11-14T17:22:00.000Z" }],
+      photos: [{ id: 7, imageUrl: "https://unit.test/photo.jpg", caption: "Existing caption", uploadedByUserId: 41, createdAt: "2026-11-14T17:22:00.000Z" }],
     } }, 47, 9);
     expect(detail?.assignedUserId).toBeNull();
     expect(detail?.completedAt).toBeNull();
@@ -445,7 +445,7 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, company_id: 10 } }, 47, 9)).toBeNull();
     expect(normalizeJobSyncCompanyJobDetail({ job: { id: 48, company_id: 9 } }, 47, 9)).toBeNull();
     expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, status: "draft", photos: [], photo_urls: '["https://unit.test/stale.jpg"]' } }, 47, 9)?.photos).toEqual([]);
-    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47 } }, 47, 9)?.status).toBe("unknown");
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, photos: [] } }, 47, 9)?.status).toBe("unknown");
   });
 
   it("uses preserved configured origin, bearer detail/status and exact canonical invoice body/publicUrl", async () => {
@@ -561,10 +561,10 @@ describe("JobSync mobile API contract", () => {
   it("resolves only trusted managed root-relative photo paths at the configured origin, preserving signed queries", () => {
     vi.stubEnv("EXPO_PUBLIC_JOBSYNC_API_BASE_URL", "https://jobwash-veysiubh.manus.space/");
     try {
-      const relative = "/api/storage/company-9/job-47/photo.jpg?token=a%2Bb%2Fc&expires=123&signature=AbC%3D";
+      const relative = "/manus-storage/companies/9/jobs/47/photos/photo.jpg?expires=123&signature=AbC%2B%2F%3D";
       const expected = `https://jobwash-veysiubh.manus.space${relative}`;
       expect(normalizeJobSyncPhotoUrl(relative)).toBe(expected);
-      const photos = normalizeJobSyncCompanyJobDetail({ job: { id: 47, company_id: 9, photos: [{ id: 1, image_url: relative }] } }, 47, 9)!.photos;
+      const photos = normalizeJobSyncCompanyJobDetail({ job: { id: 47, company_id: 9, photos: [{ id: 1, imageUrl: relative }] } }, 47, 9)!.photos;
       expect(photos[0].imageUrl).toBe(expected);
       const absolute = "https://cdn.example.com/photo.jpg?signature=AbC%2B123%3D";
       expect(normalizeJobSyncPhotoUrl(absolute)).toBe(absolute);

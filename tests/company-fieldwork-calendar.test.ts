@@ -67,10 +67,21 @@ describe("limited exact-self owner calendar composition", () => {
     expect(composeCompanyFieldworkCalendarMembers({ session: newTenant, roster, verifiedSelf: evidence, now: 101 })).toEqual([]);
     expect(composeCompanyFieldworkCalendarMembers({ session: newTenant, roster: { ...roster, company: { ...roster.company, id: 99 } }, verifiedSelf: evidence, now: 101 }).map((lane) => lane.id)).toEqual([20, 21]);
   });
-  it("does not grant a dispatcher lane from signed true; position validity remains unknown", () => {
+  it("grants only exact-self dispatcher candidate from signed true without claiming position/booking parity", () => {
     const dispatcher = { ...session, user: { ...session.user, id: 19, role: "dispatcher" } } as JobSyncNativeSession;
     const evidence = verifyCompanyProfileSession(dispatcher, { ...dispatcher, user: { ...dispatcher.user, calendarEligible: true } } as JobSyncNativeSession, 100);
-    expect(composeCompanyFieldworkCalendarMembers({ session: dispatcher, roster, verifiedSelf: evidence, now: 101 }).map((lane) => lane.id)).toEqual([20, 21]);
+    const result = composeCompanyFieldworkCalendarMembers({ session: dispatcher, roster, verifiedSelf: evidence, now: 101 });
+    expect(result.map((lane) => lane.id)).toEqual([19, 20, 21]);
+    expect(result[0]).toMatchObject({ employeeId: "jobsync-19", role: "dispatcher", fieldworkSource: "signed-self-dispatcher" });
+    for (const value of [false, null, undefined]) {
+      const verifiedSelf = verifyCompanyProfileSession(dispatcher, { ...dispatcher, user: { ...dispatcher.user, calendarEligible: value } }, 100);
+      expect(composeCompanyFieldworkCalendarMembers({ session: dispatcher, roster, verifiedSelf, now: 101 }).map((lane) => lane.id)).toEqual([20, 21]);
+    }
+    for (const self of [{ ...members[2], isActive: false }, { ...members[2], role: "technician" }, { ...members[2], role: "admin" }]) {
+      const rows = { ...roster, members: [self, members[3], members[4]] };
+      expect(composeCompanyFieldworkCalendarMembers({ session: dispatcher, roster: rows, verifiedSelf: evidence, now: 101 }).map((lane) => lane.id)).toEqual([20, 21]);
+    }
+    expect(composeCompanyFieldworkCalendarMembers({ session: dispatcher, roster, verifiedSelf: evidence, now: 60_100 }).map((lane) => lane.id)).toEqual([20, 21]);
   });
   it("does not mutate roster/session or silently reassign existing Jobs when opt-in turns OFF", () => {
     const assignedJob = { id: 1, assignedUserId: 17, assignedTo: "jobsync-17" };

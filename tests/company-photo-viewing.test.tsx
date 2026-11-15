@@ -25,6 +25,9 @@ const { createRoot } = createRequire(import.meta.url)("react-dom/client") as {
     unmount: () => void;
   };
 };
+const lifecycle = vi.hoisted(() => ({ focused: true, platform: { OS: "ios" } }));
+vi.mock("expo-router", () => ({ useIsFocused: () => lifecycle.focused }));
+vi.mock("expo-file-system/legacy", () => ({ getInfoAsync: vi.fn(), readAsStringAsync: vi.fn(), EncodingType: { Base64: "base64" } }));
 vi.mock("react-native", async () => {
   const R = await import("react");
   const native = (name: string) =>
@@ -62,6 +65,7 @@ vi.mock("react-native", async () => {
         ),
       ),
     StyleSheet: { create: (styles: unknown) => styles },
+    Platform: lifecycle.platform,
   };
 });
 // The actual draft component has its own 117 lifecycle/native-callback tests.
@@ -206,6 +210,8 @@ function deferred() {
 }
 
 beforeEach(() => {
+  lifecycle.focused = true;
+  lifecycle.platform.OS = "ios";
   const document = installPhotoTestDOM();
   container = document.createElement("main");
   document.body.appendChild(container);
@@ -462,13 +468,15 @@ describe("Company read-only photo component behavior (mocked RN, real React life
     );
     expect(nodes("native-image")).toHaveLength(0);
   });
-  it("passes exact signed Company Job scope to local drafts without exposing canonical upload/delete/video mutations", async () => {
+  it("passes exact signed Company Job scope and guarded upload to the one shared draft without legacy/video mutations", async () => {
     await render(gallery());
     const draft = nodes("native-local-draft");
     expect(draft).toHaveLength(1);
     expect(draft[0].nativeProps.session.company.id).toBe(9);
     expect(draft[0].nativeProps.jobId).toBe(12);
     expect(draft[0].nativeProps.job.detail.photos).toHaveLength(1);
+    expect(draft[0].nativeProps.onUpload).toBeTypeOf("function");
+    expect(button("Remove Job photo 1").nativeProps.disabled).toBe(false);
     expect(
       nodes("native-touch").some((node) =>
         /^(Upload|Delete|Video)/i.test(node.textContent),
@@ -514,7 +522,7 @@ describe("Company read-only photo component behavior (mocked RN, real React life
     expect(nodes("native-image")).toHaveLength(0);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it("shows an assigned Technician's server photos without enabling native mutations", async () => {
+  it("shows an assigned Technician's server photos with shared signed operation gating", async () => {
     const session = fixtureSession();
     session.user = { ...session.user, role: "technician" };
     await render(gallery({ session }));
@@ -539,5 +547,73 @@ describe("Company read-only photo component behavior (mocked RN, real React life
     expect(current.refresh).not.toHaveBeenCalled();
     expect(refreshedJob.refresh).not.toHaveBeenCalled();
     expect(nodes("native-image")).toHaveLength(1);
+  });
+});
+
+function removalServer(options: { ack?: unknown; remains?: boolean; failRead?: boolean } = {}) {
+  const fetch=vi.fn(); let removed=false;
+  fetch.mockImplementation(async (url:string, init:RequestInit) => {
+    const path=new URL(url).pathname;
+    if(path.endsWith("/auth/session")) return {ok:true,status:200,json:async()=>fixtureSession()};
+    if(init.method==="DELETE") { removed=true; return {ok:true,status:200,json:async()=>options.ack === undefined ? {success:true} : options.ack}; }
+    if(removed && options.failRead) throw new Error("fixture read failure");
+    return {ok:true,status:200,json:async()=>({job:detail(removed && !options.remains ? [] : [photo()])})};
+  });
+  vi.stubGlobal("fetch",fetch); return fetch;
+}
+describe("shared gallery removal confirmation and lifecycle", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("sends no deletion until explicit confirm tap, then requires exact ack and fresh absence", async () => {
+    const fetch=removalServer(); const current=job(); await render(gallery({job:current}));
+    await event(button("Remove Job photo 1"),"onPress");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Stored media erasure is not guaranteed");
+    const confirm=button("Confirm remove photo from Job");
+    await act(async()=>{ confirm.nativeProps.onPress(); confirm.nativeProps.onPress(); });
+    expect(fetch.mock.calls.filter(([,init])=>init.method==="DELETE")).toHaveLength(1);
+    expect(container.textContent).toContain("absence confirmed by fresh detail");
+    expect(nodes("native-image")).toHaveLength(0);
+    expect(current.detail!.photos).toHaveLength(1); // immutable caller snapshot, not optimistic splicing
+    const write=fetch.mock.calls.find(([,init])=>init.method==="DELETE")!;
+    expect(new URL(write[0]).pathname).toBe("/api/mobile/v1/jobs/12/photos/1");
+    expect(write[1].body).toBeUndefined();
+  });
+  it.each([{ack:{success:false}},{remains:true},{failRead:true}])("never claims successful removal on ack/readback failure %#", async options=>{
+    const fetch=removalServer(options); await render(gallery()); await event(button("Remove Job photo 1"),"onPress"); await event(button("Confirm remove photo from Job"),"onPress");
+    expect(fetch.mock.calls.filter(([,init])=>init.method==="DELETE")).toHaveLength(1);
+    expect(container.textContent).not.toContain("absence confirmed by fresh detail");
+    expect(container.textContent).toMatch(/unconfirmed|remains|confirmation failed/);
+    if(options.failRead) expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true);
+  });
+  it("cancel prevents stale confirm even when a previously captured callback is tapped", async()=>{
+    const fetch=removalServer(); await render(gallery()); await event(button("Remove Job photo 1"),"onPress"); const old=button("Confirm remove photo from Job"); await event(button("Cancel photo removal"),"onPress"); await event(old,"onPress"); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("web removal remains unavailable for documented backend DELETE CORS blocker", async()=>{
+    lifecycle.platform.OS="web"; const fetch=removalServer(); await render(gallery()); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true); await event(button("Remove Job photo 1"),"onPress"); expect(fetch).not.toHaveBeenCalled(); expect(container.textContent).toContain("does not allow DELETE in CORS");
+  });
+  it.each(["owner","dispatcher"] as const)("%s can remove other uploader photos with no assignment or opt-in", async role=>{
+    const session=fixtureSession(); session.user={...session.user,role,calendarEligible:false}; await render(gallery({session,job:job(detail([{...photo(),uploadedByUserId:43}],{assignedUserId:null}))})); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(false);
+  });
+  it("technician requires current assignment AND own canonical uploader, unknown uploader denies managers too", async()=>{
+    const session=fixtureSession(); session.user.role="technician"; await render(gallery({session,job:job(detail([{...photo(),uploadedByUserId:43}]))})); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true);
+    await render(gallery({job:job(detail([{...photo(),uploadedByUserId:null}]))})); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true);
+    await render(gallery({session,job:job(detail([photo()],{assignedUserId:43}))})); expect(nodes("native-image")).toHaveLength(0);
+  });
+  it.each(["Job","Company","token","user","role","blur","pending","reassignment","refresh"])("old confirmation cannot invoke DELETE after %s change and returning", async change=>{
+    const fetch=removalServer(); await render(gallery()); await event(button("Remove Job photo 1"),"onPress"); const old=button("Confirm remove photo from Job");
+    let session=fixtureSession(); let jobId=12; let current=job();
+    if(change==="Job") {jobId=13;current=job(detail([photo()],{id:13}));}
+    if(change==="Company") {session.company!.id=10;current=job(detail([photo()],{companyId:10}));}
+    if(change==="token") session.token="rotated";
+    if(change==="user") session.user.id=43;
+    if(change==="role") session.user.role="dispatcher";
+    if(change==="blur") lifecycle.focused=false;
+    if(change==="pending") current.pending=true;
+    if(change==="reassignment") {session.user.role="technician";current=job(detail([photo()],{assignedUserId:43}));}
+    if(change==="refresh") current={...current,loading:true,detail:null};
+    await render(gallery({session,jobId,job:current})); lifecycle.focused=true; await render(gallery()); await event(old,"onPress"); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("blur permanently clears existing preview and rejects its late native callback",async()=>{
+    const close=vi.fn(); await render(preview({onClose:close}));const image=nodes("native-image")[0]; lifecycle.focused=false; await render(preview({onClose:close})); await event(image,"onError"); expect(nodes("native-image")).toHaveLength(0);expect(close).toHaveBeenCalled();
   });
 });

@@ -2,7 +2,8 @@ import type { JobSyncCompanyMember, JobSyncNativeSession } from "./jobsync-mobil
 
 export const PROFILE_FIELDWORK_LABEL = "Available for Field Jobs";
 export const PROFILE_FIELDWORK_DESCRIPTION = "Allow this Team Member to receive scheduled Jobs while keeping their Admin permissions.";
-export const PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION = "Mobile cannot change this owner's field-job setting: the existing Team Member PATCH rejects every owner target, including your own account, with 403 ‘Company Owner Team Member access is protected.’ JobSync must allow a protected, capability-only owner update that preserves role, position, credentials and Company membership.";
+export const PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION = "Owner targets remain protected in Team Member management. An owner can change only their own individual override from Settings through the signed self-profile route; other owners cannot be edited here.";
+export const PROFILE_FIELDWORK_SELF_DESCRIPTION = "ON and OFF update only your individual field-job override. Your Admin permissions, role, position and Company membership stay unchanged. Candidate calendar lanes are not a guarantee of assignment or automatic booking.";
 export const PROFILE_FIELDWORK_PENDING_DESCRIPTION = "Admin defaults to OFF and keeps the Admin role. Current field-job availability is UNKNOWN because roster and member-detail reads do not reliably project the individual override. An acknowledged override update does not confirm calendar inclusion or automatic booking.";
 export const COMPANY_PROFILE_SESSION_MAX_AGE_MS = 60_000;
 
@@ -27,6 +28,11 @@ export function isCompanyProfileManagementSession(session: JobSyncNativeSession 
     && record(session.company) && isPositiveCompanyProfileId(session.company.id)
     && record(session.user) && isPositiveCompanyProfileId(session.user.id)
     && (session.user.role === "owner" || session.user.role === "dispatcher");
+}
+
+/** Separate self route: no target ID, never authority to edit another owner or dispatcher. */
+export function canUpdateCompanyOwnFieldwork(session: JobSyncNativeSession | null | undefined): boolean {
+  return isCompanyProfileManagementSession(session);
 }
 
 function isActiveMember(member: CompanyProfileMember | null | undefined): member is CompanyProfileMember {
@@ -140,7 +146,8 @@ export function getCompanySelfFieldworkStatus(
   if (user.calendarEligible === true) {
     return { status: "on", value: true, reason: "ON · The server confirms your individual override is TRUE. Your management role is unchanged. Calendar inclusion and automatic booking are not fully verified." };
   }
-  return { status: "off", value: false, reason: user.calendarEligible === false
-    ? "OFF · The server confirms your individual override is FALSE. Your management role is unchanged."
-    : "OFF · The server returned no individual override (NULL). Admin defaults to OFF; your management role is unchanged." };
+  if (user.calendarEligible === false) {
+    return { status: "off", value: false, reason: "OFF · The server confirms your individual override is FALSE. Your management role is unchanged. Existing Jobs are not unassigned." };
+  }
+  return { status: "unknown", value: null, reason: "UNKNOWN · The signed session returned no individual override (NULL). This is inheritance, not explicit OFF; effective scheduling eligibility is unverified." };
 }

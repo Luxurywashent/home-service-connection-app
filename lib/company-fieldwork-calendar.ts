@@ -3,13 +3,14 @@ import { getCompanySelfFieldworkStatus, isFreshCompanyProfileSession, isPositive
 
 export type CompanyFieldworkCalendarMember = JobSyncCompanyMember & {
   employeeId: `jobsync-${number}`;
-  fieldworkSource: "roster-technician" | "signed-self-owner";
+  fieldworkSource: "roster-technician" | "signed-self-owner" | "signed-self-dispatcher";
 };
 
 /**
  * Candidate lanes only, not assignments. Does not accept/mutate Jobs or invent identities.
  * Today's roster is position-only: never use it to infer any manager's individual opt-in.
- * The one exception is a fresh, verified signed owner matching an active exact roster row.
+ * The self-manager exception requires a fresh signed override and an active exact-role roster row.
+ * Dispatcher candidates do not prove active-position or automatic-booking eligibility.
  * Caller MUST clear prior lanes on focus/refresh, identity/opt-in change, failure, blur or expiry.
  */
 export function composeCompanyFieldworkCalendarMembers(input: {
@@ -24,25 +25,27 @@ export function composeCompanyFieldworkCalendarMembers(input: {
     || !["owner", "dispatcher", "technician"].includes(session.user.role)
     || !roster || roster.company?.id !== session.company.id || !Array.isArray(roster.members)) return [];
 
-  const allowSelfOwner = session.user.role === "owner"
+  const managementSelf = session.user.role === "owner" || session.user.role === "dispatcher";
+  const allowSelfManager = managementSelf
     && isFreshCompanyProfileSession(session, verifiedSelf, now)
-    && verifiedSelf.session.user.role === "owner"
+    && verifiedSelf.session.user.role === session.user.role
     && getCompanySelfFieldworkStatus(session, verifiedSelf, now).value === true;
 
-  // Ambiguous duplicated self rows cannot establish an exact known active owner.
+  // Ambiguous duplicated self rows cannot establish an exact known active manager.
   const selfRows = roster.members.filter((member) => member?.id === session.user.id);
-  const exactSelfOwner = allowSelfOwner && selfRows.length === 1
-    && selfRows[0].isActive === true && selfRows[0].role === "owner";
+  const exactSelfManager = allowSelfManager && selfRows.length === 1
+    && selfRows[0].isActive === true && selfRows[0].role === session.user.role;
   const seen = new Set<number>();
   return roster.members.flatMap((member): CompanyFieldworkCalendarMember[] => {
     if (!member || !isPositiveCompanyProfileId(member.id) || member.isActive !== true || typeof member.role !== "string"
       || typeof member.name !== "string" || !member.name.trim() || seen.has(member.id)) return [];
-    const owner = exactSelfOwner && member.id === session.user.id && member.role === "owner";
+    const self = exactSelfManager && member.id === session.user.id && member.role === session.user.role;
     // Preserve ordinary technician/legacy-detailer defaults as projected by the existing adapter.
-    if (!owner && !isJobSyncFieldSchedulingMember(member)) return [];
-    // An identity/role disagreement about the signed owner must not slip through the technician branch.
-    if (session.user.role === "owner" && member.id === session.user.id && !owner) return [];
+    if (!self && !isJobSyncFieldSchedulingMember(member)) return [];
+    // An identity/role disagreement about signed management self cannot slip through the technician branch.
+    if (managementSelf && member.id === session.user.id && !self) return [];
     seen.add(member.id);
-    return [{ ...member, employeeId: `jobsync-${member.id}`, fieldworkSource: owner ? "signed-self-owner" : "roster-technician" }];
+    return [{ ...member, employeeId: `jobsync-${member.id}`, fieldworkSource: self
+      ? session.user.role === "owner" ? "signed-self-owner" : "signed-self-dispatcher" : "roster-technician" }];
   });
 }

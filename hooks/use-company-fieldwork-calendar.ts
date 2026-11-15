@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsFocused } from "expo-router";
 import { getJobSyncCompanyMembers, type JobSyncCompanyRoster, type JobSyncNativeSession } from "@/lib/jobsync-mobile-api";
 import { composeCompanyFieldworkCalendarMembers } from "@/lib/company-fieldwork-calendar";
-import { COMPANY_PROFILE_SESSION_MAX_AGE_MS, type VerifiedCompanyProfileSession } from "@/lib/profile-fieldwork-policy";
+import { COMPANY_PROFILE_SESSION_MAX_AGE_MS, isCompanyProfileManagementSession, type VerifiedCompanyProfileSession } from "@/lib/profile-fieldwork-policy";
 import { refreshCompanyProfileSession } from "@/lib/profile-fieldwork-update";
 
 export function companyCalendarIdentityKey(session: JobSyncNativeSession | null) {
@@ -39,7 +39,7 @@ export function useCompanyFieldworkCalendar(session: JobSyncNativeSession | null
       try {
         const [roster, self] = await Promise.all([
           getJobSyncCompanyMembers(expected.token, expected.company.id),
-          expected.user.role === "owner" ? refreshCompanyProfileSession({ session: expected, isCurrent: current }).catch(() => null) : Promise.resolve(null),
+          isCompanyProfileManagementSession(expected) ? refreshCompanyProfileSession({ session: expected, isCurrent: current }).catch(() => null) : Promise.resolve(null),
         ]);
         if (!current()) return;
         setState({ key, roster, self, loading: false, error: null });
@@ -65,7 +65,7 @@ export function useCompanyFieldworkCalendar(session: JobSyncNativeSession | null
     try {
       const [roster, self] = await Promise.all([
         getJobSyncCompanyMembers(expected.token, expected.company.id),
-        expected.user.role === "owner" ? refreshCompanyProfileSession({ session: expected, isCurrent: current }) : Promise.resolve(null),
+        isCompanyProfileManagementSession(expected) ? refreshCompanyProfileSession({ session: expected, isCurrent: current }) : Promise.resolve(null),
       ]);
       if (!current()) return false;
       return composeCompanyFieldworkCalendarMembers({ session: expected, roster, verifiedSelf: self, now: Date.now() })

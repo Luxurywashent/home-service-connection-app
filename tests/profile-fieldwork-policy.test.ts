@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { JobSyncCompanyMember, JobSyncNativeSession } from "../lib/jobsync-mobile-api";
 import {
-  canEditCompanyMemberProfile, canUpdateCompanyMemberFieldwork, companyProfileSessionKey,
+  canEditCompanyMemberProfile, canUpdateCompanyMemberFieldwork, canUpdateCompanyOwnFieldwork, companyProfileSessionKey,
   getCompanyAdminFieldworkPolicy, getCompanySelfFieldworkStatus, isCompanyProfileManagementSession,
   isFreshCompanyProfileSession, verifyCompanyProfileSession, PROFILE_FIELDWORK_LABEL,
   PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION, COMPANY_PROFILE_SESSION_MAX_AGE_MS,
@@ -22,8 +22,18 @@ function live(value: unknown, present = true) {
 describe("strict Company profile fieldwork policy", () => {
   it("uses exact product label and truthful owner-target blocker", () => {
     expect(PROFILE_FIELDWORK_LABEL).toBe("Available for Field Jobs");
-    expect(PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION).toContain("rejects every owner target");
-    expect(PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION).toContain("403");
+    expect(PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION).toContain("Owner targets remain protected");
+    expect(PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION).toContain("only their own");
+  });
+  it("allows canonical owner/dispatcher only on the distinct self route, without expanding pair permissions", () => {
+    for (const role of ["owner", "dispatcher"] as const) {
+      const actor = session(role);
+      expect(canUpdateCompanyOwnFieldwork(actor)).toBe(true);
+      expect(canUpdateCompanyMemberFieldwork(actor, { ...member(role), id: actor.user.id }, 30001)).toBe(false);
+    }
+    for (const role of ["technician", "admin", "operations_manager", "developer"]) {
+      expect(canUpdateCompanyOwnFieldwork(session(role as never))).toBe(false);
+    }
   });
   it.each([
     ["owner", "owner", false], ["owner", "admin", false], ["owner", "dispatcher", true],
@@ -71,13 +81,13 @@ describe("strict Company profile fieldwork policy", () => {
     expect(getCompanyAdminFieldworkPolicy(session("dispatcher"), member("dispatcher"), 30001).canEdit).toBe(false);
     expect(getCompanyAdminFieldworkPolicy(session(), member("technician"), 30001).visible).toBe(false);
   });
-  it.each([[true, "on", true], [false, "off", false], [null, "off", false],
+  it.each([[true, "on", true], [false, "off", false], [null, "unknown", null],
     [undefined, "unknown", null], ["true", "unknown", null], [1, "unknown", null], [{}, "unknown", null]] as const)(
     "signed self raw %j produces %s rather than coercion", (value, status, expectedValue) => {
       const actor = session(); const verified = verifyCompanyProfileSession(actor, live(value), 100);
       expect(getCompanySelfFieldworkStatus(actor, verified, 101)).toMatchObject({ status, value: expectedValue });
     });
-  it("missing differs from false and explicit null/default OFF", () => {
+  it("missing, explicit false and NULL inheritance remain distinct", () => {
     const actor = session();
     const missing = getCompanySelfFieldworkStatus(actor, verifyCompanyProfileSession(actor, live(undefined, false), 100), 101);
     const off = getCompanySelfFieldworkStatus(actor, verifyCompanyProfileSession(actor, live(false), 100), 101);

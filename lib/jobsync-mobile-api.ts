@@ -94,6 +94,7 @@ const LOGIN_PATH = "/api/mobile/v1/auth/login";
 const SESSION_PATH = "/api/mobile/v1/auth/session";
 const ACCOUNT_PATH = "/api/mobile/v1/auth/account";
 const COMPANY_JOBS_PATH = "/api/mobile/v1/company/jobs";
+const COMPANY_PROFILE_PATH = "/api/mobile/v1/company/profile";
 const COMPANY_TEAM_MEMBERS_PATH = "/api/mobile/v1/company/team-members";
 const COMPANY_SETTINGS_PATH = "/api/mobile/v1/company/settings";
 const TIME_CURRENT_PATH = "/api/mobile/v1/time/current";
@@ -195,7 +196,7 @@ export class JobSyncApiError extends Error {
   }
 }
 
-async function requestJson(path: string, init: RequestInit) {
+async function requestJson(path: string, init: RequestInit, expectedSuccessStatus?: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
@@ -215,6 +216,9 @@ async function requestJson(path: string, init: RequestInit) {
     if (!response.ok) {
       const error = asRecord(asRecord(payload)?.error);
       throw new JobSyncApiError(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "Home Service Connected could not complete this request."), response.status, firstString(error?.code));
+    }
+    if (expectedSuccessStatus !== undefined && response.status !== expectedSuccessStatus) {
+      throw new JobSyncApiError("The backend returned an unexpected acknowledgment. Refresh before trying again.", response.status, "INVALID_RESPONSE");
     }
     return payload;
   } catch (error) {
@@ -414,25 +418,45 @@ export type JobSyncJobPhoto = {
   uploadedByUserId: number | null;
   createdAt: string | null;
 };
+export type JobSyncJobPhotoUploadInput = {
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  base64: string;
+  caption?: string;
+};
+export type JobSyncJobPhotoUploadResponse = {
+  photo: {
+    id: number;
+    imageUrl: string;
+    caption: string | null;
+    uploadedByUserId: number;
+  };
+};
 export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
   companyId: number | null;
   enRouteAt: string | null;
   onSiteAt: string | null;
   completedAt: string | null;
   photos: JobSyncJobPhoto[];
+  /** Complete IDs from the verified wire gallery, including photos whose URL cannot render. */
+  persistedPhotoIds?: number[];
 };
 
 function serverInstant(value: unknown): string | null {
   return typeof value === "string" && value.trim() && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
-/** Only managed root-relative storage paths may inherit the configured API origin. */
+// /manus-storage/ is verified at backend 16a57f2e; /api/storage/ remains legacy compatibility only.
+const PHOTO_STORAGE_PREFIXES = ["/manus-storage/", "/api/storage/"];
+
+/** Only these managed root-relative storage paths may inherit the configured API origin. */
 export function normalizeJobSyncPhotoUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value || /[\u0000-\u0020\u007f\\]/.test(value) || /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
   try {
     const absoluteHttps = /^https:\/\//i.test(value);
-    if (!absoluteHttps && (!value.startsWith("/api/storage/") || value.startsWith("//"))) return null;
+    const storagePrefix = PHOTO_STORAGE_PREFIXES.find((prefix) => value.startsWith(prefix));
+    if (!absoluteHttps && (!storagePrefix || value.startsWith("//"))) return null;
     const rawPath = absoluteHttps ? value.match(/^https:\/\/[^/?#]+([^?#]*)/i)?.[1] ?? "" : value.split(/[?#]/, 1)[0];
+    if (!absoluteHttps && /%(?![0-9a-f]{2})/i.test(rawPath)) return null;
     let decoded = rawPath;
     // Inspect nested escapes before URL parsing can silently normalize traversal.
     for (let pass = 0; pass < 8; pass++) {
@@ -447,33 +471,47 @@ export function normalizeJobSyncPhotoUrl(value: unknown): string | null {
       const absolute = new URL(value);
       return absolute.protocol === "https:" && absolute.hostname && !absolute.username && !absolute.password ? value : null;
     }
-    if (!decoded.startsWith("/api/storage/") || decoded.slice("/api/storage/".length).length === 0
+    if (!storagePrefix || !decoded.startsWith(storagePrefix) || decoded.slice(storagePrefix.length).length === 0
       || decoded.split("/").slice(1).some((segment) => !segment)) return null;
     const base = new URL(getJobSyncBaseUrl());
     const resolved = new URL(value, base);
-    return base.protocol === "https:" && resolved.origin === base.origin && resolved.pathname.startsWith("/api/storage/") ? resolved.href : null;
+    // Concatenating the validated origin keeps the signed path/query byte-for-byte.
+    return base.protocol === "https:" && !base.username && !base.password && resolved.origin === base.origin
+      && resolved.pathname.startsWith(storagePrefix) ? `${base.origin}${value}` : null;
   } catch { return null; }
 }
 
-/** Main 50bc548: photos use image_url/created_at plus uploadedByUserId. No photo mutation route exists. */
+/** Backend 16a57f2e uses canonical imageUrl/createdAt; old snake_case fields are compatibility only. */
 export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
   const row = asRecord(asRecord(payload)?.job);
   const job = normalizeJobSyncMobileJob(row);
   const returnedCompanyId = positiveJobSyncId(row?.companyId ?? row?.company_id);
   const rawCompanyId = row?.companyId ?? row?.company_id;
   if (!positiveJobSyncId(companyId) || !row || !job || job.id !== jobId || (rawCompanyId !== undefined && returnedCompanyId !== companyId)) return null;
+  // Missing/malformed wire galleries cannot establish absence of a persisted photo.
+  if (!Array.isArray(row.photos)) return null;
+  const persistedPhotoIds: number[] = [];
+  const seenPhotoIds = new Set<number>();
+  for (const value of row.photos) {
+    const photo = asRecord(value);
+    const id = positiveJobSyncId(photo?.id);
+    if (!photo || !id || seenPhotoIds.has(id)) return null;
+    seenPhotoIds.add(id);
+    persistedPhotoIds.push(id);
+  }
   return {
     ...job,
     companyId,
     enRouteAt: serverInstant(row.enRouteAt),
     onSiteAt: serverInstant(row.onSiteAt),
     completedAt: serverInstant(row.completedAt),
-    photos: (Array.isArray(row.photos) ? row.photos : []).flatMap((value) => {
+    persistedPhotoIds,
+    photos: row.photos.flatMap((value) => {
       const photo = asRecord(value);
       const id = positiveJobSyncId(photo?.id);
-      const imageUrl = normalizeJobSyncPhotoUrl(photo?.image_url);
+      const imageUrl = normalizeJobSyncPhotoUrl(photo?.imageUrl !== undefined ? photo.imageUrl : photo?.image_url);
       if (!id || !imageUrl) return [];
-      return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.created_at) }];
+      return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.createdAt !== undefined ? photo.createdAt : photo?.created_at) }];
     }),
   };
 }
@@ -486,6 +524,97 @@ export async function getJobSyncCompanyJobDetail(token: string, jobId: number, c
   }), jobId, companyId);
   if (!detail) throw new JobSyncApiError("Could not verify this Company's Job detail. Refresh the schedule.", null, "INVALID_RESPONSE");
   return detail;
+}
+
+function requireJobSyncMutationToken(token: string) {
+  if (typeof token !== "string" || !token.trim() || /[\u0000-\u0020\u007f]/.test(token)) {
+    throw new Error("A current Company session is required.");
+  }
+}
+
+/** Validate actual encoded file bytes without Buffer/atob dependencies in native bundles. */
+function validateJobSyncPhotoUpload(input: JobSyncJobPhotoUploadInput) {
+  if (!asRecord(input) || !["image/jpeg", "image/png", "image/webp"].includes(input.contentType)) {
+    throw new Error("Choose a JPEG, PNG, or WebP still image.");
+  }
+  if (typeof input.caption !== "undefined" && (typeof input.caption !== "string" || input.caption.trim().length > 1000)) {
+    throw new Error("Job photo captions must be 1,000 characters or fewer.");
+  }
+  if (typeof input.base64 !== "string" || input.base64.length < 16 || input.base64.length > 21_000_000) {
+    throw new Error("The selected Job photo could not be read as base64.");
+  }
+  // Accept raw base64 or a truthful matching data URI, never an arbitrary/mislabeled prefix.
+  const prefix = `data:${input.contentType};base64,`;
+  const payload = input.base64.startsWith(prefix) ? input.base64.slice(prefix.length) : input.base64;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload)) {
+    throw new Error("The selected Job photo could not be read as base64.");
+  }
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  const encodedLength = payload.length - padding;
+  if (encodedLength % 4 === 1 || (padding > 0 && (payload.length % 4 !== 0 || encodedLength % 4 !== 4 - padding))) {
+    throw new Error("The selected Job photo could not be read as base64.");
+  }
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const last = alphabet.indexOf(payload[encodedLength - 1]);
+  if ((encodedLength % 4 === 2 && (last & 15) !== 0) || (encodedLength % 4 === 3 && (last & 3) !== 0)) {
+    throw new Error("The selected Job photo could not be read as base64.");
+  }
+  const byteLength = Math.floor(encodedLength * 3 / 4);
+  if (byteLength > 15 * 1024 * 1024) throw new Error("Job photos must be 15 MiB or smaller.");
+  const bytes: number[] = [];
+  let bits = 0;
+  let accumulator = 0;
+  for (let index = 0; index < Math.min(encodedLength, 16); index++) {
+    accumulator = (accumulator << 6) | alphabet.indexOf(payload[index]);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((accumulator >> bits) & 255);
+      accumulator &= (1 << bits) - 1;
+    }
+  }
+  const matches = input.contentType === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+    : input.contentType === "image/png" ? [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte)
+    : [82, 73, 70, 70].every((byte, index) => bytes[index] === byte) && [87, 69, 66, 80].every((byte, index) => bytes[index + 8] === byte);
+  if (!matches) throw new Error("The selected Job photo bytes do not match its JPEG, PNG, or WebP type.");
+}
+
+/** One POST only: ambiguous failures require canonical Job refresh, never blind mutation retry. */
+export async function uploadJobSyncCompanyJobPhoto(
+  token: string,
+  jobId: number,
+  input: JobSyncJobPhotoUploadInput,
+): Promise<JobSyncJobPhotoUploadResponse> {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  validateJobSyncPhotoUpload(input);
+  const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/photos`, {
+    method: "POST", headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ contentType: input.contentType, base64: input.base64, ...(input.caption !== undefined ? { caption: input.caption } : {}) }),
+  }, 201));
+  const photo = asRecord(result?.photo);
+  const imageUrl = normalizeJobSyncPhotoUrl(photo?.imageUrl);
+  const expectedCaption = input.caption?.trim() || null;
+  if (!photo || typeof photo.id !== "number" || !positiveJobSyncId(photo.id)
+    || typeof photo.uploadedByUserId !== "number" || !positiveJobSyncId(photo.uploadedByUserId)
+    || !imageUrl || photo.caption !== expectedCaption) {
+    throw new JobSyncApiError("The backend did not acknowledge this Job photo. Refresh the Job before trying again.", null, "INVALID_RESPONSE");
+  }
+  return { photo: { id: photo.id, imageUrl, caption: expectedCaption, uploadedByUserId: photo.uploadedByUserId } };
+}
+
+/** Removes a persisted photo from the Job, not a guarantee of physical media erasure. */
+export async function deleteJobSyncCompanyJobPhoto(token: string, jobId: number, photoId: number): Promise<{ success: true }> {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  if (!Number.isSafeInteger(photoId) || photoId <= 0) throw new Error("A valid persisted Job photo identifier is required.");
+  const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/photos/${photoId}`, {
+    method: "DELETE", headers: createJobSyncBearerHeaders(token),
+  }, 200));
+  if (result?.success !== true) {
+    throw new JobSyncApiError("The backend did not acknowledge Job photo removal. Refresh the Job before trying again.", null, "INVALID_RESPONSE");
+  }
+  return { success: true };
 }
 
 export async function updateJobSyncCompanyJobStatus(token: string, jobId: number, input: { status: JobSyncFieldStatus; expectedUpdatedAt?: string | null }) {
@@ -669,6 +798,18 @@ export async function getJobSyncMobileSession(token: string) {
   const session = normalizeJobSyncMobileSession(payload, token);
   if (!session) throw new Error("Home Service Connected returned an unsupported mobile session profile.");
   return session;
+}
+
+/** Returns the raw self profile so the caller can validate exact identity, role, and Boolean acknowledgment. */
+export async function updateJobSyncCompanyOwnFieldwork(token: string, input: { calendarEligibleOverride: boolean }): Promise<unknown> {
+  requireJobSyncMutationToken(token);
+  if (!asRecord(input) || typeof input.calendarEligibleOverride !== "boolean") {
+    throw new Error("An explicit Boolean field-scheduling override is required.");
+  }
+  return requestJson(COMPANY_PROFILE_PATH, {
+    method: "PATCH", headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ calendarEligibleOverride: input.calendarEligibleOverride }),
+  }, 200);
 }
 
 /** Disables only the authenticated Company Team Member's own mobile account. */
