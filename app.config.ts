@@ -71,10 +71,12 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
-    // This Android release supports location only while the app is active.
+    // This Android release supports location and media only while the app is active.
     blockedPermissions: [
       "android.permission.ACCESS_BACKGROUND_LOCATION",
       "android.permission.FOREGROUND_SERVICE_LOCATION",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+      "android.permission.FOREGROUND_SERVICE",
     ],
     intentFilters: [
       {
@@ -96,6 +98,9 @@ const config: ExpoConfig = {
     favicon: "./assets/images/favicon.png",
   },
   plugins: [
+    // Manifest mods execute in reverse registration order: register cleanup first
+    // so it strips expo-audio/video additions last without changing iOS options.
+    "./plugins/with-android-foreground-media",
     "expo-router",
     [
       "react-native-maps",
