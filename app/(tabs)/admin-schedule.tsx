@@ -49,7 +49,13 @@ import {
   isJobSyncFieldSchedulingMember,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
+  positiveJobSyncId,
+  sendJobSyncCompanyJobInvoice,
 } from "@/lib/jobsync-mobile-api";
+import { useCompanyJob } from "@/hooks/use-company-job";
+import { CompanyJobProgress } from "@/components/company-job-progress";
+import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
+import { companyJobDisplayFields, companyJobMilestoneFields } from "@/lib/company-job-fieldwork";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
@@ -224,6 +230,10 @@ interface AdditionalVehicle {
 
 interface Job {
   id: string;
+  companyId?: number;
+  assignedUserId?: number | null;
+  updatedAt?: string | null;
+  _rawStatus?: string;
   customerId?: string;
   firstName: string;
   lastName: string;
@@ -1477,6 +1487,7 @@ export default function AdminScheduleScreen() {
   const [invoiceMethod, setInvoiceMethod] = useState<"email" | "sms">("email");
   const [invoiceSending, setInvoiceSending] = useState(false);
   const [invoiceSentUrl, setInvoiceSentUrl] = useState<string | null>(null);
+  const [companyInvoiceStatus, setCompanyInvoiceStatus] = useState<string | null>(null);
   const [invoiceRemainingOnly, setInvoiceRemainingOnly] = useState(false);
   const [invoiceOverrideContact, setInvoiceOverrideContact] = useState<string>("");
   const [sendingJobReceipt, setSendingJobReceipt] = useState(false);
@@ -1486,6 +1497,40 @@ export default function AdminScheduleScreen() {
   const [adminEditingNotes, setAdminEditingNotes] = useState(false);
   const [adminTagInput, setAdminTagInput] = useState("");
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
+  const companyJobMode = isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
+  const companyJob = useCompanyJob(jobSyncSession,
+    selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null,
+    (serverJobs) => {
+      const current = new Map(serverJobs.map((job) => [String(job.id), job]));
+      setJobs((previous) => previous.flatMap((job) => {
+        const fresh = current.get(job.id);
+        return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
+      }));
+    });
+  const invoiceSessionRef = useRef({ token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id });
+  invoiceSessionRef.current = { token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id };
+  const invoiceLockRef = useRef(false);
+  useEffect(() => {
+    setSelectedJob(null);
+    setCompanyPhotoPreview(null);
+    setAdminPhotoPreview(null);
+    setInvoiceSentUrl(null);
+    setCompanyTimezone(null);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
+  useEffect(() => {
+    setCompanyPhotoPreview(null);
+    setAdminPhotoPreview(null);
+    setInvoiceSentUrl(null);
+  }, [selectedJob?.id]);
+  useEffect(() => {
+    const detail = companyJob.detail;
+    if (!detail) return;
+    const fields = companyJobMilestoneFields(detail);
+    setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
+    setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
+  }, [companyJob.detail]);
   const [adminEditingTax, setAdminEditingTax] = useState(false);
   const [adminTaxInput, setAdminTaxInput] = useState("");
   const [adminEditingDiscount, setAdminEditingDiscount] = useState(false);
@@ -1676,10 +1721,12 @@ export default function AdminScheduleScreen() {
 
   // Live-refresh photo URLs from the server whenever a job detail panel is opened
   useEffect(() => {
-    if (!selectedJob) return;
+    if (!selectedJob || companyJobMode) return;
+    let cancelled = false;
     const jobId = selectedJob.id;
     utils.jobs.getPhotos.fetch({ jobId })
       .then(({ urls }) => {
+        if (cancelled) return;
         if (!urls || urls.length === 0) return;
         setSelectedJob((prev) => {
           if (!prev || prev.id !== jobId) return prev;
@@ -1692,7 +1739,8 @@ export default function AdminScheduleScreen() {
         setJobs((prev) => prev.map((j) => j.id === jobId ? { ...j, photoUrls: urls } : j));
       })
       .catch(() => { /* ignore — offline or job not found */ });
-  }, [selectedJob?.id]);
+    return () => { cancelled = true; };
+  }, [selectedJob?.id, companyJobMode]);
 
   // Per-employee storage key: prevents cross-user cache leakage
   const STORAGE_KEY = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
@@ -1765,9 +1813,11 @@ export default function AdminScheduleScreen() {
         try {
           const [serverJobs, companySettings] = await Promise.all([
             getJobSyncCompanyJobs(token),
-            getJobSyncCompanySettings(token).catch(() => ({ timezone: "America/Chicago" })),
+            getJobSyncCompanySettings(token),
           ]);
+          if (cancelled) return;
           const companyTimezone = companySettings.timezone;
+          setCompanyTimezone(companyTimezone);
           const mappedJobs = serverJobs.flatMap((job) => {
             if (job.status === "cancelled") return [];
             const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
@@ -1783,6 +1833,9 @@ export default function AdminScheduleScreen() {
                   : "scheduled";
             return [{
               id: String(job.id),
+              companyId: jobSyncSession.company?.id,
+              assignedUserId: job.assignedUserId,
+              updatedAt: job.updatedAt,
               customerId: String(job.customerId),
               // A Company calendar has one authenticated workspace, not legacy city partitions.
               location: selectedCity,
@@ -1807,7 +1860,7 @@ export default function AdminScheduleScreen() {
               _rawStatus: job.status,
               detailerName: job.assignedName || undefined,
               assignedTo: job.assignedUserId ? `jobsync-${job.assignedUserId}` : undefined,
-              createdAt: job.updatedAt || job.scheduledStartAt || new Date().toISOString(),
+              createdAt: job.updatedAt || job.scheduledStartAt || "",
               tags: [],
               taxAmount: 0,
               discountAmount: 0,
@@ -3576,6 +3629,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Job Progress Card ── */}
                 {(() => {
+                  if (companyJobMode) return <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} />;
                   const steps: { key: JobStatus; label: string; emoji: string; ts?: string | null }[] = [
                     { key: "scheduled", label: "Scheduled", emoji: "📅", ts: selectedJob.createdAt },
                     { key: "on_my_way", label: "On My Way", emoji: "🚚", ts: selectedJob.onMyWayAt },
@@ -3817,6 +3871,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Job Photos Card ── */}
                 {(() => {
+                  if (companyJobMode) return <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} />;
                   const photos = selectedJob.photoUrls ?? [];
                   if (photos.length === 0) return null;
                   return (
@@ -4804,9 +4859,9 @@ export default function AdminScheduleScreen() {
               {invoiceSentUrl ? (
                 <View style={{ alignItems: "center", paddingVertical: 24, gap: 12 }}>
                   <Text style={{ fontSize: 48 }}>✅</Text>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Invoice Sent!</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>{companyJobMode && companyInvoiceStatus !== "sent" ? "Invoice request acknowledged" : "Invoice Sent!"}</Text>
                   <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center" }}>
-                    The customer will receive a secure payment link to pay online.
+                    {companyJobMode ? `Backend delivery status: ${companyInvoiceStatus ?? "unknown"}. The secure invoice link was returned by the Company backend.` : "The customer will receive a secure payment link to pay online."}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setShowInvoiceSheet(false)}
@@ -4879,7 +4934,7 @@ export default function AdminScheduleScreen() {
                   </View>
 
                   {/* Contact info — editable */}
-                  <View style={{ marginBottom: 20 }}>
+                  {companyJobMode ? <Text style={{ color: colors.muted, marginBottom: 20 }}>The Company backend selects the customer contact, invoice amount and remaining balance. Mobile contact/amount overrides are unavailable.</Text> : <View style={{ marginBottom: 20 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
                       {invoiceMethod === "email" ? "Send to Email" : "Send to Phone"}
                     </Text>
@@ -4901,11 +4956,38 @@ export default function AdminScheduleScreen() {
                       </TouchableOpacity>
                     </View>
                     <Text style={{ color: colors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer's {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
-                  </View>
+                  </View>}
 
                   {/* Send button */}
                     <TouchableOpacity
                     onPress={async () => {
+                      if (invoiceLockRef.current) return;
+                      if (companyJobMode) {
+                        const token = jobSyncSession?.token;
+                        const jobId = positiveJobSyncId(selectedJob.id);
+                        if (!isJobSyncCompany || !token || !jobId || selectedJob.companyId !== jobSyncSession?.company?.id) {
+                          Alert.alert("Send Failed", "A current signed Company Job session is required.");
+                          return;
+                        }
+                        const identity = invoiceSessionRef.current;
+                        const isCurrent = () => invoiceSessionRef.current.token === identity.token && invoiceSessionRef.current.companyId === identity.companyId && invoiceSessionRef.current.jobId === identity.jobId;
+                        invoiceLockRef.current = true;
+                        setInvoiceSending(true);
+                        setInvoiceSentUrl(null);
+                        try {
+                          const data = await sendJobSyncCompanyJobInvoice(token, jobId, { method: invoiceMethod });
+                          if (isCurrent()) {
+                            setCompanyInvoiceStatus(typeof data.status === "string" ? data.status : null);
+                            setInvoiceSentUrl(data.publicUrl);
+                          }
+                        } catch (err: any) {
+                          if (isCurrent()) Alert.alert("Send Failed", err.message ?? "Could not send the Company invoice. Review delivery before retrying.");
+                        } finally {
+                          invoiceLockRef.current = false;
+                          setInvoiceSending(false);
+                        }
+                        return; // Never fall back to copied legacy invoice transport.
+                      }
                       setInvoiceSending(true);
                       try {
                         const resp = await fetch(`${APP_API_BASE}/api/invoice/send`, {
@@ -4946,7 +5028,7 @@ export default function AdminScheduleScreen() {
         )}
 
         {/* Photo Preview overlay — full-screen tap-to-close */}
-        {adminPhotoPreview ? (
+        {!companyJobMode && adminPhotoPreview ? (
           <TouchableOpacity
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.93)", alignItems: "center", justifyContent: "center" }}
             onPress={() => setAdminPhotoPreview(null)}
@@ -4990,6 +5072,7 @@ export default function AdminScheduleScreen() {
             }}
           />
         )}
+        <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
       </Modal>
 
       {/* Add Job Modal */}

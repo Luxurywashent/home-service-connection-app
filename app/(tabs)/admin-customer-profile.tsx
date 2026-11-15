@@ -20,6 +20,11 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { AddJobModal } from "@/components/add-job-modal";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { useCompanyJob } from "@/hooks/use-company-job";
+import { positiveJobSyncId } from "@/lib/jobsync-mobile-api";
+import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
+import { JOB_VIDEOS_ENABLED } from "@/lib/company-job-fieldwork";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtCurrency(val: number | string | null | undefined): string {
@@ -82,6 +87,14 @@ export default function AdminCustomerProfileScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
   const [showAddJobModal, setShowAddJobModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const companyJobMode = jobSyncLoading || jobSyncSession !== null || selectedJob?.companyId !== undefined;
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  // This legacy customer-history reader does not establish a canonical Company Job ID.
+  // Only explicit Company DTO provenance may select a bearer gallery; never guess from a legacy numeric ID.
+  const companyJob = useCompanyJob(jobSyncSession,
+    selectedJob?.companyId === jobSyncSession?.company?.id && selectedJob?.companyId !== undefined ? positiveJobSyncId(selectedJob?.id) : null);
+  useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id, selectedJob?.jobId, jobSyncSession?.token, jobSyncSession?.company?.id]);
   const [noteText, setNoteText] = useState("");
   const [localNotes, setLocalNotes] = useState<{ id: string; text: string; createdAt: string }[]>([]);
   const [newEstVehYear, setNewEstVehYear] = useState("");
@@ -588,10 +601,12 @@ export default function AdminCustomerProfileScreen() {
   // ── Live-refresh photos from server whenever a job detail modal is opened ──
   const utils = trpc.useUtils();
   useEffect(() => {
-    if (!selectedJob?.jobId) return;
+    if (companyJobMode || !selectedJob?.jobId) return;
+    let cancelled = false;
     const jobId = selectedJob.jobId;
     utils.jobs.getPhotos.fetch({ jobId })
       .then(({ urls }) => {
+        if (cancelled) return;
         if (!urls || urls.length === 0) return;
         setSelectedJob((prev: any) => {
           if (!prev || prev.jobId !== jobId) return prev;
@@ -599,7 +614,8 @@ export default function AdminCustomerProfileScreen() {
         });
       })
       .catch(() => { /* offline or job not found — keep cached data */ });
-  }, [selectedJob?.jobId]);
+    return () => { cancelled = true; };
+  }, [selectedJob?.jobId, companyJobMode]);
 
   // ── Admin Add Card on File ──
   const [showAdminAddCardModal, setShowAdminAddCardModal] = useState(false);
@@ -1568,6 +1584,7 @@ export default function AdminCustomerProfileScreen() {
 
               {/* Photos — always fetch fresh from server when job opens */}
               {(() => {
+                if (companyJobMode) return <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} />;
                 let photos: string[] = [];
                 try {
                   const raw = selectedJob?.photoUrls;
@@ -1596,7 +1613,7 @@ export default function AdminCustomerProfileScreen() {
               })()}
 
               {/* Videos */}
-              {(() => {
+              {JOB_VIDEOS_ENABLED && (() => {
                 try {
                   const videos = selectedJob?.videoUrls ? JSON.parse(selectedJob.videoUrls) : [];
                   if (videos.length > 0) return (
@@ -1690,6 +1707,7 @@ export default function AdminCustomerProfileScreen() {
                 <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>🔄 Rebook</Text>
               </TouchableOpacity>
             </View>
+            <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
           </View>
         </View>
       </Modal>

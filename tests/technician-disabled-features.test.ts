@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getNativeEmployeeSession, type JobSyncCompanySession } from "../lib/jobsync-role-map";
-import { isTechnicianFeatureDisabled, isTechnicianRole, TECHNICIAN_DISABLED_ROUTES } from "../lib/technician-features";
+import { isMobileFeatureDisabled, isTechnicianFeatureDisabled, isTechnicianRole, TECHNICIAN_DISABLED_ROUTES } from "../lib/technician-features";
 
 function source(relativePath: string) {
   return readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -13,6 +13,7 @@ const features = [
   { label: "Repairs", route: "/repair-request", screen: "repair-request" },
   { label: "Door Hangers", route: "/door-hangers", screen: "door-hangers" },
   { label: "EOD Check", route: "/eod-checklist", screen: "eod-checklist" },
+  { label: "Expenses", route: "/expenses", screen: "expenses" },
 ];
 
 function menuItems(name: string) {
@@ -56,53 +57,55 @@ describe("technician-disabled features", () => {
     }
   });
 
-  it("covers alternate admin/ops entry points and training modules/quiz deep links", () => {
-    for (const route of TECHNICIAN_DISABLED_ROUTES) {
-      expect(isTechnicianFeatureDisabled("detailer", route)).toBe(true);
+  it("retains every prior exclusion and closes grouped sibling paths", () => {
+    const prior = ["/notifications", "/training", "/repair-request", "/door-hangers", "/eod-checklist", "/admin-alerts", "/admin-training", "/admin-repair-equipment", "/admin-repair-history", "/admin-door-hangers", "/ops-door-hangers", "/admin-eod-review"];
+    for (const route of prior) {
+      expect(TECHNICIAN_DISABLED_ROUTES).toContain(route);
       expect(isTechnicianFeatureDisabled("detailer", `/(tabs)${route}/42`)).toBe(true);
     }
-    expect(isTechnicianFeatureDisabled("detailer", "/training/van")).toBe(true);
-    expect(isTechnicianFeatureDisabled("detailer", "/training/quiz/module-42")).toBe(true);
-    // Sales uses a separate group, but a technician cannot bypass the policy using that group's href.
-    expect(isTechnicianFeatureDisabled("detailer", "/(sales)/notifications")).toBe(true);
-    expect(isTechnicianFeatureDisabled("sales", "/(sales)/notifications")).toBe(false);
+    for (const route of ["/training/van", "/training/quiz/module-42", "/(sales)/notifications", "/(sales)/door-hangers", "/(sales)/training"]) {
+      expect(isTechnicianFeatureDisabled("detailer", route)).toBe(true);
+      expect(isTechnicianFeatureDisabled("sales", route)).toBe(false);
+    }
   });
 
   it("leaves ordinary technician work routes and similarly named unrelated routes available", () => {
-    for (const route of ["/", "/schedule", "/chat", "/expenses", "/timesheet", "/profile", "/history", "/request-off", "/detailer-referral", "/training-notes", "/notifications-settings", "/repair-requested"]) {
-      expect(isTechnicianFeatureDisabled("detailer", route)).toBe(false);
+    for (const route of ["/", "/schedule", "/chat", "/timesheet", "/profile", "/history", "/request-off", "/detailer-referral", "/training-notes", "/notifications-settings", "/repair-requested", "/expenses-help"]) {
+      expect(isMobileFeatureDisabled("detailer", route)).toBe(false);
     }
   });
 
-  it("filters all five entries from the technician top nav and keeps ordinary links", () => {
+  it("filters all six entries from technician navigation and protects retained callbacks", () => {
     const menu = source("components/ui/top-nav-menu.tsx");
-    expect(menu).toMatch(/const visibleItems = allItems\.filter\([\s\S]*?isTechnicianFeatureDisabled\(currentEmployee\?\.role, item\.route\)/);
+    expect(menu).toContain("(item) => isReady && !isMobileFeatureDisabled(currentRole, item.route)");
     expect(menu).toContain("{visibleItems.map((item) => {");
     expect(menu).toContain("const currentPage = visibleItems.find");
-    expect(menu).toContain("if (isTechnicianFeatureDisabled(currentEmployee?.role, route)) return;");
-    const visible = menuItems("DETAILER_ITEMS").filter((item) => !isTechnicianFeatureDisabled("detailer", item.route));
-    expect(visible.map((item) => item.label)).toEqual(["Home", "Schedule", "Team Chat", "Expenses", "Timesheet", "Settings"]);
+    expect(menu).toContain("if (!latest.isReady || isMobileFeatureDisabled(latest.currentRole, route)) return;");
+    const visible = menuItems("DETAILER_ITEMS").filter((item) => !isMobileFeatureDisabled("detailer", item.route));
+    expect(visible.map((item) => item.label)).toEqual(["Home", "Schedule", "Team Chat", "Timesheet", "Settings"]);
     for (const { label } of features) expect(visible.map((item) => item.label)).not.toContain(label);
   });
 
-  it("preserves the existing admin/dispatcher menus and separate sales navigation", () => {
-    for (const [name, role] of [["ADMIN_ALL_ITEMS", "admin"], ["OPS_MANAGER_ITEMS", "operations_manager"], ["SALES_ITEMS", "sales"], ["SALES_ITEMS", "door_hanger_rep"]]) {
+  it("keeps management menus stored for restoration and preserves unrelated sales links", () => {
+    for (const name of ["ADMIN_ALL_ITEMS", "OPS_MANAGER_ITEMS"]) {
       const items = menuItems(name);
-      expect(items.filter((item) => !isTechnicianFeatureDisabled(role, item.route))).toEqual(items);
+      expect(items.map((item) => item.route)).toContain("/admin-fleet-map");
+      expect(items.map((item) => item.route)).toContain("/admin-eod-review");
     }
-    const sales = menuItems("SALES_ITEMS");
-    expect(sales).toContainEqual({ label: "Training", route: "/(sales)/training" });
-    expect(sales).toContainEqual({ label: "Alerts", route: "/(sales)/notifications" });
-    expect(menuItems("OPS_MANAGER_ITEMS").map((item) => item.route)).toContain("/admin-door-hangers");
+    expect(menuItems("ADMIN_ALL_ITEMS").map((item) => item.route)).toContain("/admin-invoices");
+    for (const role of ["sales", "door_hanger_rep"]) {
+      const items = menuItems("SALES_ITEMS");
+      expect(items.filter((item) => !isMobileFeatureDisabled(role, item.route))).toEqual(items);
+    }
+    expect(menuItems("OPS_MANAGER_ITEMS").map((item) => item.route)).toContain("/expenses");
+    expect(isMobileFeatureDisabled("operations_manager", "/expenses")).toBe(false);
   });
 
   it.each(features)("hides the $label tab href for technicians while retaining existing admin exclusions", ({ screen }) => {
     const layout = source("app/(tabs)/_layout.tsx");
     const screenStart = layout.indexOf(`name="${screen}"`);
     expect(screenStart).toBeGreaterThan(-1);
-    const tab = layout.slice(screenStart, layout.indexOf("</Tabs.Screen>", screenStart) === -1
-      ? layout.indexOf("/>", layout.indexOf("href:", screenStart))
-      : layout.indexOf("</Tabs.Screen>", screenStart));
+    const tab = layout.slice(screenStart, layout.indexOf("/>", layout.indexOf("href:", screenStart)));
     if (screen === "eod-checklist") {
       expect(tab).toContain('href: (!isAdmin && !isTechnician) ? ("/(tabs)/eod-checklist" as any) : null');
     } else {
@@ -110,17 +113,15 @@ describe("technician-disabled features", () => {
     }
   });
 
-  it("redirects disabled tab routes to Home and prevents child screens mounting before redirect", () => {
-    const layout = source("app/(tabs)/_layout.tsx");
-    expect(layout).toContain("const currentRole = nativeJobSyncEmployee?.role ?? employee?.role;");
-    expect(layout).toContain("const isDisabledTechnicianRoute = isTechnicianFeatureDisabled(currentRole, pathname);");
-    expect(layout).toContain('if (isDisabledTechnicianRoute) router.replace("/(tabs)");');
-    const block = layout.indexOf("if (isDisabledTechnicianRoute) return null;");
-    expect(block).toBeGreaterThan(-1);
-    expect(block).toBeLessThan(layout.indexOf("<Tabs\n"));
-    expect(layout).toContain("loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession");
-    expect(layout).toContain('if (isHiddenAdminRoute) router.replace("/(tabs)/admin-dashboard");');
-    expect(layout).toContain("loading || jobSyncLoading || !isAdmin || isOpsManager");
+  it("shares the signed session/no-mount policy across tab and Sales layouts", () => {
+    for (const path of ["app/(tabs)/_layout.tsx", "app/(sales)/_layout.tsx"]) {
+      const layout = source(path);
+      expect(layout).toContain("resolveMobileNavigationSession");
+      expect(layout).toContain("isMobileFeatureDisabled(currentRole, pathname");
+      expect(layout).toContain("router.replace(mobileRoleHome(currentRole))");
+      expect(layout.indexOf("return null;")).toBeLessThan(layout.indexOf("<TopNavMenu"));
+      expect(layout).not.toMatch(/const \{[^\n]*isAdmin[^\n]*\} = useEmployeeAuth/);
+    }
   });
 
   it("blocks technician cold-start links in the sibling training stack", () => {
@@ -131,18 +132,14 @@ describe("technician-disabled features", () => {
     expect(layout.indexOf("<Redirect")).toBeLessThan(layout.indexOf("<Stack screenOptions"));
   });
 
-  it("hides the dashboard EOD link and embedded Training without removing operational notifications", () => {
+  it("hides dashboard EOD and embedded Training while preserving operational notifications", () => {
     const dashboard = source("app/(tabs)/index.tsx");
     expect(dashboard).toContain('const showEodChecklist = !isTechnicianFeatureDisabled(employee?.role, "/eod-checklist");');
     expect(dashboard).toContain('const showTraining = !isTechnicianFeatureDisabled(employee?.role, "/training");');
     expect(dashboard).toMatch(/\{showEodChecklist && <View[\s\S]*?router\.push\("\/\(tabs\)\/eod-checklist"\)/);
     expect(dashboard).toMatch(/\{showTraining && <View[^>]*>\s*<TrainingSection colors=\{colors\} \/>\s*<\/View>\}/);
-    expect(dashboard).toContain("useEmployeePush();");
-    expect(dashboard).toContain("useBreakNotifications();");
-    expect(dashboard).toContain("useAfter5pmCheckIn();");
-    expect(dashboard).toContain("trpc.notifications.getForEmployee.useQuery");
-    expect(dashboard).toContain("<NotificationBanner");
-    expect(dashboard).toContain("<MorningMeetingBanner />");
-    expect(dashboard).toContain("<CompanyMeetingBanner />");
+    for (const preserved of ["useEmployeePush();", "useBreakNotifications();", "useAfter5pmCheckIn();", "trpc.notifications.getForEmployee.useQuery", "<NotificationBanner", "<MorningMeetingBanner />", "<CompanyMeetingBanner />"]) {
+      expect(dashboard).toContain(preserved);
+    }
   });
 });

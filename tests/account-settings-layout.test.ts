@@ -19,21 +19,62 @@ describe("account settings layout", () => {
     expect(profile).toContain("Change PIN");
   });
 
-  it("preserves the existing PIN reset and sign-out actions", () => {
+  it("removes the shared personal-details Team Member ID row for every role, not other fields", () => {
+    expect(profile).not.toContain('label="Team Member ID"');
+    expect(profile).not.toContain("teamMemberDisplayId");
+    for (const label of ["Full Name", "Email", "Role", "Phone", "Service Area", "Hire Date"]) {
+      expect(profile).toContain(`<DetailCell label="${label}"`);
+    }
+    expect(profile).toContain('case "admin":');
+    expect(profile).toContain('return "Company Admin";');
+    expect(profile).toContain('case "detailer":');
+    expect(profile).toContain('return "Technician";');
+  });
+
+  it("removes only the informational Company credentials title/body", () => {
+    expect(profile).not.toMatch(/>Company credentials<\/Text>/);
+    expect(profile).not.toContain("Your Company email and password are managed through Home Service Connection.");
+    expect(profile).toContain("You can sign back in with your Company credentials anytime.");
+    expect(profile).toContain("styles.securityCard");
+    expect(profile).toContain("styles.securityTitle");
+    expect(profile).toContain("Manage access to your Home Service Connection Company account");
+  });
+
+  it("preserves the existing PIN reset and sign-out actions and Company PIN gating", () => {
     expect(profile).toContain("trpc.employee.resetPin.useMutation()");
     expect(profile).toContain("handleResetPin");
-    expect(profile).toContain("handleLogout");
+    expect(profile).toContain("onSubmitEditing={handleResetPin}");
+    expect(profile).toContain("onPress={handleResetPin}");
+    expect(profile).toContain('{!isCompanySession && <View style={[styles.securityCard');
+    expect(profile).toContain("!isCompanySession && showPinReset");
+    expect(profile).toContain('await resetPinMutation.mutateAsync({ employeeId: employee?.employeeId ?? "", newPin });');
     expect(profile).toContain("Save New PIN");
     expect(profile).toContain("Sign out of this device");
+    expect(profile).toContain("onPress={handleLogout}");
+    expect(profile).toContain('Alert.alert("Sign Out", "Are you sure you want to sign out of this device?"');
+    expect(profile).toContain("await Promise.all([logoutJobSync(), logout()]);");
+    expect(profile).toContain('router.replace("/login");');
   });
 
   it("offers Company Team Members a confirmed self-deletion action without deleting Company records", () => {
-    expect(profile).toContain("deleteJobSyncMobileAccount");
     expect(profile).toContain('jobSyncSession?.portal === "company"');
+    expect(profile).toContain("const token = jobSyncSession?.token;");
+    expect(profile).toContain("if (!isCompanySession || !token)");
     expect(profile).toContain("Delete individual account");
+    expect(profile).toContain("Final confirmation");
     expect(profile).toContain("Delete My Account");
+    expect(profile).toContain("onPress={handleDeleteAccount}");
+    expect(profile).toContain("disabled={deletingAccount}");
+    expect(profile).toContain("await deleteJobSyncMobileAccount(token);");
+    expect(profile).toMatch(/await deleteJobSyncMobileAccount\(token\);\s+await signOut\(\);/);
+    expect(profile).toContain('Alert.alert("Account not deleted"');
     expect(profile).toContain("Shared Company records stay intact.");
-    expect(profile).toContain("logoutJobSync");
+  });
+
+  it("does not add a management fieldwork setter to self-service Settings", () => {
+    expect(profile).not.toContain("Available for Field Jobs");
+    expect(profile).not.toContain("calendarEligibleOverride");
+    expect(profile).not.toContain("profile-fieldwork-policy");
   });
 
   it("makes the redesigned screen reachable as Settings for Company users", () => {

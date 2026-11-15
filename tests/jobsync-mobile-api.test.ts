@@ -26,6 +26,12 @@ import {
   normalizeHomeServiceConnectedTimesheets,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
+  getJobSyncCompanyJobDetail,
+  normalizeJobSyncCompanyJobDetail,
+  updateJobSyncCompanyJobStatus,
+  sendJobSyncCompanyJobInvoice,
+  positiveJobSyncId,
+  JobSyncApiError,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -418,5 +424,78 @@ describe("JobSync mobile API contract", () => {
     expect(normalizeJobSyncCompanySettings({
       company: { id: 9, name: "Lawn Sharks", timezone: "America/Chicago" },
     })).toEqual({ id: 9, name: "Lawn Sharks", timezone: "America/Chicago" });
+  });
+
+  it("normalizes pinned-main lifecycle/photo DTO without inventing assignment or milestones", () => {
+    const detail = normalizeJobSyncCompanyJobDetail({ job: {
+      id: 47, company_id: 9, assignedUserId: null, status: "on_site", updatedAt: "2026-11-14T18:00:00.000Z",
+      enRouteAt: "2026-11-14T17:00:00.000Z", onSiteAt: "2026-11-14T17:20:00.000Z", completedAt: null,
+      photos: [{ id: 7, image_url: "https://unit.test/photo.jpg", caption: "Existing caption", uploadedByUserId: 41, created_at: "2026-11-14T17:22:00.000Z" }],
+    } }, 47, 9);
+    expect(detail?.assignedUserId).toBeNull();
+    expect(detail?.completedAt).toBeNull();
+    expect(detail?.status).toBe("on_site");
+    expect(detail?.photos).toEqual([{ id: 7, imageUrl: "https://unit.test/photo.jpg", caption: "Existing caption", uploadedByUserId: 41, createdAt: "2026-11-14T17:22:00.000Z" }]);
+    for (const invalid of [null, undefined, "", "bad", 0, -1, 1.2, Number.MAX_SAFE_INTEGER + 1]) expect(positiveJobSyncId(invalid)).toBeNull();
+    expect(positiveJobSyncId("41")).toBe(41);
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, company_id: 10 } }, 47, 9)).toBeNull();
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 48, company_id: 9 } }, 47, 9)).toBeNull();
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, status: "draft", photos: [], photo_urls: '["https://unit.test/stale.jpg"]' } }, 47, 9)?.photos).toEqual([]);
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47 } }, 47, 9)?.status).toBe("unknown");
+  });
+
+  it("uses preserved configured origin, bearer detail/status and exact canonical invoice body/publicUrl", async () => {
+    vi.stubEnv("EXPO_PUBLIC_JOBSYNC_API_BASE_URL", "https://jobwash-veysiubh.manus.space");
+    const mock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ job: { id: 47, company_id: 9, assignedUserId: 41, status: "on_site", updatedAt: "2026-11-14T18:00:00.000Z", photos: [] } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, status: "completed" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status: "sent", channel: "sms" }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      const detail = await getJobSyncCompanyJobDetail("mock-company-token", 47, 9);
+      await updateJobSyncCompanyJobStatus("mock-company-token", 47, { status: "completed", expectedUpdatedAt: detail.updatedAt, note: "ignored", timestamp: "ignored", intent: "ignored" } as any);
+      const invoice = await sendJobSyncCompanyJobInvoice("mock-company-token", 47, { method: "sms", resend: true, overridePhone: "ignored", amount: 12 } as any);
+      expect(invoice.publicUrl).toBe("https://unit.test/invoice");
+      expect(invoice.status).toBe("sent");
+      expect(mock).toHaveBeenNthCalledWith(1, "https://jobwash-veysiubh.manus.space/api/mobile/v1/jobs/47", expect.objectContaining({ method: "GET", cache: "no-store", headers: expect.objectContaining({ Authorization: "Bearer mock-company-token" }) }));
+      expect(mock).toHaveBeenNthCalledWith(2, "https://jobwash-veysiubh.manus.space/api/mobile/v1/jobs/47/status", expect.objectContaining({ method: "PATCH", headers: expect.objectContaining({ Authorization: "Bearer mock-company-token" }), body: JSON.stringify({ status: "completed", expectedUpdatedAt: "2026-11-14T18:00:00.000Z" }) }));
+      expect(mock).toHaveBeenNthCalledWith(3, "https://jobwash-veysiubh.manus.space/api/mobile/v1/jobs/47/invoice", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ Authorization: "Bearer mock-company-token" }), body: JSON.stringify({ method: "sms", resend: true }) }));
+      expect(mock.mock.calls.some(([url]) => url.includes("trpc"))).toBe(false);
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+
+  it.each(["queued", null, undefined])("preserves queued or unknown invoice delivery status: %s", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status }) }));
+    try {
+      const invoice = await sendJobSyncCompanyJobInvoice("mock-unit-token", 47, { method: "email" });
+      expect(invoice.status).toBe(status === "queued" ? "queued" : null);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([[401, "UNAUTHORIZED"], [403, "FORBIDDEN"], [404, "NOT_FOUND"], [409, "CONFLICT"], [400, "BAD_REQUEST"]])("preserves backend status/code %s instead of message-only failures", async (status, code) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: { code, message: "Safe backend denial" } }) }));
+    try {
+      await expect(updateJobSyncCompanyJobStatus("mock-unit-token", 47, { status: "en_route" })).rejects.toMatchObject({ name: "JobSyncApiError", status, code, message: "Safe backend denial" });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("requires acknowledged canonical status and refuses legacy invoice response/invalid IDs", async () => {
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, status: "confirmed", paymentUrl: "https://unit.test/legacy" }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      await expect(updateJobSyncCompanyJobStatus("mock-unit-token", 47, { status: "en_route" })).rejects.toBeInstanceOf(JobSyncApiError);
+      await expect(sendJobSyncCompanyJobInvoice("mock-unit-token", 47, { method: "email" })).rejects.toThrow("did not confirm");
+      const calls = mock.mock.calls.length;
+      await expect(getJobSyncCompanyJobDetail("mock-unit-token", 0, 9)).rejects.toThrow("invalid Job");
+      await expect(updateJobSyncCompanyJobStatus("mock-unit-token", 47, { status: "arrived" as any })).rejects.toThrow("valid Company field");
+      expect(mock).toHaveBeenCalledTimes(calls);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("preserves timeout classification for reconciliation", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    try {
+      await expect(updateJobSyncCompanyJobStatus("mock-unit-token", 47, { status: "on_site" })).rejects.toMatchObject({ status: null, code: "TIMEOUT" });
+    } finally { vi.unstubAllGlobals(); }
   });
 });

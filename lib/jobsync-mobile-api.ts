@@ -179,6 +179,13 @@ function getJobSyncBaseUrl() {
   return (configured || DEFAULT_JOBSYNC_BASE_URL).replace(/\/$/, "");
 }
 
+export class JobSyncApiError extends Error {
+  constructor(message: string, public readonly status: number | null, public readonly code: string | null) {
+    super(message);
+    this.name = "JobSyncApiError";
+  }
+}
+
 async function requestJson(path: string, init: RequestInit) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
@@ -197,12 +204,13 @@ async function requestJson(path: string, init: RequestInit) {
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "Home Service Connected authentication is unavailable."));
+      const error = asRecord(asRecord(payload)?.error);
+      throw new JobSyncApiError(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "Home Service Connected could not complete this request."), response.status, firstString(error?.code));
     }
     return payload;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Home Service Connected took too long to respond. Check your connection and try again.");
+      throw new JobSyncApiError("Home Service Connected took too long to respond. Refresh before trying again.", null, "TIMEOUT");
     }
     throw error;
   } finally {
@@ -288,10 +296,10 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
   return {
     id,
     customerId: Number(row.customerId),
-    assignedUserId: Number.isSafeInteger(Number(row.assignedUserId)) ? Number(row.assignedUserId) : null,
+    assignedUserId: positiveJobSyncId(row.assignedUserId),
     title: firstString(row.title) ?? "",
     serviceName: firstString(row.serviceName) ?? "",
-    status: firstString(row.status) ?? "scheduled",
+    status: firstString(row.status) ?? "unknown",
     scheduledStartAt: firstString(row.scheduledStartAt),
     scheduledEndAt: firstString(row.scheduledEndAt),
     updatedAt: firstString(row.updatedAt),
@@ -381,6 +389,88 @@ function validCompanyJobId(jobId: number) {
   if (!Number.isSafeInteger(jobId) || jobId <= 0) {
     throw new Error("Home Service Connected returned an invalid Job identifier.");
   }
+}
+
+export function positiveJobSyncId(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^\d+$/.test(value))) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+export type JobSyncFieldStatus = "en_route" | "on_site" | "completed";
+export type JobSyncJobPhoto = {
+  id: number;
+  imageUrl: string;
+  caption: string | null;
+  uploadedByUserId: number | null;
+  createdAt: string | null;
+};
+export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
+  companyId: number | null;
+  enRouteAt: string | null;
+  onSiteAt: string | null;
+  completedAt: string | null;
+  photos: JobSyncJobPhoto[];
+};
+
+function serverInstant(value: unknown): string | null {
+  return typeof value === "string" && value.trim() && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+/** Main 50bc548: photos use image_url/created_at plus uploadedByUserId. No photo mutation route exists. */
+export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
+  const row = asRecord(asRecord(payload)?.job);
+  const job = normalizeJobSyncMobileJob(row);
+  const returnedCompanyId = positiveJobSyncId(row?.companyId ?? row?.company_id);
+  const rawCompanyId = row?.companyId ?? row?.company_id;
+  if (!positiveJobSyncId(companyId) || !row || !job || job.id !== jobId || (rawCompanyId !== undefined && returnedCompanyId !== companyId)) return null;
+  return {
+    ...job,
+    companyId,
+    enRouteAt: serverInstant(row.enRouteAt),
+    onSiteAt: serverInstant(row.onSiteAt),
+    completedAt: serverInstant(row.completedAt),
+    photos: (Array.isArray(row.photos) ? row.photos : []).flatMap((value) => {
+      const photo = asRecord(value);
+      const id = positiveJobSyncId(photo?.id);
+      const imageUrl = firstString(photo?.image_url);
+      if (!id || !imageUrl || !/^https?:\/\//i.test(imageUrl)) return [];
+      return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.created_at) }];
+    }),
+  };
+}
+
+export async function getJobSyncCompanyJobDetail(token: string, jobId: number, companyId: number): Promise<JobSyncCompanyJobDetail> {
+  validCompanyJobId(jobId);
+  if (!token.trim() || !positiveJobSyncId(companyId)) throw new Error("A current Company session is required.");
+  const detail = normalizeJobSyncCompanyJobDetail(await requestJson(`/api/mobile/v1/jobs/${jobId}`, {
+    method: "GET", headers: createJobSyncBearerHeaders(token),
+  }), jobId, companyId);
+  if (!detail) throw new JobSyncApiError("Could not verify this Company's Job detail. Refresh the schedule.", null, "INVALID_RESPONSE");
+  return detail;
+}
+
+export async function updateJobSyncCompanyJobStatus(token: string, jobId: number, input: { status: JobSyncFieldStatus; expectedUpdatedAt?: string | null }) {
+  validCompanyJobId(jobId);
+  if (!token.trim() || !["en_route", "on_site", "completed"].includes(input.status)) throw new Error("A valid Company field status and session are required.");
+  const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/status`, {
+    method: "PATCH", headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ status: input.status, ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}) }),
+  }));
+  if (result?.success !== true || result.status !== input.status) throw new JobSyncApiError("The backend did not acknowledge Job progress. Refresh before retrying.", null, "INVALID_RESPONSE");
+  return { success: true as const, status: input.status };
+}
+
+export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number, input: { method: "email" | "sms"; resend?: boolean }) {
+  validCompanyJobId(jobId);
+  if (!token.trim() || !["email", "sms"].includes(input.method)) throw new Error("A valid invoice delivery method and Company session are required.");
+  const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice`, {
+    method: "POST", headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ method: input.method, ...(input.resend !== undefined ? { resend: input.resend } : {}) }),
+  }));
+  const publicUrl = firstString(result?.publicUrl);
+  if (result?.success !== true || !publicUrl) throw new JobSyncApiError("The backend did not confirm invoice delivery.", null, "INVALID_RESPONSE");
+  return { ...result, success: true as const, publicUrl, status: firstString(result.status) };
 }
 
 /** Persists a Company Job's authoritative start/end instants. */

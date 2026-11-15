@@ -17,7 +17,6 @@ import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { deleteJobSyncMobileAccount } from "@/lib/jobsync-mobile-api";
-import { getCompanyTeamMemberDisplayId } from "@/lib/company-team-member-display-id";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "expo-router";
 
@@ -47,9 +46,6 @@ export default function ProfileScreen() {
   const isCompanySession = jobSyncSession?.portal === "company";
   const isDetailer = employee?.role === "detailer";
   const isWide = width >= 760;
-  const teamMemberDisplayId = isCompanySession
-    ? getCompanyTeamMemberDisplayId(jobSyncSession)
-    : employee?.sessionSource === "jobsync" ? null : employee?.employeeId;
 
   const { data: vanAssignment, isLoading: vanLoading } = trpc.fleet.getVanAssignment.useQuery(
     { employeeId: employee?.employeeId ?? "" },
@@ -204,7 +200,6 @@ export default function ProfileScreen() {
                 <View style={isWide ? styles.detailGridWide : styles.detailGrid}>
                   <DetailCell label="Full Name" value={employee?.fullName} icon="person-outline" colors={colors} />
                   <DetailCell label="Email" value={employee?.email} icon="mail-outline" colors={colors} />
-                  <DetailCell label="Team Member ID" value={teamMemberDisplayId} icon="badge" colors={colors} />
                   <DetailCell label="Role" value={role} icon="assignment-ind" colors={colors} />
                   <DetailCell label="Phone" value={employee?.phoneNumber} icon="phone" colors={colors} />
                   <DetailCell label="Service Area" value={employee?.city} icon="location-on" colors={colors} />
@@ -278,16 +273,6 @@ export default function ProfileScreen() {
                 >
                   <Text style={[styles.outlineButtonText, { color: colors.primary }]}>{showPinReset ? "Cancel" : "Change"}</Text>
                 </TouchableOpacity>
-              </View>}
-
-              {isCompanySession && <View style={[styles.securityCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.securityIcon, { backgroundColor: colors.primary + "18" }]}>
-                  <MaterialIcons name="verified-user" size={24} color={colors.primary} />
-                </View>
-                <View style={styles.securityCopy}>
-                  <Text style={[styles.securityTitle, { color: colors.foreground }]}>Company credentials</Text>
-                  <Text style={[styles.securityDescription, { color: colors.muted }]}>Your Company email and password are managed through Home Service Connection.</Text>
-                </View>
               </View>}
 
               {!isCompanySession && showPinReset && (

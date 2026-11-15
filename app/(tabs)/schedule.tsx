@@ -43,7 +43,11 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJobs, getJobSyncCompanySettings } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJobs, getJobSyncCompanySettings, positiveJobSyncId } from "@/lib/jobsync-mobile-api";
+import { useCompanyJob } from "@/hooks/use-company-job";
+import { CompanyJobProgress } from "@/components/company-job-progress";
+import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
+import { companyJobDisplayFields, companyJobMilestoneFields, isAssignedCompanyTechnician, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
 import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
@@ -315,6 +319,10 @@ interface PaymentRecord {
 
 interface Job {
   id: string;
+  companyId?: number;
+  assignedUserId?: number | null;
+  updatedAt?: string | null;
+  _rawStatus?: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -2331,9 +2339,41 @@ export default function ScheduleScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showServiceWizard, setShowServiceWizard] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  const companyJobMode = isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
+  const companyScheduleSessionRef = useRef(jobSyncSession?.token);
+  companyScheduleSessionRef.current = jobSyncSession?.token;
+  const legacyMediaIdentity = JSON.stringify([companyJobMode, employee?.employeeId, jobSyncSession?.token, selectedJob?.id]);
+  const legacyMediaSessionRef = useRef({ key: legacyMediaIdentity, generation: 0, companyMode: companyJobMode });
+  if (legacyMediaSessionRef.current.key !== legacyMediaIdentity) legacyMediaSessionRef.current.generation += 1;
+  legacyMediaSessionRef.current.key = legacyMediaIdentity;
+  legacyMediaSessionRef.current.companyMode = companyJobMode;
+  const companyJob = useCompanyJob(jobSyncSession,
+    selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null,
+    (serverJobs) => {
+      const current = new Map(serverJobs.map((job) => [String(job.id), job]));
+      setJobs((previous) => previous.flatMap((job) => {
+        const fresh = current.get(job.id);
+        return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
+      }));
+    });
+  useEffect(() => {
+    setSelectedJob(null);
+    setCompanyPhotoPreview(null);
+    setCompanyTimezone(null);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
+  useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id]);
+  useEffect(() => {
+    const detail = companyJob.detail;
+    if (!detail) return;
+    const fields = companyJobMilestoneFields(detail);
+    setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
+    setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
+  }, [companyJob.detail]);
   const lateHistoryQ = trpc.phone.getLateArrivalHistory.useQuery(
     { jobId: selectedJob?.id },
-    { enabled: !!selectedJob?.id, staleTime: 30000, refetchOnWindowFocus: false }
+    { enabled: !companyJobMode && !!selectedJob?.id, staleTime: 30000, refetchOnWindowFocus: false }
   );
   // ─── Reward Redemption (detailer view) ───────────────────────────────────────
   const pendingRedemptionsQ = trpc.referral.getPendingForCustomer.useQuery(
@@ -2431,6 +2471,8 @@ export default function ScheduleScreen() {
 
   // Helper: upload a local URI to S3 and return the S3 URL
   const uploadPhotoToS3 = async (jobId: string, uri: string): Promise<string> => {
+    if (companyJobMode || legacyMediaSessionRef.current.companyMode) throw new Error(COMPANY_PHOTO_MUTATIONS_PENDING);
+    const generation = legacyMediaSessionRef.current.generation;
     let base64: string;
     if (Platform.OS === "web") {
       // Web: use FileReader (fetch + blob approach)
@@ -2454,6 +2496,7 @@ export default function ScheduleScreen() {
       }
       base64 = await FileSystem.readAsStringAsync(readableUri, { encoding: FileSystem.EncodingType.Base64 });
     }
+    if (legacyMediaSessionRef.current.companyMode || legacyMediaSessionRef.current.generation !== generation) throw new Error("Photo session changed. No upload was sent.");
     const result = await uploadPhotoMutation.mutateAsync({ jobId, base64, mimeType: "image/jpeg" });
     return result.url;
   };
@@ -2508,6 +2551,8 @@ export default function ScheduleScreen() {
   // Auto-load customer history whenever a job is selected
   useEffect(() => {
     setAddrPhotos([]);
+    if (companyJobMode) return; // Company gallery comes only from bearer Job detail.
+    let cancelled = false;
     if (selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
       utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddrPhotos(photos)).catch(() => {});
@@ -2518,6 +2563,7 @@ export default function ScheduleScreen() {
       const jobId = selectedJob.id;
       utils.jobs.getPhotos.fetch({ jobId })
         .then(({ urls }: { urls: string[] }) => {
+          if (cancelled) return;
           if (!urls || urls.length === 0) return;
           setSelectedJob((prev) => {
             if (!prev || prev.id !== jobId) return prev;
@@ -2534,8 +2580,9 @@ export default function ScheduleScreen() {
         })
         .catch(() => { /* ignore — offline or job not in DB yet */ });
     }
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob?.id]);
+  }, [selectedJob?.id, companyJobMode]);
 
   // Mark messages read when chat modal opens
   useEffect(() => {
@@ -2714,6 +2761,8 @@ export default function ScheduleScreen() {
 	  if (jobSyncLoading) return;
 	  if (isJobSyncCompany) {
       const token = jobSyncSession?.token;
+      const companyId = jobSyncSession?.company?.id;
+      const isCurrent = () => companyScheduleSessionRef.current === token;
       if (!token) {
         setJobs([]);
         return;
@@ -2723,9 +2772,11 @@ export default function ScheduleScreen() {
 	      setJobs([]);
 	      const [companyJobs, companySettings] = await Promise.all([
           getJobSyncCompanyJobs(token),
-          getJobSyncCompanySettings(token).catch(() => ({ timezone: "America/Chicago" })),
+          getJobSyncCompanySettings(token),
         ]);
+        if (!isCurrent()) return;
         const companyTimezone = companySettings.timezone;
+        setCompanyTimezone(companyTimezone);
         const mappedCompanyJobs = companyJobs.flatMap((job) => {
           if (job.status === "cancelled") return [];
           const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
@@ -2741,6 +2792,9 @@ export default function ScheduleScreen() {
                 : "scheduled";
           return [{
             id: String(job.id),
+            companyId,
+            assignedUserId: job.assignedUserId,
+            updatedAt: job.updatedAt,
             customerId: String(job.customerId),
             location,
             firstName: customerParts[0] || "",
@@ -2762,7 +2816,7 @@ export default function ScheduleScreen() {
             status,
             _rawStatus: job.status,
             detailerName: job.assignedName || undefined,
-            createdAt: job.updatedAt || job.scheduledStartAt || new Date().toISOString(),
+            createdAt: job.updatedAt || job.scheduledStartAt || "",
             tags: [],
             taxAmount: 0,
             discountAmount: 0,
@@ -2773,6 +2827,7 @@ export default function ScheduleScreen() {
         });
         setJobs(mappedCompanyJobs);
 	    } catch {
+        if (!isCurrent()) return;
 	      // A stale local record is worse than an explicit unavailable state:
 	      // it can make a customer job appear at the wrong time.
 	      setJobs([]);
@@ -3390,6 +3445,7 @@ export default function ScheduleScreen() {
 
   // Start GPS location sharing and create a customer tracking token
   const startLocationSharing = async (job: Job) => {
+    if (companyJobMode || job.companyId !== undefined) return;
     if (!employee) return;
     await locationSession.start({
       key: `${employee.employeeId}:${job.id}`,
@@ -3427,6 +3483,7 @@ export default function ScheduleScreen() {
 
   // Stop GPS sharing — push a final 'arrived' location update so pin stays on fleet map
   const stopLocationSharing = (jobId?: string) => {
+    if (companyJobMode) return;
     locationSession.stop();
     setIsSharing(false);
     setTrackingToken(null);
@@ -3459,6 +3516,8 @@ export default function ScheduleScreen() {
   };
 
   const advanceStatus = (job: Job) => {
+    // Return BEFORE every legacy timestamp/status/portal/tracking/notification path.
+    if (companyJobMode || job.companyId !== undefined) return;
     const now = new Date().toISOString();
     const transition = getJobProgressTransition(job.status, now);
     if (!transition) return;
@@ -3549,6 +3608,7 @@ export default function ScheduleScreen() {
 
   // Open the in-app continuous camera session
   const openCameraSession = async () => {
+    if (companyJobMode) { Alert.alert("Photo connection pending", COMPANY_PHOTO_MUTATIONS_PENDING); return; }
     if (!selectedJob) return;
     // If permission status is not yet determined, or not granted, always call
     // requestCameraPermission() which triggers the native iOS/Android dialog.
@@ -3575,12 +3635,15 @@ export default function ScheduleScreen() {
 
   // Called when user taps the shutter button — captures photo and immediately adds to job
   const capturePhoto = async () => {
+    if (companyJobMode) return;
     if (!cameraRef.current || isCapturing || !selectedJob) return;
+    const generation = legacyMediaSessionRef.current.generation;
+    const isCurrent = () => !legacyMediaSessionRef.current.companyMode && legacyMediaSessionRef.current.generation === generation;
     setIsCapturing(true);
     const jobId = selectedJob.id;
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, skipProcessing: false });
-      if (!photo?.uri) return;
+      if (!photo?.uri || !isCurrent()) return;
       const newUri = photo.uri;
       // Immediately append to session preview strip
       setCameraSessionPhotos((prev) => [...prev, newUri]);
@@ -3596,6 +3659,7 @@ export default function ScheduleScreen() {
       // Upload to S3 in background and replace local URI with S3 URL
       try {
         const s3Url = await uploadPhotoToS3(jobId, newUri);
+        if (!isCurrent()) return;
         // Persist to jobsRef first so it survives even if the modal was closed
         const updatedJobs = jobsRef.current.map((j) => {
           if (j.id !== jobId) return j;
@@ -3630,9 +3694,12 @@ export default function ScheduleScreen() {
 
   // Library picker — uploads to S3 for persistence
   const addPhotoFromLibrary = async () => {
+    if (companyJobMode) { Alert.alert("Photo connection pending", COMPANY_PHOTO_MUTATIONS_PENDING); return; }
     if (!selectedJob) return;
+    const generation = legacyMediaSessionRef.current.generation;
+    const isCurrent = () => !legacyMediaSessionRef.current.companyMode && legacyMediaSessionRef.current.generation === generation;
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true, mediaTypes: ImagePicker.MediaTypeOptions.Images });
-    if (result.canceled) return;
+    if (result.canceled || !isCurrent()) return;
     const newUris = result.assets.map((a) => a.uri);
     // Show local URIs immediately
     const updatedPhotos = [...(selectedJob.photos ?? []), ...newUris];
@@ -3644,8 +3711,9 @@ export default function ScheduleScreen() {
     setUploadingPhoto(true);
     try {
       const s3Urls = await Promise.all(newUris.map((uri) => uploadPhotoToS3(jobId, uri)));
+      if (!isCurrent()) return;
       setSelectedJob((prev) => {
-        if (!prev) return prev;
+        if (!prev || prev.id !== jobId || prev.companyId !== undefined) return prev;
         let photos = [...(prev.photos ?? [])];
         newUris.forEach((uri, i) => {
           const idx = photos.indexOf(uri);
@@ -3669,6 +3737,7 @@ export default function ScheduleScreen() {
   const uploadVideoMutation = trpc.jobs.uploadVideo.useMutation();
 
   const addVideoFromLibrary = async () => {
+    if (!JOB_VIDEOS_ENABLED || companyJobMode) return;
     if (!selectedJob) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -3711,6 +3780,7 @@ export default function ScheduleScreen() {
   const deleteVideoMutation = trpc.jobs.deleteVideo.useMutation();
 
   const deleteVideo = (url: string) => {
+    if (!JOB_VIDEOS_ENABLED || companyJobMode) return;
     if (!selectedJob) return;
     Alert.alert("Delete Video", "Remove this video?", [
       { text: "Cancel", style: "cancel" },
@@ -3727,8 +3797,9 @@ export default function ScheduleScreen() {
   };
 
   const deletePhoto = (uri: string) => {
+    if (companyJobMode) { Alert.alert("Photo connection pending", COMPANY_PHOTO_MUTATIONS_PENDING); return; }
     if (!selectedJob) return;
-    Alert.alert("Delete Photo", "Remove this photo?", [
+    Alert.alert("Remove local photo", "Remove this local preview? This does not verify authorized server deletion.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => {
         const updatedPhotos = (selectedJob.photos ?? []).filter((p) => p !== uri);
@@ -4008,6 +4079,10 @@ export default function ScheduleScreen() {
   const myName = employee?.fullName?.toLowerCase() ?? "";
   const myId = employee?.employeeId ?? "";
   const visibleJobs = jobs.filter((j) => {
+    if (isJobSyncCompany || j.companyId !== undefined) {
+      if (j.companyId !== jobSyncSession?.company?.id) return false;
+      return jobSyncSession?.user.role === "technician" ? isAssignedCompanyTechnician(jobSyncSession, j) : isJobSyncCompany;
+    }
     if (isAdminRole) return !j.location || j.location.toLowerCase() === selectedLocation.toLowerCase();
     // Detailer view: only show jobs explicitly assigned to this detailer.
     // Jobs with no detailerName are NOT shown to detailers — they belong to other detailers
@@ -4286,7 +4361,7 @@ export default function ScheduleScreen() {
                       )}
                     </View>
                     {/* Live timer display — always show once travel has started */}
-                    {(selectedJob.travelStartedAt) && (
+                    {!companyJobMode && (selectedJob.travelStartedAt) && (
                       <View style={{ flexDirection: "row", gap: 10, marginBottom: 12, justifyContent: "center" }}>
                         {selectedJob.travelStartedAt && (
                           <View style={{ backgroundColor: "#F59E0B22", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, alignItems: "center", borderWidth: 1, borderColor: "#F59E0B55" }}>
@@ -4313,7 +4388,7 @@ export default function ScheduleScreen() {
                       </View>
                     )}
                     {/* 3-step status buttons: ON MY WAY → ARRIVED → FINISH */}
-                    <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
+                    {companyJobMode ? <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} /> : <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
                       {([
                         { label: "ON MY WAY", emoji: "🚚", activeStatus: "on_my_way" as JobStatus, requiredStatus: "scheduled" as JobStatus },
                         { label: "ARRIVED",   emoji: "📍", activeStatus: "arrived"   as JobStatus, requiredStatus: "on_my_way" as JobStatus },
@@ -4340,7 +4415,7 @@ export default function ScheduleScreen() {
                           <Text style={[s.statusIconLabel, { color: STATUS_COLOR[activeStatus], fontSize: 9 }]}>{label}</Text>
                         </TouchableOpacity>
                       ))}
-                    </View>
+                    </View>}
                     {shouldShowCollectPayment(selectedJob.payment) && (
                       <TouchableOpacity
                         onPress={() => {
@@ -4906,7 +4981,7 @@ export default function ScheduleScreen() {
                     );
                   })()}
                   {/* ─── Before & After Photos ─── */}
-                  <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {companyJobMode ? <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} /> : <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                       <Text style={[s.sectionLabel, { color: colors.muted }]}>BEFORE & AFTER PHOTOS</Text>
                       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -4931,9 +5006,10 @@ export default function ScheduleScreen() {
                         </View>
                       );
                     })()}
-                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 6 }}>Long-press a photo to delete it.</Text>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 6 }}>Long-press to remove a local preview; server deletion is not verified.</Text>
 
                     {/* ─── Videos ─── */}
+                    {JOB_VIDEOS_ENABLED && <>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, marginBottom: 8 }}>
                       <Text style={[s.sectionLabel, { color: colors.muted }]}>VIDEOS</Text>
                       <TouchableOpacity
@@ -4965,7 +5041,8 @@ export default function ScheduleScreen() {
                     {(selectedJob.videoUrls ?? []).length > 0 && (
                       <Text style={{ color: colors.muted, fontSize: 11, marginTop: 6 }}>Long-press a video to delete it.</Text>
                     )}
-                  </View>
+                    </>}
+                  </View>}
 
                   {/* ─── Lead Source Card ─── */}
                   {selectedJob.leadSource ? (
@@ -5465,7 +5542,7 @@ export default function ScheduleScreen() {
                 {/* Rendered inside the job detail modal to avoid iOS stacked-modal limitation.
                     iOS cannot present a second Modal on top of a transparent/pageSheet Modal,
                     so we use an absolutely-positioned View that covers the entire sheet. */}
-                {showCameraSession && (
+                {!companyJobMode && showCameraSession && (
                   <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, backgroundColor: "#000" }}>
                     <CameraView
                       ref={cameraRef}
@@ -5518,8 +5595,9 @@ export default function ScheduleScreen() {
                     </View>
                   </View>
                 )}
+                <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
                 {/* Late Arrival Inline Overlay — avoids iOS nested-modal issue */}
-                {showLateSheet && (
+                {!companyJobMode && showLateSheet && (
                   <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)", zIndex: 999 }}>
                     <View style={{ backgroundColor: "#1e2022", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>

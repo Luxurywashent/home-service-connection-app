@@ -4,12 +4,12 @@ import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform, View, Text, StyleSheet } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 import { useEmployeeAuth } from "@/lib/auth-context";
-import { getNativeEmployeeSession, useJobSyncAuth } from "@/lib/jobsync-auth-context";
+import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useEffect, useMemo } from "react";
 import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { trpc } from "@/lib/trpc";
 import { startGeofencing, stopGeofencing } from "@/lib/geofence-task";
-import { isTechnicianFeatureDisabled, isTechnicianRole } from "@/lib/technician-features";
+import { isMobileFeatureDisabled, isMobileManagementRole, isMobileOpsRole, isTechnicianRole, matchesMobileRoute, mobileRoleHome, resolveMobileNavigationSession } from "@/lib/technician-features";
 
 function InboxTabIcon({ color }: { color: string }) {
   const { data } = trpc.portalInbox.unreadCount.useQuery(undefined, { refetchInterval: 30000 });
@@ -70,31 +70,25 @@ const COMPANY_ADMIN_HIDDEN_ROUTES = [
 
 export default function TabLayout() {
   const colors = useColors();
-  const { employee, isAuthenticated, isAdmin, isOpsManager, loading, login: establishNativeRole } = useEmployeeAuth();
+  const { employee, isAuthenticated, loading, login: establishNativeRole } = useEmployeeAuth();
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const router = useRouter();
   const pathname = usePathname();
   const employeeId = employee?.employeeId;
   const employeeName = employee?.fullName ?? "";
-  const nativeJobSyncEmployee = useMemo(
-    () => jobSyncSession ? getNativeEmployeeSession(jobSyncSession) : null,
-    [jobSyncSession],
-  );
-  const hasMatchingCompanySession = Boolean(
-    nativeJobSyncEmployee &&
-    employee?.sessionSource === "jobsync" &&
-    employee.employeeId === nativeJobSyncEmployee.employeeId &&
-    employee.companyId === nativeJobSyncEmployee.companyId,
-  );
-  // The authenticated HSC role is authoritative while the native bridge refreshes.
-  const currentRole = nativeJobSyncEmployee?.role ?? employee?.role;
+  const { nativeEmployee: nativeJobSyncEmployee, hasMatchingCompanySession, role: currentRole, isReady } =
+    useMemo(() => resolveMobileNavigationSession({ employee, session: jobSyncSession, loading, jobSyncLoading, isAuthenticated }),
+      [employee, isAuthenticated, jobSyncLoading, jobSyncSession, loading]);
+  const isAdmin = isMobileManagementRole(currentRole);
+  const isOpsManager = isMobileOpsRole(currentRole);
   const isTechnician = isTechnicianRole(currentRole);
-  const isDisabledTechnicianRoute = isTechnicianFeatureDisabled(currentRole, pathname);
+  const isHiddenAdminRoute = isAdmin && !isOpsManager && matchesMobileRoute(pathname, COMPANY_ADMIN_HIDDEN_ROUTES);
+  const isDisabledRoute = isMobileFeatureDisabled(currentRole, pathname) || isHiddenAdminRoute;
 
   useEffect(() => {
-    if (!nativeJobSyncEmployee || hasMatchingCompanySession) return;
+    if (loading || jobSyncLoading || !nativeJobSyncEmployee || hasMatchingCompanySession) return;
     establishNativeRole(nativeJobSyncEmployee, true).catch(() => {});
-  }, [establishNativeRole, hasMatchingCompanySession, nativeJobSyncEmployee]);
+  }, [establishNativeRole, hasMatchingCompanySession, jobSyncLoading, loading, nativeJobSyncEmployee]);
 
   useEffect(() => {
     if (loading || jobSyncLoading) return;
@@ -106,25 +100,17 @@ export default function TabLayout() {
   }, [jobSyncLoading, jobSyncSession?.portal, loading, nativeJobSyncEmployee, router]);
 
   useEffect(() => {
-    if (loading || jobSyncLoading || !isAdmin || isOpsManager) return;
-    const isHiddenAdminRoute = COMPANY_ADMIN_HIDDEN_ROUTES.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`),
-    );
-    if (isHiddenAdminRoute) router.replace("/(tabs)/admin-dashboard");
-  }, [isAdmin, isOpsManager, jobSyncLoading, loading, pathname, router]);
-
-  useEffect(() => {
-    if (loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession) return;
-    if (isDisabledTechnicianRoute) router.replace("/(tabs)");
-  }, [hasMatchingCompanySession, isAuthenticated, isDisabledTechnicianRoute, jobSyncLoading, loading, router]);
+    if (!isReady) return;
+    if (isDisabledRoute) router.replace(mobileRoleHome(currentRole));
+  }, [currentRole, isDisabledRoute, isReady, router]);
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {
-    enabled: !!employee && !isAdmin && Platform.OS !== "web" && Platform.OS !== "android",
+    enabled: isReady && !!employee && !isAdmin && Platform.OS !== "web" && Platform.OS !== "android",
     staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
-    if (!employeeId || isAdmin || Platform.OS === "web" || Platform.OS === "android") return;
+    if (!isReady || !employeeId || isAdmin || Platform.OS === "web" || Platform.OS === "android") return;
     const zones = (zonesQuery.data ?? []) as any[];
     const activeZones = zones.filter((z: any) => z.isActive === 1 && z.latitude && z.longitude);
     if (activeZones.length === 0) return;
@@ -140,11 +126,11 @@ export default function TabLayout() {
       employeeName,
     );
     return () => { stopGeofencing(); };
-  }, [employeeId, employeeName, isAdmin, zonesQuery.data]);
+  }, [employeeId, employeeName, isAdmin, isReady, zonesQuery.data]);
 
-  if (loading || jobSyncLoading || !isAuthenticated || !hasMatchingCompanySession) return null;
+  if (!isReady) return null;
   // Do not mount a disabled tab's UI/queries while the redirect is pending.
-  if (isDisabledTechnicianRoute) return null;
+  if (isDisabledRoute) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -241,7 +227,7 @@ export default function TabLayout() {
           options={{
             title: "Expenses",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="creditcard.fill" color={color} />,
-            href: isAdmin ? null : "/(tabs)/expenses",
+            href: (isAdmin || isTechnician) ? null : "/(tabs)/expenses",
           }}
         />
         <Tabs.Screen
@@ -424,9 +410,11 @@ export default function TabLayout() {
           options={{
             title: "Fleet Map",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="map.fill" color={color} />,
-            href: isAdmin ? ("/(tabs)/admin-fleet-map" as any) : null,
+            href: null,
           }}
         />
+        <Tabs.Screen name="admin-fleet-van-detail" options={{ title: "Fleet Van", href: null }} />
+        <Tabs.Screen name="admin-invoices" options={{ title: "Invoices", href: null }} />
         <Tabs.Screen
           name="admin-ai-coach"
           options={{
@@ -513,7 +501,7 @@ export default function TabLayout() {
           options={{
             title: "EOD Review",
             tabBarIcon: ({ color }) => <IconSymbol size={24} name="checkmark.circle.fill" color={color} />,
-            href: isAdmin ? ("/(tabs)/admin-eod-review" as any) : null,
+            href: null,
           }}
         />
         <Tabs.Screen

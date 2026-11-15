@@ -2,14 +2,14 @@ import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native
 import { ChatUnreadBanner } from "@/components/chat-unread-banner";
 import { JobEventBanner } from "@/components/job-event-banner";
 import { useRouter, usePathname } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { trpc } from "@/lib/trpc";
 import { HeaderClockStatus } from "@/components/header-clock-status";
-import { isTechnicianFeatureDisabled, isTechnicianRole } from "@/lib/technician-features";
+import { isMobileFeatureDisabled, isMobileManagementRole, isMobileOpsRole, isMobileSalesRole, isRepairBadgeDestination, resolveMobileNavigationSession } from "@/lib/technician-features";
 
 export interface TopNavMenuProps {
   onMenuToggle?: (isOpen: boolean) => void;
@@ -102,8 +102,17 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { logout, isAdmin, isOpsManager, isSalesRep, employee: currentEmployee } = useEmployeeAuth();
-  const { logout: logoutJobSync, session: jobSyncSession } = useJobSyncAuth();
+  const { logout, isAuthenticated, loading, employee: currentEmployee } = useEmployeeAuth();
+  const { logout: logoutJobSync, session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
+  const { role: currentRole, isReady } = resolveMobileNavigationSession({
+    employee: currentEmployee, session: jobSyncSession, loading, jobSyncLoading, isAuthenticated, allowLegacySales: true,
+  });
+  const isAdmin = isMobileManagementRole(currentRole);
+  const isOpsManager = isMobileOpsRole(currentRole);
+  const isSalesRep = isMobileSalesRole(currentRole);
+  // Retained menu callbacks must observe sign-out, hydration, and role changes too.
+  const navigationState = useRef({ currentRole, isReady });
+  navigationState.current = { currentRole, isReady };
   const [isOpen, setIsOpen] = useState(false);
   const logoutMutation = trpc.auth.logout.useMutation();
   const signedInCompanyName = jobSyncSession?.portal === "company"
@@ -112,16 +121,17 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
 
   const allItems = isOpsManager ? OPS_MANAGER_ITEMS : isAdmin ? ADMIN_ALL_ITEMS : isSalesRep ? SALES_ITEMS : DETAILER_ITEMS;
   const visibleItems = allItems.filter(
-    (item) => !isTechnicianFeatureDisabled(currentEmployee?.role, item.route),
+    (item) => isReady && !isMobileFeatureDisabled(currentRole, item.route),
   );
   const { data: chatUnread } = trpc.chat.getUnreadCount.useQuery(
     { employeeId: currentEmployee?.employeeId ?? "" },
-    { enabled: !!currentEmployee?.employeeId, refetchInterval: 15_000, staleTime: 5_000 }
+    { enabled: isReady && !!currentEmployee?.employeeId, refetchInterval: 15_000, staleTime: 5_000 }
   );
   const chatUnreadTotal = chatUnread?.total ?? 0;
+  const hasRepairBadgeDestination = visibleItems.some((item) => isRepairBadgeDestination(currentRole, item.route));
   const { data: openRepairCount = 0 } = trpc.fleet.countOpenRepairs.useQuery(
     undefined,
-    { enabled: !isTechnicianRole(currentEmployee?.role), refetchInterval: 60000 }
+    { enabled: isReady && hasRepairBadgeDestination, refetchInterval: 60000 }
   );
 
   // Determine active route label for center display
@@ -143,7 +153,8 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   };
 
   const navigate = (route: string) => {
-    if (isTechnicianFeatureDisabled(currentEmployee?.role, route)) return;
+    const latest = navigationState.current;
+    if (!latest.isReady || isMobileFeatureDisabled(latest.currentRole, route)) return;
     haptic();
     router.push(route as any);
     setIsOpen(false);
@@ -165,6 +176,8 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
   const isRouteActive = (route: string) =>
     pathname === route ||
     (route !== "/" && pathname.includes(route.replace("/", "")));
+
+  if (!isReady) return null;
 
   return (
     <View style={{ backgroundColor: "#07111F" }}>
@@ -336,7 +349,7 @@ export function TopNavMenu({ onMenuToggle }: TopNavMenuProps) {
                               <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>{chatUnreadTotal > 99 ? "99+" : chatUnreadTotal}</Text>
                             </View>
                           )}
-                          {((item.route === "/admin-fleet-map" && isAdmin) || (item.route === "/repair-request" && !isAdmin)) && openRepairCount > 0 && (
+                          {isRepairBadgeDestination(currentRole, item.route) && openRepairCount > 0 && (
                             <View style={{
                               position: "absolute", top: -4, right: -6,
                               backgroundColor: "#EF4444", borderRadius: 8,

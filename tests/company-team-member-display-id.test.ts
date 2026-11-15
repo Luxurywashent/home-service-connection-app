@@ -74,13 +74,38 @@ describe("Company-prefixed Team Member display ID", () => {
     expect(nativeBefore?.jobSyncMemberId).toBe("TM007");
   });
 
-  it("wires only the displayed Settings field to the formatter, not API calls", () => {
+  it("removes the shared Settings ID row without replacing action identifiers", () => {
     const source = readFileSync(new URL("../app/(tabs)/profile.tsx", import.meta.url), "utf8");
-    expect(source).toContain('label="Team Member ID" value={teamMemberDisplayId}');
-    expect(source).not.toContain('label="Team Member ID" value={employee?.employeeId}');
-    expect(source).toContain("getCompanyTeamMemberDisplayId(jobSyncSession)");
-    expect(source).toContain('employee?.sessionSource === "jobsync" ? null');
+    expect(source).not.toContain('label="Team Member ID"');
+    expect(source).not.toContain("teamMemberDisplayId");
+    expect(source).not.toContain("getCompanyTeamMemberDisplayId");
+    expect(source).toContain('{ employeeId: employee?.employeeId ?? "" }');
     expect(source).toContain('await resetPinMutation.mutateAsync({ employeeId: employee?.employeeId ?? "", newPin });');
+    expect(source).toContain("const token = jobSyncSession?.token;");
     expect(source).toContain("await deleteJobSyncMobileAccount(token)");
+    expect(source).toContain("await Promise.all([logoutJobSync(), logout()]);");
+  });
+
+  it.each(["owner", "dispatcher", "technician"])("preserves authenticated Company identifiers for %s", (role) => {
+    const current = session("lawn sharks", "TM007");
+    current.user.role = role;
+    const before = JSON.stringify(current);
+    const nativeBefore = getNativeEmployeeSession(current);
+    expect(getCompanyTeamMemberDisplayId(current)).toBe("LAWN-SHARKS-TM007");
+    expect(JSON.stringify(current)).toBe(before);
+    expect(getNativeEmployeeSession(current)).toEqual(nativeBefore);
+    expect(nativeBefore?.employeeId).toBe("jobsync-30001-3720741");
+    expect(nativeBefore?.companyId).toBe(30001);
+    expect(nativeBefore?.jobSyncMemberId).toBe("TM007");
+  });
+
+  it("preserves management member references and the Add Team Member identity workflow", () => {
+    const source = readFileSync(new URL("../app/(tabs)/admin-employees.tsx", import.meta.url), "utf8");
+    expect(source).toContain('employeeId: `jobsync-${member.id}`');
+    expect(source).toContain("jobSyncMemberId: member.id");
+    expect(source).toContain('employeeId: memberId.trim().toUpperCase()');
+    expect(source).toContain('setError("Team Member ID is required")');
+    expect(source).toContain('<FormField label="Team Member ID" value={memberId}');
+    expect(source).toContain('<InfoRow label="Team Member ID"');
   });
 });

@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
-import { Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform } from "react-native";
+import { Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform, StyleSheet } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyMemberDetail, getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember, type JobSyncCompanyMemberDetail } from "@/lib/jobsync-mobile-api";
+import { canEditCompanyMemberProfile, getCompanyAdminFieldworkPolicy, PROFILE_FIELDWORK_LABEL, PROFILE_FIELDWORK_DESCRIPTION, PROFILE_FIELDWORK_PENDING_DESCRIPTION } from "@/lib/profile-fieldwork-policy";
 
 function getWeekRange() {
   const now = new Date();
@@ -277,6 +278,12 @@ export default function AdminEmployeesScreen() {
   const activeEmployeesLoading = isJobSyncCompany ? companyMembersLoading : isLoading;
   const archivedEmployees = isJobSyncCompany ? [] : (deactivatedEmployees ?? []);
   const visibleEmployees = roleFilter === "all" ? activeEmployees : activeEmployees.filter((employee: any) => employee.role === roleFilter);
+  // Use the existing Company-scoped roster target, never the draft Role selector.
+  const selectedCompanyMember = isJobSyncCompany && selectedEmp?.isJobSyncMember
+    ? companyMembers.find((member) => member.id === selectedEmp.jobSyncMemberId)
+    : undefined;
+  const canEditSelectedProfile = !isJobSyncCompany || canEditCompanyMemberProfile(jobSyncSession, selectedCompanyMember);
+  const fieldworkPolicy = getCompanyAdminFieldworkPolicy(jobSyncSession, selectedCompanyMember);
 
   const detailEmpPerf = trpc.performance.getHistory.useQuery(
     { employeeId: selectedEmp?.employeeId ?? "", limit: 14 },
@@ -301,6 +308,7 @@ export default function AdminEmployeesScreen() {
   };
 
   const startEdit = () => {
+    if (!selectedEmp || !canEditSelectedProfile) return;
     const profile = isJobSyncCompany ? companyMemberDetail : null;
     setEditData({
       fullName: profile?.name ?? selectedEmp.fullName,
@@ -321,6 +329,10 @@ export default function AdminEmployeesScreen() {
   };
 
   const handleSaveEdit = async () => {
+    if (!canEditSelectedProfile) {
+      setEditError("Profile editing is unavailable for this Company member. Backend connection pending for Admin profiles.");
+      return;
+    }
     if (!editData.fullName?.trim()) { setEditError("Name is required"); return; }
     const nameParts = editData.fullName.trim().split(/\s+/);
     if (isJobSyncCompany && nameParts.length < 2) { setEditError("Enter both a first and last name."); return; }
@@ -714,7 +726,7 @@ export default function AdminEmployeesScreen() {
                   >
                     <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "600" }}>Close</Text>
                   </TouchableOpacity>
-                  {!editMode && (
+                  {!editMode && canEditSelectedProfile && (
                     <TouchableOpacity onPress={startEdit} activeOpacity={0.7} style={{ paddingVertical: 8 }}>
                       <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "600" }}>Edit</Text>
                     </TouchableOpacity>
@@ -836,6 +848,8 @@ export default function AdminEmployeesScreen() {
                       </View>
                     </View>
 
+                    {fieldworkPolicy.visible && <CompanyAdminFieldworkNotice colors={colors} />}
+
                     {/* Custom Work Days — only shown for detailers */}
                     {!isJobSyncCompany && editData.role === "detailer" && (
                       <View style={{ marginBottom: 20 }}>
@@ -898,9 +912,9 @@ export default function AdminEmployeesScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleSaveEdit}
-                        disabled={editSaving}
+                        disabled={editSaving || !canEditSelectedProfile}
                         activeOpacity={0.8}
-                        style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center", opacity: editSaving ? 0.7 : 1 }}
+                        style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center", opacity: editSaving || !canEditSelectedProfile ? 0.7 : 1 }}
                       >
                         {editSaving ? <ActivityIndicator color="#FFF" /> : <Text style={{ fontSize: 15, fontWeight: "700", color: "#FFF" }}>Save Changes</Text>}
                       </TouchableOpacity>
@@ -923,6 +937,7 @@ export default function AdminEmployeesScreen() {
                       {isJobSyncCompany ? (
                         <>
                           <InfoRow label="Availability" value={companyMemberDetail?.availability ? companyMemberDetail.availability.replace(/_/g, " ") : "-"} colors={colors} />
+                          {fieldworkPolicy.visible && <CompanyAdminFieldworkNotice colors={colors} />}
                           <InfoRow label="Work Days" value={formatWorkDays(companyMemberDetail?.workDays ?? [])} colors={colors} />
                         </>
                       ) : selectedEmp.role === "detailer" && (() => {
@@ -1298,6 +1313,32 @@ export default function AdminEmployeesScreen() {
     </ScreenContainer>
   );
 }
+
+/** Intentionally no switch, setter, storage, or mutation until JobSync supports owner fieldwork. */
+function CompanyAdminFieldworkNotice({ colors }: { colors: ReturnType<typeof useColors> }) {
+  return (
+    <View
+      testID="company-admin-fieldwork-unavailable"
+      accessibilityState={{ disabled: true }}
+      style={[fieldworkStyles.card, { backgroundColor: colors.surface, borderColor: colors.primary + "40" }]}
+    >
+      <Text style={[fieldworkStyles.label, { color: colors.foreground }]}>{PROFILE_FIELDWORK_LABEL}</Text>
+      <Text style={[fieldworkStyles.description, { color: colors.muted }]}>{PROFILE_FIELDWORK_DESCRIPTION}</Text>
+      <View style={[fieldworkStyles.status, { backgroundColor: colors.primary + "18" }]}>
+        <Text style={[fieldworkStyles.statusText, { color: colors.primary }]}>Unavailable · read-only</Text>
+      </View>
+      <Text style={[fieldworkStyles.description, { color: colors.muted }]}>{PROFILE_FIELDWORK_PENDING_DESCRIPTION}</Text>
+    </View>
+  );
+}
+
+const fieldworkStyles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 12, gap: 8 },
+  label: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+  description: { fontSize: 12, lineHeight: 18 },
+  status: { alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  statusText: { fontSize: 12, lineHeight: 17, fontWeight: "700" },
+});
 
 function AddTeamMemberModal({ visible, onClose, colors, onSuccess }: { visible: boolean; onClose: () => void; colors: any; onSuccess: () => void }) {
   const [memberId, setMemberId] = useState("");
