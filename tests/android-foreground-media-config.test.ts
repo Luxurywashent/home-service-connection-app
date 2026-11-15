@@ -217,6 +217,7 @@ describe("Android media config plugin ordering and platform isolation", () => {
     expect(config.plugins?.filter((plugin) => Array.isArray(plugin) && plugin[0] === "expo-audio")).toEqual([]);
     expect(config.plugins).toContainEqual(["expo-video", { supportsBackgroundPlayback: false, supportsPictureInPicture: false }]);
     expect(config.ios).toEqual({
+      version: "1.0.1",
       supportsTablet: true,
       bundleIdentifier: "com.homeserviceconnection.mobile",
       infoPlist: { ITSAppUsesNonExemptEncryption: false },

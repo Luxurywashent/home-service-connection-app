@@ -3,6 +3,15 @@ import config from "../app.config";
 import eas from "../eas.json";
 
 describe("Home Service Connection store identities", () => {
+  it("uses a new marketing version after the approved 1.0.0 train closed", () => {
+    expect(config.ios?.version).toBe("1.0.1");
+    expect(config.version).toBe("1.0.0");
+    // Native/runtime configuration is unchanged by this marketing-version repair.
+    expect(config.runtimeVersion).toBe("1.0.0");
+    expect(eas.build.testflight.extends).toBe("production");
+    expect(eas.build.production.autoIncrement).toBe(true);
+  });
+
   it("matches the existing Google Play package name independently of iOS", () => {
     expect(config.android?.package).toBe("com.homeserviceconnected");
     expect(config.android?.package).not.toBe(config.ios?.bundleIdentifier);

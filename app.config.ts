@@ -54,6 +54,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   ios: {
+    version: "1.0.1",
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     "infoPlist": {
