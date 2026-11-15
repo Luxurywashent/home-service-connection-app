@@ -23,7 +23,7 @@ import { AddJobModal } from "@/components/add-job-modal";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { positiveJobSyncId } from "@/lib/jobsync-mobile-api";
-import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
+import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { JOB_VIDEOS_ENABLED } from "@/lib/company-job-fieldwork";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -89,11 +89,16 @@ export default function AdminCustomerProfileScreen() {
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const companyJobMode = jobSyncLoading || jobSyncSession !== null || selectedJob?.companyId !== undefined;
-  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
   // This legacy customer-history reader does not establish a canonical Company Job ID.
   // Only explicit Company DTO provenance may select a bearer gallery; never guess from a legacy numeric ID.
+  const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id && selectedJob?.companyId !== undefined ? positiveJobSyncId(selectedJob?.id) : null;
   const companyJob = useCompanyJob(jobSyncSession,
-    selectedJob?.companyId === jobSyncSession?.company?.id && selectedJob?.companyId !== undefined ? positiveJobSyncId(selectedJob?.id) : null);
+    companyPhotoJobId);
+  const refreshCompanyJob = async () => {
+    setCompanyPhotoPreview(null);
+    await companyJob.refresh();
+  };
   useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id, selectedJob?.jobId, jobSyncSession?.token, jobSyncSession?.company?.id]);
   const [noteText, setNoteText] = useState("");
   const [localNotes, setLocalNotes] = useState<{ id: string; text: string; createdAt: string }[]>([]);
@@ -1584,7 +1589,7 @@ export default function AdminCustomerProfileScreen() {
 
               {/* Photos — always fetch fresh from server when job opens */}
               {(() => {
-                if (companyJobMode) return <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} />;
+                if (companyJobMode) return <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} />;
                 let photos: string[] = [];
                 try {
                   const raw = selectedJob?.photoUrls;
@@ -1707,7 +1712,7 @@ export default function AdminCustomerProfileScreen() {
                 <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>🔄 Rebook</Text>
               </TouchableOpacity>
             </View>
-            <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
+            <CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} photo={companyJobMode ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} onRefresh={refreshCompanyJob} />
           </View>
         </View>
       </Modal>

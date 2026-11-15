@@ -12,6 +12,8 @@ export type JobSyncNativeSession = {
     email: string | null;
     role: JobSyncCompanyRole | JobSyncPlatformRole;
     memberId?: string;
+    /** Raw individual override from the signed Company session, not position eligibility. */
+    calendarEligible?: boolean | null;
   };
   company?: {
     id: number;
@@ -30,6 +32,8 @@ export type JobSyncCompanyMember = {
   isActive: boolean;
   /** Active Company-position setting returned by the HSC roster API. */
   calendarEligible?: boolean;
+  /** Raw individual override when supplied; never inferred from a position or role. */
+  calendarEligibleOverride?: boolean | null;
 };
 
 /**
@@ -72,13 +76,14 @@ export type JobSyncCompanyRoster = {
 };
 
 export type JobSyncCompanyMemberUpdateInput = {
-  firstName: string;
-  lastName: string;
-  role: JobSyncCompanyRole;
+  firstName?: string;
+  lastName?: string;
+  role?: JobSyncCompanyRole;
   email?: string;
   phone?: string;
   city?: string;
   availability?: "available" | "busy" | "off_duty";
+  calendarEligibleOverride?: boolean;
 };
 
 // Company mobile traffic must use the canonical Home Service Connected origin.
@@ -160,6 +165,10 @@ function isActiveMember(value: unknown) {
 
 function isCalendarEligible(value: unknown) {
   return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function rawNullableBoolean(value: unknown): boolean | null | undefined {
+  return value === null || typeof value === "boolean" ? value : undefined;
 }
 
 function errorMessage(payload: unknown, fallback: string) {
@@ -417,6 +426,35 @@ function serverInstant(value: unknown): string | null {
   return typeof value === "string" && value.trim() && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
+/** Only managed root-relative storage paths may inherit the configured API origin. */
+export function normalizeJobSyncPhotoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value || /[\u0000-\u0020\u007f\\]/.test(value) || /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
+  try {
+    const absoluteHttps = /^https:\/\//i.test(value);
+    if (!absoluteHttps && (!value.startsWith("/api/storage/") || value.startsWith("//"))) return null;
+    const rawPath = absoluteHttps ? value.match(/^https:\/\/[^/?#]+([^?#]*)/i)?.[1] ?? "" : value.split(/[?#]/, 1)[0];
+    let decoded = rawPath;
+    // Inspect nested escapes before URL parsing can silently normalize traversal.
+    for (let pass = 0; pass < 8; pass++) {
+      if (!/%[0-9a-f]{2}/i.test(decoded)) break;
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+    if (/%[0-9a-f]{2}/i.test(decoded) || /[\u0000-\u001f\u007f\\]/.test(decoded)
+      || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
+    if (absoluteHttps) {
+      const absolute = new URL(value);
+      return absolute.protocol === "https:" && absolute.hostname && !absolute.username && !absolute.password ? value : null;
+    }
+    if (!decoded.startsWith("/api/storage/") || decoded.slice("/api/storage/".length).length === 0
+      || decoded.split("/").slice(1).some((segment) => !segment)) return null;
+    const base = new URL(getJobSyncBaseUrl());
+    const resolved = new URL(value, base);
+    return base.protocol === "https:" && resolved.origin === base.origin && resolved.pathname.startsWith("/api/storage/") ? resolved.href : null;
+  } catch { return null; }
+}
+
 /** Main 50bc548: photos use image_url/created_at plus uploadedByUserId. No photo mutation route exists. */
 export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
   const row = asRecord(asRecord(payload)?.job);
@@ -433,8 +471,8 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
     photos: (Array.isArray(row.photos) ? row.photos : []).flatMap((value) => {
       const photo = asRecord(value);
       const id = positiveJobSyncId(photo?.id);
-      const imageUrl = firstString(photo?.image_url);
-      if (!id || !imageUrl || !/^https?:\/\//i.test(imageUrl)) return [];
+      const imageUrl = normalizeJobSyncPhotoUrl(photo?.image_url);
+      if (!id || !imageUrl) return [];
       return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.created_at) }];
     }),
   };
@@ -453,6 +491,17 @@ export async function getJobSyncCompanyJobDetail(token: string, jobId: number, c
 export async function updateJobSyncCompanyJobStatus(token: string, jobId: number, input: { status: JobSyncFieldStatus; expectedUpdatedAt?: string | null }) {
   validCompanyJobId(jobId);
   if (!token.trim() || !["en_route", "on_site", "completed"].includes(input.status)) throw new Error("A valid Company field status and session are required.");
+  return patchJobSyncCompanyJobStatus(token, jobId, input);
+}
+
+/** A separate management action, never a fourth field-progress control. */
+export async function cancelJobSyncCompanyJob(token: string, jobId: number, input: { expectedUpdatedAt: string }) {
+  validCompanyJobId(jobId);
+  if (!token.trim() || !serverInstant(input.expectedUpdatedAt)) throw new Error("A fresh Company Job version and session are required for management cancellation.");
+  return patchJobSyncCompanyJobStatus(token, jobId, { status: "cancelled", expectedUpdatedAt: input.expectedUpdatedAt });
+}
+
+async function patchJobSyncCompanyJobStatus<T extends JobSyncFieldStatus | "cancelled">(token: string, jobId: number, input: { status: T; expectedUpdatedAt?: string | null }) {
   const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/status`, {
     method: "PATCH", headers: createJobSyncBearerHeaders(token),
     body: JSON.stringify({ status: input.status, ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}) }),
@@ -530,13 +579,14 @@ export async function getJobSyncCompanyCustomers(token: string): Promise<JobSync
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
   return {
-    firstName: input.firstName.trim(),
-    lastName: input.lastName.trim(),
-    role: input.role,
+    ...(input.firstName !== undefined ? { firstName: input.firstName.trim() } : {}),
+    ...(input.lastName !== undefined ? { lastName: input.lastName.trim() } : {}),
+    ...(input.role !== undefined ? { role: input.role } : {}),
     ...(input.email?.trim() ? { email: input.email.trim().toLowerCase() } : {}),
     ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
     ...(input.city?.trim() ? { city: input.city.trim() } : {}),
     ...(input.availability ? { availability: input.availability } : {}),
+    ...(typeof input.calendarEligibleOverride === "boolean" ? { calendarEligibleOverride: input.calendarEligibleOverride } : {}),
   };
 }
 
@@ -591,12 +641,15 @@ export function normalizeJobSyncMobileSession(payload: unknown, token: string): 
     return { token, portal: "platform", user: normalizedUser };
   }
 
+  // Missing is unavailable, null is inherited/unset, and malformed is rejected.
+  // Do not confer a Company capability on a platform session or use roster defaults.
+  if (user.calendarEligible !== undefined && rawNullableBoolean(user.calendarEligible) === undefined) return null;
   const companyId = firstNumber(company?.id, company?.companyId, profile.companyId, session.companyId, user.companyId);
   if (!companyId || !company) return null;
   return {
     token,
     portal: "company",
-    user: normalizedUser,
+    user: { ...normalizedUser, ...(user.calendarEligible !== undefined ? { calendarEligible: rawNullableBoolean(user.calendarEligible) } : {}) },
     company: {
       id: companyId,
       name: firstString(company.name, company.companyName, profile.companyName) ?? "Company workspace",
@@ -649,6 +702,7 @@ export function normalizeJobSyncCompanyRoster(payload: unknown, expectedCompanyI
       role: firstString(member.role, member.memberRole) ?? "team_member",
       isActive: true,
       calendarEligible: isCalendarEligible(member.calendarEligible ?? member.calendar_eligible),
+      ...(rawNullableBoolean(member.calendarEligibleOverride) !== undefined ? { calendarEligibleOverride: rawNullableBoolean(member.calendarEligibleOverride) } : {}),
     }];
   });
 
@@ -698,6 +752,9 @@ export function normalizeJobSyncCompanyMemberDetail(payload: unknown, expectedMe
     upsellBonusPct: nullableNumber(member.upsellBonusPct, member.upsell_bonus_pct),
     mysteryBonusStatus: firstString(member.mysteryBonusStatus, member.mystery_bonus_status),
     isActive: true,
+    // The existing detail route calls its raw individual override calendarEligible.
+    ...(rawNullableBoolean(member.calendarEligibleOverride !== undefined ? member.calendarEligibleOverride : member.calendarEligible) !== undefined
+      ? { calendarEligibleOverride: rawNullableBoolean(member.calendarEligibleOverride !== undefined ? member.calendarEligibleOverride : member.calendarEligible) } : {}),
     assignedVehicle: vehicle ? {
       id: nullableNumber(vehicle.id, vehicle.vehicleId),
       name: firstString(vehicle.name, vehicle.vehicleName, vehicle.unitNumber) ?? "Assigned vehicle",

@@ -32,6 +32,10 @@ import {
   sendJobSyncCompanyJobInvoice,
   positiveJobSyncId,
   JobSyncApiError,
+  getJobSyncMobileSession,
+  updateJobSyncCompanyMember,
+  normalizeJobSyncPhotoUrl,
+  cancelJobSyncCompanyJob,
 } from "../lib/jobsync-mobile-api";
 
 describe("JobSync mobile API contract", () => {
@@ -496,6 +500,96 @@ describe("JobSync mobile API contract", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(Object.assign(new Error("aborted"), { name: "AbortError" })));
     try {
       await expect(updateJobSyncCompanyJobStatus("mock-unit-token", 47, { status: "on_site" })).rejects.toMatchObject({ status: null, code: "TIMEOUT" });
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("preserves raw signed Company capability true/false/null and distinguishes absence; rejects malformed projections", () => {
+    const payload = { accountType: "company", user: { id: 41, name: "Owner", role: "owner" }, company: { id: 9, name: "Unit" } };
+    const missing = normalizeJobSyncMobileSession(payload, "mock-token")!;
+    expect(missing.user.calendarEligible).toBeUndefined();
+    expect(Object.hasOwn(missing.user, "calendarEligible")).toBe(false);
+    for (const calendarEligible of [true, false, null]) {
+      const signed = normalizeJobSyncMobileSession({ ...payload, user: { ...payload.user, calendarEligible } }, "mock-token")!;
+      expect(signed.user.calendarEligible).toBe(calendarEligible);
+      expect(Object.hasOwn(signed.user, "calendarEligible")).toBe(true);
+      expect(signed.user.role).toBe("owner");
+    }
+    for (const calendarEligible of ["true", "false", 1, 0, {}, [], "", NaN]) {
+      expect(normalizeJobSyncMobileSession({ ...payload, user: { ...payload.user, calendarEligible } }, "mock-token")).toBeNull();
+    }
+    const hints = normalizeJobSyncMobileSession({ ...payload, calendarEligible: true, user: { ...payload.user, availableForFieldJobs: true }, company: { ...payload.company, calendarEligible: true } }, "mock-token")!;
+    expect(hints.user.calendarEligible).toBeUndefined();
+    const platform = normalizeJobSyncMobileSession({ accountType: "platform_admin", user: { id: 3, role: "owner", calendarEligible: true } }, "mock-token")!;
+    expect(platform.user.calendarEligible).toBeUndefined();
+  });
+  it("reads fresh capability through the existing signed no-store auth/session route", async () => {
+    vi.stubEnv("EXPO_PUBLIC_JOBSYNC_API_BASE_URL", "https://jobwash-veysiubh.manus.space");
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ user: { id: 41, role: "dispatcher", calendarEligible: true }, company: { id: 9, name: "Unit" } }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      expect((await getJobSyncMobileSession("mock-token")).user.calendarEligible).toBe(true);
+      expect(mock).toHaveBeenCalledWith("https://jobwash-veysiubh.manus.space/api/mobile/v1/auth/session", expect.objectContaining({ method: "GET", cache: "no-store", headers: expect.objectContaining({ Authorization: "Bearer mock-token" }) }));
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+  it("normalizes nullable raw member overrides without confusing position-roster eligibility", () => {
+    for (const calendarEligibleOverride of [true, false, null]) {
+      const roster = normalizeJobSyncCompanyRoster({ company: { id: 9 }, members: [{ id: 41, name: "Unit", role: "dispatcher", calendarEligible: true, calendarEligibleOverride }] }, 9)!;
+      expect(roster.members[0].calendarEligibleOverride).toBe(calendarEligibleOverride);
+      expect(roster.members[0].calendarEligible).toBe(true);
+      const explicit = normalizeJobSyncCompanyMemberDetail({ member: { id: 41, name: "Unit", calendarEligibleOverride, calendarEligible: true } }, 41)!;
+      expect(explicit.calendarEligibleOverride).toBe(calendarEligibleOverride);
+      const existingRaw = normalizeJobSyncCompanyMemberDetail({ member: { id: 41, name: "Unit", calendarEligible: calendarEligibleOverride } }, 41)!;
+      expect(existingRaw.calendarEligibleOverride).toBe(calendarEligibleOverride);
+    }
+    const roster = normalizeJobSyncCompanyRoster({ company: { id: 9 }, members: [{ id: 41, name: "Unit", role: "dispatcher", calendarEligible: true }] }, 9)!;
+    expect(roster.members[0].calendarEligibleOverride).toBeUndefined();
+    for (const calendarEligibleOverride of [undefined, "true", 1, {}]) {
+      expect(normalizeJobSyncCompanyMemberDetail({ member: { id: 41, name: "Unit", calendarEligibleOverride } }, 41)?.calendarEligibleOverride).toBeUndefined();
+    }
+  });
+  it("supports capability-only true/false member PATCH without profile or role conversion", async () => {
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      for (const calendarEligibleOverride of [true, false]) {
+        expect(createJobSyncCompanyMemberUpdatePayload({ calendarEligibleOverride })).toEqual({ calendarEligibleOverride });
+        await updateJobSyncCompanyMember("mock-owner-token", 42, { calendarEligibleOverride });
+        expect(mock).toHaveBeenLastCalledWith(expect.stringMatching(/\/api\/mobile\/v1\/company\/team-members\/42$/), expect.objectContaining({ method: "PATCH", headers: expect.objectContaining({ Authorization: "Bearer mock-owner-token" }), body: JSON.stringify({ calendarEligibleOverride }) }));
+      }
+      expect(createJobSyncCompanyMemberUpdatePayload({ calendarEligibleOverride: "true" } as any)).toEqual({});
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("resolves only trusted managed root-relative photo paths at the configured origin, preserving signed queries", () => {
+    vi.stubEnv("EXPO_PUBLIC_JOBSYNC_API_BASE_URL", "https://jobwash-veysiubh.manus.space/");
+    try {
+      const relative = "/api/storage/company-9/job-47/photo.jpg?token=a%2Bb%2Fc&expires=123&signature=AbC%3D";
+      const expected = `https://jobwash-veysiubh.manus.space${relative}`;
+      expect(normalizeJobSyncPhotoUrl(relative)).toBe(expected);
+      const photos = normalizeJobSyncCompanyJobDetail({ job: { id: 47, company_id: 9, photos: [{ id: 1, image_url: relative }] } }, 47, 9)!.photos;
+      expect(photos[0].imageUrl).toBe(expected);
+      const absolute = "https://cdn.example.com/photo.jpg?signature=AbC%2B123%3D";
+      expect(normalizeJobSyncPhotoUrl(absolute)).toBe(absolute);
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it.each([
+    "//foreign.test/api/storage/photo.jpg", "data:image/png;base64,AAA", "javascript:alert(1)", "file:///photo.jpg", "http://foreign.test/photo.jpg",
+    "/photos/a.jpg", "api/storage/a.jpg", "/api/mobile/v1/jobs/47", "/api/storage/", "/api/storage/../secret", "/api/storage/./a.jpg",
+    "/api/storage/%2e%2e/secret", "/api/storage/%252e%252e/secret", "/api/storage/folder/%2f..%2fsecret", "/api/storage//foreign.test/a.jpg",
+    "/api/storage/\\foreign.test/a.jpg", "/api/storage/%5ca.jpg", "/api/storage/%00.jpg", "/api/storage/a.jpg\n", " /api/storage/a.jpg",
+    "/api/storage/a.jpg?token=x\r\ny", "https://cdn.test/a\n.jpg", "https://user:pass@cdn.test/photo.jpg", "https://", null,
+    "https://cdn.test/a/../secret.jpg", "https://cdn.test/a/%2e%2e/secret.jpg", "https://cdn.test/a/%2500.jpg", "/api/storage/%2500.jpg",
+  ])("rejects unsafe/unsupported photo URL %s", (url) => {
+    expect(normalizeJobSyncPhotoUrl(url)).toBeNull();
+    expect(normalizeJobSyncCompanyJobDetail({ job: { id: 47, photos: [{ id: 1, image_url: url }] } }, 47, 9)?.photos).toEqual([]);
+  });
+  it("uses the existing canonical cancelled path with exact refreshed version body, never field status payload extensions", async () => {
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, status: "cancelled" }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      await expect(cancelJobSyncCompanyJob("mock-owner-token", 47, { expectedUpdatedAt: "2026-11-14T18:00:00.000Z", note: "ignored", intent: "ignored" } as any)).resolves.toEqual({ success: true, status: "cancelled" });
+      expect(mock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/mobile\/v1\/jobs\/47\/status$/), expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "cancelled", expectedUpdatedAt: "2026-11-14T18:00:00.000Z" }) }));
+      await expect(updateJobSyncCompanyJobStatus("mock-owner-token", 47, { status: "cancelled" as any })).rejects.toThrow("valid Company field");
+      await expect(cancelJobSyncCompanyJob("mock-owner-token", 47, { expectedUpdatedAt: "bad" })).rejects.toThrow("fresh Company Job version");
+      expect(mock).toHaveBeenCalledTimes(1);
     } finally { vi.unstubAllGlobals(); }
   });
 });

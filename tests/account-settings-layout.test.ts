@@ -72,9 +72,28 @@ describe("account settings layout", () => {
   });
 
   it("does not add a management fieldwork setter to self-service Settings", () => {
-    expect(profile).not.toContain("Available for Field Jobs");
+    expect(profile).toContain("PROFILE_FIELDWORK_LABEL");
+    expect(profile).toContain("PROFILE_FIELDWORK_OWNER_BLOCKED_DESCRIPTION");
+    expect(profile).toContain("UNKNOWN · not verified");
+    expect(profile).toContain("ON · server TRUE");
+    expect(profile).toContain("OFF · server verified");
+    expect(profile).toContain("read-only");
     expect(profile).not.toContain("calendarEligibleOverride");
-    expect(profile).not.toContain("profile-fieldwork-policy");
+    expect(profile).not.toContain("updateCompanyMemberFieldwork");
+    expect(profile).not.toContain("onValueChange");
+    expect(profile).not.toContain("Switch");
+  });
+
+  it("refreshes signed status on focus/retry and invalidates stale or switched-Company evidence", () => {
+    expect(profile).toContain("useFocusEffect");
+    expect(profile).toContain("refreshCompanyProfileSession");
+    expect(profile).toContain("currentProfileKey.current === requestKey");
+    expect(profile).toContain("profileReadVersion.current === version");
+    expect(profile).toContain("profileReadVersion.current += 1");
+    expect(profile).toContain("setVerifiedSelf(null)");
+    expect(profile).toContain("COMPANY_PROFILE_SESSION_MAX_AGE_MS");
+    expect(profile).toContain('accessibilityLabel="Retry signed field-job status"');
+    expect(profile).toContain("disabled={fieldworkLoading}");
   });
 
   it("makes the redesigned screen reachable as Settings for Company users", () => {

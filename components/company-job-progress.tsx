@@ -1,10 +1,10 @@
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useColors } from "@/hooks/use-colors";
-import { companyDurationMs, companyFieldworkBlockReason, nextCompanyFieldStatus, ADMIN_FIELDWORK_PENDING } from "@/lib/company-job-fieldwork";
+import { companyDurationMs, companyFieldworkBlockReason, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
 import type { JobSyncNativeSession, JobSyncFieldStatus } from "@/lib/jobsync-mobile-api";
 import type { useCompanyJob } from "@/hooks/use-company-job";
 
-type Props = { session: JobSyncNativeSession | null; job: ReturnType<typeof useCompanyJob>; timezone?: string | null };
+type Props = { session: JobSyncNativeSession | null; job: ReturnType<typeof useCompanyJob>; timezone?: string | null; onRefresh?: () => void | Promise<void> };
 const actions: { label: string; target: JobSyncFieldStatus }[] = [
   { label: "ON MY WAY", target: "en_route" }, { label: "ARRIVED", target: "on_site" }, { label: "FINISH", target: "completed" },
 ];
@@ -17,10 +17,10 @@ function formatInstant(value: string | null, timezone?: string | null) {
 function formatDuration(value: number | null) {
   return value === null ? "Unknown" : `${Math.round(value / 60000)} min`;
 }
-export function CompanyJobProgress({ session, job, timezone }: Props) {
+export function CompanyJobProgress({ job, timezone, onRefresh }: Props) {
   const colors = useColors();
   const detail = job.detail;
-  const reason = session?.portal === "company" && session.user.role !== "technician" ? ADMIN_FIELDWORK_PENDING : companyFieldworkBlockReason(session, detail);
+  const reason = companyFieldworkBlockReason(job.actor, detail);
   const next = detail ? nextCompanyFieldStatus(detail.status) : null;
   const press = (target: JobSyncFieldStatus) => {
     if (reason || job.loading || job.pending || next !== target) return;
@@ -44,7 +44,7 @@ export function CompanyJobProgress({ session, job, timezone }: Props) {
     {reason ? <Text style={{ color: colors.muted }}>{reason}</Text> : null}
     {job.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{job.error}</Text> : null}
     {job.success ? <Text style={{ color: colors.success }}>{job.success}</Text> : null}
-    <TouchableOpacity disabled={job.pending || job.loading} onPress={() => { void job.refresh(); }} style={styles.refresh}><Text style={{ color: colors.primary }}>Refresh Job</Text></TouchableOpacity>
+    <TouchableOpacity disabled={job.pending || job.loading} onPress={() => { void (onRefresh ? onRefresh() : job.refresh()); }} style={styles.refresh}><Text style={{ color: colors.primary }}>Refresh Job</Text></TouchableOpacity>
     {[
       ["On My Way", detail?.enRouteAt ?? null], ["Arrived / Started", detail?.onSiteAt ?? null], ["Finished", detail?.completedAt ?? null],
     ].map(([label, value]) => <View key={label} style={styles.milestone}><Text style={{ color: colors.foreground }}>{label}</Text><Text style={{ color: colors.muted }}>{formatInstant(value, timezone)}</Text></View>)}

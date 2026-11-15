@@ -6,7 +6,7 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useEffect, useMemo } from "react";
 import { TopNavMenu } from "@/components/ui/top-nav-menu";
 import { useEmployeePush } from "@/hooks/use-employee-push";
-import { isMobileFeatureDisabled, mobileRoleHome, resolveMobileNavigationSession } from "@/lib/technician-features";
+import { isMobileFeatureDisabled, matchesMobileRoute, mobileRoleHome, resolveMobileNavigationSession } from "@/lib/technician-features";
 
 function SalesPushRegistration() {
   useEmployeePush();
@@ -23,6 +23,8 @@ export default function SalesLayout() {
     useMemo(() => resolveMobileNavigationSession({ employee, session: jobSyncSession, loading, jobSyncLoading, isAuthenticated, allowLegacySales: true }),
       [employee, isAuthenticated, jobSyncLoading, jobSyncSession, loading]);
   const isDisabledRoute = isMobileFeatureDisabled(currentRole, pathname, "sales");
+  // usePathname omits groups: this sibling's Company profile alias must use clean Settings.
+  const isCompanyProfileRoute = hasMatchingCompanySession && matchesMobileRoute(pathname, ["/profile"]);
 
   useEffect(() => {
     if (loading || jobSyncLoading || !nativeEmployee || hasMatchingCompanySession) return;
@@ -39,10 +41,13 @@ export default function SalesLayout() {
   }, [hasLegacySalesSession, jobSyncLoading, jobSyncSession?.portal, loading, nativeEmployee, router]);
 
   useEffect(() => {
-    if (isReady && isDisabledRoute) router.replace(mobileRoleHome(currentRole));
-  }, [currentRole, isDisabledRoute, isReady, router]);
+    if (!isReady) return;
+    if (isCompanyProfileRoute) router.replace("/(tabs)/profile");
+    else if (isDisabledRoute) router.replace(mobileRoleHome(currentRole));
+  }, [currentRole, isCompanyProfileRoute, isDisabledRoute, isReady, router]);
 
-  if (!isReady || isDisabledRoute) return null;
+  // Keep the stale profile's UI and queries unmounted while auth/redirect is pending.
+  if (!isReady || isDisabledRoute || isCompanyProfileRoute) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -65,7 +70,7 @@ export default function SalesLayout() {
         <Tabs.Screen name="request-off" options={{ href: null }} />
         <Tabs.Screen name="chat" />
         <Tabs.Screen name="training" options={{ href: isMobileFeatureDisabled(currentRole, "/(sales)/training") ? null : undefined }} />
-        <Tabs.Screen name="profile" />
+        <Tabs.Screen name="profile" options={{ href: hasMatchingCompanySession ? null : undefined }} />
         <Tabs.Screen name="notifications" options={{ href: isMobileFeatureDisabled(currentRole, "/(sales)/notifications") ? null : undefined }} />
         {/* Stack-only screens — hidden from nav */}
         <Tabs.Screen name="door-hangers" options={{ href: null }} />

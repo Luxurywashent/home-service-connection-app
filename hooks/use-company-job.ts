@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { companyJobSessionKey, createCompanyJobController, type CompanyJobState } from "@/lib/company-job-fieldwork";
 import type { JobSyncMobileJob, JobSyncNativeSession } from "@/lib/jobsync-mobile-api";
 
-const empty: CompanyJobState = { detail: null, loading: false, pending: false, error: null, success: null };
+const empty: CompanyJobState = { detail: null, actor: null, loading: false, pending: false, error: null, success: null };
 export function useCompanyJob(session: JobSyncNativeSession | null, jobId: number | null, onList?: (jobs: JobSyncMobileJob[]) => void) {
   const key = companyJobSessionKey(session, jobId);
   const live = useRef({ key, onList, mounted: true });
@@ -29,5 +29,6 @@ export function useCompanyJob(session: JobSyncNativeSession | null, jobId: numbe
   }, []);
   useFocusEffect(useCallback(() => { void controller?.refresh(); }, [controller]));
   const state = snapshot.key === key && snapshot.identity === instance.current ? snapshot.state : { ...empty, loading: Boolean(key) };
-  return { ...state, refresh: () => controller?.refresh(), advance: (target: "en_route" | "on_site" | "completed") => controller?.advance(target) ?? Promise.resolve(false) };
+  return { ...state, refresh: () => controller?.refresh(), advance: (target: "en_route" | "on_site" | "completed") => controller?.advance(target) ?? Promise.resolve(false),
+    cancelManagement: () => controller?.cancelManagement() ?? Promise.resolve(false) };
 }

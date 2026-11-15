@@ -46,16 +46,16 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
-  isJobSyncFieldSchedulingMember,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
   positiveJobSyncId,
   sendJobSyncCompanyJobInvoice,
 } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
+import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { CompanyJobProgress } from "@/components/company-job-progress";
-import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
-import { companyJobDisplayFields, companyJobMilestoneFields } from "@/lib/company-job-fieldwork";
+import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
+import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
@@ -730,6 +730,12 @@ function DualLaneTimeline({
   // Assign jobs to lanes based on detailer name or employeeId (if set)
   // Unassigned jobs go to the Unassigned lane (admin only) or lane 0 (detailer view)
   const getJobLane = (job: Job): number => {
+    // Canonical Company identities beat display-name collisions. A removed
+    // candidate does not mean its existing Job has actually been unassigned.
+    if (job.companyId !== undefined) {
+      const byId = cityConfig.detailers.findIndex((member) => member.employeeId === job.assignedTo);
+      return byId >= 0 ? byId : (isAdmin ? UNASSIGNED_LANE_IDX : 0);
+    }
     if (job.detailerName) {
       // Try matching by display name first
       const byName = cityConfig.detailers.findIndex(
@@ -773,7 +779,7 @@ function DualLaneTimeline({
         {isAdmin && (
           <View style={{ width: laneWidth, alignItems: "center", paddingVertical: 8 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#94a3b8", marginBottom: 3 }} />
-            <Text style={{ fontSize: 13, fontWeight: "700", color: "#94a3b8" }}>Unassigned</Text>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: "#94a3b8" }}>{jobs.some((job) => job.companyId !== undefined && job.assignedTo && getJobLane(job) === UNASSIGNED_LANE_IDX) ? "Other / Unassigned" : "Unassigned"}</Text>
           </View>
         )}
       </View>
@@ -1497,11 +1503,27 @@ export default function AdminScheduleScreen() {
   const [adminEditingNotes, setAdminEditingNotes] = useState(false);
   const [adminTagInput, setAdminTagInput] = useState("");
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
-  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
   const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
   const companyJobMode = isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
+  const managementActionKey = JSON.stringify([companyJobMode, currentEmployee?.employeeId, jobSyncSession?.token,
+    jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role, jobSyncSession?.user.calendarEligible, selectedJob?.id]);
+  const managementActionRef = useRef({ key: managementActionKey, generation: 0, companyMode: companyJobMode, mounted: true });
+  if (managementActionRef.current.key !== managementActionKey) managementActionRef.current.generation++;
+  managementActionRef.current.key = managementActionKey;
+  managementActionRef.current.companyMode = companyJobMode;
+  useEffect(() => {
+    managementActionRef.current.mounted = true;
+    return () => { managementActionRef.current.mounted = false; managementActionRef.current.generation++; };
+  }, []);
+  const captureLegacyJobAction = () => {
+    const generation = managementActionRef.current.generation;
+    return () => managementActionRef.current.mounted && !managementActionRef.current.companyMode
+      && managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === generation;
+  };
+  const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
   const companyJob = useCompanyJob(jobSyncSession,
-    selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null,
+    companyPhotoJobId,
     (serverJobs) => {
       const current = new Map(serverJobs.map((job) => [String(job.id), job]));
       setJobs((previous) => previous.flatMap((job) => {
@@ -1509,6 +1531,10 @@ export default function AdminScheduleScreen() {
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
       }));
     });
+  const refreshCompanyJob = async () => {
+    setCompanyPhotoPreview(null);
+    await companyJob.refresh();
+  };
   const invoiceSessionRef = useRef({ token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id });
   invoiceSessionRef.current = { token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id };
   const invoiceLockRef = useRef(false);
@@ -1598,6 +1624,12 @@ export default function AdminScheduleScreen() {
   const [addJobDate, setAddJobDate] = useState<string>("");
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
   const [syncKey, setSyncKey] = useState(0);
+  const companyFieldworkCalendar = useCompanyFieldworkCalendar(jobSyncSession, syncKey);
+  const companyFieldworkCalendarRef = useRef(companyFieldworkCalendar);
+  companyFieldworkCalendarRef.current = companyFieldworkCalendar;
+  const companyCalendarLanes: DetailerEntry[] = companyFieldworkCalendar.members.map((member, index) => ({
+    employeeId: member.employeeId, name: member.name, color: DETAILER_COLORS[index % DETAILER_COLORS.length],
+  }));
   const [isSyncing, setIsSyncing] = useState(false);
   const [companyCalendarError, setCompanyCalendarError] = useState<string | null>(null);
   // Dynamic detailers — fetched from server so new hires appear automatically
@@ -1682,7 +1714,20 @@ export default function AdminScheduleScreen() {
       throw new Error("This Company Job cannot be updated until the calendar refreshes.");
     }
 
+    const boundary = companyFieldworkCalendarRef.current;
+    if (!boundary.isCurrent() || previous.companyId !== jobSyncSession?.company?.id || next.companyId !== previous.companyId) {
+      throw new Error("Company identity changed. Refresh before updating this Job.");
+    }
+    const previousAssignee = companyUserId(previous.assignedTo);
+    const nextAssignee = companyUserId(next.assignedTo);
     const settings = await getJobSyncCompanySettings(token);
+    if (!boundary.isCurrent()) throw new Error("Company identity changed while refreshing the schedule.");
+    // New assignment is checked using current roster + fresh signed self opt-in,
+    // not a stale rendered owner lane. Existing assignments are never rewritten.
+    if (previousAssignee !== nextAssignee && nextAssignee !== null && !await boundary.verifyAssignment(`jobsync-${nextAssignee}`)) {
+      throw new Error("This member is not a currently verified field-assignment candidate. Refresh and select again.");
+    }
+    if (!boundary.isCurrent()) throw new Error("Company identity changed before saving the schedule.");
     const scheduledStartAt = companyCalendarInstant(companyDate, next.startHour, settings.timezone);
     const scheduledEndAt = companyCalendarInstant(companyDate, next.endHour, settings.timezone);
     if (!scheduledStartAt || !scheduledEndAt) {
@@ -1696,12 +1741,11 @@ export default function AdminScheduleScreen() {
       await updateJobSyncCompanyJobSchedule(token, jobId, { scheduledStartAt, scheduledEndAt });
     }
 
-    const previousAssignee = companyUserId(previous.assignedTo);
-    const nextAssignee = companyUserId(next.assignedTo);
     if (previousAssignee !== nextAssignee) {
+      if (!boundary.isCurrent()) throw new Error("Company identity changed before reassignment.");
       await updateJobSyncCompanyJobAssignment(token, jobId, nextAssignee);
     }
-  }, [jobSyncSession?.token]);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
 
   // Fetch blockers for the current week whenever city or week changes
   useEffect(() => {
@@ -1763,37 +1807,17 @@ export default function AdminScheduleScreen() {
     AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
   }, [currentEmployee?.employeeId, hasJobSyncEmployee, isJobSyncCompany, jobSyncLoading]);
 
-  // Never hydrate a JobSync Company calendar from the legacy global location
-  // endpoint. Its authenticated bearer roster is the single source of truth.
+  // One existing Company calendar: ordinary technicians plus only a freshly
+  // verified opted-in self owner. The hook clears candidacy on blur/change/expiry.
   useEffect(() => {
     if (!isJobSyncCompany) return;
-    const token = jobSyncSession?.token;
-    const companyId = jobSyncSession?.company?.id;
-    if (!token || !companyId) return;
-    let cancelled = false;
-
-    setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: false }));
-    getJobSyncCompanyMembers(token, companyId)
-      .then((roster) => {
-        if (cancelled) return;
-        // Match the web dispatcher: only field technicians can occupy a
-        // Company Calendar lane. Owners and dispatchers remain in Team Members.
-        const teamLanes: DetailerEntry[] = roster.members.filter(isJobSyncFieldSchedulingMember).map((member, index) => ({
-          employeeId: `jobsync-${member.id}`,
-          name: member.name,
-          color: DETAILER_COLORS[index % DETAILER_COLORS.length],
-        }));
-        setDynamicDetailers({ [selectedCity]: teamLanes });
-      })
-      .catch(() => {
-        if (!cancelled) setDynamicDetailers({ [selectedCity]: [] });
-      })
-      .finally(() => {
-        if (!cancelled) setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: true }));
-      });
-
-    return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id, selectedCity, syncKey]);
+    const lanes: DetailerEntry[] = companyFieldworkCalendar.members.map((member, index) => ({
+      employeeId: member.employeeId, name: member.name, color: DETAILER_COLORS[index % DETAILER_COLORS.length],
+    }));
+    dynamicDetailersRef.current = { [selectedCity]: lanes };
+    setDynamicDetailers({ [selectedCity]: lanes });
+    setDetailersLoaded((previous) => ({ ...previous, [selectedCity]: !companyFieldworkCalendar.loading }));
+  }, [isJobSyncCompany, selectedCity, companyFieldworkCalendar.members, companyFieldworkCalendar.loading]);
 
   // Company sessions render the shared Company Job records only. Times are converted
   // from the API instants using the Company's configured timezone, never the device timezone.
@@ -2141,7 +2165,7 @@ export default function AdminScheduleScreen() {
   }, []);
 
   const openAdd = () => {
-    const cityDets = dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [];
+    const cityDets = isJobSyncCompany ? companyCalendarLanes : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []);
     const dow = selectedDate.getDay();
     // Find the soonest available slot across all on-shift detailers
     let bestDetailer = cityDets[0]?.name ?? "";
@@ -2525,7 +2549,7 @@ export default function AdminScheduleScreen() {
     const cityConfig: CityConfig = {
       slug: selectedCity,
       label: CITY_LIST.find((city) => city.slug === selectedCity)?.label ?? selectedCity,
-      detailers: dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? [],
+      detailers: isJobSyncCompany ? companyCalendarLanes : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []),
     };
     const duration = Math.max(1, previous.endHour - previous.startHour);
     let detailerName = previous.detailerName;
@@ -2624,7 +2648,7 @@ export default function AdminScheduleScreen() {
       : (CITY_LIST.find((c) => c.slug === selectedCity)?.label ?? selectedCity),
     // A Company roster must never fall back to legacy city placeholders.
     detailers: isJobSyncCompany || hasJobSyncEmployee
-      ? (dynamicDetailers[selectedCity] ?? [])
+      ? companyCalendarLanes
       : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []),
   };
   const currentScheduleLabel = cityConfig.label;
@@ -2633,6 +2657,7 @@ export default function AdminScheduleScreen() {
   const dayJobs = (() => {
     const seen = new Set<string>();
     return jobs.filter((j) => {
+      if (isJobSyncCompany && j.companyId !== jobSyncSession?.company?.id) return false;
       if (
         j.dayIndex !== selectedDay ||
         j.weekOffset !== weekOffset ||
@@ -2870,11 +2895,11 @@ export default function AdminScheduleScreen() {
       })()}
 
       {/* A Company without members must never inherit another Company's schedule lanes. */}
-      {cityConfig.detailers.length === 0 ? (
+      {cityConfig.detailers.length === 0 && dayJobs.length === 0 ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingBottom: 72 }}>
-          <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800", textAlign: "center" }}>No team members yet</Text>
+          <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800", textAlign: "center" }}>{companyFieldworkCalendar.loading ? "Refreshing Company team" : companyFieldworkCalendar.error ? "Assignment candidates unavailable" : "No eligible field team members"}</Text>
           <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 8, textAlign: "center" }}>
-            Add team members to this Company before assigning jobs or creating time off.
+            {companyFieldworkCalendar.error ?? (companyFieldworkCalendar.loading ? "Checking current Company members and field-job availability." : "Refresh verified Company members before assigning new jobs. Existing Job assignments are preserved.")}
           </Text>
         </View>
       ) : (
@@ -2894,7 +2919,7 @@ export default function AdminScheduleScreen() {
       )}
 
       {/* Job Detail Modal */}
-      <Modal visible={!!selectedJob} animationType="slide" transparent={false}>
+      <Modal visible={!!selectedJob && (!isJobSyncCompany || selectedJob.companyId === jobSyncSession?.company?.id)} animationType="slide" transparent={false}>
         <View style={{ flex: 1, backgroundColor: colors.surface }}>
           <View style={{ flex: 1 }}>
             {selectedJob && (
@@ -3629,7 +3654,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Job Progress Card ── */}
                 {(() => {
-                  if (companyJobMode) return <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} />;
+                  if (companyJobMode) return <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} onRefresh={refreshCompanyJob} />;
                   const steps: { key: JobStatus; label: string; emoji: string; ts?: string | null }[] = [
                     { key: "scheduled", label: "Scheduled", emoji: "📅", ts: selectedJob.createdAt },
                     { key: "on_my_way", label: "On My Way", emoji: "🚚", ts: selectedJob.onMyWayAt },
@@ -3871,7 +3896,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Job Photos Card ── */}
                 {(() => {
-                  if (companyJobMode) return <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} />;
+                  if (companyJobMode) return <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} />;
                   const photos = selectedJob.photoUrls ?? [];
                   if (photos.length === 0) return null;
                   return (
@@ -4090,18 +4115,38 @@ export default function AdminScheduleScreen() {
                   </TouchableOpacity>
                 )}
 
+                <Text style={{ marginTop: 18, color: colors.foreground, fontWeight: "700" }}>Management actions</Text>
+                {companyJobMode && <>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    disabled={companyJob.loading || companyJob.pending || Boolean(companyManagementCancelBlockReason(companyJob.actor, companyJob.detail))}
+                    onPress={() => {
+                      if (companyJob.loading || companyJob.pending || companyManagementCancelBlockReason(companyJob.actor, companyJob.detail)) return;
+                      Alert.alert("Company management Cancel", "Cancel this Company Job using its current backend version? This is a management action, not technician field progress. The Job remains in history.", [
+                        { text: "Dismiss", style: "cancel" },
+                        { text: "Cancel Company Job", style: "destructive", onPress: () => { void companyJob.cancelManagement(); } },
+                      ]);
+                    }}
+                    style={{ marginTop: 10, borderRadius: 12, paddingVertical: 12, alignItems: "center", backgroundColor: colors.warning + "18", opacity: companyJob.loading || companyJob.pending || companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? 0.35 : 1 }}
+                  ><Text style={{ color: colors.warning, fontWeight: "700", fontSize: 15 }}>Company management Cancel</Text></TouchableOpacity>
+                  {companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? <Text style={{ marginTop: 8, color: colors.muted }}>{companyManagementCancelBlockReason(companyJob.actor, companyJob.detail)}</Text> : null}
+                  <Text style={{ marginTop: 8, color: colors.muted }}>Company Revert, permanent deletion and recurring-series destructive actions are unavailable in the signed mobile API. Field opt-in does not change management permissions.</Text>
+                </>}
                 {/* Cancel Job button — marks as cancelled, stays visible in history */}
-                {!selectedJob?.recurrenceParentId && (
+                {!companyJobMode && !selectedJob?.recurrenceParentId && (
                   <TouchableOpacity
                     onPress={() => {
-                      if (!selectedJob) return;
+                      if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
+                      const isCurrentAction = captureLegacyJobAction();
                       Alert.alert("Cancel Job", "Mark this job as cancelled? It will remain visible in history with a Cancelled badge.", [
                         { text: "Dismiss", style: "cancel" },
                         {
                           text: "Cancel Job",
                           style: "destructive",
                           onPress: async () => {
+                            if (!isCurrentAction()) return;
                             await jobCancelMutation.mutateAsync({ jobId: selectedJob.id });
+                            if (!isCurrentAction()) return;
                             setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: "cancelled" } : j));
                             setSelectedJob(null);
                           },
@@ -4117,10 +4162,11 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* Revert to Pending button — only for finished/completed jobs, keeps paid flag */}
-                {(selectedJob?.status === "finished" || selectedJob?.status === "completed") && (
+                {!companyJobMode && (selectedJob?.status === "finished" || selectedJob?.status === "completed") && (
                   <TouchableOpacity
                     onPress={() => {
-                      if (!selectedJob) return;
+                      if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
+                      const isCurrentAction = captureLegacyJobAction();
                       Alert.alert(
                         "Revert to Pending",
                         "This will set the job back to Pending (as if not started). The PAID status and payment record will be kept. The customer portal will show this as an upcoming appointment.",
@@ -4129,6 +4175,7 @@ export default function AdminScheduleScreen() {
                           {
                             text: "Revert to Pending",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               try {
                                 await jobStatusMutation.mutateAsync({
                                   jobId: selectedJob.id,
@@ -4136,6 +4183,7 @@ export default function AdminScheduleScreen() {
                                   tips: selectedJob.payment?.tipAmount ?? 0,
                                   upsellTotal: selectedJob.upsellTotal ?? 0,
                                 });
+                                if (!isCurrentAction()) return;
                                 setJobs(prev => prev.map(j =>
                                   j.id === selectedJob.id ? { ...j, status: "scheduled" as any } : j
                                 ));
@@ -4143,6 +4191,7 @@ export default function AdminScheduleScreen() {
                                 if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                 Alert.alert("Reverted ✅", "Job is now Pending. Payment record is preserved.");
                               } catch (e: any) {
+                                if (!isCurrentAction()) return;
                                 Alert.alert("Error", e.message ?? "Failed to revert job status.");
                               }
                             },
@@ -4159,9 +4208,10 @@ export default function AdminScheduleScreen() {
                 )}
 
                 {/* Delete Job button — completely removes from all views */}
-                <TouchableOpacity
+                {!companyJobMode && <TouchableOpacity
                   onPress={() => {
-                    if (!selectedJob) return;
+                    if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
+                    const isCurrentAction = captureLegacyJobAction();
                     if (selectedJob.recurrenceParentId) {
                       // Recurring job — show options
                       Alert.alert(
@@ -4172,7 +4222,9 @@ export default function AdminScheduleScreen() {
                           {
                             text: "This Job Only",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               await jobDeleteMutation.mutateAsync({ jobId: selectedJob.id });
+                              if (!isCurrentAction()) return;
                               setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
                               setSelectedJob(null);
                             },
@@ -4181,6 +4233,7 @@ export default function AdminScheduleScreen() {
                             text: "This & All Future",
                             style: "destructive",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               const jobDate = (() => {
                                 const today = new Date();
                 const monday = new Date(today);
@@ -4195,6 +4248,7 @@ export default function AdminScheduleScreen() {
                                 mode: "future",
                                 fromDate: jobDate,
                               });
+                              if (!isCurrentAction()) return;
                               forceSync();
                               setSelectedJob(null);
                             },
@@ -4203,10 +4257,12 @@ export default function AdminScheduleScreen() {
                             text: "Entire Series",
                             style: "destructive",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               await jobDeleteRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "all",
                               });
+                              if (!isCurrentAction()) return;
                               forceSync();
                               setSelectedJob(null);
                             },
@@ -4220,7 +4276,9 @@ export default function AdminScheduleScreen() {
                           text: "Delete Permanently",
                           style: "destructive",
                           onPress: async () => {
+                            if (!isCurrentAction()) return;
                             await jobDeleteMutation.mutateAsync({ jobId: selectedJob.id });
+                            if (!isCurrentAction()) return;
                             setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
                             setSelectedJob(null);
                           },
@@ -4233,12 +4291,13 @@ export default function AdminScheduleScreen() {
                 >
                   <Text style={{ fontSize: 16 }}>🗑️</Text>
                   <Text style={{ color: colors.error, fontWeight: "700", fontSize: 15 }}>Delete Job</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>}
                 {/* Cancel Recurring Job button — only shown for recurring jobs */}
-                {selectedJob?.recurrenceParentId && (
+                {!companyJobMode && selectedJob?.recurrenceParentId && (
                   <TouchableOpacity
                     onPress={() => {
-                      if (!selectedJob) return;
+                      if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
+                      const isCurrentAction = captureLegacyJobAction();
                       const getJobDate = () => {
                         const today = new Date();
                         const monday = new Date(today);
@@ -4256,11 +4315,13 @@ export default function AdminScheduleScreen() {
                           {
                             text: "This Job Only",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "single",
                                 jobId: selectedJob.id,
                               });
+                              if (!isCurrentAction()) return;
                               setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: "cancelled" } : j));
                               setSelectedJob(null);
                             },
@@ -4269,12 +4330,14 @@ export default function AdminScheduleScreen() {
                             text: "This & All Future",
                             style: "destructive",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               const jobDate = getJobDate();
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "future",
                                 fromDate: jobDate,
                               });
+                              if (!isCurrentAction()) return;
                               forceSync();
                               setSelectedJob(null);
                             },
@@ -4283,10 +4346,12 @@ export default function AdminScheduleScreen() {
                             text: "Entire Series",
                             style: "destructive",
                             onPress: async () => {
+                              if (!isCurrentAction()) return;
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "all",
                               });
+                              if (!isCurrentAction()) return;
                               forceSync();
                               setSelectedJob(null);
                             },
@@ -5072,7 +5137,7 @@ export default function AdminScheduleScreen() {
             }}
           />
         )}
-        <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
+        <CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} photo={companyJobMode ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} onRefresh={refreshCompanyJob} />
       </Modal>
 
       {/* Add Job Modal */}

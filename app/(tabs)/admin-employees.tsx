@@ -1,11 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useIsFocused } from "expo-router";
 import { Text, View, FlatList, TouchableOpacity, ActivityIndicator, Modal, ScrollView, TextInput, Alert, Platform, StyleSheet } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyMemberDetail, getJobSyncCompanyMembers, updateJobSyncCompanyMember, type JobSyncCompanyMember, type JobSyncCompanyMemberDetail } from "@/lib/jobsync-mobile-api";
-import { canEditCompanyMemberProfile, getCompanyAdminFieldworkPolicy, PROFILE_FIELDWORK_LABEL, PROFILE_FIELDWORK_DESCRIPTION, PROFILE_FIELDWORK_PENDING_DESCRIPTION } from "@/lib/profile-fieldwork-policy";
+import { canEditCompanyMemberProfile, companyProfileSessionKey, getCompanyAdminFieldworkPolicy, isFreshCompanyProfileSession, COMPANY_PROFILE_SESSION_MAX_AGE_MS, PROFILE_FIELDWORK_LABEL, PROFILE_FIELDWORK_DESCRIPTION, PROFILE_FIELDWORK_PENDING_DESCRIPTION, type VerifiedCompanyProfileSession } from "@/lib/profile-fieldwork-policy";
+import { refreshCompanyProfileSession, updateCompanyMemberFieldwork } from "@/lib/profile-fieldwork-update";
 
 function getWeekRange() {
   const now = new Date();
@@ -67,6 +69,7 @@ export default function AdminEmployeesScreen() {
   const colors = useColors();
   const { session: jobSyncSession } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
+  const isFocused = useIsFocused();
   const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const [selectedArchivedEmp, setSelectedArchivedEmp] = useState<any>(null);
@@ -75,10 +78,69 @@ export default function AdminEmployeesScreen() {
   const [editData, setEditData] = useState<any>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
-  const [companyMembers, setCompanyMembers] = useState<JobSyncCompanyMember[]>([]);
+  const [rosterState, setRosterState] = useState<{ key: string; companyId: number; members: JobSyncCompanyMember[] } | null>(null);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
-  const [companyMemberDetail, setCompanyMemberDetail] = useState<JobSyncCompanyMemberDetail | null>(null);
+  const [detailState, setDetailState] = useState<{ key: string; detail: JobSyncCompanyMemberDetail } | null>(null);
   const [companyMemberDetailLoading, setCompanyMemberDetailLoading] = useState(false);
+  const [verifiedState, setVerifiedState] = useState<{ key: string; evidence: VerifiedCompanyProfileSession } | null>(null);
+  const [fieldworkReading, setFieldworkReading] = useState(false);
+  const [fieldworkPending, setFieldworkPending] = useState(false);
+  const [fieldworkFeedback, setFieldworkFeedback] = useState<{ key: string; message?: string; error?: string } | null>(null);
+  const [rosterRetry, setRosterRetry] = useState(0);
+  const mounted = useRef(true);
+  const focus = useRef(isFocused);
+  const focusGeneration = useRef(0);
+  if (focus.current !== isFocused) focusGeneration.current += 1;
+  focus.current = isFocused;
+  const identityKey = companyProfileSessionKey(jobSyncSession);
+  const contextKey = JSON.stringify([identityKey, focusGeneration.current]);
+  const currentContext = useRef(contextKey);
+  currentContext.current = contextKey;
+  // Render guards remove old Company rows/detail before effects run on identity or focus changes.
+  const companyMembers = isFocused && identityKey && rosterState?.key === contextKey ? rosterState.members : [];
+  const rosterCompanyId = isFocused && identityKey && rosterState?.key === contextKey ? rosterState.companyId : undefined;
+  const selectedIsCurrent = !selectedEmp?.isJobSyncMember || (isJobSyncCompany && isFocused && selectedEmp.scopeKey === identityKey);
+  const selectedCompanyMember = selectedIsCurrent && selectedEmp?.isJobSyncMember
+    ? companyMembers.find((member) => member.id === selectedEmp.jobSyncMemberId) : undefined;
+  const targetKey = JSON.stringify([contextKey, selectedIsCurrent ? selectedEmp?.jobSyncMemberId : null, selectedEmp?.actionInstance,
+    rosterCompanyId, selectedCompanyMember?.role, selectedCompanyMember?.isActive,
+    (selectedCompanyMember as (JobSyncCompanyMember & { companyId?: number }) | undefined)?.companyId]);
+  const currentTarget = useRef(targetKey);
+  const generation = useRef(0);
+  if (currentTarget.current !== targetKey) generation.current += 1;
+  currentTarget.current = targetKey;
+  const readVersion = useRef(0);
+  const pendingLock = useRef<object | null>(null);
+  const companyMemberDetail = selectedIsCurrent && detailState?.key === targetKey ? detailState.detail : null;
+  const verified = verifiedState?.key === targetKey ? verifiedState.evidence : null;
+  const currentEvidence = useRef(verified);
+  currentEvidence.current = verified;
+  const hasFreshOwner = isFocused && isFreshCompanyProfileSession(jobSyncSession, verified, Date.now()) && verified.session.user.role === "owner";
+  const fieldworkPolicy = getCompanyAdminFieldworkPolicy(jobSyncSession, selectedCompanyMember, rosterCompanyId);
+  const canSetFieldwork = hasFreshOwner && fieldworkPolicy.canEdit && selectedCompanyMember?.role === "dispatcher"
+    && companyMemberDetail?.role === "dispatcher" && companyMemberDetail.isActive === true;
+  // The existing broad payload contains role and is refused for dispatcher targets; do not advertise it as working.
+  const canEditSelectedProfile = !isJobSyncCompany || (!!selectedCompanyMember
+    && ["technician", "detailer"].includes(selectedCompanyMember.role)
+    && canEditCompanyMemberProfile(jobSyncSession, selectedCompanyMember, rosterCompanyId));
+  const showFieldworkNotice = selectedIsCurrent && selectedEmp?.isJobSyncMember
+    && ["owner", "dispatcher"].includes(selectedEmp.jobSyncRole);
+  const feedback = fieldworkFeedback?.key === targetKey ? fieldworkFeedback : null;
+  const selectEmployee = (employee: any) => {
+    generation.current += 1;
+    readVersion.current += 1;
+    currentTarget.current = "invalidated-selection";
+    currentEvidence.current = null;
+    setVerifiedState(null);
+    setDetailState(null);
+    setFieldworkFeedback(null);
+    setSelectedEmp(employee ? { ...employee, actionInstance: generation.current } : null);
+    setEditMode(false);
+  };
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; generation.current += 1; readVersion.current += 1; };
+  }, []);
   const { start, end } = useMemo(() => getWeekRange(), []);
 
   const utils = trpc.useUtils();
@@ -208,47 +270,147 @@ export default function AdminEmployeesScreen() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
   useEffect(() => {
-    if (!isJobSyncCompany) return;
+    setRosterState(null);
+    setDetailState(null);
+    setVerifiedState(null);
+    setFieldworkFeedback(null);
+    setEditMode(false);
     const token = jobSyncSession?.token;
     const companyId = jobSyncSession?.company?.id;
-    if (!token || !companyId) return;
+    if (!identityKey || !isFocused || !token || !companyId) { setCompanyMembersLoading(false); return; }
     let cancelled = false;
+    const isCurrent = () => !cancelled && mounted.current && focus.current && currentContext.current === contextKey;
     setCompanyMembersLoading(true);
     getJobSyncCompanyMembers(token, companyId)
       .then((roster) => {
-        if (!cancelled) setCompanyMembers(roster.members);
+        if (!isCurrent()) return;
+        if (roster.company.id !== companyId) throw new Error("Company roster scope could not be verified.");
+        setRosterState({ key: contextKey, companyId: roster.company.id, members: roster.members });
       })
       .catch(() => {
-        if (!cancelled) setCompanyMembers([]);
+        if (isCurrent()) setRosterState(null);
       })
       .finally(() => {
-        if (!cancelled) setCompanyMembersLoading(false);
+        if (isCurrent()) setCompanyMembersLoading(false);
       });
     return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, jobSyncSession?.company?.id]);
+  }, [contextKey, rosterRetry]);
+
+  const refreshTargetAccess = useCallback(async () => {
+    if (!jobSyncSession || !identityKey || !focus.current || !selectedCompanyMember || !rosterCompanyId) return;
+    const version = ++readVersion.current;
+    const requestGeneration = generation.current;
+    const target = { ...selectedCompanyMember };
+    const token = jobSyncSession.token;
+    const memberId = target.id;
+    const isCurrent = () => mounted.current && focus.current && currentTarget.current === targetKey
+      && generation.current === requestGeneration && readVersion.current === version;
+    currentEvidence.current = null;
+    setVerifiedState(null);
+    setDetailState(null);
+    setFieldworkFeedback(null);
+    setFieldworkReading(true);
+    setCompanyMemberDetailLoading(true);
+    try {
+      const evidence = await refreshCompanyProfileSession({ session: jobSyncSession, isCurrent });
+      if (!isCurrent()) return;
+      const [roster, detail] = await Promise.all([
+        getJobSyncCompanyMembers(token, rosterCompanyId),
+        getJobSyncCompanyMemberDetail(token, memberId),
+      ]);
+      if (!isCurrent()) return;
+      const member = roster.members.find((row) => row.id === target.id);
+      if (roster.company.id !== rosterCompanyId || !member || member.role !== target.role || member.isActive !== true
+        || detail.id !== target.id || detail.role !== target.role || detail.isActive !== true) {
+        throw new Error("The current Company, target role or active membership could not be verified. Retry the roster.");
+      }
+      setRosterState({ key: contextKey, companyId: roster.company.id, members: roster.members });
+      setDetailState({ key: targetKey, detail });
+      setVerifiedState({ key: targetKey, evidence });
+    } catch (error) {
+      if (isCurrent()) {
+        setVerifiedState(null);
+        setDetailState(null);
+        setFieldworkFeedback({ key: targetKey, error: error instanceof Error ? error.message : "Unable to verify signed Company access. Current value is UNKNOWN." });
+      }
+    } finally {
+      if (isCurrent()) { setFieldworkReading(false); setCompanyMemberDetailLoading(false); }
+    }
+  }, [targetKey]);
 
   useEffect(() => {
-    const memberId = Number(selectedEmp?.jobSyncMemberId);
-    const token = jobSyncSession?.token;
-    if (!isJobSyncCompany || !selectedEmp?.isJobSyncMember || !token || !Number.isInteger(memberId)) {
-      setCompanyMemberDetail(null);
+    setVerifiedState(null);
+    setDetailState(null);
+    setFieldworkFeedback(null);
+    setEditMode(false);
+    setFieldworkReading(false);
+    setCompanyMemberDetailLoading(false);
+    if (selectedCompanyMember) void refreshTargetAccess();
+    return () => { readVersion.current += 1; };
+  }, [targetKey, refreshTargetAccess]);
+
+  useEffect(() => {
+    if (!verifiedState || verifiedState.key !== targetKey) return;
+    const expiry = setTimeout(() => {
+      if (currentTarget.current !== targetKey) return;
+      generation.current += 1;
+      readVersion.current += 1;
+      setVerifiedState(null);
+      setFieldworkReading(false);
       setCompanyMemberDetailLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setCompanyMemberDetailLoading(true);
-    getJobSyncCompanyMemberDetail(token, memberId)
-      .then((detail) => {
-        if (!cancelled) setCompanyMemberDetail(detail);
-      })
-      .catch(() => {
-        if (!cancelled) setCompanyMemberDetail(null);
-      })
-      .finally(() => {
-        if (!cancelled) setCompanyMemberDetailLoading(false);
+      setFieldworkFeedback({ key: targetKey, error: "Signed Company access expired. Current value is UNKNOWN; retry to verify access." });
+    }, Math.max(0, COMPANY_PROFILE_SESSION_MAX_AGE_MS - (Date.now() - verifiedState.evidence.verifiedAt)));
+    return () => clearTimeout(expiry);
+  }, [verifiedState, targetKey]);
+
+  const handleFieldworkOverride = async (value: boolean) => {
+    if (!canSetFieldwork || !jobSyncSession || !selectedCompanyMember || !rosterCompanyId
+      || pendingLock.current || currentTarget.current !== targetKey || !focus.current
+      || currentEvidence.current !== verified || !isFreshCompanyProfileSession(jobSyncSession, verified, Date.now())) return;
+    const lock = {};
+    pendingLock.current = lock; // Must lock synchronously, before React commits disabled state.
+    const requestGeneration = generation.current;
+    const target = { ...selectedCompanyMember };
+    const evidence = verified;
+    const session = { ...jobSyncSession, user: { ...jobSyncSession.user }, company: { ...jobSyncSession.company! } };
+    const isCurrent = () => mounted.current && focus.current && currentTarget.current === targetKey
+      && generation.current === requestGeneration && isFreshCompanyProfileSession(session, evidence, Date.now());
+    setFieldworkPending(true);
+    setFieldworkFeedback(null);
+    try {
+      const ack = await updateCompanyMemberFieldwork({ session, target, targetCompanyId: rosterCompanyId, value, isCurrent,
+        refresh: async () => {
+          if (!isCurrent()) throw new Error("Company or target changed.");
+          const [roster, detail] = await Promise.all([
+            getJobSyncCompanyMembers(session.token, rosterCompanyId),
+            getJobSyncCompanyMemberDetail(session.token, target.id),
+          ]);
+          if (!isCurrent()) throw new Error("Company or target changed during refresh.");
+          const member = roster.members.find((row) => row.id === target.id);
+          if (roster.company.id !== rosterCompanyId || !member || member.role !== target.role || member.isActive !== true
+            || detail.id !== target.id || detail.role !== target.role || detail.isActive !== true) {
+            throw new Error("The refreshed Company or target does not match.");
+          }
+          setRosterState({ key: contextKey, companyId: roster.company.id, members: roster.members });
+          setDetailState({ key: targetKey, detail });
+        },
       });
-    return () => { cancelled = true; };
-  }, [isJobSyncCompany, jobSyncSession?.token, selectedEmp?.isJobSyncMember, selectedEmp?.jobSyncMemberId]);
+      if (isCurrent()) setFieldworkFeedback({ key: targetKey, message: ack.message });
+    } catch (error) {
+      if (isCurrent()) {
+        readVersion.current += 1;
+        currentEvidence.current = null;
+        setVerifiedState(null); // A refusal, malformed ack or refresh failure never keeps authority alive.
+        setDetailState(null);
+        setFieldworkFeedback({ key: targetKey, error: error instanceof Error ? error.message : "Update failed. Current value is UNKNOWN." });
+      }
+    } finally {
+      if (pendingLock.current === lock) {
+        pendingLock.current = null;
+        if (mounted.current) setFieldworkPending(false);
+      }
+    }
+  };
 
   const empWithPerf = useMemo(() => {
     if (!employees) return [];
@@ -267,23 +429,19 @@ export default function AdminEmployeesScreen() {
     jobSyncMemberId: member.id,
     fullName: member.name,
     role: nativeRoleForJobSyncMember(member.role),
+    jobSyncRole: member.role,
+    scopeKey: identityKey,
     city: jobSyncSession?.company?.name ?? "Company workspace",
     avgEff: 0,
     totalRevenue: 0,
     daysWorked: 0,
     isJobSyncMember: true,
-  })), [companyMembers, jobSyncSession?.company?.name]);
+  })), [companyMembers, jobSyncSession?.company?.name, identityKey]);
 
   const activeEmployees = isJobSyncCompany ? companyRosterEmployees : empWithPerf;
   const activeEmployeesLoading = isJobSyncCompany ? companyMembersLoading : isLoading;
   const archivedEmployees = isJobSyncCompany ? [] : (deactivatedEmployees ?? []);
   const visibleEmployees = roleFilter === "all" ? activeEmployees : activeEmployees.filter((employee: any) => employee.role === roleFilter);
-  // Use the existing Company-scoped roster target, never the draft Role selector.
-  const selectedCompanyMember = isJobSyncCompany && selectedEmp?.isJobSyncMember
-    ? companyMembers.find((member) => member.id === selectedEmp.jobSyncMemberId)
-    : undefined;
-  const canEditSelectedProfile = !isJobSyncCompany || canEditCompanyMemberProfile(jobSyncSession, selectedCompanyMember);
-  const fieldworkPolicy = getCompanyAdminFieldworkPolicy(jobSyncSession, selectedCompanyMember);
 
   const detailEmpPerf = trpc.performance.getHistory.useQuery(
     { employeeId: selectedEmp?.employeeId ?? "", limit: 14 },
@@ -356,7 +514,8 @@ export default function AdminEmployeesScreen() {
           city: editData.city,
         });
         const roster = await getJobSyncCompanyMembers(token, companyId);
-        setCompanyMembers(roster.members);
+        if (currentTarget.current !== targetKey || !focus.current || roster.company.id !== companyId) return;
+        setRosterState({ key: contextKey, companyId: roster.company.id, members: roster.members });
         const refreshedMember = roster.members.find((member) => member.id === memberId);
         if (refreshedMember) {
           setSelectedEmp({
@@ -518,7 +677,7 @@ export default function AdminEmployeesScreen() {
             }
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => { setSelectedEmp(item); setEditMode(false); }}
+                onPress={() => { if (!("isJobSyncMember" in item) || (currentContext.current === contextKey && focus.current)) selectEmployee(item); }}
                 activeOpacity={0.7}
                 style={{
                   backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10,
@@ -714,14 +873,14 @@ export default function AdminEmployeesScreen() {
       </Modal>
 
       {/* ─── Active Team Member Detail Modal ─── */}
-      <Modal visible={!!selectedEmp} animationType="slide" presentationStyle="pageSheet">
-        {selectedEmp && (
+      <Modal visible={!!selectedEmp && selectedIsCurrent} onRequestClose={() => selectEmployee(null)} animationType="slide" presentationStyle="pageSheet">
+        {selectedEmp && selectedIsCurrent && (
           <ScreenContainer edges={["bottom", "left", "right"]} className="px-5">
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View style={{ marginTop: 12 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <TouchableOpacity
-                    onPress={() => { setSelectedEmp(null); setEditMode(false); setShowPinReset(false); setNewPin(""); setConfirmPin(""); setPinError(""); setPinSuccess(false); }}
+                    onPress={() => { selectEmployee(null); setShowPinReset(false); setNewPin(""); setConfirmPin(""); setPinError(""); setPinSuccess(false); }}
                     activeOpacity={0.7} style={{ paddingVertical: 8 }}
                   >
                     <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "600" }}>Close</Text>
@@ -752,7 +911,7 @@ export default function AdminEmployeesScreen() {
                   </Text>
                 </View>
 
-                {editMode ? (
+                {editMode && canEditSelectedProfile ? (
                   /* ─── Edit Mode ─── */
                   <View>
                     <EditField label="Full Name" value={editData.fullName} onChangeText={(t: string) => setEditData({ ...editData, fullName: t })} colors={colors} />
@@ -930,14 +1089,21 @@ export default function AdminEmployeesScreen() {
                       </View>
                     )}
                     <View style={{ gap: 8, marginBottom: 16 }}>
-                      <InfoRow label="Team Member ID" value={isJobSyncCompany ? companyMemberDetail?.memberId ?? `Member ${selectedEmp.jobSyncMemberId ?? "-"}` : selectedEmp.employeeId} colors={colors} />
                       <InfoRow label="Email" value={isJobSyncCompany ? companyMemberDetail?.email ?? "-" : selectedEmp.email ?? "-"} colors={colors} />
                       <InfoRow label="Phone" value={isJobSyncCompany ? companyMemberDetail?.phone ?? "-" : selectedEmp.phoneNumber ?? "-"} colors={colors} />
                       <InfoRow label="Hire Date" value={isJobSyncCompany ? formatDate(companyMemberDetail?.hireDate) : formatDate(selectedEmp.hireDate)} colors={colors} />
                       {isJobSyncCompany ? (
                         <>
                           <InfoRow label="Availability" value={companyMemberDetail?.availability ? companyMemberDetail.availability.replace(/_/g, " ") : "-"} colors={colors} />
-                          {fieldworkPolicy.visible && <CompanyAdminFieldworkNotice colors={colors} />}
+                          {showFieldworkNotice && <CompanyAdminFieldworkNotice colors={colors}
+                            canEdit={canSetFieldwork} pending={fieldworkPending} reading={fieldworkReading}
+                            message={feedback?.message} error={feedback?.error}
+                            onEnable={() => void handleFieldworkOverride(true)} onDisable={() => void handleFieldworkOverride(false)}
+                            onRetry={() => {
+                              if (currentTarget.current !== targetKey || !focus.current || pendingLock.current) return;
+                              if (selectedCompanyMember) void refreshTargetAccess();
+                              else { currentEvidence.current = null; setVerifiedState(null); setDetailState(null); setRosterRetry((value) => value + 1); }
+                            }} />}
                           <InfoRow label="Work Days" value={formatWorkDays(companyMemberDetail?.workDays ?? [])} colors={colors} />
                         </>
                       ) : selectedEmp.role === "detailer" && (() => {
@@ -1220,7 +1386,6 @@ export default function AdminEmployeesScreen() {
 
                 {/* Info */}
                 <View style={{ gap: 8, marginBottom: 24 }}>
-                  <InfoRow label="Team Member ID" value={selectedArchivedEmp.employeeId} colors={colors} />
                   <InfoRow label="Email" value={selectedArchivedEmp.email ?? "-"} colors={colors} />
                   <InfoRow label="Phone" value={selectedArchivedEmp.phoneNumber ?? "-"} colors={colors} />
                   <InfoRow label="Hire Date" value={formatDate(selectedArchivedEmp.hireDate)} colors={colors} />
@@ -1314,26 +1479,47 @@ export default function AdminEmployeesScreen() {
   );
 }
 
-/** Intentionally no switch, setter, storage, or mutation until JobSync supports owner fieldwork. */
-function CompanyAdminFieldworkNotice({ colors }: { colors: ReturnType<typeof useColors> }) {
+/** UNKNOWN is not OFF; only explicit dispatcher overrides can be acknowledged. Owner targets stay protected. */
+function CompanyAdminFieldworkNotice({ colors, canEdit = false, pending = false, reading = false, message, error, onEnable, onDisable, onRetry }: {
+  colors: ReturnType<typeof useColors>; canEdit?: boolean; pending?: boolean; reading?: boolean;
+  message?: string; error?: string; onEnable?: () => void; onDisable?: () => void; onRetry?: () => void;
+}) {
   return (
     <View
       testID="company-admin-fieldwork-unavailable"
-      accessibilityState={{ disabled: true }}
       style={[fieldworkStyles.card, { backgroundColor: colors.surface, borderColor: colors.primary + "40" }]}
     >
       <Text style={[fieldworkStyles.label, { color: colors.foreground }]}>{PROFILE_FIELDWORK_LABEL}</Text>
       <Text style={[fieldworkStyles.description, { color: colors.muted }]}>{PROFILE_FIELDWORK_DESCRIPTION}</Text>
       <View style={[fieldworkStyles.status, { backgroundColor: colors.primary + "18" }]}>
-        <Text style={[fieldworkStyles.statusText, { color: colors.primary }]}>Unavailable · read-only</Text>
+        <Text style={[fieldworkStyles.statusText, { color: colors.primary }]}>Current availability UNKNOWN</Text>
       </View>
       <Text style={[fieldworkStyles.description, { color: colors.muted }]}>{PROFILE_FIELDWORK_PENDING_DESCRIPTION}</Text>
+      {reading && <Text style={[fieldworkStyles.description, { color: colors.muted }]}>Verifying signed Company access…</Text>}
+      {canEdit && <View style={{ flexDirection: "row", gap: 12 }}>
+        <TouchableOpacity accessibilityLabel="Enable field-job override" disabled={pending || reading} onPress={onEnable}
+          style={[fieldworkStyles.action, { backgroundColor: colors.primary, opacity: pending || reading ? 0.5 : 1 }]}>
+          <Text style={{ color: "#FFF", fontWeight: "700" }}>Enable override</Text>
+        </TouchableOpacity>
+        <TouchableOpacity accessibilityLabel="Disable field-job override" disabled={pending || reading} onPress={onDisable}
+          style={[fieldworkStyles.action, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, opacity: pending || reading ? 0.5 : 1 }]}>
+          <Text style={{ color: colors.foreground, fontWeight: "700" }}>Disable override</Text>
+        </TouchableOpacity>
+      </View>}
+      {pending && <Text style={[fieldworkStyles.description, { color: colors.muted }]}>Updating individual override; awaiting signed verification and roster/profile refresh…</Text>}
+      {message && <Text accessibilityRole="alert" style={[fieldworkStyles.description, { color: colors.foreground }]}>{message}</Text>}
+      {error && <Text accessibilityRole="alert" style={[fieldworkStyles.description, { color: colors.error }]}>{error} Current availability remains UNKNOWN.</Text>}
+      {onRetry && <TouchableOpacity accessibilityLabel="Retry signed Company access" disabled={pending || reading} onPress={onRetry}>
+        <Text style={{ color: colors.primary, fontWeight: "600" }}>Retry signed Company access</Text>
+      </TouchableOpacity>}
+      {!canEdit && !reading && <Text style={[fieldworkStyles.description, { color: colors.muted }]}>Only a freshly verified Company Owner can change an active same-Company Dispatcher override. Owner targets and broad Dispatcher profile edits remain protected.</Text>}
     </View>
   );
 }
 
 const fieldworkStyles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 12, gap: 8 },
+  action: { flex: 1, borderRadius: 10, padding: 12, alignItems: "center" },
   label: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
   description: { fontSize: 12, lineHeight: 18 },
   status: { alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },

@@ -46,7 +46,7 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyJobs, getJobSyncCompanySettings, positiveJobSyncId } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { CompanyJobProgress } from "@/components/company-job-progress";
-import { CompanyJobPhotos, CompanyJobPhotoPreview } from "@/components/company-job-photos";
+import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, isAssignedCompanyTechnician, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
 import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
 import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
@@ -2340,7 +2340,7 @@ export default function ScheduleScreen() {
   const [showServiceWizard, setShowServiceWizard] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
-  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<string | null>(null);
+  const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
   const companyJobMode = isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
   const companyScheduleSessionRef = useRef(jobSyncSession?.token);
   companyScheduleSessionRef.current = jobSyncSession?.token;
@@ -2349,8 +2349,10 @@ export default function ScheduleScreen() {
   if (legacyMediaSessionRef.current.key !== legacyMediaIdentity) legacyMediaSessionRef.current.generation += 1;
   legacyMediaSessionRef.current.key = legacyMediaIdentity;
   legacyMediaSessionRef.current.companyMode = companyJobMode;
+  useEffect(() => () => { legacyMediaSessionRef.current.generation += 1; }, []);
+  const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
   const companyJob = useCompanyJob(jobSyncSession,
-    selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null,
+    companyPhotoJobId,
     (serverJobs) => {
       const current = new Map(serverJobs.map((job) => [String(job.id), job]));
       setJobs((previous) => previous.flatMap((job) => {
@@ -2358,6 +2360,10 @@ export default function ScheduleScreen() {
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
       }));
     });
+  const refreshCompanyJob = async () => {
+    setCompanyPhotoPreview(null);
+    await companyJob.refresh();
+  };
   useEffect(() => {
     setSelectedJob(null);
     setCompanyPhotoPreview(null);
@@ -3568,9 +3574,13 @@ export default function ScheduleScreen() {
   };
   const deleteJob = (id: string) => {
     const jobToDelete = jobs.find((j) => j.id === id);
+    if (companyJobMode || legacyMediaSessionRef.current.companyMode || jobToDelete?.companyId !== undefined) return;
+    const actionKey = legacyMediaSessionRef.current.key;
+    const generation = legacyMediaSessionRef.current.generation;
     Alert.alert("Delete Job", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete Permanently", style: "destructive", onPress: () => {
+        if (legacyMediaSessionRef.current.companyMode || legacyMediaSessionRef.current.key !== actionKey || legacyMediaSessionRef.current.generation !== generation) return;
         persistJobs(jobs.filter((j) => j.id !== id));
         setSelectedJob(null);
         setShowUpsellPanel(false);
@@ -4388,7 +4398,7 @@ export default function ScheduleScreen() {
                       </View>
                     )}
                     {/* 3-step status buttons: ON MY WAY → ARRIVED → FINISH */}
-                    {companyJobMode ? <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} /> : <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
+                    {companyJobMode ? <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} onRefresh={refreshCompanyJob} /> : <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center" }}>
                       {([
                         { label: "ON MY WAY", emoji: "🚚", activeStatus: "on_my_way" as JobStatus, requiredStatus: "scheduled" as JobStatus },
                         { label: "ARRIVED",   emoji: "📍", activeStatus: "arrived"   as JobStatus, requiredStatus: "on_my_way" as JobStatus },
@@ -4981,7 +4991,7 @@ export default function ScheduleScreen() {
                     );
                   })()}
                   {/* ─── Before & After Photos ─── */}
-                  {companyJobMode ? <CompanyJobPhotos job={companyJob} onPreview={setCompanyPhotoPreview} /> : <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {companyJobMode ? <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} /> : <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                       <Text style={[s.sectionLabel, { color: colors.muted }]}>BEFORE & AFTER PHOTOS</Text>
                       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -5595,7 +5605,7 @@ export default function ScheduleScreen() {
                     </View>
                   </View>
                 )}
-                <CompanyJobPhotoPreview url={companyJobMode && companyJob.detail?.photos.some((photo) => photo.imageUrl === companyPhotoPreview) ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} />
+                <CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} photo={companyJobMode ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} onRefresh={refreshCompanyJob} />
                 {/* Late Arrival Inline Overlay — avoids iOS nested-modal issue */}
                 {!companyJobMode && showLateSheet && (
                   <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)", zIndex: 999 }}>

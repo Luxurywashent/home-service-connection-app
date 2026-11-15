@@ -99,13 +99,22 @@ describe("Company-prefixed Team Member display ID", () => {
     expect(nativeBefore?.jobSyncMemberId).toBe("TM007");
   });
 
-  it("preserves management member references and the Add Team Member identity workflow", () => {
+  it("removes active and archived management ID rows while preserving member references and creation identity", () => {
     const source = readFileSync(new URL("../app/(tabs)/admin-employees.tsx", import.meta.url), "utf8");
+    expect(source).not.toMatch(/<InfoRow\s+label=["'](?:Team Member ID|Employee ID)["']/);
     expect(source).toContain('employeeId: `jobsync-${member.id}`');
     expect(source).toContain("jobSyncMemberId: member.id");
+    expect(source).toContain("const memberId = Number(selectedEmp.jobSyncMemberId)");
+    expect(source).toContain("getJobSyncCompanyMemberDetail(token, memberId)");
+    expect(source).toContain("updateJobSyncCompanyMember(token, memberId,");
+    expect(source).toContain("{ employeeId: selectedEmp.employeeId, newPin }");
+    expect(source).toContain("deactivateWithJobsMutation.mutateAsync({ employeeId: selectedEmp.employeeId })");
+    expect(source).toContain("reactivateMutation.mutateAsync({ employeeId: emp.employeeId })");
+    expect(source).toContain("{ employeeId: selectedArchivedEmp?.employeeId ?? \"\", limit: 30 }");
+    expect(source).toContain("keyExtractor={(item) => item.employeeId}");
     expect(source).toContain('employeeId: memberId.trim().toUpperCase()');
     expect(source).toContain('setError("Team Member ID is required")');
     expect(source).toContain('<FormField label="Team Member ID" value={memberId}');
-    expect(source).toContain('<InfoRow label="Team Member ID"');
+    expect(source).toContain('activeTab === "active" && !isJobSyncCompany');
   });
 });

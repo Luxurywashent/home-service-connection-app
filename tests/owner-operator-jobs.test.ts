@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  ADMIN_FIELDWORK_PENDING, COMPANY_PHOTO_MUTATIONS_PENDING, JOB_VIDEOS_ENABLED,
+  COMPANY_PHOTO_MUTATIONS_PENDING, JOB_VIDEOS_ENABLED,
   companyDurationMs, companyFieldworkBlockReason, companyJobMilestoneFields, companyJobSessionKey,
-  createCompanyJobController, isAssignedCompanyTechnician, nextCompanyFieldStatus,
+  createCompanyJobController, isAssignedCompanyTechnician, isAssignedCompanyFieldActor, companyManagementCancelBlockReason, nextCompanyFieldStatus,
   type CompanyJobState, type CompanyJobTransport,
 } from "../lib/company-job-fieldwork";
 import { JobSyncApiError, normalizeJobSyncCompanyJobDetail, type JobSyncCompanyJobDetail, type JobSyncNativeSession } from "../lib/jobsync-mobile-api";
@@ -18,7 +18,7 @@ function setup(overrides: Partial<CompanyJobTransport> = {}, actor = session) {
   let current = true;
   let state: CompanyJobState | undefined;
   const onList = vi.fn();
-  const api: CompanyJobTransport = { detail: vi.fn().mockResolvedValue(detail()), status: vi.fn().mockResolvedValue({ success: true, status: "en_route" }), list: vi.fn().mockResolvedValue([]), ...overrides };
+  const api: CompanyJobTransport = { session: vi.fn().mockResolvedValue(actor), detail: vi.fn().mockResolvedValue(detail()), status: vi.fn().mockResolvedValue({ success: true, status: "en_route" }), cancel: vi.fn().mockResolvedValue({ success: true, status: "cancelled" }), list: vi.fn().mockResolvedValue([]), ...overrides };
   const controller = createCompanyJobController({ session: actor, jobId: 47, api, isCurrent: () => current, onState: (value) => { state = value; }, onList });
   return { controller, api, onList, state: () => state!, leave: () => { current = false; } };
 }
@@ -41,10 +41,25 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(companyJobSessionKey({ ...session, token: "" }, 47)).toBeNull();
     expect(companyJobSessionKey(session, 47)).not.toBe(companyJobSessionKey({ ...session, token: "new-mock-token" }, 47));
   });
-  it("keeps Admin owner/dispatcher OFF and ON unverified regardless of invented capability hints", async () => {
+  it("enables assigned owner/dispatcher only with explicit signed ON while retaining management role", async () => {
     for (const role of ["owner", "dispatcher"] as const) {
-      const actor = { ...session, user: { ...session.user, role, calendarEligible: true, availableForFieldJobs: true } };
-      expect(companyFieldworkBlockReason(actor, detail())).toBe(ADMIN_FIELDWORK_PENDING);
+      const actor = { ...session, user: { ...session.user, role, calendarEligible: true } };
+      expect(companyFieldworkBlockReason(actor, detail())).toBeNull();
+      expect(isAssignedCompanyTechnician(actor, detail())).toBe(false);
+      expect(isAssignedCompanyFieldActor(actor, detail())).toBe(true);
+      const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail("en_route")) }, actor);
+      await test.controller.refresh();
+      expect(await test.controller.advance("en_route")).toBe(true);
+      expect(test.api.session).toHaveBeenCalledTimes(3);
+      expect(test.state().actor?.user.role).toBe(role);
+      expect(test.api.status).toHaveBeenCalledWith(session.token, 47, { status: "en_route", expectedUpdatedAt: version });
+    }
+  });
+  it("keeps false/null/missing/malformed manager capability unavailable, regardless of invented hints", async () => {
+    for (const calendarEligible of [false, null, undefined, "true", 1, {}]) {
+      const actor = { ...session, user: { ...session.user, role: "owner", calendarEligible, availableForFieldJobs: true } } as unknown as JobSyncNativeSession;
+      expect(companyFieldworkBlockReason(actor, detail())).not.toBeNull();
+      expect(isAssignedCompanyFieldActor(actor, detail())).toBe(false);
       const test = setup({}, actor);
       await test.controller.refresh();
       expect(await test.controller.advance("en_route")).toBe(false);
@@ -156,6 +171,131 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(merged.photoUrls).toEqual([]);
     expect(merged.photos).toEqual([]);
   });
+  it.each(["en_route", "on_site", "completed"] as const)("supports the exact shared manager next action %s with the freshly read version", async (target) => {
+    const start = target === "en_route" ? "scheduled" : target === "on_site" ? "en_route" : "on_site";
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "dispatcher", calendarEligible: true } };
+    const freshVersion = "2026-11-14T18:02:00.000Z";
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail(start)).mockResolvedValueOnce({ ...detail(start), updatedAt: freshVersion })
+      .mockResolvedValueOnce({ ...detail(target), completedAt: target === "completed" ? freshVersion : null }), status: vi.fn().mockResolvedValue({ success: true, status: target }) }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.advance(target)).toBe(true);
+    expect(test.api.status).toHaveBeenCalledWith(actor.token, 47, { status: target, expectedUpdatedAt: freshVersion });
+    expect(test.api.cancel).not.toHaveBeenCalled();
+    expect(test.state().actor?.user.role).toBe("dispatcher");
+  });
+  it.each([false, null, undefined])("refreshes manager opt-out/unavailable %s before writing, without trusting login-time ON", async (calendarEligible) => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
+    const test = setup({ session: vi.fn().mockResolvedValueOnce(actor).mockResolvedValue({ ...actor, user: { ...actor.user, calendarEligible } }) }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.advance("en_route")).toBe(false);
+    expect(test.api.status).not.toHaveBeenCalled();
+    expect(test.state().actor?.user.calendarEligible).toBe(calendarEligible);
+    expect(test.state().error).toContain("Available for Field Jobs");
+  });
+  it.each([42, null, "41", 0])("denies manager reassignment/non-numeric assignment %s immediately before writing", async (assignedUserId) => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue({ ...detail(), assignedUserId }) }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.advance("en_route")).toBe(false);
+    expect(test.api.status).not.toHaveBeenCalled();
+    expect(test.state().error).toContain("assigned");
+  });
+  it("denies a manager action whose fresh Job is terminal or has a different next action", async () => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
+    for (const status of ["completed", "cancelled", "en_route"]) {
+      const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue(detail(status)) }, actor);
+      await test.controller.refresh();
+      expect(await test.controller.advance("en_route")).toBe(false);
+      expect(test.api.status).not.toHaveBeenCalled();
+    }
+  });
+  it.each(["token", "company", "user", "role", "portal", "job", "offline-session", "offline-job"])("fails closed on manager fresh %s change/error", async (change) => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
+    const fresh = { ...actor, user: { ...actor.user }, company: { ...actor.company! } };
+    if (change === "token") fresh.token = "replacement-token";
+    if (change === "company") fresh.company.id = 10;
+    if (change === "user") fresh.user.id = 42;
+    if (change === "role") fresh.user.role = "dispatcher";
+    if (change === "portal") fresh.portal = "platform";
+    const sessionRead = vi.fn().mockResolvedValueOnce(actor);
+    if (change === "offline-session") sessionRead.mockRejectedValue(new Error("offline"));
+    else sessionRead.mockResolvedValue(fresh);
+    const detailRead = vi.fn().mockResolvedValueOnce(detail());
+    if (change === "offline-job") detailRead.mockRejectedValue(new Error("offline"));
+    else detailRead.mockResolvedValue(change === "job" ? { ...detail(), id: 48 } : detail());
+    const test = setup({ session: sessionRead, detail: detailRead }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.advance("en_route")).toBe(false);
+    expect(test.api.status).not.toHaveBeenCalled();
+    expect(test.state().actor).toBeNull();
+    expect(test.state().detail).toBeNull();
+    expect(test.state().error).toContain("disabled until Refresh");
+  });
+  it("does not render a fresh Job when its paired fresh session read fails", async () => {
+    const test = setup({ session: vi.fn().mockRejectedValue(new Error("Session unavailable")) });
+    await test.controller.refresh();
+    expect(test.state().actor).toBeNull();
+    expect(test.state().detail).toBeNull();
+    expect(await test.controller.advance("en_route")).toBe(false);
+    expect(test.api.status).not.toHaveBeenCalled();
+  });
+  it("discards late session/Job reads after a capability/token/role identity leaves, with repeat-tap protection", async () => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
+    const late = deferred<JobSyncNativeSession>();
+    const test = setup({ session: vi.fn().mockResolvedValueOnce(actor).mockReturnValueOnce(late.promise) }, actor);
+    await test.controller.refresh();
+    const write = test.controller.advance("en_route");
+    expect(await test.controller.advance("en_route")).toBe(false);
+    expect(test.state().pending).toBe(true);
+    test.leave();
+    late.resolve(actor);
+    expect(await write).toBe(false);
+    expect(test.api.status).not.toHaveBeenCalled();
+    expect(test.onList).not.toHaveBeenCalled();
+    expect(test.state().success).toBeNull();
+    for (const calendarEligible of [true, false, null, undefined]) {
+      const key = companyJobSessionKey({ ...actor, user: { ...actor.user, calendarEligible } }, 47);
+      for (const other of [true, false, null, undefined].filter((value) => value !== calendarEligible)) {
+        expect(key).not.toBe(companyJobSessionKey({ ...actor, user: { ...actor.user, calendarEligible: other } }, 47));
+      }
+    }
+  });
+  it.each(["owner", "dispatcher"] as const)("keeps %s management Cancel independent of opt-in and assignment, using fresh version and canonical cancelled", async (role) => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role, calendarEligible: false } };
+    const freshVersion = "2026-11-14T18:03:00.000Z";
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce({ ...detail(), assignedUserId: 42 })
+      .mockResolvedValueOnce({ ...detail(), updatedAt: freshVersion, assignedUserId: null }).mockResolvedValueOnce(detail("cancelled")) }, actor);
+    await test.controller.refresh();
+    expect(companyManagementCancelBlockReason(test.state().actor, test.state().detail)).toBeNull();
+    expect(await test.controller.cancelManagement()).toBe(true);
+    expect(test.api.cancel).toHaveBeenCalledWith(actor.token, 47, { expectedUpdatedAt: freshVersion });
+    expect(test.api.status).not.toHaveBeenCalled();
+    expect(test.api.list).toHaveBeenCalledTimes(1);
+    expect(test.state().detail?.status).toBe("cancelled");
+    expect(test.state().success).toContain("management cancellation confirmed");
+  });
+  it("denies Technician management Cancel and fresh terminal management cancellation", async () => {
+    const technician = setup();
+    await technician.controller.refresh();
+    expect(await technician.controller.cancelManagement()).toBe(false);
+    expect(technician.api.cancel).not.toHaveBeenCalled();
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: false } };
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue(detail("completed")) }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.cancelManagement()).toBe(false);
+    expect(test.api.cancel).not.toHaveBeenCalled();
+    expect(test.state().error).toContain("terminal");
+  });
+  it("reconciles failed management cancellation and keeps success unavailable", async () => {
+    const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner" } };
+    const test = setup({ cancel: vi.fn().mockRejectedValue(new JobSyncApiError("conflict", 409, "CONFLICT")) }, actor);
+    await test.controller.refresh();
+    expect(await test.controller.cancelManagement()).toBe(false);
+    expect(test.api.detail).toHaveBeenCalledTimes(3);
+    expect(test.api.list).toHaveBeenCalledTimes(1);
+    expect(test.state().error).toContain("Current Job refreshed");
+    expect(test.state().success).toBeNull();
+  });
 });
 
 function source(path: string) { return readFileSync(new URL(`../${path}`, import.meta.url), "utf8"); }
@@ -188,8 +328,13 @@ describe("shared job screen integration boundaries", () => {
   it("Company photo mutations are unavailable, no guessed endpoints or cookie fallback", () => {
     expect(COMPANY_PHOTO_MUTATIONS_PENDING).toContain("unavailable");
     const photos = source("components/company-job-photos.tsx");
-    expect(photos).toContain('["Camera", "Library"]');
-    expect(photos).toContain("disabled accessibilityRole");
+    expect(photos).toContain("<CompanyPhotoDraft");
+    const draft = source("components/company-photo-draft.tsx");
+    expect(draft).toContain('(["Camera", "Library"] as const)');
+    expect(draft).toMatch(/disabled\s+accessibilityRole/);
+    expect(draft).toContain('accessibilityLabel="Upload local draft unavailable"');
+    expect(source("lib/company-photo-draft.ts")).toContain("not uploaded or saved to this Job");
+    expect(draft).not.toMatch(/uploadPhoto|deletePhoto|trpc|fetch\(/);
     expect(photos).not.toMatch(/uploadPhoto|deletePhoto|trpc|fetch\(/);
     expect(source("lib/jobsync-mobile-api.ts")).not.toMatch(/requestJson\([^\n]*\/photos/);
     const hook = source("hooks/use-company-job.ts");
@@ -209,5 +354,26 @@ describe("shared job screen integration boundaries", () => {
     expect(branch).not.toMatch(/overrideEmail|overridePhone|discountAmount|paymentUrl/);
     expect(admin).toContain("AdminCheckoutModal");
     expect(source("app/(tabs)/schedule.tsx")).toContain("shouldShowCollectPayment(selectedJob.payment)");
+  });
+  it("separates Company management Cancel from field buttons and guards every copied destructive confirmation", () => {
+    const admin = source("app/(tabs)/admin-schedule.tsx");
+    const progress = source("components/company-job-progress.tsx");
+    expect(progress).toContain("companyFieldworkBlockReason(job.actor, detail)");
+    expect(progress).not.toMatch(/ADMIN_FIELDWORK_PENDING|cancelManagement|user.role !== "technician"/);
+    expect(progress.match(/label: /g)).toHaveLength(4); // One type plus exactly three field buttons.
+    const block = admin.slice(admin.indexOf('>Management actions</Text>'), admin.indexOf('                {!showReassignPicker', admin.indexOf('>Management actions</Text>')));
+    expect(block).toContain('Company management Cancel');
+    expect(block).toContain('void companyJob.cancelManagement()');
+    expect(block).toContain('{!companyJobMode && !selectedJob?.recurrenceParentId');
+    expect(block).toContain('{!companyJobMode && (selectedJob?.status');
+    expect(block).toContain('{!companyJobMode && <TouchableOpacity');
+    expect(block).toContain('{!companyJobMode && selectedJob?.recurrenceParentId');
+    expect(block.match(/onPress: async \(\) => \{\s*if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(9);
+    expect(block.match(/if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(19); // Before/after nine writes plus late error.
+    expect(admin).toContain('managementActionRef.current.generation === generation');
+    const technician = source("app/(tabs)/schedule.tsx");
+    const deletion = technician.slice(technician.indexOf('const deleteJob ='), technician.indexOf('// ─── Enhanced Job Detail Helpers'));
+    expect(deletion).toContain('if (companyJobMode || legacyMediaSessionRef.current.companyMode || jobToDelete?.companyId !== undefined) return;');
+    expect(deletion.indexOf('legacyMediaSessionRef.current.generation !== generation')).toBeLessThan(deletion.indexOf('persistJobs('));
   });
 });
