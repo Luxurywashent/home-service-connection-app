@@ -1,26 +1,34 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useIsFocused } from "expo-router";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { companyDurationMs, companyFieldworkBlockReason, companyJobSessionKey, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
 import type { JobSyncNativeSession, JobSyncFieldStatus } from "@/lib/jobsync-mobile-api";
 import type { useCompanyJob } from "@/hooks/use-company-job";
 
-type Props = { session: JobSyncNativeSession | null; job: ReturnType<typeof useCompanyJob>; timezone?: string | null; onRefresh?: () => void | Promise<void> };
-const actions: { label: string; target: JobSyncFieldStatus }[] = [
-  { label: "ON MY WAY", target: "en_route" }, { label: "ARRIVED", target: "on_site" }, { label: "FINISH", target: "completed" },
+type Props = {
+  session: JobSyncNativeSession | null;
+  job: ReturnType<typeof useCompanyJob>;
+  timezone?: string | null;
+  onRefresh?: () => void | Promise<void>;
+};
+const actions: { label: string; icon: string; color: string; target: JobSyncFieldStatus }[] = [
+  { label: "ON MY WAY", icon: "🚚", color: "#F59E0B", target: "en_route" },
+  { label: "ARRIVED", icon: "▶️", color: "#10B981", target: "on_site" },
+  { label: "FINISH", icon: "⏹️", color: "#6B7280", target: "completed" },
 ];
-function formatInstant(value: string | null, timezone?: string | null) {
-  if (!value) return "Unknown";
-  if (!timezone) return `${value} (server time; Company timezone unavailable)`;
-  try { return new Date(value).toLocaleString("en-US", { timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
-  catch { return value; }
+function compactBlockHint(reason: string, status?: string) {
+  if (reason.includes("fresh signed")) return "Refresh your Company session to continue.";
+  if (reason.includes("signed role")) return "This role cannot update progress.";
+  if (reason.includes("is OFF")) return "Field progress is off for your signed session.";
+  if (reason.includes("Explicit Available")) return "Field eligibility unverified. Refresh to check.";
+  if (reason.includes("currently assigned")) return "Only the assigned field worker can update progress.";
+  if (reason.includes("Job version")) return "Refresh this job before updating progress.";
+  if (reason.includes("terminal")) return status === "completed" ? "Job finished." : "Job cancelled.";
+  return "No progress action is available for this job.";
 }
-function formatDuration(value: number | null) {
-  return value === null ? "Unknown" : `${Math.round(value / 60000)} min`;
-}
-export function CompanyJobProgress({ session, job, timezone, onRefresh }: Props) {
-  const colors = useColors();
+export function CompanyJobProgress({ session, job, onRefresh }: Props) {
+  const colors = useJobSheetColors();
   const focused = useIsFocused();
   const detail = job.detail;
   const scope = companyJobSessionKey(session, detail?.id ?? null);
@@ -42,7 +50,7 @@ export function CompanyJobProgress({ session, job, timezone, onRefresh }: Props)
   useFocusEffect(useCallback(() => {
     return () => { live.current.focused = false; confirmation.current = null; epoch.current.identity = {}; };
   }, []));
-  const reason = companyFieldworkBlockReason(job.actor, detail);
+  const reason = companyFieldworkBlockReason(session, detail) || companyFieldworkBlockReason(job.actor, detail);
   const next = detail ? nextCompanyFieldStatus(detail.status) : null;
   const current = (target?: JobSyncFieldStatus) => {
     const now = live.current;
@@ -70,31 +78,48 @@ export function CompanyJobProgress({ session, job, timezone, onRefresh }: Props)
       ], { onDismiss: () => { if (confirmation.current === ticket) confirmation.current = null; } });
     } else advance(target);
   };
-  return <View style={[styles.card, { backgroundColor: colors.background, borderColor: colors.border }]}>
-    <Text style={[styles.heading, { color: colors.foreground }]}>Job Progress</Text>
-    <Text style={{ color: colors.muted }}>Backend status: {detail?.status ?? (job.loading ? "Loading" : "Unavailable")}</Text>
-    <View style={styles.row}>{actions.map(({ label, target }) => {
+  // Durations require both canonical timestamps. No local running clock or placeholder zero.
+  const driveTime = companyDurationMs(detail?.enRouteAt ?? null, detail?.onSiteAt ?? null);
+  const jobTime = companyDurationMs(detail?.onSiteAt ?? null, detail?.completedAt ?? null);
+  const hint = job.error ? "Progress could not be confirmed. Refresh to retry."
+    : job.loading ? "Loading progress…" : job.pending ? "Updating progress…"
+    : reason ? compactBlockHint(reason, detail?.status) : job.success ? "Progress updated." : null;
+  const showRefresh = Boolean(reason || job.error || job.loading);
+  return <View style={styles.inline}>
+    <View style={styles.row}>{actions.map(({ label, icon, color, target }) => {
       const disabled = Boolean(!focused || reason || job.loading || job.pending || next !== target);
-      return <TouchableOpacity key={target} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={() => press(target)} style={[styles.action, { backgroundColor: colors.primary, opacity: disabled ? 0.35 : 1 }]}>
-        <Text style={styles.actionText}>{label}</Text>
+      const active = detail?.status === target;
+      return <TouchableOpacity key={target} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={() => press(target)} activeOpacity={0.7} style={[styles.action, { opacity: disabled ? 0.35 : 1 }]}>
+        <View style={[styles.circle, { backgroundColor: active ? color : colors.surface, borderColor: active ? color : colors.border }]}>
+          <Text style={styles.icon}>{icon}</Text>
+        </View>
+        <Text style={[styles.label, { color }]}>{label}</Text>
       </TouchableOpacity>;
     })}</View>
-    {job.loading || job.pending ? <ActivityIndicator color={colors.primary} /> : null}
-    {reason ? <Text style={{ color: colors.muted }}>{reason}</Text> : null}
-    {job.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{job.error}</Text> : null}
-    {job.success ? <Text style={{ color: colors.success }}>{job.success}</Text> : null}
-    <TouchableOpacity disabled={!focused || job.pending || job.loading} onPress={() => { if (current()) void (onRefresh ? onRefresh() : job.refresh()); }} style={styles.refresh}><Text style={{ color: colors.primary }}>Refresh Job</Text></TouchableOpacity>
-    {[
-      ["On My Way", detail?.enRouteAt ?? null], ["Arrived / Started", detail?.onSiteAt ?? null], ["Finished", detail?.completedAt ?? null],
-    ].map(([label, value]) => <View key={label} style={styles.milestone}><Text style={{ color: colors.foreground }}>{label}</Text><Text style={{ color: colors.muted }}>{formatInstant(value, timezone)}</Text></View>)}
-    <Text style={{ color: colors.muted }}>Drive Time: {formatDuration(companyDurationMs(detail?.enRouteAt ?? null, detail?.onSiteAt ?? null))}</Text>
-    <Text style={{ color: colors.muted }}>Job Time: {formatDuration(companyDurationMs(detail?.onSiteAt ?? null, detail?.completedAt ?? null))}</Text>
-    <Text style={{ color: colors.muted, fontSize: 11 }}>Job milestones use server time. Company clock-in, clock-out and breaks remain separate.</Text>
+    {driveTime !== null || jobTime !== null ? <View style={styles.times}>
+      {driveTime !== null ? <Text style={[styles.time, { color: "#F59E0B" }]}>Drive Time: {Math.round(driveTime / 60000)} min</Text> : null}
+      {jobTime !== null ? <Text style={[styles.time, { color: "#10B981" }]}>Job Time: {Math.round(jobTime / 60000)} min</Text> : null}
+    </View> : null}
+    {hint || showRefresh ? <View style={styles.feedback}>
+      {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+      {hint ? <Text accessibilityRole={job.error ? "alert" : undefined} style={[styles.hint, { color: job.error ? colors.error : job.success && !reason && !busy ? colors.success : colors.muted }]}>{hint}</Text> : null}
+      {showRefresh ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh job progress" accessibilityState={{ disabled: !focused || job.pending || job.loading }} disabled={!focused || job.pending || job.loading} onPress={() => { if (current()) void (onRefresh ? onRefresh() : job.refresh()); }} style={styles.refresh}>
+        <Text style={[styles.refreshText, { color: colors.primary }]}>Refresh</Text>
+      </TouchableOpacity> : null}
+    </View> : null}
   </View>;
 }
 const styles = StyleSheet.create({
-  card: { padding: 16, borderTopWidth: 1, borderBottomWidth: 1, marginVertical: 8, gap: 8 },
-  heading: { fontSize: 15, fontWeight: "700" }, row: { flexDirection: "row", gap: 8 },
-  action: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center", justifyContent: "center" },
-  actionText: { fontSize: 10, fontWeight: "700", color: "#fff" }, refresh: { paddingVertical: 8 }, milestone: { gap: 2 },
+  inline: { gap: 8 },
+  row: { flexDirection: "row", justifyContent: "space-around", alignItems: "center" },
+  action: { alignItems: "center" },
+  circle: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, justifyContent: "center", alignItems: "center", marginBottom: 6 },
+  icon: { fontSize: 22, lineHeight: 30 },
+  label: { fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
+  times: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 16 },
+  time: { fontSize: 11, lineHeight: 16, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  feedback: { flexDirection: "row", alignItems: "center", gap: 6 },
+  hint: { flex: 1, fontSize: 11, lineHeight: 16 },
+  refresh: { paddingVertical: 4, paddingHorizontal: 4 },
+  refreshText: { fontSize: 11, fontWeight: "600" },
 });

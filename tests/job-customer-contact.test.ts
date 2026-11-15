@@ -61,7 +61,7 @@ describe("job-card customer contact actions", () => {
     for (const path of ["app/(tabs)/schedule.tsx", "app/(tabs)/admin-schedule.tsx"]) {
       const screen = source(path);
       expect(screen).toContain("customerId: String(job.customerId)");
-      expect(screen).toContain("<CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} />");
+      expect(screen).toContain("<CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} jobSheet />");
       expect(screen).not.toContain('Linking.openURL(`sms:${selectedJob.phone}`)');
       expect(screen).not.toContain('Linking.openURL(`tel:${selectedJob.phone}`)');
     }

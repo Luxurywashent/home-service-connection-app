@@ -37,6 +37,8 @@ import * as ImagePicker from "expo-image-picker";
 import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
@@ -1379,6 +1381,7 @@ function DragTimePicker({
 
 export default function AdminScheduleScreen() {
   const colors = useColors();
+  const jobSheetColors = useJobSheetColors();
   const utils = trpc.useUtils();
   const { employee: currentEmployee, loading: employeeLoading } = useEmployeeAuth();
   const isFocused = useIsFocused();
@@ -3121,7 +3124,7 @@ export default function AdminScheduleScreen() {
 
       {/* Job Detail Modal */}
       <Modal visible={!!selectedJob && (!isJobSyncCompany || selectedJob.companyId === jobSyncSession?.company?.id)} animationType="slide" transparent={false}>
-        <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <View style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
           <View style={{ flex: 1 }}>
             {selectedJob && (
               <ScrollView showsVerticalScrollIndicator={false}>
@@ -3133,25 +3136,27 @@ export default function AdminScheduleScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Close job details"
                       onPress={() => { setSelectedJob(null); setShowReassignPicker(false); }}
-                      style={{ position: "absolute", top: 52, left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 6, elevation: 6 }}
+                      style={{ position: "absolute", top: 52, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 6, elevation: 6 }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 24, fontWeight: "700" }}>‹</Text>
+                      <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 56, marginBottom: 4 }}>
-                    <Text style={{ fontSize: 20, fontWeight: "700", color: colors.foreground }}>Job Details</Text>
+                    <Text style={{ fontSize: 20, fontWeight: "700", color: jobSheetColors.foreground }}>Job Details</Text>
                     <TouchableOpacity onPress={() => { setSelectedJob(null); setShowReassignPicker(false); }}>
-                      <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 24 }}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 )}
                 <View style={{ paddingTop: selectedJob.address ? 12 : 0 }}>
 
+                {/* Original top job controls — shared with the technician sheet. */}
+                <View style={{ backgroundColor: jobSheetColors.background, borderTopWidth: 1, borderBottomWidth: 1, borderColor: jobSheetColors.border, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8 }}>
                 {/* Status badge */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: STATUS_COLOR[selectedJob.status] }} />
-                  <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 16 }}>{STATUS_LABELS[selectedJob.status]}</Text>
+                  <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 16 }}>{STATUS_LABELS[selectedJob.status]}</Text>
                   {selectedJob.payment && (
                     <View style={{ backgroundColor: "#22C55E22", borderColor: "#22C55E55", borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
                       <Text style={{ color: "#22C55E", fontWeight: "700", fontSize: 12 }}>✓ PAID</Text>
@@ -3188,8 +3193,8 @@ export default function AdminScheduleScreen() {
                       </View>
                     );
                     return (
-                      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                        <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 12 }}>📋 Admin</Text>
+                      <View style={{ backgroundColor: jobSheetColors.surface, borderColor: jobSheetColors.border, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                        <Text style={{ color: jobSheetColors.muted, fontWeight: "700", fontSize: 12 }}>📋 Admin</Text>
                       </View>
                     );
                   })()}
@@ -3210,52 +3215,67 @@ export default function AdminScheduleScreen() {
                     </View>
                   )}
                 </View>
+                {companyJobMode && <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} onRefresh={refreshCompanyJob} />}
+                {/* ── Collect Payment Button ── */}
+                {(companyJobMode ? companyBilling.canCollect : !selectedJob.payment) && (
+                  <TouchableOpacity
+                    onPress={() => { if (managementActionRef.current.mounted && managementActionRef.current.focused && sheetEpochRef.current === renderedSheetEpoch && invoiceSessionRef.current.key === invoiceIdentityKey) { paymentActionRef.current = null; setShowCheckout(true); } }}
+                    activeOpacity={0.8}
+                    style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#18C556", borderWidth: 1, borderColor: "#18C556", borderRadius: 12, paddingVertical: 14 }}
+                  >
+                    <Text style={{ fontSize: 18 }}>💳</Text>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Collect Payment{companyJobMode && companyBilling.balance !== null ? `  ·  $${companyBilling.balance.toFixed(2)}` : ""}</Text>
+                  </TouchableOpacity>
+                )}
+
+                </View>
                 {/* ── Customer Card ── */}
-                <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
+                  <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, marginBottom: 12 }}>CUSTOMER</Text>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.foreground, fontSize: 17, fontWeight: "700" }}>{selectedJob.firstName} {selectedJob.lastName}</Text>
-                      {selectedJob.email ? <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>✉️ {selectedJob.email}</Text> : null}
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 17, fontWeight: "700" }}>{selectedJob.firstName} {selectedJob.lastName}</Text>
+                      {selectedJob.email ? <Text style={{ color: jobSheetColors.muted, fontSize: 13, marginTop: 2 }}>✉️ {selectedJob.email}</Text> : null}
                     </View>
                   </View>
-                  <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} />
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <TouchableOpacity
                       onPress={() => selectedJob.address ? Linking.openURL(`https://maps.apple.com/?q=${encodeURIComponent(selectedJob.address)}`) : null}
                       style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 4 }}
                     >
-                      <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>📍 {selectedJob.address || "No address set"}</Text>
-                      {selectedJob.address ? <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>Navigate ›</Text> : null}
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 13, flex: 1 }}>📍 {selectedJob.address || "No address set"}</Text>
+                      {selectedJob.address ? <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>Navigate ›</Text> : null}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { setEditAddressDraft(selectedJob.address || ""); setShowEditAddressModal(true); }}
-                      style={{ padding: 6, borderRadius: 8, backgroundColor: colors.surface }}
+                      style={{ padding: 6, borderRadius: 8, backgroundColor: jobSheetColors.surface }}
                     >
                       <Text style={{ fontSize: 14 }}>✏️</Text>
                     </TouchableOpacity>
                   </View>
+                  <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} jobSheet />
                   {/* ── Location Photos ── */}
-                  {companyJobMode ? <Text style={{ color: colors.muted }}>Company location-shared photos are unavailable. Use Job Photos below.</Text> : <>
-                  <View style={{ paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                  {!companyJobMode && <>
+                  <View style={{ paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                      <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>📸 Location Photos</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>📸 Location Photos</Text>
                       {addressPhotos.length < 2 && (
                         <TouchableOpacity
                           onPress={handleAddAddressPhoto}
-                          style={{ backgroundColor: colors.primary + "22", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 4 }}
+                          style={{ backgroundColor: jobSheetColors.primary + "22", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 4 }}
                         >
-                          {addrPhotoUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>+ Add</Text>}
+                          {addrPhotoUploading ? <ActivityIndicator size="small" color={jobSheetColors.primary} /> : <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>+ Add</Text>}
                         </TouchableOpacity>
                       )}
                     </View>
                     {addressPhotos.length === 0 ? (
-                      <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos yet. Add one to help technicians find the property.</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos yet. Add one to help technicians find the property.</Text>
                     ) : (
                       <View style={{ flexDirection: "row", gap: 8 }}>
                         {addressPhotos.map((photo: any) => (
                           <View key={photo.photoId} style={{ position: "relative" }}>
                             <TouchableOpacity onPress={async () => { if (await renderedLegacyAction.verify() && addressPhotos.some((p) => p.photoId === photo.photoId && p.photoUrl === photo.photoUrl)) setViewingAddrPhoto(photo.photoUrl); }}>
-                              <Image source={{ uri: photo.photoUrl }} style={{ width: 100, height: 100, borderRadius: 8, backgroundColor: colors.surface }} resizeMode="cover" />
+                              <Image source={{ uri: photo.photoUrl }} style={{ width: 100, height: 100, borderRadius: 8, backgroundColor: jobSheetColors.surface }} resizeMode="cover" />
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => handleDeleteAddressPhoto(photo.photoId)}
@@ -3263,7 +3283,7 @@ export default function AdminScheduleScreen() {
                             >
                               <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>✕</Text>
                             </TouchableOpacity>
-                            {photo.caption ? <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2, textAlign: "center", width: 100 }} numberOfLines={1}>{photo.caption}</Text> : null}
+                            {photo.caption ? <Text style={{ color: jobSheetColors.muted, fontSize: 10, marginTop: 2, textAlign: "center", width: 100 }} numberOfLines={1}>{photo.caption}</Text> : null}
                           </View>
                         ))}
                       </View>
@@ -3271,26 +3291,26 @@ export default function AdminScheduleScreen() {
                   </View>
 
                   </>}
-                  {companyJobMode ? <Text style={{ color: colors.muted, paddingVertical: 8 }}>Company customer history is unavailable in this Job sheet.</Text> : null}
-                  <TouchableOpacity onPress={() => { if (renderedLegacyAction()) setShowCustomerHistory(prev => !prev); }} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                  {/* Unavailable legacy history is not shown for Company jobs. */}
+                  {!companyJobMode && <TouchableOpacity onPress={() => { if (renderedLegacyAction()) setShowCustomerHistory(prev => !prev); }} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Text style={{ fontSize: 14 }}>🕐</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "500" }}>Customer History</Text>
-                      {customerHistory.length > 0 && <View style={{ backgroundColor: colors.primary + "22", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: colors.primary, fontSize: 11, fontWeight: "700" }}>{customerHistory.length}</Text></View>}
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "500" }}>Customer History</Text>
+                      {customerHistory.length > 0 && <View style={{ backgroundColor: jobSheetColors.primary + "22", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: jobSheetColors.primary, fontSize: 11, fontWeight: "700" }}>{customerHistory.length}</Text></View>}
                     </View>
-                    <Text style={{ color: colors.muted, fontSize: 18 }}>{showCustomerHistory ? "∧" : ">"}</Text>
-                  </TouchableOpacity>
+                    <Text style={{ color: jobSheetColors.muted, fontSize: 18 }}>{showCustomerHistory ? "∧" : ">"}</Text>
+                  </TouchableOpacity>}
                   {showCustomerHistory && !companyJobMode && (
                     <View style={{ marginTop: 10 }}>
                       {customerHistory.length === 0 ? (
-                        <Text style={{ color: colors.muted, fontSize: 13, fontStyle: "italic" }}>No previous jobs found</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 13, fontStyle: "italic" }}>No previous jobs found</Text>
                       ) : customerHistory.map((hj, idx) => (
-                        <View key={hj.id} style={{ backgroundColor: colors.surface, borderRadius: 8, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: colors.border }}>
+                        <View key={hj.id} style={{ backgroundColor: jobSheetColors.surface, borderRadius: 8, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: jobSheetColors.border }}>
                           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
-                            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600", flex: 1 }}>{hj.serviceTitle}</Text>
-                            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "700" }}>${hj.price.toFixed(2)}</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600", flex: 1 }}>{hj.serviceTitle}</Text>
+                            <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "700" }}>${hj.price.toFixed(2)}</Text>
                           </View>
-                          <Text style={{ color: colors.muted, fontSize: 11 }}>{hj.createdAt ? new Date(hj.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</Text>
+                          <Text style={{ color: jobSheetColors.muted, fontSize: 11 }}>{hj.createdAt ? new Date(hj.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</Text>
                         </View>
                       ))}
                     </View>
@@ -3298,10 +3318,10 @@ export default function AdminScheduleScreen() {
                 </View>
 
                 {/* ── Job Schedule Card ── */}
-                <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                     <Text style={{ fontSize: 16 }}>📅</Text>
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Job Schedule</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Schedule</Text>
                   </View>
                   {(() => {
                     const jobDate = getWeekDates(selectedJob.weekOffset)[selectedJob.dayIndex];
@@ -3319,7 +3339,7 @@ export default function AdminScheduleScreen() {
                           <View style={{ gap: 12 }}>
                             {/* Date strip */}
                             <View>
-                              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Date</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Date</Text>
                               <ScrollView ref={dateStripScrollRef} horizontal showsHorizontalScrollIndicator={false}>
                                 <View style={{ flexDirection: "row", gap: 6 }}>
                                   {dateStrip.map((ds) => {
@@ -3328,10 +3348,10 @@ export default function AdminScheduleScreen() {
                                     const isToday = ds === localDateStr(new Date());
                                     return (
                                       <TouchableOpacity key={ds} onPress={() => setAdminEditDate(ds)}
-                                        style={{ alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: isSelected ? colors.primary : colors.surface, borderWidth: 1, borderColor: isSelected ? colors.primary : isToday ? colors.primary + "60" : colors.border, minWidth: 52 }}>
-                                        <Text style={{ color: isSelected ? "#FFF" : colors.muted, fontSize: 11, fontWeight: "600" }}>{dayNames[(d.getDay() + 6) % 7]}</Text>
-                                        <Text style={{ color: isSelected ? "#FFF" : colors.foreground, fontSize: 15, fontWeight: "700", marginTop: 2 }}>{d.getDate()}</Text>
-                                        <Text style={{ color: isSelected ? "#FFF" : colors.muted, fontSize: 10 }}>{monthNames[d.getMonth()]}</Text>
+                                        style={{ alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: isSelected ? jobSheetColors.primary : jobSheetColors.surface, borderWidth: 1, borderColor: isSelected ? jobSheetColors.primary : isToday ? jobSheetColors.primary + "60" : jobSheetColors.border, minWidth: 52 }}>
+                                        <Text style={{ color: isSelected ? "#FFF" : jobSheetColors.muted, fontSize: 11, fontWeight: "600" }}>{dayNames[(d.getDay() + 6) % 7]}</Text>
+                                        <Text style={{ color: isSelected ? "#FFF" : jobSheetColors.foreground, fontSize: 15, fontWeight: "700", marginTop: 2 }}>{d.getDate()}</Text>
+                                        <Text style={{ color: isSelected ? "#FFF" : jobSheetColors.muted, fontSize: 10 }}>{monthNames[d.getMonth()]}</Text>
                                       </TouchableOpacity>
                                     );
                                   })}
@@ -3340,12 +3360,12 @@ export default function AdminScheduleScreen() {
                             </View>
                             {/* Start hour */}
                             <View>
-                              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Start Time</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Start Time</Text>
                               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                 <View style={{ flexDirection: "row", gap: 6 }}>
                                   {HOURS.slice(0, -1).map((h) => (
-                                    <TouchableOpacity key={h} onPress={() => setAdminEditStartHour(h)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: adminEditStartHour === h ? colors.primary : colors.surface, borderWidth: 1, borderColor: adminEditStartHour === h ? colors.primary : colors.border }}>
-                                      <Text style={{ color: adminEditStartHour === h ? "#FFF" : colors.foreground, fontSize: 13, fontWeight: "600" }}>{fmtH(h)}</Text>
+                                    <TouchableOpacity key={h} onPress={() => setAdminEditStartHour(h)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: adminEditStartHour === h ? jobSheetColors.primary : jobSheetColors.surface, borderWidth: 1, borderColor: adminEditStartHour === h ? jobSheetColors.primary : jobSheetColors.border }}>
+                                      <Text style={{ color: adminEditStartHour === h ? "#FFF" : jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>{fmtH(h)}</Text>
                                     </TouchableOpacity>
                                   ))}
                                 </View>
@@ -3353,12 +3373,12 @@ export default function AdminScheduleScreen() {
                             </View>
                             {/* End hour */}
                             <View>
-                              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>End Time</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>End Time</Text>
                               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                 <View style={{ flexDirection: "row", gap: 6 }}>
                                   {HOURS.filter((h) => h > adminEditStartHour).map((h) => (
-                                    <TouchableOpacity key={h} onPress={() => setAdminEditEndHour(h)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: adminEditEndHour === h ? colors.primary : colors.surface, borderWidth: 1, borderColor: adminEditEndHour === h ? colors.primary : colors.border }}>
-                                      <Text style={{ color: adminEditEndHour === h ? "#FFF" : colors.foreground, fontSize: 13, fontWeight: "600" }}>{fmtH(h)}</Text>
+                                    <TouchableOpacity key={h} onPress={() => setAdminEditEndHour(h)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: adminEditEndHour === h ? jobSheetColors.primary : jobSheetColors.surface, borderWidth: 1, borderColor: adminEditEndHour === h ? jobSheetColors.primary : jobSheetColors.border }}>
+                                      <Text style={{ color: adminEditEndHour === h ? "#FFF" : jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>{fmtH(h)}</Text>
                                     </TouchableOpacity>
                                   ))}
                                 </View>
@@ -3368,23 +3388,23 @@ export default function AdminScheduleScreen() {
                             <TouchableOpacity
                               onPress={() => setAdminRescheduleNotify(v => !v)}
                               activeOpacity={0.8}
-                              style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: adminRescheduleNotify ? "#EFF6FF" : colors.surface, borderWidth: 1, borderColor: adminRescheduleNotify ? colors.primary : colors.border, marginTop: 4 }}
+                              style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: adminRescheduleNotify ? "#EFF6FF" : jobSheetColors.surface, borderWidth: 1, borderColor: adminRescheduleNotify ? jobSheetColors.primary : jobSheetColors.border, marginTop: 4 }}
                             >
-                              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: adminRescheduleNotify ? colors.primary : colors.border, backgroundColor: adminRescheduleNotify ? colors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
+                              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: adminRescheduleNotify ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: adminRescheduleNotify ? jobSheetColors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
                                 {adminRescheduleNotify && <Text style={{ color: "#fff", fontSize: 12, fontWeight: "900", lineHeight: 14 }}>✓</Text>}
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ color: adminRescheduleNotify ? colors.primary : colors.foreground, fontSize: 14, fontWeight: "700" }}>Notify customer by email</Text>
-                                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 1 }}>
+                                <Text style={{ color: adminRescheduleNotify ? jobSheetColors.primary : jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>Notify customer by email</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginTop: 1 }}>
                                   {adminRescheduleNotify ? "Customer will receive a reschedule confirmation email" : "No email will be sent to the customer"}
                                 </Text>
                               </View>
                             </TouchableOpacity>
                             <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-                              <TouchableOpacity onPress={() => setAdminEditingTime(false)} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ color: colors.muted, fontSize: 14 }}>Cancel</Text>
+                              <TouchableOpacity onPress={() => setAdminEditingTime(false)} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border }}>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>Cancel</Text>
                               </TouchableOpacity>
-                              <TouchableOpacity onPress={() => adminSaveTime(selectedJob, adminEditStartHour, adminEditEndHour, adminEditDate, adminRescheduleNotify)} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, backgroundColor: colors.primary }}>
+                              <TouchableOpacity onPress={() => adminSaveTime(selectedJob, adminEditStartHour, adminEditEndHour, adminEditDate, adminRescheduleNotify)} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8, backgroundColor: jobSheetColors.primary }}>
                                 <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "600" }}>Save</Text>
                               </TouchableOpacity>
                             </View>
@@ -3392,19 +3412,19 @@ export default function AdminScheduleScreen() {
                         ) : (
                           <TouchableOpacity onPress={() => { setAdminEditStartHour(selectedJob.startHour); setAdminEditEndHour(selectedJob.endHour); setAdminEditDate(selectedJob.companyDate ?? localDateStr(jobDate)); setAdminRescheduleNotify(false); setAdminEditingTime(true); setTimeout(() => { const ITEM_W = 64 + 6; const todayOffset = Math.max(0, 180 * ITEM_W - 120); dateStripScrollRef.current?.scrollTo({ x: todayOffset, animated: false }); }, 60); }} activeOpacity={0.7}>
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
-                              <Text style={{ color: colors.muted, fontSize: 15 }}>Date</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 15 }}>Date</Text>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>{dateStr}</Text>
-                                <Text style={{ color: colors.primary, fontSize: 12 }}>✏️</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>{dateStr}</Text>
+                                <Text style={{ color: jobSheetColors.primary, fontSize: 12 }}>✏️</Text>
                               </View>
                             </View>
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
-                              <Text style={{ color: colors.muted, fontSize: 15 }}>Start</Text>
-                              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>{fmtH(selectedJob.startHour)}</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 15 }}>Start</Text>
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>{fmtH(selectedJob.startHour)}</Text>
                             </View>
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
-                              <Text style={{ color: colors.muted, fontSize: 15 }}>End</Text>
-                              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>{fmtH(selectedJob.endHour)}</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 15 }}>End</Text>
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>{fmtH(selectedJob.endHour)}</Text>
                             </View>
                           </TouchableOpacity>
                         )}
@@ -3412,9 +3432,9 @@ export default function AdminScheduleScreen() {
                     );
                   })()}
                   {selectedJob.detailerName ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cityConfig.detailers.find(d => d.name.toLowerCase() === selectedJob.detailerName?.toLowerCase())?.color ?? colors.primary }} />
-                      <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "500" }}>{selectedJob.detailerName}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cityConfig.detailers.find(d => d.name.toLowerCase() === selectedJob.detailerName?.toLowerCase())?.color ?? jobSheetColors.primary }} />
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "500" }}>{selectedJob.detailerName}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -3426,18 +3446,18 @@ export default function AdminScheduleScreen() {
                     ...(selectedJob.additionalVehicles ?? []),
                   ];
                   if (allVehicles.length === 0) return (
-                    <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
-                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Service</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>{selectedJob.serviceTitle}</Text>
-                      {selectedJob.serviceDescription ? <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>{selectedJob.serviceDescription}</Text> : null}
+                    <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: jobSheetColors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Service</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>{selectedJob.serviceTitle}</Text>
+                      {selectedJob.serviceDescription ? <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginTop: 4 }}>{selectedJob.serviceDescription}</Text> : null}
                     </View>
                   );
                   return (
-                    <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                         <Text style={{ fontSize: 16 }}>🚗</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Vehicles & Services</Text>
-                        {allVehicles.length > 1 && <View style={{ backgroundColor: colors.primary + "22", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}><Text style={{ color: colors.primary, fontSize: 11, fontWeight: "700" }}>{allVehicles.length} vehicles</Text></View>}
+                        <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Vehicles & Services</Text>
+                        {allVehicles.length > 1 && <View style={{ backgroundColor: jobSheetColors.primary + "22", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}><Text style={{ color: jobSheetColors.primary, fontSize: 11, fontWeight: "700" }}>{allVehicles.length} vehicles</Text></View>}
                       </View>
                       {allVehicles.map((av, idx) => {
                         const vt = VEHICLE_TYPES.find(v => v.id === av.vehicleType);
@@ -3446,12 +3466,12 @@ export default function AdminScheduleScreen() {
                         // idx 0 = primary vehicle; idx 1+ = additionalVehicles[idx-1]
                         const isEditingThis = idx === 0 ? adminEditingPackage : editingVehicleIdx === (idx - 1);
                         return (
-                          <View key={idx} style={{ marginBottom: idx < allVehicles.length - 1 ? 14 : 0, paddingBottom: idx < allVehicles.length - 1 ? 14 : 0, borderBottomWidth: idx < allVehicles.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }}>
+                          <View key={idx} style={{ marginBottom: idx < allVehicles.length - 1 ? 14 : 0, paddingBottom: idx < allVehicles.length - 1 ? 14 : 0, borderBottomWidth: idx < allVehicles.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: jobSheetColors.border }}>
                             {/* Vehicle header row */}
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
                               <Text style={{ fontSize: 18 }}>{vt?.emoji ?? "🚗"}</Text>
-                              <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700", flex: 1 }}>{[av.vehicleYear, av.vehicleMake, av.vehicleModel].filter(Boolean).join(" ") || vt?.label || "Vehicle"}</Text>
-                              {av.vehicleColor ? <View style={{ backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: colors.muted, fontSize: 11 }}>{av.vehicleColor}</Text></View> : null}
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700", flex: 1 }}>{[av.vehicleYear, av.vehicleMake, av.vehicleModel].filter(Boolean).join(" ") || vt?.label || "Vehicle"}</Text>
+                              {av.vehicleColor ? <View style={{ backgroundColor: jobSheetColors.surface, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: jobSheetColors.muted, fontSize: 11 }}>{av.vehicleColor}</Text></View> : null}
                               {/* Delete button for additional vehicles only */}
                               {idx > 0 && (
                                 <TouchableOpacity
@@ -3467,7 +3487,7 @@ export default function AdminScheduleScreen() {
                                       }},
                                     ]);
                                   }}
-                                  style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.error + "18", alignItems: "center", justifyContent: "center" }}
+                                  style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: jobSheetColors.error + "18", alignItems: "center", justifyContent: "center" }}
                                   activeOpacity={0.7}
                                 >
                                   <Text style={{ fontSize: 14 }}>🗑️</Text>
@@ -3477,7 +3497,7 @@ export default function AdminScheduleScreen() {
                             {/* Package — editable for ALL vehicles */}
                             {isEditingThis ? (
                               <View style={{ marginBottom: 8 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600", marginBottom: 8 }}>Select Package</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600", marginBottom: 8 }}>Select Package</Text>
                                 {allJobPackages.map((p) => {
                                   const currentPkgId = idx === 0 ? selectedJob.packageId : av.packageId;
                                   return (
@@ -3495,23 +3515,23 @@ export default function AdminScheduleScreen() {
                                           } catch { Alert.alert("Error", "Could not update package."); }
                                         }
                                       }}
-                                      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, backgroundColor: (currentPkgId === p.id) ? colors.primary + "22" : colors.surface, borderWidth: 1, borderColor: (currentPkgId === p.id) ? colors.primary : colors.border }}
+                                      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, backgroundColor: (currentPkgId === p.id) ? jobSheetColors.primary + "22" : jobSheetColors.surface, borderWidth: 1, borderColor: (currentPkgId === p.id) ? jobSheetColors.primary : jobSheetColors.border }}
                                       activeOpacity={0.7}
                                     >
                                       <Text style={{ fontSize: 18 }}>{p.emoji}</Text>
                                       <View style={{ flex: 1 }}>
-                                        <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>{p.title}</Text>
-                                        <Text style={{ color: colors.muted, fontSize: 12 }}>{p.tagline}</Text>
+                                        <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>{p.title}</Text>
+                                        <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>{p.tagline}</Text>
                                       </View>
-                                      {currentPkgId === p.id && <Text style={{ color: colors.primary, fontSize: 16 }}>✓</Text>}
+                                      {currentPkgId === p.id && <Text style={{ color: jobSheetColors.primary, fontSize: 16 }}>✓</Text>}
                                     </TouchableOpacity>
                                   );
                                 })}
                                 <TouchableOpacity
                                   onPress={() => { if (idx === 0) setAdminEditingPackage(false); else setEditingVehicleIdx(null); }}
-                                  style={{ alignSelf: "flex-end", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginTop: 4 }}
+                                  style={{ alignSelf: "flex-end", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border, marginTop: 4 }}
                                 >
-                                  <Text style={{ color: colors.muted, fontSize: 14 }}>Cancel</Text>
+                                  <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>Cancel</Text>
                                 </TouchableOpacity>
                               </View>
                             ) : pkg ? (
@@ -3521,12 +3541,12 @@ export default function AdminScheduleScreen() {
                                   style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}
                                   activeOpacity={0.7}
                                 >
-                                  <Text style={{ color: colors.primary, fontSize: 15, fontWeight: "600" }}>{pkg.emoji} {pkg.title}</Text>
-                                  <Text style={{ color: colors.primary, fontSize: 11 }}>✏️</Text>
+                                  <Text style={{ color: jobSheetColors.primary, fontSize: 15, fontWeight: "600" }}>{pkg.emoji} {pkg.title}</Text>
+                                  <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✏️</Text>
                                 </TouchableOpacity>
-                                <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 6, fontStyle: "italic" }}>{pkg.tagline}</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13, marginBottom: 6, fontStyle: "italic" }}>{pkg.tagline}</Text>
                                 <View style={{ gap: 2, marginBottom: 6 }}>
-                                  {pkg.features.map((f: string, fi: number) => <Text key={fi} style={{ color: colors.muted, fontSize: 13 }}>• {f}</Text>)}
+                                  {pkg.features.map((f: string, fi: number) => <Text key={fi} style={{ color: jobSheetColors.muted, fontSize: 13 }}>• {f}</Text>)}
                                 </View>
                               </>
                             ) : (
@@ -3535,17 +3555,17 @@ export default function AdminScheduleScreen() {
                                 style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}
                                 activeOpacity={0.7}
                               >
-                                <Text style={{ color: colors.muted, fontSize: 14 }}>No package — </Text>
-                                <Text style={{ color: colors.primary, fontSize: 14, fontWeight: "600" }}>Tap to assign ✏️</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>No package — </Text>
+                                <Text style={{ color: jobSheetColors.primary, fontSize: 14, fontWeight: "600" }}>Tap to assign ✏️</Text>
                               </TouchableOpacity>
                             )}
                             {addons.length > 0 ? (
                               <View style={{ marginTop: 4 }}>
-                                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Add-ons</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Add-ons</Text>
                                 {addons.map((a: any) => a ? (
                                   <View key={a.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 }}>
-                                    <Text style={{ color: colors.foreground, fontSize: 14 }}>{a.emoji} {a.title}{(av.addonQtys?.[a.id] ?? 1) > 1 ? ` ×${av.addonQtys![a.id]}` : ""}</Text>
-                                    <Text style={{ color: colors.muted, fontSize: 14 }}>+${(a.price * (av.addonQtys?.[a.id] ?? 1)).toFixed(2)}</Text>
+                                    <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>{a.emoji} {a.title}{(av.addonQtys?.[a.id] ?? 1) > 1 ? ` ×${av.addonQtys![a.id]}` : ""}</Text>
+                                    <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>+${(a.price * (av.addonQtys?.[a.id] ?? 1)).toFixed(2)}</Text>
                                   </View>
                                 ) : null)}
                               </View>
@@ -3560,11 +3580,11 @@ export default function AdminScheduleScreen() {
                                 setEditAddonsQtys({ ...currentQtys });
                                 setShowEditAddonsSheet(true);
                               }}
-                              style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.primary + "55", backgroundColor: colors.primary + "0D" }}
+                              style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.primary + "55", backgroundColor: jobSheetColors.primary + "0D" }}
                               activeOpacity={0.7}
                             >
                               <Text style={{ fontSize: 13 }}>✨</Text>
-                              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
+                              <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>
                                 {(av.addonIds ?? []).length > 0 ? `Edit Add-ons (${(av.addonIds ?? []).length})` : "+ Add Add-ons"}
                               </Text>
                             </TouchableOpacity>
@@ -3584,11 +3604,11 @@ export default function AdminScheduleScreen() {
                           setAddVehicleToJobColor("");
                           setShowAddVehicleToJob(true);
                         }}
-                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, paddingVertical: 12, marginTop: 14, backgroundColor: colors.primary + "0D" }}
+                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: jobSheetColors.primary, borderRadius: 12, paddingVertical: 12, marginTop: 14, backgroundColor: jobSheetColors.primary + "0D" }}
                         activeOpacity={0.75}
                       >
-                        <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "700" }}>+</Text>
-                        <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Vehicle</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontSize: 18, fontWeight: "700" }}>+</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontWeight: "700", fontSize: 14 }}>Add Another Vehicle</Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -3596,6 +3616,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Line Items Card ── */}
                 {(() => {
+                  if (companyJobMode) return <CompanyJobLineItems amount={selectedJob.price} balance={selectedJob.balance} paymentStatus={selectedJob.paymentStatus} paidTotal={selectedJob.paidTotal} refundTotal={selectedJob.refundTotal} appliedEstimateCredit={selectedJob.appliedEstimateCredit} />;
                   const subtotal = selectedJob.price;
                   const upsells = selectedJob.upsellTotal ?? 0;
                   const discount = selectedJob.discountAmount ?? 0;
@@ -3604,49 +3625,49 @@ export default function AdminScheduleScreen() {
                   const total = subtotal + upsells - discount + tax;
                   const balanceDue = total - deposit;
                   return (
-                    <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                         <Text style={{ fontSize: 16 }}>🧾</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Line Items</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Line Items</Text>
                       </View>
 
                       {/* Service Total (editable) */}
                       {adminEditingPrice ? (
-                        <View style={{ paddingVertical: 6, borderBottomWidth: upsells > 0 ? 0 : StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                        <View style={{ paddingVertical: 6, borderBottomWidth: upsells > 0 ? 0 : StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>Service Total</Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.primary, borderRadius: 6, paddingHorizontal: 8, flex: 1 }}>
-                              <Text style={{ color: colors.muted, fontSize: 14 }}>$</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>Service Total</Text>
+                            <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: jobSheetColors.primary, borderRadius: 6, paddingHorizontal: 8, flex: 1 }}>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>$</Text>
                               <TextInput
                                 value={adminPriceInput}
                                 onChangeText={setAdminPriceInput}
                                 keyboardType="decimal-pad"
                                 placeholder="0.00"
-                                placeholderTextColor={colors.muted}
-                                style={{ flex: 1, paddingVertical: 5, color: colors.foreground, fontSize: 14, textAlign: "right" }}
+                                placeholderTextColor={jobSheetColors.muted}
+                                style={{ flex: 1, paddingVertical: 5, color: jobSheetColors.foreground, fontSize: 14, textAlign: "right" }}
                                 autoFocus
                                 returnKeyType="done"
                                 onSubmitEditing={() => adminSavePrice(selectedJob, adminPriceInput)}
                               />
                             </View>
-                            <TouchableOpacity onPress={() => adminSavePrice(selectedJob, adminPriceInput)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: colors.primary }}>
+                            <TouchableOpacity onPress={() => adminSavePrice(selectedJob, adminPriceInput)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: jobSheetColors.primary }}>
                               <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "600" }}>Save</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => setAdminEditingPrice(false)} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-                              <Text style={{ color: colors.muted, fontSize: 12 }}>Cancel</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>Cancel</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
                       ) : (
                         <TouchableOpacity
                           onPress={() => { setAdminPriceInput(subtotal.toFixed(2)); setAdminEditingPrice(true); }}
-                          style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: upsells > 0 ? 0 : StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+                          style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: upsells > 0 ? 0 : StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}
                           activeOpacity={0.6}
                         >
-                          <Text style={{ color: colors.muted, fontSize: 14 }}>Service Total</Text>
+                          <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>Service Total</Text>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                            <Text style={{ color: colors.muted, fontSize: 14 }}>${subtotal.toFixed(2)}</Text>
-                            <Text style={{ color: colors.primary, fontSize: 11 }}>✏️</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>${subtotal.toFixed(2)}</Text>
+                            <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✏️</Text>
                           </View>
                         </TouchableOpacity>
                       )}
@@ -3656,21 +3677,21 @@ export default function AdminScheduleScreen() {
                         const upsellItemIds: string[] = selectedJob.upsellIds ?? [];
                         const upsellItemQtys: Record<string, number> = selectedJob.upsellQtys ?? {};
                         return (
-                          <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingBottom: 6 }}>
+                          <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border, paddingBottom: 6 }}>
                             {upsellItemIds.length > 0 ? upsellItemIds.map((id) => {
                               const ad = ADDONS.find((a) => a.id === id);
                               if (!ad) return null;
                               const qty = upsellItemQtys[id] ?? 1;
                               return (
                                 <View key={id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 }}>
-                                  <Text style={{ color: colors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
-                                  <Text style={{ color: colors.foreground, fontSize: 13 }}>+${(ad.price * qty).toFixed(2)}</Text>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>+${(ad.price * qty).toFixed(2)}</Text>
                                 </View>
                               );
                             }) : (
                               <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 13 }}>Upsells</Text>
-                                <Text style={{ color: colors.foreground, fontSize: 13 }}>+${upsells.toFixed(2)}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>Upsells</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>+${upsells.toFixed(2)}</Text>
                               </View>
                             )}
                           </View>
@@ -3678,29 +3699,29 @@ export default function AdminScheduleScreen() {
                       })()}
 
                       {/* Subtotal */}
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>Subtotal</Text>
-                        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>${(subtotal + upsells).toFixed(2)}</Text>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>Subtotal</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>${(subtotal + upsells).toFixed(2)}</Text>
                       </View>
 
                       {/* Discount (always shown, editable) */}
-                      <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                      <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
                         {adminEditingDiscount ? (
                           <View style={{ paddingVertical: 8, gap: 8 }}>
-                            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>Discount</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>Discount</Text>
                             {/* $ / % toggle */}
-                            <View style={{ flexDirection: "row", backgroundColor: colors.surface, borderRadius: 8, padding: 2, alignSelf: "flex-start" }}>
+                            <View style={{ flexDirection: "row", backgroundColor: jobSheetColors.surface, borderRadius: 8, padding: 2, alignSelf: "flex-start" }}>
                               <TouchableOpacity
                                 onPress={() => setAdminDiscountType("fixed")}
-                                style={{ paddingHorizontal: 16, paddingVertical: 6, borderRadius: 6, backgroundColor: adminDiscountType === "fixed" ? colors.primary : "transparent" }}
+                                style={{ paddingHorizontal: 16, paddingVertical: 6, borderRadius: 6, backgroundColor: adminDiscountType === "fixed" ? jobSheetColors.primary : "transparent" }}
                               >
-                                <Text style={{ color: adminDiscountType === "fixed" ? "#FFF" : colors.muted, fontSize: 13, fontWeight: "600" }}>$ Off</Text>
+                                <Text style={{ color: adminDiscountType === "fixed" ? "#FFF" : jobSheetColors.muted, fontSize: 13, fontWeight: "600" }}>$ Off</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setAdminDiscountType("percent")}
-                                style={{ paddingHorizontal: 16, paddingVertical: 6, borderRadius: 6, backgroundColor: adminDiscountType === "percent" ? colors.primary : "transparent" }}
+                                style={{ paddingHorizontal: 16, paddingVertical: 6, borderRadius: 6, backgroundColor: adminDiscountType === "percent" ? jobSheetColors.primary : "transparent" }}
                               >
-                                <Text style={{ color: adminDiscountType === "percent" ? "#FFF" : colors.muted, fontSize: 13, fontWeight: "600" }}>% Off</Text>
+                                <Text style={{ color: adminDiscountType === "percent" ? "#FFF" : jobSheetColors.muted, fontSize: 13, fontWeight: "600" }}>% Off</Text>
                               </TouchableOpacity>
                             </View>
                             <View style={{ flexDirection: "row", gap: 8 }}>
@@ -3708,35 +3729,35 @@ export default function AdminScheduleScreen() {
                                 value={adminDiscountCodeInput}
                                 onChangeText={setAdminDiscountCodeInput}
                                 placeholder="Label (e.g. Promo)"
-                                placeholderTextColor={colors.muted}
-                                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, color: colors.foreground, fontSize: 13 }}
+                                placeholderTextColor={jobSheetColors.muted}
+                                style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, color: jobSheetColors.foreground, fontSize: 13 }}
                                 returnKeyType="next"
                               />
-                              <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: colors.primary, borderRadius: 6, paddingHorizontal: 8 }}>
-                                <Text style={{ color: colors.muted, fontSize: 13, marginRight: 2 }}>{adminDiscountType === "fixed" ? "$" : ""}</Text>
+                              <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: jobSheetColors.primary, borderRadius: 6, paddingHorizontal: 8 }}>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13, marginRight: 2 }}>{adminDiscountType === "fixed" ? "$" : ""}</Text>
                                 <TextInput
                                   value={adminDiscountInput}
                                   onChangeText={setAdminDiscountInput}
                                   keyboardType="decimal-pad"
                                   placeholder={adminDiscountType === "fixed" ? "0.00" : "0"}
-                                  placeholderTextColor={colors.muted}
-                                  style={{ width: 60, paddingVertical: 5, color: colors.foreground, fontSize: 13, textAlign: "right" }}
+                                  placeholderTextColor={jobSheetColors.muted}
+                                  style={{ width: 60, paddingVertical: 5, color: jobSheetColors.foreground, fontSize: 13, textAlign: "right" }}
                                   returnKeyType="done"
                                   onSubmitEditing={() => adminSaveDiscount(selectedJob, adminDiscountInput, adminDiscountCodeInput)}
                                 />
-                                <Text style={{ color: colors.muted, fontSize: 13, marginLeft: 2 }}>{adminDiscountType === "percent" ? "%" : ""}</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13, marginLeft: 2 }}>{adminDiscountType === "percent" ? "%" : ""}</Text>
                               </View>
                             </View>
                             {adminDiscountType === "percent" && parseFloat(adminDiscountInput) > 0 && (
-                              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>
                                 = ${(Math.round((parseFloat(adminDiscountInput) / 100) * (selectedJob.price + (selectedJob.upsellTotal ?? 0)) * 100) / 100).toFixed(2)} off
                               </Text>
                             )}
                             <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
-                              <TouchableOpacity onPress={() => setAdminEditingDiscount(false)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ color: colors.muted, fontSize: 13 }}>Cancel</Text>
+                              <TouchableOpacity onPress={() => setAdminEditingDiscount(false)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border }}>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Cancel</Text>
                               </TouchableOpacity>
-                              <TouchableOpacity onPress={() => adminSaveDiscount(selectedJob, adminDiscountInput, adminDiscountCodeInput)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primary }}>
+                              <TouchableOpacity onPress={() => adminSaveDiscount(selectedJob, adminDiscountInput, adminDiscountCodeInput)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: jobSheetColors.primary }}>
                                 <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "600" }}>Save</Text>
                               </TouchableOpacity>
                             </View>
@@ -3748,61 +3769,61 @@ export default function AdminScheduleScreen() {
                             activeOpacity={0.7}
                           >
                             <View>
-                              <Text style={{ color: colors.foreground, fontSize: 15 }}>Discount</Text>
-                              {selectedJob.discountCode ? <Text style={{ color: colors.muted, fontSize: 13 }}>{selectedJob.discountCode}</Text> : <Text style={{ color: colors.muted, fontSize: 13 }}>Tap to add</Text>}
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 15 }}>Discount</Text>
+                              {selectedJob.discountCode ? <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>{selectedJob.discountCode}</Text> : <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Tap to add</Text>}
                             </View>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Text style={{ color: discount > 0 ? colors.error : colors.muted, fontSize: 15, fontWeight: "600" }}>{discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"}</Text>
-                              <Text style={{ color: colors.primary, fontSize: 11 }}>✏️</Text>
+                              <Text style={{ color: discount > 0 ? jobSheetColors.error : jobSheetColors.muted, fontSize: 15, fontWeight: "600" }}>{discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"}</Text>
+                              <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✏️</Text>
                             </View>
                           </TouchableOpacity>
                         )}
                       </View>
 
                       {/* Tax */}
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                        <Text style={{ color: colors.foreground, fontSize: 15 }}>Tax</Text>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 15 }}>Tax</Text>
                         {adminEditingTax ? (
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <TextInput value={adminTaxInput} onChangeText={setAdminTaxInput} keyboardType="decimal-pad" style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, color: colors.foreground, fontSize: 13, minWidth: 70, textAlign: "right" }} autoFocus returnKeyType="done" onSubmitEditing={() => adminSaveTax(selectedJob, adminTaxInput)} />
-                            <TouchableOpacity onPress={() => adminSaveTax(selectedJob, adminTaxInput)}><Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>Save</Text></TouchableOpacity>
+                            <TextInput value={adminTaxInput} onChangeText={setAdminTaxInput} keyboardType="decimal-pad" style={{ borderWidth: 1, borderColor: jobSheetColors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, color: jobSheetColors.foreground, fontSize: 13, minWidth: 70, textAlign: "right" }} autoFocus returnKeyType="done" onSubmitEditing={() => adminSaveTax(selectedJob, adminTaxInput)} />
+                            <TouchableOpacity onPress={() => adminSaveTax(selectedJob, adminTaxInput)}><Text style={{ color: jobSheetColors.primary, fontWeight: "700", fontSize: 13 }}>Save</Text></TouchableOpacity>
                           </View>
                         ) : (
                           <TouchableOpacity onPress={() => { setAdminTaxInput(tax.toFixed(2)); setAdminEditingTax(true); }} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>${tax.toFixed(2)}</Text>
-                            <Text style={{ color: colors.primary, fontSize: 11 }}>✏️</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>${tax.toFixed(2)}</Text>
+                            <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✏️</Text>
                           </TouchableOpacity>
                         )}
                       </View>
 
                       {/* Total */}
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                        <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>Total</Text>
-                        <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>${total.toFixed(2)}</Text>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>Total</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontSize: 16, fontWeight: "700" }}>${total.toFixed(2)}</Text>
                       </View>
 
                       {/* Deposit (always shown, editable) */}
-                      <View style={{ borderBottomWidth: deposit > 0 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }}>
+                      <View style={{ borderBottomWidth: deposit > 0 ? StyleSheet.hairlineWidth : 0, borderBottomColor: jobSheetColors.border }}>
                         {adminEditingDeposit ? (
                           <View style={{ paddingVertical: 8, gap: 6 }}>
-                            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>Deposit Received</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>Deposit Received</Text>
                             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                               <TextInput
                                 value={adminDepositInput}
                                 onChangeText={setAdminDepositInput}
                                 keyboardType="decimal-pad"
                                 placeholder="0.00"
-                                placeholderTextColor={colors.muted}
+                                placeholderTextColor={jobSheetColors.muted}
                                 autoFocus
-                                style={{ flex: 1, borderWidth: 1, borderColor: colors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, color: colors.foreground, fontSize: 13, textAlign: "right" }}
+                                style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, color: jobSheetColors.foreground, fontSize: 13, textAlign: "right" }}
                                 returnKeyType="done"
                                 onSubmitEditing={() => adminSaveDeposit(selectedJob, adminDepositInput)}
                               />
-                              <TouchableOpacity onPress={() => adminSaveDeposit(selectedJob, adminDepositInput)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primary }}>
+                              <TouchableOpacity onPress={() => adminSaveDeposit(selectedJob, adminDepositInput)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: jobSheetColors.primary }}>
                                 <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "600" }}>Save</Text>
                               </TouchableOpacity>
-                              <TouchableOpacity onPress={() => setAdminEditingDeposit(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ color: colors.muted, fontSize: 13 }}>Cancel</Text>
+                              <TouchableOpacity onPress={() => setAdminEditingDeposit(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border }}>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Cancel</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -3813,12 +3834,12 @@ export default function AdminScheduleScreen() {
                             activeOpacity={0.7}
                           >
                             <View>
-                              <Text style={{ color: colors.foreground, fontSize: 15 }}>Deposit</Text>
-                              {deposit === 0 ? <Text style={{ color: colors.muted, fontSize: 13 }}>Tap to record</Text> : null}
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 15 }}>Deposit</Text>
+                              {deposit === 0 ? <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Tap to record</Text> : null}
                             </View>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Text style={{ color: deposit > 0 ? colors.success : colors.muted, fontSize: 15, fontWeight: "600" }}>{deposit > 0 ? `-$${deposit.toFixed(2)}` : "$0.00"}</Text>
-                              <Text style={{ color: colors.primary, fontSize: 11 }}>✏️</Text>
+                              <Text style={{ color: deposit > 0 ? jobSheetColors.success : jobSheetColors.muted, fontSize: 15, fontWeight: "600" }}>{deposit > 0 ? `-$${deposit.toFixed(2)}` : "$0.00"}</Text>
+                              <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✏️</Text>
                             </View>
                           </TouchableOpacity>
                         )}
@@ -3826,9 +3847,9 @@ export default function AdminScheduleScreen() {
 
                       {/* Balance Due (only when deposit > 0) */}
                       {deposit > 0 ? (
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, marginTop: 2, backgroundColor: balanceDue <= 0 ? "#22C55E11" : colors.surface, borderRadius: 8, paddingHorizontal: 8 }}>
-                          <Text style={{ color: balanceDue <= 0 ? "#22C55E" : colors.foreground, fontSize: 15, fontWeight: "700" }}>{balanceDue <= 0 ? "✓ Paid in Full" : "Balance Due"}</Text>
-                          <Text style={{ color: balanceDue <= 0 ? "#22C55E" : colors.primary, fontSize: 15, fontWeight: "700" }}>${Math.max(0, balanceDue).toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, marginTop: 2, backgroundColor: balanceDue <= 0 ? "#22C55E11" : jobSheetColors.surface, borderRadius: 8, paddingHorizontal: 8 }}>
+                          <Text style={{ color: balanceDue <= 0 ? "#22C55E" : jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>{balanceDue <= 0 ? "✓ Paid in Full" : "Balance Due"}</Text>
+                          <Text style={{ color: balanceDue <= 0 ? "#22C55E" : jobSheetColors.primary, fontSize: 15, fontWeight: "700" }}>${Math.max(0, balanceDue).toFixed(2)}</Text>
                         </View>
                       ) : null}
 
@@ -3858,7 +3879,7 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Job Progress Card ── */}
                 {(() => {
-                  if (companyJobMode) return <CompanyJobProgress session={jobSyncSession} job={companyJob} timezone={companyTimezone} onRefresh={refreshCompanyJob} />;
+                  if (companyJobMode) return null;
                   const steps: { key: JobStatus; label: string; emoji: string; ts?: string | null }[] = [
                     { key: "scheduled", label: "Scheduled", emoji: "📅", ts: selectedJob.createdAt },
                     { key: "on_my_way", label: "On My Way", emoji: "🚚", ts: selectedJob.onMyWayAt },
@@ -3886,10 +3907,10 @@ export default function AdminScheduleScreen() {
                   const totalMs = driveMs !== null && detailMs !== null ? driveMs + detailMs : null;
 
                   return (
-                    <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
                         <Text style={{ fontSize: 16 }}>📊</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Job Progress</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Progress</Text>
                       </View>
                       <View style={{ flexDirection: "row", gap: 12 }}>
                         {/* Left: timeline */}
@@ -3899,8 +3920,8 @@ export default function AdminScheduleScreen() {
                             const isCompleted = currentRank > stepRank;
                             const isCurrent = currentRank === stepRank;
                             const isPending = currentRank < stepRank;
-                            const dotColor = isCompleted ? "#22C55E" : isCurrent ? colors.primary : colors.border;
-                            const lineColor = isCompleted ? "#22C55E" : colors.border;
+                            const dotColor = isCompleted ? "#22C55E" : isCurrent ? jobSheetColors.primary : jobSheetColors.border;
+                            const lineColor = isCompleted ? "#22C55E" : jobSheetColors.border;
                             return (
                               <View key={step.key} style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
                                 {/* Timeline spine */}
@@ -3913,11 +3934,11 @@ export default function AdminScheduleScreen() {
                                 </View>
                                 {/* Step label */}
                                 <View style={{ flex: 1, paddingTop: 0 }}>
-                                  <Text style={{ fontSize: 13, fontWeight: isCurrent ? "700" : "500", color: isPending ? colors.muted : colors.foreground }}>
+                                  <Text style={{ fontSize: 13, fontWeight: isCurrent ? "700" : "500", color: isPending ? jobSheetColors.muted : jobSheetColors.foreground }}>
                                     {step.emoji} {step.label}
                                   </Text>
                                   {step.ts && (isCompleted || isCurrent) ? (
-                                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1, marginBottom: 4 }}>
+                                    <Text style={{ fontSize: 10, color: jobSheetColors.muted, marginTop: 1, marginBottom: 4 }}>
                                       {(() => { try { const d = new Date(step.ts!); return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }); } catch { return step.ts; } })()}
                                     </Text>
                                   ) : <View style={{ height: 4 }} />}
@@ -3929,24 +3950,24 @@ export default function AdminScheduleScreen() {
 
                         {/* Right: time summary */}
                         <View style={{ width: 110, gap: 6, paddingTop: 2 }}>
-                          <View style={{ backgroundColor: colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border, gap: 6 }}>
+                          <View style={{ backgroundColor: jobSheetColors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: jobSheetColors.border, gap: 6 }}>
                             <View>
-                              <Text style={{ fontSize: 9, fontWeight: "700", color: colors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Drive Time</Text>
-                              <Text style={{ fontSize: 15, fontWeight: "800", color: driveMs !== null ? colors.primary : colors.muted }}>
+                              <Text style={{ fontSize: 9, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Drive Time</Text>
+                              <Text style={{ fontSize: 15, fontWeight: "800", color: driveMs !== null ? jobSheetColors.primary : jobSheetColors.muted }}>
                                 {driveMs !== null ? fmtMins(driveMs) : "—"}
                               </Text>
                             </View>
-                            <View style={{ height: 1, backgroundColor: colors.border }} />
+                            <View style={{ height: 1, backgroundColor: jobSheetColors.border }} />
                             <View>
-                              <Text style={{ fontSize: 9, fontWeight: "700", color: colors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Detail Time</Text>
-                              <Text style={{ fontSize: 15, fontWeight: "800", color: detailMs !== null ? colors.foreground : colors.muted }}>
+                              <Text style={{ fontSize: 9, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Detail Time</Text>
+                              <Text style={{ fontSize: 15, fontWeight: "800", color: detailMs !== null ? jobSheetColors.foreground : jobSheetColors.muted }}>
                                 {detailMs !== null ? fmtMins(detailMs) : "—"}
                               </Text>
                             </View>
-                            <View style={{ height: 1, backgroundColor: colors.border }} />
+                            <View style={{ height: 1, backgroundColor: jobSheetColors.border }} />
                             <View>
-                              <Text style={{ fontSize: 9, fontWeight: "700", color: colors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Complete Job</Text>
-                              <Text style={{ fontSize: 15, fontWeight: "800", color: totalMs !== null ? "#22C55E" : colors.muted }}>
+                              <Text style={{ fontSize: 9, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 2 }}>Complete Job</Text>
+                              <Text style={{ fontSize: 15, fontWeight: "800", color: totalMs !== null ? "#22C55E" : jobSheetColors.muted }}>
                                 {totalMs !== null ? fmtMins(totalMs) : "—"}
                               </Text>
                             </View>
@@ -3959,10 +3980,10 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Payment Detail Card ── */}
                 {selectedJob.payment ? (
-                  <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                  <View style={{ backgroundColor: jobSheetColors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                       <Text style={{ fontSize: 16 }}>💳</Text>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Payment</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Payment</Text>
                       <View style={{ marginLeft: "auto" as any, backgroundColor: "#22C55E22", borderColor: "#22C55E55", borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
                         <Text style={{ color: "#22C55E", fontWeight: "700", fontSize: 12 }}>✓ PAID</Text>
                       </View>
@@ -3974,24 +3995,24 @@ export default function AdminScheduleScreen() {
                       { label: "Total", value: `$${selectedJob.payment.total.toFixed(2)}`, bold: true },
                       { label: "Paid At", value: (() => { try { return new Date(selectedJob.payment!.paidAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/Chicago" }); } catch { return selectedJob.payment!.paidAt; } })() },
                     ] as { label: string; value: string; bold?: boolean }[]).map((row, i, arr) => (
-                      <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: i < arr.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }}>
-                        <Text style={{ color: colors.muted, fontSize: 14 }}>{row.label}</Text>
-                        <Text style={{ color: row.bold ? "#22C55E" : colors.foreground, fontSize: 14, fontWeight: row.bold ? "700" : "500" }}>{row.value}</Text>
+                      <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: i < arr.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: jobSheetColors.border }}>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>{row.label}</Text>
+                        <Text style={{ color: row.bold ? "#22C55E" : jobSheetColors.foreground, fontSize: 14, fontWeight: row.bold ? "700" : "500" }}>{row.value}</Text>
                       </View>
                     ))}
                     {selectedJob.payment.referenceNote ? (
-                      <View style={{ marginTop: 8, backgroundColor: colors.surface, borderRadius: 8, padding: 10 }}>
-                        <Text style={{ color: colors.muted, fontSize: 12 }}>Note: {selectedJob.payment.referenceNote}</Text>
+                      <View style={{ marginTop: 8, backgroundColor: jobSheetColors.surface, borderRadius: 8, padding: 10 }}>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>Note: {selectedJob.payment.referenceNote}</Text>
                       </View>
                     ) : null}
 
                     {/* Refund history */}
                     {refundHistory.length > 0 && (
-                      <View style={{ marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 10 }}>
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Refunds Issued</Text>
+                      <View style={{ marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border, paddingTop: 10 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Refunds Issued</Text>
                         {refundHistory.map((r: any) => (
                           <View key={r.refundRecordId} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                            <Text style={{ color: colors.muted, fontSize: 13 }}>{new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {r.issuedBy}</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>{new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {r.issuedBy}</Text>
                             <Text style={{ color: "#EF4444", fontSize: 13, fontWeight: "700" }}>-${(r.amountCents / 100).toFixed(2)}</Text>
                           </View>
                         ))}
@@ -4015,48 +4036,48 @@ export default function AdminScheduleScreen() {
                 {/* ── Refund Modal ── */}
                 <Modal visible={!companyJobMode && isFocused && showRefundModal} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
                   <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
-                    <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
-                      <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>↩️ Issue Refund</Text>
-                      <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>
+                    <View style={{ backgroundColor: jobSheetColors.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
+                      <Text style={{ fontSize: 18, fontWeight: "700", color: jobSheetColors.foreground, marginBottom: 4 }}>↩️ Issue Refund</Text>
+                      <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginBottom: 20 }}>
                         {selectedJob?.firstName} {selectedJob?.lastName} · ${selectedJob?.payment?.total?.toFixed(2) ?? "0.00"} paid
                       </Text>
 
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Refund Amount ($)</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: jobSheetColors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Refund Amount ($)</Text>
                       <TextInput
                         value={refundAmount}
                         onChangeText={setRefundAmount}
                         placeholder={`Max $${selectedJob?.payment?.total?.toFixed(2) ?? "0.00"}`}
-                        placeholderTextColor={colors.muted}
+                        placeholderTextColor={jobSheetColors.muted}
                         keyboardType="decimal-pad"
                         returnKeyType="done"
-                        style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: colors.foreground, fontSize: 16, marginBottom: 14, backgroundColor: colors.background }}
+                        style={{ borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: jobSheetColors.foreground, fontSize: 16, marginBottom: 14, backgroundColor: jobSheetColors.background }}
                       />
 
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Reason</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: jobSheetColors.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Reason</Text>
                       {(["requested_by_customer", "duplicate", "fraudulent"] as const).map((r) => (
                         <TouchableOpacity key={r} onPress={() => setRefundReason(r)} activeOpacity={0.7}
                           style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: refundReason === r ? colors.primary : colors.border, backgroundColor: refundReason === r ? colors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
+                          <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: refundReason === r ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: refundReason === r ? jobSheetColors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
                             {refundReason === r && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" }} />}
                           </View>
-                          <Text style={{ color: colors.foreground, fontSize: 14 }}>{{ requested_by_customer: "Customer Request", duplicate: "Duplicate Charge", fraudulent: "Fraudulent" }[r]}</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>{{ requested_by_customer: "Customer Request", duplicate: "Duplicate Charge", fraudulent: "Fraudulent" }[r]}</Text>
                         </TouchableOpacity>
                       ))}
 
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 6, marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Internal Note (optional)</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: jobSheetColors.muted, marginBottom: 6, marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Internal Note (optional)</Text>
                       <TextInput
                         value={refundNote}
                         onChangeText={setRefundNote}
                         placeholder="e.g. Customer complained about service quality"
-                        placeholderTextColor={colors.muted}
+                        placeholderTextColor={jobSheetColors.muted}
                         multiline
                         returnKeyType="done"
-                        style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: colors.foreground, fontSize: 14, marginBottom: 20, backgroundColor: colors.background, minHeight: 72, textAlignVertical: "top" }}
+                        style={{ borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: jobSheetColors.foreground, fontSize: 14, marginBottom: 20, backgroundColor: jobSheetColors.background, minHeight: 72, textAlignVertical: "top" }}
                       />
 
                       <View style={{ flexDirection: "row", gap: 10 }}>
-                        <TouchableOpacity onPress={() => setShowRefundModal(false)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
-                          <Text style={{ color: colors.muted, fontWeight: "600" }}>Cancel</Text>
+                        <TouchableOpacity onPress={() => setShowRefundModal(false)} style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
+                          <Text style={{ color: jobSheetColors.muted, fontWeight: "600" }}>Cancel</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           disabled={refundLoading || !refundAmount || parseFloat(refundAmount) <= 0}
@@ -4109,27 +4130,27 @@ export default function AdminScheduleScreen() {
                   const photos = selectedJob.photoUrls ?? [];
                   if (photos.length === 0) return null;
                   return (
-                    <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
                         <Text style={{ fontSize: 16 }}>📸</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Job Photos</Text>
-                        <Text style={{ color: colors.muted, fontSize: 13, marginLeft: 4 }}>({photos.length})</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Photos</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 13, marginLeft: 4 }}>({photos.length})</Text>
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                         {photos.map((url) => (
                           <TouchableOpacity key={url} onPress={() => { if (renderedLegacyAction()) setAdminPhotoPreview(url); }} activeOpacity={0.85}>
-                            <Image source={{ uri: url }} style={{ width: 90, height: 90, borderRadius: 8, backgroundColor: colors.surface }} resizeMode="cover" />
+                            <Image source={{ uri: url }} style={{ width: 90, height: 90, borderRadius: 8, backgroundColor: jobSheetColors.surface }} resizeMode="cover" />
                           </TouchableOpacity>
                         ))}
                       </View>
-                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>Tap a photo to view full screen.</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginTop: 8 }}>Tap a photo to view full screen.</Text>
                     </View>
                   );
                 })()}
 
                 {/* ── Private Notes Card ── */}
                 {(() => {
-                  if (companyJobMode) return <Text style={{ color: colors.muted, padding: 14 }}>Company private-note editing is unavailable in this Job sheet.</Text>;
+                  if (companyJobMode) return null;
                   const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                   return hasNotes ? (
                     <AdminPrivateNotesCard
@@ -4145,7 +4166,7 @@ export default function AdminScheduleScreen() {
                       }}
                     />
                   ) : (
-                    <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                       <TouchableOpacity
                         onPress={() => { if (!renderedLegacyAction()) return; setSelectedJob((prev) => prev ? { ...prev, privateNotes: [{ id: "__new__", text: "", authorId: "admin", authorName: "Admin", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] } : prev); }}
                         style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
@@ -4153,9 +4174,9 @@ export default function AdminScheduleScreen() {
                       >
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                           <Text style={{ fontSize: 16 }}>📝</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>Private Notes</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>Private Notes</Text>
                         </View>
-                        <Text style={{ color: colors.primary, fontSize: 22, fontWeight: "300" }}>+</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontSize: 22, fontWeight: "300" }}>+</Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -4167,14 +4188,14 @@ export default function AdminScheduleScreen() {
                   const isOnline = !isPortalApp && selectedJob.isOnlineBooking;
                   const isAI = selectedJob.leadSource === "AI Receptionist";
                   const label = isPortalApp ? "📱 App" : isOnline ? "🌐 Website" : isAI ? "🤖 AI Receptionist" : "📋 Admin — Manual";
-                  const bg = isPortalApp ? "#8B5CF622" : isOnline ? "#0EA5E922" : isAI ? "#7c3aed22" : colors.surface;
-                  const border = isPortalApp ? "#8B5CF666" : isOnline ? "#0EA5E966" : isAI ? "#7c3aed66" : colors.border;
-                  const textColor = isPortalApp ? "#8B5CF6" : isOnline ? "#0EA5E9" : isAI ? "#7c3aed" : colors.muted;
+                  const bg = isPortalApp ? "#8B5CF622" : isOnline ? "#0EA5E922" : isAI ? "#7c3aed22" : jobSheetColors.surface;
+                  const border = isPortalApp ? "#8B5CF666" : isOnline ? "#0EA5E966" : isAI ? "#7c3aed66" : jobSheetColors.border;
+                  const textColor = isPortalApp ? "#8B5CF6" : isOnline ? "#0EA5E9" : isAI ? "#7c3aed" : jobSheetColors.muted;
                   return (
-                    <View style={{ backgroundColor: colors.background, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: jobSheetColors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         <Text style={{ fontSize: 16 }}>📡</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>Lead Source</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: jobSheetColors.foreground }}>Lead Source</Text>
                       </View>
                       <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}>
                         <Text style={{ color: textColor, fontSize: 14, fontWeight: "600" }}>{label}</Text>
@@ -4184,40 +4205,28 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 {/* ── Job Tags Card ── */}
-                <View style={{ backgroundColor: colors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
+                <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <Text style={{ fontSize: 16 }}>🏷️</Text>
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Job Tags</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Tags</Text>
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                     {(selectedJob.tags ?? []).map((tag) => (
-                      <TouchableOpacity key={tag} onPress={() => adminRemoveTag(selectedJob, tag)} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.primary + "22", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4 }}>
-                        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>{tag}</Text>
-                        <Text style={{ color: colors.primary, fontSize: 11 }}>✕</Text>
+                      <TouchableOpacity key={tag} onPress={() => adminRemoveTag(selectedJob, tag)} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: jobSheetColors.primary + "22", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>{tag}</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontSize: 11 }}>✕</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <TextInput value={adminTagInput} onChangeText={setAdminTagInput} placeholder="Add tag..." placeholderTextColor={colors.muted} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, color: colors.foreground, fontSize: 14 }} returnKeyType="done" onSubmitEditing={() => adminAddTag(selectedJob, adminTagInput)} />
-                    <TouchableOpacity onPress={() => adminAddTag(selectedJob, adminTagInput)} style={{ backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6, justifyContent: "center" }}>
+                    <TextInput value={adminTagInput} onChangeText={setAdminTagInput} placeholder="Add tag..." placeholderTextColor={jobSheetColors.muted} style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, color: jobSheetColors.foreground, fontSize: 14 }} returnKeyType="done" onSubmitEditing={() => adminAddTag(selectedJob, adminTagInput)} />
+                    <TouchableOpacity onPress={() => adminAddTag(selectedJob, adminTagInput)} style={{ backgroundColor: jobSheetColors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6, justifyContent: "center" }}>
                       <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Add</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* ── Reassign Section ── */}
-
-                {/* ── Collect Payment Button ── */}
-                {!selectedJob.payment && (
-                  <TouchableOpacity
-                    onPress={() => { if (managementActionRef.current.mounted && managementActionRef.current.focused && sheetEpochRef.current === renderedSheetEpoch && invoiceSessionRef.current.key === invoiceIdentityKey) { paymentActionRef.current = null; setShowCheckout(true); } }}
-                    activeOpacity={0.8}
-                    style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#22C55E18", borderWidth: 1, borderColor: "#22C55E55", borderRadius: 12, paddingVertical: 14 }}
-                  >
-                    <Text style={{ fontSize: 18 }}>💳</Text>
-                    <Text style={{ color: "#22C55E", fontWeight: "700", fontSize: 16 }}>Collect Payment</Text>
-                  </TouchableOpacity>
-                )}
 
                 {/* ── Send Invoice Button ── */}
                 <TouchableOpacity
@@ -4338,7 +4347,6 @@ export default function AdminScheduleScreen() {
                   </TouchableOpacity>
                 )}
 
-                <Text style={{ marginTop: 18, color: colors.foreground, fontWeight: "700" }}>Management actions</Text>
                 {companyJobMode && <>
                   <TouchableOpacity
                     accessibilityRole="button"
@@ -4350,10 +4358,9 @@ export default function AdminScheduleScreen() {
                         { text: "Cancel Company Job", style: "destructive", onPress: () => { void companyJob.cancelManagement(); } },
                       ]);
                     }}
-                    style={{ marginTop: 10, borderRadius: 12, paddingVertical: 12, alignItems: "center", backgroundColor: colors.warning + "18", opacity: companyJob.loading || companyJob.pending || companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? 0.35 : 1 }}
-                  ><Text style={{ color: colors.warning, fontWeight: "700", fontSize: 15 }}>Company management Cancel</Text></TouchableOpacity>
-                  {companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? <Text style={{ marginTop: 8, color: colors.muted }}>{companyManagementCancelBlockReason(companyJob.actor, companyJob.detail)}</Text> : null}
-                  <Text style={{ marginTop: 8, color: colors.muted }}>Company Revert, permanent deletion and recurring-series destructive actions are unavailable in the signed mobile API. Field opt-in does not change management permissions.</Text>
+                    style={{ marginTop: 10, borderRadius: 12, paddingVertical: 12, alignItems: "center", backgroundColor: jobSheetColors.warning + "18", opacity: companyJob.loading || companyJob.pending || companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? 0.35 : 1 }}
+                  ><Text style={{ color: jobSheetColors.warning, fontWeight: "700", fontSize: 15 }}>Cancel Job</Text></TouchableOpacity>
+                  {companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) ? <Text style={{ marginTop: 8, color: jobSheetColors.muted }}>{companyManagementCancelBlockReason(companyJob.actor, companyJob.detail)}</Text> : null}
                 </>}
                 {/* Cancel Job button — marks as cancelled, stays visible in history */}
                 {!companyJobMode && !selectedJob?.recurrenceParentId && (
@@ -4385,10 +4392,10 @@ export default function AdminScheduleScreen() {
                       ]);
                     }}
                     activeOpacity={0.8}
-                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.warning + "18", borderWidth: 1, borderColor: colors.warning + "55", borderRadius: 12, paddingVertical: 12 }}
+                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: jobSheetColors.warning + "18", borderWidth: 1, borderColor: jobSheetColors.warning + "55", borderRadius: 12, paddingVertical: 12 }}
                   >
                     <Text style={{ fontSize: 16 }}>🚫</Text>
-                    <Text style={{ color: colors.warning, fontWeight: "700", fontSize: 15 }}>Cancel Job</Text>
+                    <Text style={{ color: jobSheetColors.warning, fontWeight: "700", fontSize: 15 }}>Cancel Job</Text>
                   </TouchableOpacity>
                 )}
 
@@ -4556,10 +4563,10 @@ export default function AdminScheduleScreen() {
                     }
                   }}
                   activeOpacity={0.8}
-                  style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.error + "18", borderWidth: 1, borderColor: colors.error + "55", borderRadius: 12, paddingVertical: 12 }}
+                  style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: jobSheetColors.error + "18", borderWidth: 1, borderColor: jobSheetColors.error + "55", borderRadius: 12, paddingVertical: 12 }}
                 >
                   <Text style={{ fontSize: 16 }}>🗑️</Text>
-                  <Text style={{ color: colors.error, fontWeight: "700", fontSize: 15 }}>Delete Job</Text>
+                  <Text style={{ color: jobSheetColors.error, fontWeight: "700", fontSize: 15 }}>Delete Job</Text>
                 </TouchableOpacity>}
                 {/* Cancel Recurring Job button — only shown for recurring jobs */}
                 {!companyJobMode && selectedJob?.recurrenceParentId && (
@@ -4651,27 +4658,27 @@ export default function AdminScheduleScreen() {
                       );
                     }}
                     activeOpacity={0.8}
-                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.warning + "18", borderWidth: 1, borderColor: colors.warning + "55", borderRadius: 12, paddingVertical: 12 }}
+                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: jobSheetColors.warning + "18", borderWidth: 1, borderColor: jobSheetColors.warning + "55", borderRadius: 12, paddingVertical: 12 }}
                   >
                     <Text style={{ fontSize: 16 }}>🚫</Text>
-                    <Text style={{ color: colors.warning, fontWeight: "700", fontSize: 15 }}>Cancel Recurring Job</Text>
+                    <Text style={{ color: jobSheetColors.warning, fontWeight: "700", fontSize: 15 }}>Cancel Recurring Job</Text>
                   </TouchableOpacity>
                 )}
                 {!showReassignPicker ? (
                   <TouchableOpacity
                     onPress={() => setShowReassignPicker(true)}
                     activeOpacity={0.8}
-                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.primary + "18", borderWidth: 1, borderColor: colors.primary + "55", borderRadius: 12, paddingVertical: 12 }}
+                    style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: jobSheetColors.primary + "18", borderWidth: 1, borderColor: jobSheetColors.primary + "55", borderRadius: 12, paddingVertical: 12 }}
                   >
                     <Text style={{ fontSize: 16 }}>🔄</Text>
-                    <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 15 }}>Reassign Team Member</Text>
+                    <Text style={{ color: jobSheetColors.primary, fontWeight: "700", fontSize: 15 }}>Reassign Team Member</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ marginTop: 14, backgroundColor: colors.background, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border }}>
+                  <View style={{ marginTop: 14, backgroundColor: jobSheetColors.background, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: jobSheetColors.border }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Reassign to:</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Reassign to:</Text>
                       <TouchableOpacity onPress={() => setShowReassignPicker(false)}>
-                        <Text style={{ color: colors.muted, fontSize: 18 }}>✕</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 18 }}>✕</Text>
                       </TouchableOpacity>
                     </View>
                     {cityConfig.detailers.map((d) => (
@@ -4696,11 +4703,11 @@ export default function AdminScheduleScreen() {
                           }
                         }}
                         style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginBottom: 8,
-                          backgroundColor: selectedJob.detailerName === d.name ? d.color + "22" : colors.surface,
-                          borderWidth: 1.5, borderColor: selectedJob.detailerName === d.name ? d.color : colors.border }}
+                          backgroundColor: selectedJob.detailerName === d.name ? d.color + "22" : jobSheetColors.surface,
+                          borderWidth: 1.5, borderColor: selectedJob.detailerName === d.name ? d.color : jobSheetColors.border }}
                       >
                         <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: d.color }} />
-                        <Text style={{ color: colors.foreground, fontWeight: selectedJob.detailerName === d.name ? "700" : "500", fontSize: 15, flex: 1 }}>{d.name}</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontWeight: selectedJob.detailerName === d.name ? "700" : "500", fontSize: 15, flex: 1 }}>{d.name}</Text>
                         {selectedJob.detailerName === d.name && <Text style={{ color: d.color, fontSize: 13, fontWeight: "700" }}>✓ Current</Text>}
                       </TouchableOpacity>
                     ))}
@@ -4726,23 +4733,23 @@ export default function AdminScheduleScreen() {
 
         {showEditAddressModal && selectedJob && (
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}>
-            <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: "100%" }}>
-              <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground, marginBottom: 6 }}>📍 Edit Address</Text>
-              <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Changes will reflect on both admin and technician calendars immediately.</Text>
+            <View style={{ backgroundColor: jobSheetColors.surface, borderRadius: 16, padding: 24, width: "100%" }}>
+              <Text style={{ fontSize: 17, fontWeight: "700", color: jobSheetColors.foreground, marginBottom: 6 }}>📍 Edit Address</Text>
+              <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginBottom: 16 }}>Changes will reflect on both admin and technician calendars immediately.</Text>
               <TextInput
                 value={editAddressDraft}
                 onChangeText={setEditAddressDraft}
                 placeholder="Enter full address"
-                placeholderTextColor={colors.muted}
+                placeholderTextColor={jobSheetColors.muted}
                 multiline
-                style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14, minHeight: 60, marginBottom: 20 }}
+                style={{ backgroundColor: jobSheetColors.background, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, padding: 12, color: jobSheetColors.foreground, fontSize: 14, minHeight: 60, marginBottom: 20 }}
               />
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <TouchableOpacity
                   onPress={() => setShowEditAddressModal(false)}
-                  style={{ flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                  style={{ flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: jobSheetColors.border, alignItems: "center" }}
                 >
-                  <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
+                  <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={async () => {
@@ -4759,7 +4766,7 @@ export default function AdminScheduleScreen() {
                       setSavingAddress(false);
                     }
                   }}
-                  style={{ flex: 1, padding: 14, borderRadius: 10, backgroundColor: colors.primary, alignItems: "center", opacity: savingAddress ? 0.6 : 1 }}
+                  style={{ flex: 1, padding: 14, borderRadius: 10, backgroundColor: jobSheetColors.primary, alignItems: "center", opacity: savingAddress ? 0.6 : 1 }}
                 >
                   <Text style={{ color: "#fff", fontWeight: "700" }}>{savingAddress ? "Saving..." : "Save Address"}</Text>
                 </TouchableOpacity>
@@ -4783,19 +4790,19 @@ export default function AdminScheduleScreen() {
           return (
             <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
               <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
+                <View style={{ backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
                   {/* Header */}
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                    <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>🚗 Add Another Vehicle</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: jobSheetColors.foreground }}>🚗 Add Another Vehicle</Text>
                     <TouchableOpacity onPress={() => setShowAddVehicleToJob(false)} style={{ padding: 4 }}>
-                      <Text style={{ color: colors.muted, fontSize: 22 }}>✕</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 22 }}>✕</Text>
                     </TouchableOpacity>
                   </View>
 
                   <ScrollView style={{ padding: 20 }} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
                     {/* Vehicle Type */}
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>Vehicle Type</Text>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>Vehicle Type</Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
                       {VEHICLE_TYPES.filter(v => !v.group).map((v) => {
                         const sel = addVehicleToJobType === v.id;
@@ -4803,16 +4810,16 @@ export default function AdminScheduleScreen() {
                           <TouchableOpacity
                             key={v.id}
                             onPress={() => { setAddVehicleToJobType(v.id); setAddVehicleToJobPkgId(undefined); setAddVehicleToJobAddonIds([]); setAddVehicleToJobAddonQtys({}); }}
-                            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
+                            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: sel ? jobSheetColors.primary : jobSheetColors.surface }}
                             activeOpacity={0.75}
                           >
                             <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
+                            <Text style={{ color: sel ? "#fff" : jobSheetColors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
                           </TouchableOpacity>
                         );
                       })}
                     </View>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 6, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>RV Services</Text>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 6, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>RV Services</Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                       {VEHICLE_TYPES.filter(v => v.group === "rv").map((v) => {
                         const sel = addVehicleToJobType === v.id;
@@ -4820,11 +4827,11 @@ export default function AdminScheduleScreen() {
                           <TouchableOpacity
                             key={v.id}
                             onPress={() => { setAddVehicleToJobType(v.id); setAddVehicleToJobPkgId(undefined); setAddVehicleToJobAddonIds([]); setAddVehicleToJobAddonQtys({}); }}
-                            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary : colors.surface }}
+                            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: sel ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: sel ? jobSheetColors.primary : jobSheetColors.surface }}
                             activeOpacity={0.75}
                           >
                             <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
-                            <Text style={{ color: sel ? "#fff" : colors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
+                            <Text style={{ color: sel ? "#fff" : jobSheetColors.foreground, fontWeight: "600", fontSize: 13, marginLeft: 6 }}>{v.label}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -4833,7 +4840,7 @@ export default function AdminScheduleScreen() {
                     {/* Package Picker */}
                     {addVehicleToJobType && (
                       <>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>Package</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>Package</Text>
                         {packagesToShow.map((p) => {
                           const pkgPrice = (p.basePrice as Partial<Record<VehicleType, number>>)[addVehicleToJobType!] ?? 0;
                           const sel = addVehicleToJobPkgId === p.id;
@@ -4841,19 +4848,19 @@ export default function AdminScheduleScreen() {
                             <TouchableOpacity
                               key={p.id}
                               onPress={() => { setAddVehicleToJobPkgId(p.id); setAddVehicleToJobAddonIds([]); setAddVehicleToJobAddonQtys({}); }}
-                              style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: sel ? 2 : 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + "15" : colors.background }}
+                              style={{ borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: sel ? 2 : 1, borderColor: sel ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: sel ? jobSheetColors.primary + "15" : jobSheetColors.background }}
                               activeOpacity={0.8}
                             >
                               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
                                 <Text style={{ fontSize: 18, marginRight: 8 }}>{p.emoji}</Text>
-                                <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>{p.title}</Text>
-                                <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 15 }}>${pkgPrice}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontWeight: "700", fontSize: 14, flex: 1 }}>{p.title}</Text>
+                                <Text style={{ color: jobSheetColors.primary, fontWeight: "800", fontSize: 15 }}>${pkgPrice}</Text>
                               </View>
-                              <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 26 }}>{p.tagline}</Text>
+                              <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginLeft: 26 }}>{p.tagline}</Text>
                               {sel && p.features.map((f) => (
                                 <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3, marginLeft: 26 }}>
-                                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary }} />
-                                  <Text style={{ color: colors.foreground, fontSize: 12 }}>{f}</Text>
+                                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: jobSheetColors.primary }} />
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 12 }}>{f}</Text>
                                 </View>
                               ))}
                             </TouchableOpacity>
@@ -4865,15 +4872,15 @@ export default function AdminScheduleScreen() {
                     {/* Add-ons */}
                     {addVehicleToJobType && addVehicleToJobPkgId && (
                       <>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 8, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>Add-Ons (Optional)</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 8, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>Add-Ons (Optional)</Text>
                         {!isRvSelected && ADDONS.map((a) => {
                           const qty = addVehicleToJobAddonQtys[a.id] ?? 0;
                           return (
-                            <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? colors.primary : colors.border, backgroundColor: qty > 0 ? colors.primary + "10" : colors.surface }}>
+                            <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: qty > 0 ? jobSheetColors.primary + "10" : jobSheetColors.surface }}>
                               <Text style={{ fontSize: 18, marginRight: 8 }}>{a.emoji}</Text>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>{a.title}</Text>
-                                <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 11 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 13 }}>{a.title}</Text>
+                                <Text style={{ color: jobSheetColors.primary, fontWeight: "700", fontSize: 11 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
                               </View>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                                 <TouchableOpacity
@@ -4884,12 +4891,12 @@ export default function AdminScheduleScreen() {
                                     setAddVehicleToJobAddonQtys(newQtys);
                                     setAddVehicleToJobAddonIds(ADDONS.filter(ad => (newQtys[ad.id] ?? 0) > 0).map(ad => ad.id));
                                   }}
-                                  style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }}
+                                  style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: jobSheetColors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }}
                                   disabled={qty === 0}
                                 >
-                                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>−</Text>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>−</Text>
                                 </TouchableOpacity>
-                                <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 13, minWidth: 16, textAlign: "center" }}>{qty}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontWeight: "700", fontSize: 13, minWidth: 16, textAlign: "center" }}>{qty}</Text>
                                 <TouchableOpacity
                                   onPress={() => {
                                     const nq = qty + 1;
@@ -4897,18 +4904,18 @@ export default function AdminScheduleScreen() {
                                     setAddVehicleToJobAddonQtys(newQtys);
                                     setAddVehicleToJobAddonIds(ADDONS.filter(ad => (newQtys[ad.id] ?? 0) > 0).map(ad => ad.id));
                                   }}
-                                  style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}
+                                  style={{ width: 28, height: 28, borderRadius: 7, borderWidth: 1, borderColor: jobSheetColors.border, justifyContent: "center", alignItems: "center" }}
                                 >
-                                  <Text style={{ color: colors.primary, fontSize: 15, fontWeight: "700" }}>+</Text>
+                                  <Text style={{ color: jobSheetColors.primary, fontSize: 15, fontWeight: "700" }}>+</Text>
                                 </TouchableOpacity>
                               </View>
                             </View>
                           );
                         })}
                         {addonsTotal > 0 && (
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginTop: 4, marginBottom: 8 }}>
-                            <Text style={{ color: colors.foreground, fontWeight: "600" }}>Add-ons Total</Text>
-                            <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${addonsTotal.toFixed(0)}</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.primary + "44", backgroundColor: jobSheetColors.primary + "12", padding: 14, marginTop: 4, marginBottom: 8 }}>
+                            <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Add-ons Total</Text>
+                            <Text style={{ color: jobSheetColors.primary, fontWeight: "800", fontSize: 17 }}>${addonsTotal.toFixed(0)}</Text>
                           </View>
                         )}
                       </>
@@ -4917,54 +4924,54 @@ export default function AdminScheduleScreen() {
                     {/* Vehicle Details (optional) */}
                     {addVehicleToJobType && addVehicleToJobPkgId && (
                       <>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 8, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>Vehicle Details (Optional)</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, marginBottom: 8, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>Vehicle Details (Optional)</Text>
                         <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Year</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Year</Text>
                             <TextInput
                               value={addVehicleToJobYear}
                               onChangeText={setAddVehicleToJobYear}
                               placeholder="2022"
-                              placeholderTextColor={colors.muted}
+                              placeholderTextColor={jobSheetColors.muted}
                               keyboardType="number-pad"
                               maxLength={4}
                               returnKeyType="next"
-                              style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14 }}
+                              style={{ backgroundColor: jobSheetColors.background, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, padding: 12, color: jobSheetColors.foreground, fontSize: 14 }}
                             />
                           </View>
                           <View style={{ flex: 2 }}>
-                            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Make</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Make</Text>
                             <TextInput
                               value={addVehicleToJobMake}
                               onChangeText={setAddVehicleToJobMake}
                               placeholder="Toyota"
-                              placeholderTextColor={colors.muted}
+                              placeholderTextColor={jobSheetColors.muted}
                               returnKeyType="next"
-                              style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14 }}
+                              style={{ backgroundColor: jobSheetColors.background, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, padding: 12, color: jobSheetColors.foreground, fontSize: 14 }}
                             />
                           </View>
                         </View>
                         <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
                           <View style={{ flex: 2 }}>
-                            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Model</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Model</Text>
                             <TextInput
                               value={addVehicleToJobModel}
                               onChangeText={setAddVehicleToJobModel}
                               placeholder="Camry"
-                              placeholderTextColor={colors.muted}
+                              placeholderTextColor={jobSheetColors.muted}
                               returnKeyType="next"
-                              style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14 }}
+                              style={{ backgroundColor: jobSheetColors.background, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, padding: 12, color: jobSheetColors.foreground, fontSize: 14 }}
                             />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Color</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "600", marginBottom: 4 }}>Color</Text>
                             <TextInput
                               value={addVehicleToJobColor}
                               onChangeText={setAddVehicleToJobColor}
                               placeholder="White"
-                              placeholderTextColor={colors.muted}
+                              placeholderTextColor={jobSheetColors.muted}
                               returnKeyType="done"
-                              style={{ backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.foreground, fontSize: 14 }}
+                              style={{ backgroundColor: jobSheetColors.background, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, padding: 12, color: jobSheetColors.foreground, fontSize: 14 }}
                             />
                           </View>
                         </View>
@@ -4973,20 +4980,20 @@ export default function AdminScheduleScreen() {
 
                     {/* Price Summary + Save */}
                     {addVehicleToJobType && addVehicleToJobPkgId && (
-                      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "08", padding: 16, marginTop: 8, marginBottom: 8 }}>
+                      <View style={{ borderRadius: 14, borderWidth: 1, borderColor: jobSheetColors.primary + "44", backgroundColor: jobSheetColors.primary + "08", padding: 16, marginTop: 8, marginBottom: 8 }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                          <Text style={{ color: colors.muted, fontSize: 13 }}>Package</Text>
-                          <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>${pkgBasePrice}</Text>
+                          <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Package</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 13 }}>${pkgBasePrice}</Text>
                         </View>
                         {addonsTotal > 0 && (
                           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                            <Text style={{ color: colors.muted, fontSize: 13 }}>Add-ons</Text>
-                            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>+${addonsTotal}</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Add-ons</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 13 }}>+${addonsTotal}</Text>
                           </View>
                         )}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 8, marginTop: 4 }}>
-                          <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 15 }}>Vehicle Total</Text>
-                          <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${vehicleTotal}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border, paddingTop: 8, marginTop: 4 }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontWeight: "700", fontSize: 15 }}>Vehicle Total</Text>
+                          <Text style={{ color: jobSheetColors.primary, fontWeight: "800", fontSize: 17 }}>${vehicleTotal}</Text>
                         </View>
                       </View>
                     )}
@@ -4995,10 +5002,10 @@ export default function AdminScheduleScreen() {
                     <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
                       <TouchableOpacity
                         onPress={() => setShowAddVehicleToJob(false)}
-                        style={{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                        style={{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.border, alignItems: "center" }}
                         activeOpacity={0.8}
                       >
-                        <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 15 }}>Cancel</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 15 }}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={async () => {
@@ -5035,7 +5042,7 @@ export default function AdminScheduleScreen() {
                           }
                         }}
                         disabled={!addVehicleToJobType || !addVehicleToJobPkgId || addVehicleToJobSaving}
-                        style={{ flex: 2, padding: 14, borderRadius: 12, backgroundColor: (!addVehicleToJobType || !addVehicleToJobPkgId || addVehicleToJobSaving) ? colors.muted : colors.primary, alignItems: "center" }}
+                        style={{ flex: 2, padding: 14, borderRadius: 12, backgroundColor: (!addVehicleToJobType || !addVehicleToJobPkgId || addVehicleToJobSaving) ? jobSheetColors.muted : jobSheetColors.primary, alignItems: "center" }}
                         activeOpacity={0.8}
                       >
                         <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
@@ -5057,31 +5064,31 @@ export default function AdminScheduleScreen() {
           return (
             <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
               <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
+                <View style={{ backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "88%" }}>
                   {/* Header */}
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                    <Text style={{ fontSize: 17, fontWeight: "700", color: colors.foreground }}>✨ Add-ons</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: jobSheetColors.foreground }}>✨ Add-ons</Text>
                     <TouchableOpacity onPress={() => setShowEditAddonsSheet(false)} style={{ padding: 4 }}>
-                      <Text style={{ color: colors.muted, fontSize: 22 }}>✕</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 22 }}>✕</Text>
                     </TouchableOpacity>
                   </View>
 
                   <ScrollView style={{ padding: 20 }} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-                    <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>
+                    <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginBottom: 16 }}>
                       Select add-ons for this vehicle. Changes will update the job total.
                     </Text>
 
                     {isRvJob ? (
-                      <Text style={{ color: colors.muted, fontSize: 14, textAlign: "center", paddingVertical: 24 }}>Add-ons are not available for RV jobs.</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 14, textAlign: "center", paddingVertical: 24 }}>Add-ons are not available for RV jobs.</Text>
                     ) : (
                       ADDONS.map((a) => {
                         const qty = editAddonsQtys[a.id] ?? 0;
                         return (
-                          <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? colors.primary : colors.border, backgroundColor: qty > 0 ? colors.primary + "10" : colors.surface }}>
+                          <View key={a.id} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: qty > 0 ? 1.5 : 1, borderColor: qty > 0 ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: qty > 0 ? jobSheetColors.primary + "10" : jobSheetColors.surface }}>
                             <Text style={{ fontSize: 20, marginRight: 10 }}>{a.emoji}</Text>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14 }}>{a.title}</Text>
-                              <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
+                              <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 14 }}>{a.title}</Text>
+                              <Text style={{ color: jobSheetColors.primary, fontWeight: "700", fontSize: 12 }}>${a.price}{qty > 1 ? ` × ${qty} = $${(a.price * qty).toFixed(0)}` : ""}</Text>
                             </View>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                               <TouchableOpacity
@@ -5093,11 +5100,11 @@ export default function AdminScheduleScreen() {
                                   setEditAddonsIds(ADDONS.filter(ad => (newQtys[ad.id] ?? 0) > 0).map(ad => ad.id));
                                 }}
                                 disabled={qty === 0}
-                                style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }}
+                                style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border, justifyContent: "center", alignItems: "center", opacity: qty === 0 ? 0.3 : 1 }}
                               >
-                                <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>−</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>−</Text>
                               </TouchableOpacity>
-                              <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14, minWidth: 18, textAlign: "center" }}>{qty}</Text>
+                              <Text style={{ color: jobSheetColors.foreground, fontWeight: "700", fontSize: 14, minWidth: 18, textAlign: "center" }}>{qty}</Text>
                               <TouchableOpacity
                                 onPress={() => {
                                   const nq = qty + 1;
@@ -5105,9 +5112,9 @@ export default function AdminScheduleScreen() {
                                   setEditAddonsQtys(newQtys);
                                   setEditAddonsIds(ADDONS.filter(ad => (newQtys[ad.id] ?? 0) > 0).map(ad => ad.id));
                                 }}
-                                style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}
+                                style={{ width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.border, justifyContent: "center", alignItems: "center" }}
                               >
-                                <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "700" }}>+</Text>
+                                <Text style={{ color: jobSheetColors.primary, fontSize: 16, fontWeight: "700" }}>+</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -5116,9 +5123,9 @@ export default function AdminScheduleScreen() {
                     )}
 
                     {editAddonsIds.length > 0 && (
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.primary + "44", backgroundColor: colors.primary + "12", padding: 14, marginTop: 4, marginBottom: 8 }}>
-                        <Text style={{ color: colors.foreground, fontWeight: "600" }}>Add-ons Total</Text>
-                        <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 17 }}>${ADDONS.reduce((s, ad) => s + ad.price * (editAddonsQtys[ad.id] ?? 0), 0).toFixed(0)}</Text>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.primary + "44", backgroundColor: jobSheetColors.primary + "12", padding: 14, marginTop: 4, marginBottom: 8 }}>
+                        <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Add-ons Total</Text>
+                        <Text style={{ color: jobSheetColors.primary, fontWeight: "800", fontSize: 17 }}>${ADDONS.reduce((s, ad) => s + ad.price * (editAddonsQtys[ad.id] ?? 0), 0).toFixed(0)}</Text>
                       </View>
                     )}
 
@@ -5126,10 +5133,10 @@ export default function AdminScheduleScreen() {
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
                       <TouchableOpacity
                         onPress={() => setShowEditAddonsSheet(false)}
-                        style={{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                        style={{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.border, alignItems: "center" }}
                         activeOpacity={0.8}
                       >
-                        <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={async () => {
@@ -5185,7 +5192,7 @@ export default function AdminScheduleScreen() {
                           }
                         }}
                         disabled={editAddonsSaving}
-                        style={{ flex: 2, padding: 14, borderRadius: 12, backgroundColor: editAddonsSaving ? colors.muted : colors.primary, alignItems: "center" }}
+                        style={{ flex: 2, padding: 14, borderRadius: 12, backgroundColor: editAddonsSaving ? jobSheetColors.muted : jobSheetColors.primary, alignItems: "center" }}
                         activeOpacity={0.8}
                       >
                         <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
@@ -5203,25 +5210,25 @@ export default function AdminScheduleScreen() {
         {/* Invoice Sheet — rendered inside the job detail Modal so it layers on top correctly */}
         {showInvoiceSheet && selectedJob && (
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-            <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+            <View style={{ backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
               {/* Header */}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>📧 Send Invoice</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: jobSheetColors.foreground }}>📧 Send Invoice</Text>
                 <TouchableOpacity onPress={() => { if (isCurrentInvoice()) setShowInvoiceSheet(false); }}>
-                  <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
+                  <Text style={{ color: jobSheetColors.muted, fontSize: 24 }}>✕</Text>
                 </TouchableOpacity>
               </View>
 
               {invoiceSentUrl ? (
                 <View style={{ alignItems: "center", paddingVertical: 24, gap: 12 }}>
                   <Text style={{ fontSize: 48 }}>✅</Text>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>{companyJobMode ? (companyInvoiceStatus === "provider_accepted" ? "Invoice submitted — provider accepted" : "Invoice request acknowledged") : "Invoice Sent!"}</Text>
-                  <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center" }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: jobSheetColors.foreground }}>{companyJobMode ? (companyInvoiceStatus === "provider_accepted" ? "Invoice submitted — provider accepted" : "Invoice request acknowledged") : "Invoice Sent!"}</Text>
+                  <Text style={{ fontSize: 14, color: jobSheetColors.muted, textAlign: "center" }}>
                     {companyJobMode ? `Backend communication state: ${companyInvoiceStatus ?? "unknown"}. The secure invoice link was returned by the Company backend; customer delivery is not confirmed.` : "The customer will receive a secure payment link to pay online."}
                   </Text>
                   <TouchableOpacity
                     onPress={() => { if (isCurrentInvoice()) setShowInvoiceSheet(false); }}
-                    style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 50, paddingVertical: 12, paddingHorizontal: 32 }}
+                    style={{ marginTop: 8, backgroundColor: jobSheetColors.primary, borderRadius: 50, paddingVertical: 12, paddingHorizontal: 32 }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Done</Text>
                   </TouchableOpacity>
@@ -5229,30 +5236,30 @@ export default function AdminScheduleScreen() {
               ) : (
                 <>
                   {/* Invoice preview */}
-                  <View style={{ backgroundColor: colors.background, borderRadius: 12, padding: 16, marginBottom: 20, gap: 8 }}>
+                  <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 12, padding: 16, marginBottom: 20, gap: 8 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ color: colors.muted, fontSize: 13 }}>Customer</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{selectedJob.firstName} {selectedJob.lastName}</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Customer</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>{selectedJob.firstName} {selectedJob.lastName}</Text>
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ color: colors.muted, fontSize: 13 }}>Service</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{selectedJob.packageId ? selectedJob.packageId.replace(/_/g, " ") : (selectedJob.packageType ?? "Detail")}</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Service</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>{selectedJob.packageId ? selectedJob.packageId.replace(/_/g, " ") : (selectedJob.packageType ?? "Detail")}</Text>
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ color: colors.muted, fontSize: 13 }}>Date</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{localDateStr(getWeekDates(selectedJob.weekOffset)[selectedJob.dayIndex])}</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Date</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>{localDateStr(getWeekDates(selectedJob.weekOffset)[selectedJob.dayIndex])}</Text>
                     </View>
-                    <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
+                    <View style={{ height: 1, backgroundColor: jobSheetColors.border, marginVertical: 4 }} />
                     {!companyJobMode && selectedJob.payment && (
                       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                        <Text style={{ color: colors.muted, fontSize: 13 }}>Previously Paid</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Previously Paid</Text>
                         <Text style={{ color: "#22C55E", fontSize: 13, fontWeight: "600" }}>-${selectedJob.payment.total.toFixed(2)}</Text>
                       </View>
                     )}
                     {(() => {
                       if (companyJobMode) return <View style={{ gap: 4 }}>
-                        <Text style={{ color: colors.foreground, fontWeight: "700" }}>{companyBilling.isPaid === true ? "Paid in Full" : "Canonical Balance"}: {companyBilling.balance === null ? "UNKNOWN" : `$${companyBilling.balance.toFixed(2)}`}</Text>
-                        <Text style={{ color: colors.muted }}>Payment status: {companyBilling.paymentStatus ?? "UNKNOWN"}</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontWeight: "700" }}>{companyBilling.isPaid === true ? "Paid in Full" : "Canonical Balance"}: {companyBilling.balance === null ? "UNKNOWN" : `$${companyBilling.balance.toFixed(2)}`}</Text>
+                        <Text style={{ color: jobSheetColors.muted }}>Payment status: {companyBilling.paymentStatus ?? "UNKNOWN"}</Text>
                       </View>;
                       const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                       const alreadyPaid = selectedJob.payment?.total ?? 0;
@@ -5260,7 +5267,7 @@ export default function AdminScheduleScreen() {
                       const isPaidInFull = alreadyPaid >= jobTotal - 0.01;
                       return (
                         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                          <Text style={{ color: isPaidInFull ? "#22C55E" : colors.foreground, fontSize: 15, fontWeight: "700" }}>
+                          <Text style={{ color: isPaidInFull ? "#22C55E" : jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>
                             {alreadyPaid > 0.01 ? (isPaidInFull ? "✓ Paid in Full" : "Remaining Balance") : "Amount Due"}
                           </Text>
                           <Text style={{ color: isPaidInFull ? "#22C55E" : (alreadyPaid > 0.01 ? "#EF4444" : "#0a7ea4"), fontSize: 18, fontWeight: "800" }}>
@@ -5272,7 +5279,7 @@ export default function AdminScheduleScreen() {
                   </View>
 
                   {/* Delivery method picker */}
-                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Send Via</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Send Via</Text>
                   <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
                     {(["email", "sms"] as const).map(m => (
                       <TouchableOpacity
@@ -5282,11 +5289,11 @@ export default function AdminScheduleScreen() {
                           { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 14, borderWidth: 2 },
                           invoiceMethod === m
                             ? { backgroundColor: "#0a7ea418", borderColor: "#0a7ea4" }
-                            : { backgroundColor: colors.background, borderColor: colors.border },
+                            : { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border },
                         ]}
                       >
                         <Text style={{ fontSize: 18 }}>{m === "email" ? "📧" : "💬"}</Text>
-                        <Text style={{ fontWeight: "600", fontSize: 15, color: invoiceMethod === m ? "#0a7ea4" : colors.foreground }}>
+                        <Text style={{ fontWeight: "600", fontSize: 15, color: invoiceMethod === m ? "#0a7ea4" : jobSheetColors.foreground }}>
                           {m === "email" ? "Email" : "Text (SMS)"}
                         </Text>
                       </TouchableOpacity>
@@ -5294,28 +5301,28 @@ export default function AdminScheduleScreen() {
                   </View>
 
                   {/* Contact info — editable */}
-                  {companyJobMode ? <Text style={{ color: colors.muted, marginBottom: 20 }}>The Company backend selects the customer contact, invoice amount and remaining balance. Mobile contact/amount overrides are unavailable.</Text> : <View style={{ marginBottom: 20 }}>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
+                  {companyJobMode ? <Text style={{ color: jobSheetColors.muted, marginBottom: 20 }}>The Company backend selects the customer contact, invoice amount and remaining balance. Mobile contact/amount overrides are unavailable.</Text> : <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
                       {invoiceMethod === "email" ? "Send to Email" : "Send to Phone"}
                     </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderWidth: 1.5, borderColor: "#0a7ea4", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 4 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: jobSheetColors.surface, borderWidth: 1.5, borderColor: "#0a7ea4", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 4 }}>
                       <Text style={{ fontSize: 16, marginRight: 8 }}>{invoiceMethod === "email" ? "✉️" : "📱"}</Text>
                       <TextInput
                         value={invoiceOverrideContact}
                         onChangeText={setInvoiceOverrideContact}
                         placeholder={invoiceMethod === "email" ? "customer@email.com" : "+1 (555) 000-0000"}
-                        placeholderTextColor={colors.muted}
+                        placeholderTextColor={jobSheetColors.muted}
                         keyboardType={invoiceMethod === "email" ? "email-address" : "phone-pad"}
                         autoCapitalize="none"
                         autoCorrect={false}
                         returnKeyType="done"
-                        style={{ flex: 1, color: colors.foreground, fontSize: 15, paddingVertical: 12 }}
+                        style={{ flex: 1, color: jobSheetColors.foreground, fontSize: 15, paddingVertical: 12 }}
                       />
                       <TouchableOpacity onPress={() => setInvoiceOverrideContact("")} style={{ padding: 4 }}>
-                        <Text style={{ color: colors.muted, fontSize: 16 }}>✕</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 16 }}>✕</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer's {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
+                    <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer's {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
                   </View>}
 
                   {/* Send button */}

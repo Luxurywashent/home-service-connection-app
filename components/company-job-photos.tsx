@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { useIsFocused } from "expo-router";
 import { CompanyPhotoDraft } from "@/components/company-photo-draft";
 import {
@@ -110,12 +110,14 @@ function CompanyPhotoImage({
   isCurrent,
   onRetry,
   onPreview,
+  onLongPress,
 }: {
   photo: JobSyncJobPhoto;
   preview?: boolean;
   isCurrent: () => boolean;
   onRetry: () => void;
   onPreview?: () => void;
+  onLongPress?: () => void;
 }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(
     "loading",
@@ -145,6 +147,8 @@ function CompanyPhotoImage({
             accessibilityRole="button"
             accessibilityLabel={photo.caption || "Preview Job photo"}
             onPress={onPreview}
+            onLongPress={onLongPress}
+            activeOpacity={0.85}
           >
             {image}
           </TouchableOpacity>
@@ -199,7 +203,7 @@ export function CompanyJobPhotos(props: GalleryProps) {
 function ScopedCompanyJobPhotos(
   props: GalleryProps & { scope: string | null },
 ) {
-  const colors = useColors();
+  const colors = useJobSheetColors();
   const mounted = useMounted();
   const live = useRef(props);
   live.current = props;
@@ -251,6 +255,11 @@ function ScopedCompanyJobPhotos(
   const completeIds = authoritative && Array.isArray(persistedIds);
   const trulyEmpty = completeIds && persistedIds.length === 0;
   const hiddenPhotos = completeIds && persistedIds.length > photos.length;
+  const showRemovalHelp = Boolean(props.scope) && operation.focused && !operation.blocked && !busy && Platform.OS !== "web" && photos.some((photo) => canDeleteCompanyPhoto(canonicalProps, photo.id));
+  const requestRemoval = (photoId: number) => {
+    if (canRemove(photoId))
+      setConfirmation({ photoId, detail: canonicalLive.current.props.job.detail });
+  };
   return (
     <View
       style={[
@@ -258,10 +267,8 @@ function ScopedCompanyJobPhotos(
         { backgroundColor: colors.background, borderColor: colors.border },
       ]}
     >
-      <Text style={[styles.heading, { color: colors.foreground }]}>
-        BEFORE & AFTER PHOTOS ({busy ? "…" : completeIds ? persistedIds.length : photos.length || "unavailable"})
-      </Text>
       <CompanyPhotoDraft
+        headerLabel={`BEFORE & AFTER PHOTOS (${busy ? "…" : completeIds ? persistedIds.length : photos.length || "unavailable"})`}
         session={props.session}
         jobId={props.jobId}
         job={{ ...canonicalProps.job, loading: busy || operation.blocked || !operation.focused }}
@@ -275,7 +282,7 @@ function ScopedCompanyJobPhotos(
           color={colors.primary}
         />
       ) : null}
-      {operation.message ? <Text style={{ color: colors.muted }}>{operation.message}</Text> : null}
+      {operation.message ? <Text style={[styles.help, { color: colors.muted }]}>{operation.message}</Text> : null}
       {operation.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{operation.error}</Text> : null}
       {canonicalProps.job.error || error ? (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
@@ -283,18 +290,21 @@ function ScopedCompanyJobPhotos(
         </Text>
       ) : null}
       {!busy && !photos.length ? (
-        <Text style={{ color: colors.muted }}>
-          {trulyEmpty
-            ? "No server photos for this Job."
-            : hiddenPhotos
-              ? "Server photos are stored for this Job, but their images are unavailable. Refresh photos to retry."
-              : "Server gallery unavailable. Refresh Job to retry."}
-        </Text>
+        <View style={[styles.emptyPhotos, { borderColor: colors.border }]}>
+          <Text style={[styles.emptyText, { color: colors.muted }]}>
+            {trulyEmpty
+              ? "No before & after photos yet."
+              : hiddenPhotos
+                ? "Stored photo images are unavailable. Refresh photos to retry."
+                : "Photos unavailable. Refresh photos to retry."}
+          </Text>
+        </View>
       ) : null}
-      {!busy && photos.length > 0 && hiddenPhotos ? <Text style={{ color: colors.muted }}>Some stored server photos have unavailable images. Refresh photos to retry.</Text> : null}
+      {!busy && photos.length > 0 && hiddenPhotos ? <Text style={[styles.help, { color: colors.muted }]}>Some photo images are unavailable. Refresh photos to retry.</Text> : null}
       <FlatList
         data={busy ? [] : photos}
         horizontal
+        showsHorizontalScrollIndicator={false}
         keyExtractor={(photo) => `${photo.id}:${photo.imageUrl}`}
         contentContainerStyle={styles.grid}
         renderItem={({ item }) => (
@@ -313,15 +323,16 @@ function ScopedCompanyJobPhotos(
                     imageUrl: item.imageUrl,
                   });
               }}
+              onLongPress={() => requestRemoval(item.id)}
             />
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={`Remove Job photo ${item.id}`}
               accessibilityState={{ disabled: !canRemove(item.id) }}
               disabled={!canRemove(item.id)}
-              onPress={() => { if (canRemove(item.id)) setConfirmation({ photoId: item.id, detail: canonicalProps.job.detail }); }}
-              style={styles.refresh}
-            ><Text style={{ color: colors.error, opacity: canRemove(item.id) ? 1 : 0.35 }}>Remove photo</Text></TouchableOpacity>
+              onPress={() => requestRemoval(item.id)}
+              style={styles.remove}
+            ><Text style={[styles.actionText, { color: colors.error, opacity: canRemove(item.id) ? 1 : 0.35 }]}>Remove</Text></TouchableOpacity>
           </View>
         )}
       />
@@ -337,24 +348,27 @@ function ScopedCompanyJobPhotos(
           void operation.remove(photoId).finally(() => { removeLock.current = false; });
         }}><Text style={{ color: colors.error }}>Remove from Job</Text></TouchableOpacity>
       </View> : null}
-      {photos.length && !busy ? (
-        <Text style={[styles.help, { color: colors.muted }]}>
-          {IMAGE_ERROR} Tap a photo for an in-sheet preview. {Platform.OS === "web" ? "Browser removal is unavailable: the backend does not allow DELETE in CORS. Use the native app." : "Removal requires confirmation and fresh signed access."}
-        </Text>
-      ) : null}
-      <TouchableOpacity
-        disabled={!props.scope || busy || !operation.focused}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !props.scope || busy || !operation.focused }}
-        onPress={() => {
-          if (!busy && operation.focused) void refresh();
-        }}
-        style={styles.refresh}
-      >
-        <Text style={{ color: colors.primary }}>
-          {refreshing ? "Refreshing Job photos…" : "Refresh photos"}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.footer}>
+        {showRemovalHelp ? (
+          <Text style={[styles.help, styles.footerHelp, { color: colors.muted }]}>
+            Long-press a photo to delete it.
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          disabled={!props.scope || busy || !operation.focused}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh photos"
+          accessibilityState={{ disabled: !props.scope || busy || !operation.focused }}
+          onPress={() => {
+            if (!busy && operation.focused) void refresh();
+          }}
+          style={styles.refreshPhotos}
+        >
+          <Text style={[styles.actionText, { color: colors.primary }]}>
+            {refreshing ? "Refreshing Job photos…" : "Refresh photos"}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -440,26 +454,25 @@ function ScopedCompanyJobPhotoPreview(
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
-    marginVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    marginBottom: 8,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     gap: 10,
   },
-  heading: { fontSize: 13, fontWeight: "700" },
-  help: { fontSize: 12 },
-  row: { flexDirection: "row", gap: 8 },
+  help: { fontSize: 11, lineHeight: 15 },
+  emptyPhotos: { borderWidth: 1, borderStyle: "dashed", borderRadius: 10, paddingVertical: 20, paddingHorizontal: 12, alignItems: "center" },
+  emptyText: { fontSize: 13, lineHeight: 18, textAlign: "center" },
+  footer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  footerHelp: { flex: 1 },
+  refreshPhotos: { paddingVertical: 4, marginLeft: "auto" },
+  remove: { paddingVertical: 6, alignItems: "center" },
+  actionText: { fontSize: 11, lineHeight: 15 },
   confirmation: { gap: 10, paddingVertical: 10 },
-  button: {
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    opacity: 0.35,
-  },
-  buttonText: { color: "#fff", fontWeight: "700" },
   grid: { gap: 8 },
-  thumbnail: { width: 100, height: 100 },
-  thumb: { width: 100, height: 100, borderRadius: 8 },
+  thumbnail: { width: 90, height: 90 },
+  thumb: { width: 90, height: 90, borderRadius: 8 },
   imageLoading: { position: "absolute", top: "40%", left: "40%" },
   imageError: {
     flex: 1,

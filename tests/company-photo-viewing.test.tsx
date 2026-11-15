@@ -240,7 +240,7 @@ describe("Company read-only photo component behavior (mocked RN, real React life
     await render(gallery({ job: current }));
     await event(nodes("native-image")[0], "onError");
     expect(container.textContent).toContain("Photo unavailable");
-    expect(container.textContent).toContain("signed link may have expired");
+    expect(container.textContent).not.toContain("signed link may have expired");
     expect(nodes("native-image")).toHaveLength(0);
     await event(button("Refresh Job photos to retry"), "onPress");
     expect(current.refresh).toHaveBeenCalledTimes(1);
@@ -400,7 +400,7 @@ describe("Company read-only photo component behavior (mocked RN, real React life
     expect(onClose).toHaveBeenCalled();
     expect(nodes("native-image")).toHaveLength(0);
     await render(gallery({ job: job(detail([])) }));
-    expect(container.textContent).toContain("No server photos for this Job.");
+    expect(container.textContent).toContain("No before & after photos yet.");
     expect(nodes("native-image")).toHaveLength(0);
   });
   it.each(["loading", "pending", "error"])(
@@ -590,7 +590,7 @@ describe("shared gallery removal confirmation and lifecycle", () => {
     const fetch=removalServer(); await render(gallery()); await event(button("Remove Job photo 1"),"onPress"); const old=button("Confirm remove photo from Job"); await event(button("Cancel photo removal"),"onPress"); await event(old,"onPress"); expect(fetch).not.toHaveBeenCalled();
   });
   it("web removal remains unavailable for documented backend DELETE CORS blocker", async()=>{
-    lifecycle.platform.OS="web"; const fetch=removalServer(); await render(gallery()); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true); await event(button("Remove Job photo 1"),"onPress"); expect(fetch).not.toHaveBeenCalled(); expect(container.textContent).toContain("does not allow DELETE in CORS");
+    lifecycle.platform.OS="web"; const fetch=removalServer(); await render(gallery()); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(true); await event(button("Remove Job photo 1"),"onPress"); expect(fetch).not.toHaveBeenCalled(); expect(container.textContent).not.toContain("does not allow DELETE in CORS");
   });
   it.each(["owner","dispatcher"] as const)("%s can remove other uploader photos with no assignment or opt-in", async role=>{
     const session=fixtureSession(); session.user={...session.user,role,calendarEligible:false}; await render(gallery({session,job:job(detail([{...photo(),uploadedByUserId:43}],{assignedUserId:null}))})); expect(button("Remove Job photo 1").nativeProps.disabled).toBe(false);

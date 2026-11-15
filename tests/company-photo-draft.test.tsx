@@ -391,7 +391,7 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
       });
       expect(nodes("native-image")).toHaveLength(1);
       expect(container.textContent).toContain(COMPANY_PHOTO_DRAFT_LABEL);
-      expect(container.textContent).toContain("signed Company account");
+      expect(container.textContent).not.toContain("signed Company account");
       expect(
         button("Upload local draft").nativeProps.disabled,
       ).toBe(false);

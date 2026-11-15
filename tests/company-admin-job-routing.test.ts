@@ -274,7 +274,7 @@ describe("Admin actual copied billing confirmation callbacks", () => {
 });
 
 describe("Admin nine actual preserved destructive confirmation callbacks", () => {
-  const start = source.indexOf('>Management actions</Text>');
+  const start = source.indexOf('Alert.alert("Company management Cancel"');
   const end = source.indexOf('                {!showReassignPicker', start);
   const confirmations = all.filter((node): node is ts.ArrowFunction => ts.isArrowFunction(node) && node.getStart(tree) > start && node.end < end && /^\{\s*if \(!isCurrentAction\(\)\) return;/.test(node.body.getText(tree)));
   it("fixture resolves exactly nine original confirmation bodies", () => { expect(confirmations).toHaveLength(9); });
@@ -295,7 +295,7 @@ describe("Admin nine actual preserved destructive confirmation callbacks", () =>
 
 describe("Admin wiring assertions (source checks, not mounting evidence)", () => {
   it("retains all nine legacy destructive pre/post guards and management cancellation", () => {
-    const block = source.slice(source.indexOf('>Management actions</Text>'), source.indexOf('                {!showReassignPicker', source.indexOf('>Management actions</Text>')));
+    const block = source.slice(source.indexOf('Alert.alert("Company management Cancel"'), source.indexOf('                {!showReassignPicker', source.indexOf('Alert.alert("Company management Cancel"')));
     expect(block.match(/onPress: async \(\) => \{\s*if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(9);
     expect(block.match(/if \(!isCurrentAction\(\)\) return;/g)).toHaveLength(19);
     expect(block).toContain("void companyJob.cancelManagement()");

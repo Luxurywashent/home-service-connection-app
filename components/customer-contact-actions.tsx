@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyCustomers } from "@/lib/jobsync-mobile-api";
 import { customerContactUrl, findJobCustomerPhone } from "@/lib/customer-contact";
@@ -12,10 +13,13 @@ type Props = {
   customerId?: string | number | null;
   phone?: string | null;
   requireCompanyProfile: boolean;
+  jobSheet?: boolean;
 };
 
-export function CustomerContactActions({ customerId, phone, requireCompanyProfile }: Props) {
-  const colors = useColors();
+export function CustomerContactActions({ customerId, phone, requireCompanyProfile, jobSheet = false }: Props) {
+  const themeColors = useColors();
+  const jobSheetColors = useJobSheetColors();
+  const colors = jobSheet ? jobSheetColors : themeColors;
   const { session } = useJobSyncAuth();
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<ContactResult | null>(null);
@@ -81,7 +85,7 @@ export function CustomerContactActions({ customerId, phone, requireCompanyProfil
           <Text style={[styles.note, { color: colors.muted }]}>Loading customer phone…</Text>
         </View>
       ) : (
-        <Text selectable style={[styles.note, { color: colors.muted }]}>{canCall ? resolvedPhone : unavailable}</Text>
+        <Text selectable style={[styles.note, { color: colors.muted }]}>{canCall ? (jobSheet ? `Customer phone: ${resolvedPhone}` : resolvedPhone) : unavailable}</Text>
       )}
       <View style={styles.actions}>
         <TouchableOpacity
@@ -90,10 +94,10 @@ export function CustomerContactActions({ customerId, phone, requireCompanyProfil
           accessibilityState={{ disabled: !canCall || opening }}
           disabled={!canCall || opening}
           onPress={() => void openContact("call")}
-          style={[styles.button, { borderColor: colors.primary, backgroundColor: colors.primary + "18", opacity: canCall && !opening ? 1 : 0.45 }]}
+          style={[styles.button, jobSheet && styles.jobButton, { borderColor: colors.primary, backgroundColor: jobSheet ? colors.primary : colors.primary + "18", opacity: canCall && !opening ? 1 : 0.45 }]}
         >
-          <MaterialIcons name="call" size={18} color={colors.primary} />
-          <Text style={[styles.label, { color: colors.primary }]}>Call</Text>
+          <MaterialIcons name="call" size={18} color={jobSheet ? "#fff" : colors.primary} />
+          <Text style={[styles.label, { color: jobSheet ? "#fff" : colors.primary }]}>{jobSheet ? "Call Customer" : "Call"}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           accessibilityRole="button"
@@ -101,10 +105,10 @@ export function CustomerContactActions({ customerId, phone, requireCompanyProfil
           accessibilityState={{ disabled: !canMessage || opening }}
           disabled={!canMessage || opening}
           onPress={() => void openContact("message")}
-          style={[styles.button, { borderColor: colors.primary, backgroundColor: colors.primary + "18", opacity: canMessage && !opening ? 1 : 0.45 }]}
+          style={[styles.button, jobSheet && styles.jobButton, { borderColor: jobSheet ? "#10906b" : colors.primary, backgroundColor: jobSheet ? "#10906b" : colors.primary + "18", opacity: canMessage && !opening ? 1 : 0.45 }]}
         >
-          <MaterialIcons name="chat-bubble-outline" size={18} color={colors.primary} />
-          <Text style={[styles.label, { color: colors.primary }]}>Message</Text>
+          <MaterialIcons name="chat-bubble-outline" size={18} color={jobSheet ? "#fff" : colors.primary} />
+          <Text style={[styles.label, { color: jobSheet ? "#fff" : colors.primary }]}>{jobSheet ? "Message Customer" : "Message"}</Text>
         </TouchableOpacity>
         {isCompany && currentResult?.status === "error" && (
           <TouchableOpacity accessibilityRole="button" onPress={() => setAttempt((value) => value + 1)} style={styles.retry}>
@@ -122,6 +126,7 @@ const styles = StyleSheet.create({
   note: { fontSize: 13, lineHeight: 19 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   button: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderWidth: 1, borderRadius: 10, minHeight: 44, paddingHorizontal: 16 },
+  jobButton: { flex: 1, minWidth: 140, paddingHorizontal: 10, borderRadius: 10 },
   label: { fontSize: 14, fontWeight: "700" },
   retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
 });

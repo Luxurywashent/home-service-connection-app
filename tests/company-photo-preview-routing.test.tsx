@@ -33,7 +33,7 @@ vi.mock("react-native", async () => {
 });
 vi.mock("@/components/company-photo-draft", async () => {
   const R = await import("react");
-  return { CompanyPhotoDraft: () => R.createElement("native-local-draft") };
+  return { CompanyPhotoDraft: ({ headerLabel }: { headerLabel?: string }) => R.createElement("native-local-draft", null, headerLabel) };
 });
 vi.mock("@/hooks/use-colors", () => ({ useColors: () => ({ primary: "blue", foreground: "black", muted: "gray", error: "red", background: "white", border: "gray", success: "green" }) }));
 const { createRoot } = createRequire(import.meta.url)("react-dom/client") as {
@@ -183,14 +183,14 @@ describe("actual shared parent hook + operation + gallery + sibling preview (off
     offlineServer({ hidden: [] }); await render();
     expect(latest.detail?.persistedPhotoIds).toEqual([]);
     expect(container.textContent).toContain("BEFORE & AFTER PHOTOS (0)");
-    expect(container.textContent).toContain("No server photos for this Job.");
+    expect(container.textContent).toContain("No before & after photos yet.");
     expect(nodes("native-image")).toHaveLength(0);
   });
   it("mixed renderable and hidden persisted photos count complete IDs without rendering hidden URLs", async () => {
     offlineServer({ hidden: [photo(), { ...photo(7), imageUrl: null, uploadedByUserId: null }] }); await render();
     expect(latest.detail?.persistedPhotoIds).toEqual([1, 7]);
     expect(container.textContent).toContain("BEFORE & AFTER PHOTOS (2)");
-    expect(container.textContent).toContain("Some stored server photos have unavailable images");
+    expect(container.textContent).toContain("Some photo images are unavailable");
     expect(nodes("native-image")).toHaveLength(1);
     expect(nodes("native-touch").some((node) => node.nativeProps.accessibilityLabel === "Remove Job photo 7")).toBe(false);
   });

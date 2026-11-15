@@ -10,9 +10,8 @@ import {
 import { useIsFocused } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import {
-  COMPANY_PHOTO_DRAFT_BACKEND_PENDING,
   COMPANY_PHOTO_DRAFT_LABEL,
   LocalPhotoDraftError,
   companyPhotoDraftScope,
@@ -35,9 +34,14 @@ type DraftState = {
   imageStatus: "loading" | "loaded" | "error";
 };
 
+type CompanyPhotoDraftProps = CompanyPhotoDraftInput & {
+  /** Optional gallery heading, sharing one row with the capture actions. */
+  headerLabel?: string;
+};
+
 /** Memory-only preview in the existing Job sheet. Never adds media to canonical Job detail. */
-export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
-  const colors = useColors();
+export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
+  const colors = useJobSheetColors();
   const focused = useIsFocused();
   const ownOperation = useCompanyPhotoOperation({ ...props, onRefresh: props.onRefresh ?? (() => undefined) });
   const sending = props.onUpload ? Boolean(props.operationPending) : ownOperation.pending;
@@ -186,7 +190,13 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
   };
   return (
     <View style={styles.container}>
-      <View style={styles.row}>
+      <View style={styles.header}>
+        {props.headerLabel ? (
+          <Text style={[styles.heading, { color: colors.muted }]}>
+            {props.headerLabel}
+          </Text>
+        ) : null}
+        <View style={styles.row}>
         {(["Camera", "Library"] as const).map((source) => (
           <TouchableOpacity
             key={source}
@@ -198,25 +208,20 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
               void pick(source);
             }}
             style={[
-              styles.button,
-              { backgroundColor: colors.primary, opacity: disabled ? 0.35 : 1 },
+              styles.captureButton,
+              source === "Library" && styles.libraryButton,
+              {
+                backgroundColor: source === "Camera" ? colors.primary : colors.surface,
+                borderColor: colors.border,
+                opacity: disabled ? 0.35 : 1,
+              },
             ]}
           >
-            <Text style={styles.buttonText}>{source}</Text>
+            <Text style={[styles.captureButtonText, { color: source === "Camera" ? "#fff" : colors.foreground }]}>{source}</Text>
           </TouchableOpacity>
         ))}
+        </View>
       </View>
-      <Text style={[styles.help, { color: colors.muted }]}>
-        {COMPANY_PHOTO_DRAFT_BACKEND_PENDING}
-      </Text>
-      <Text style={[styles.help, { color: colors.muted }]}>
-        Still JPEG, PNG or WebP files only, up to 15 MiB. HEIC and video are not supported.
-      </Text>
-      {!scope ? (
-        <Text style={[styles.help, { color: colors.muted }]}>
-          Refresh an authorized Company Job before preparing a local draft.
-        </Text>
-      ) : null}
       {busy ? (
         <ActivityIndicator
           accessibilityLabel="Preparing local photo draft"
@@ -319,10 +324,14 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftInput) {
 }
 const styles = StyleSheet.create({
   container: { gap: 10 },
-  row: { flexDirection: "row", gap: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  heading: { flex: 1, fontSize: 11, lineHeight: 15, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase" },
+  row: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
+  captureButton: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
+  libraryButton: { borderWidth: 1 },
+  captureButtonText: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
   button: { borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   buttonText: { color: "#fff", fontWeight: "700" },
-  help: { fontSize: 12 },
   preview: { gap: 10 },
   image: { width: "100%", height: 200, borderRadius: 8 },
 });

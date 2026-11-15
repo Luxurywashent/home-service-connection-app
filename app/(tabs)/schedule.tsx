@@ -42,6 +42,8 @@ import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
 import { CustomerContactActions } from "@/components/customer-contact-actions";
 import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
@@ -2332,6 +2334,7 @@ function PrivateNotesCard({
 
 export default function ScheduleScreen() {
 	const colors = useColors();
+  const jobSheetColors = useJobSheetColors();
 	const { employee, loading: authLoading } = useEmployeeAuth();
 	const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
 	const isJobSyncCompany = jobSyncSession?.portal === "company";
@@ -4650,7 +4653,7 @@ export default function ScheduleScreen() {
 
       {/* Job Detail Modal - rendered outside ScreenContainer to prevent z-index conflicts */}
       <Modal visible={!!selectedJob} animationType="slide" transparent={false} onRequestClose={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}>
-          <View style={{ flex: 1, backgroundColor: colors.surface }}>
+          <View style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
             <View style={{ flex: 1 }}>
               {selectedJob && (
                 <>
@@ -4669,22 +4672,22 @@ export default function ScheduleScreen() {
                     </View>
                   ) : (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 56, marginBottom: 4 }}>
-                      <Text style={[s.modalTitle, { color: colors.foreground }]}>Job Details</Text>
-                      <TouchableOpacity onPress={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}><Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text></TouchableOpacity>
+                      <Text style={[s.modalTitle, { color: jobSheetColors.foreground }]}>Job Details</Text>
+                      <TouchableOpacity onPress={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}><Text style={{ color: jobSheetColors.muted, fontSize: 24 }}>✕</Text></TouchableOpacity>
                     </View>
                   )}
                   <View style={{ paddingTop: selectedJob.address ? 12 : 0 }}>
 
-                  <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     {selectedJob.isOnlineBooking && (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.primary + "18", borderRadius: 8, borderWidth: 1, borderColor: colors.primary + "40", alignSelf: "flex-start" }}>
-                        <Text style={{ fontSize: 12, color: colors.primary, fontWeight: "700" }}>🌐 Online Booking</Text>
-                        {selectedJob.location && <Text style={{ fontSize: 11, color: colors.muted }}>· {LOCATIONS.find(l => l.slug === selectedJob.location)?.label || selectedJob.location}</Text>}
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: jobSheetColors.primary + "18", borderRadius: 8, borderWidth: 1, borderColor: jobSheetColors.primary + "40", alignSelf: "flex-start" }}>
+                        <Text style={{ fontSize: 12, color: jobSheetColors.primary, fontWeight: "700" }}>🌐 Online Booking</Text>
+                        {selectedJob.location && <Text style={{ fontSize: 11, color: jobSheetColors.muted }}>· {LOCATIONS.find(l => l.slug === selectedJob.location)?.label || selectedJob.location}</Text>}
                       </View>
                     )}
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 }}>
                       <View style={[s.statusDot, { backgroundColor: STATUS_COLOR[selectedJob.status] }]} />
-                      <Text style={[s.sectionTitle, { color: colors.foreground }]}>{STATUS_LABELS[selectedJob.status]}</Text>
+                      <Text style={[s.sectionTitle, { color: jobSheetColors.foreground }]}>{STATUS_LABELS[selectedJob.status]}</Text>
                       {(companyJobMode ? selectedCompanyBilling?.isPaid === true : !!selectedJob.payment) ? (
                         <View style={[s.paidBadgeLarge, { backgroundColor: "#22C55E22", borderColor: "#22C55E55" }]}>
                           <Text style={{ color: "#22C55E", fontWeight: "700", fontSize: 12 }}>✓ PAID</Text>
@@ -4744,22 +4747,13 @@ export default function ScheduleScreen() {
                             advanceStatus(selectedJob);
                           }
                         }} style={{ alignItems: "center", opacity: selectedJob.status === requiredStatus ? 1 : 0.35 }}>
-                          <View style={[s.statusIconCircle, { backgroundColor: selectedJob.status === activeStatus ? STATUS_COLOR[activeStatus] : colors.surface, borderColor: selectedJob.status === activeStatus ? STATUS_COLOR[activeStatus] : colors.border }]}>
+                          <View style={[s.statusIconCircle, { backgroundColor: selectedJob.status === activeStatus ? STATUS_COLOR[activeStatus] : jobSheetColors.surface, borderColor: selectedJob.status === activeStatus ? STATUS_COLOR[activeStatus] : jobSheetColors.border }]}>
                             <Text style={{ fontSize: 22 }}>{emoji}</Text>
                           </View>
                           <Text style={[s.statusIconLabel, { color: STATUS_COLOR[activeStatus], fontSize: 9 }]}>{label}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>}
-                    {(companyJobMode ? selectedCompanyBilling?.canCollect !== false || selectedCompanyBilling?.balance === null : shouldShowCollectPayment(selectedJob.payment)) && (
-                      <TouchableOpacity
-                        onPress={() => openCheckout(selectedJob)}
-                        style={[s.payBtn, { backgroundColor: "#22C55E" }]}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={s.payBtnText}>💳  Collect Payment  ·  {companyJobMode ? (selectedCompanyBilling?.balance == null ? "Balance unavailable" : `$${selectedCompanyBilling.balance.toFixed(2)}`) : `$${calculateJobCollectionAmount(selectedJob.price, selectedJob.upsellTotal, selectedJob.discountAmount).toFixed(2)}`}</Text>
-                      </TouchableOpacity>
-                    )}
                     {/* Running Late button — shown for all active today jobs */}
                     {selectedJob.status !== "finished" && (
                       <TouchableOpacity
@@ -4779,6 +4773,15 @@ export default function ScheduleScreen() {
                         </Text>
                       </TouchableOpacity>
                     )}
+                    {(companyJobMode ? selectedCompanyBilling?.canCollect !== false || selectedCompanyBilling?.balance === null : shouldShowCollectPayment(selectedJob.payment)) && (
+                      <TouchableOpacity
+                        onPress={() => openCheckout(selectedJob)}
+                        style={[s.payBtn, { backgroundColor: "#22C55E" }]}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={s.payBtnText}>💳  Collect Payment  ·  {companyJobMode ? (selectedCompanyBilling?.balance == null ? "Balance unavailable" : `$${selectedCompanyBilling.balance.toFixed(2)}`) : `$${calculateJobCollectionAmount(selectedJob.price, selectedJob.upsellTotal, selectedJob.discountAmount).toFixed(2)}`}</Text>
+                      </TouchableOpacity>
+                    )}
                     {/* Running Late History */}
                     {(lateHistoryQ.data && lateHistoryQ.data.length > 0) && (
                       <View style={{ marginTop: 8, backgroundColor: "#EF444410", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#EF444430" }}>
@@ -4794,7 +4797,6 @@ export default function ScheduleScreen() {
                         ))}
                       </View>
                     )}
-                    {companyJobMode && <View style={[s.paymentSummary, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>Payment status: {selectedCompanyBilling?.paymentStatus ?? "Unavailable"}</Text><Text style={{ color: colors.muted }}>Server balance: {selectedCompanyBilling?.balance == null ? "Unavailable" : `$${selectedCompanyBilling.balance.toFixed(2)}`}</Text></View>}
                     {!companyJobMode && selectedJob.payment && (
                       <View>
                         <View style={[s.paymentSummary, { backgroundColor: selectedJob.payment.refundedAt ? "#EF444418" : "#22C55E18", borderColor: selectedJob.payment.refundedAt ? "#EF444444" : "#22C55E44" }]}>
@@ -4829,12 +4831,12 @@ export default function ScheduleScreen() {
                   </View>
 
                   {/* ─── Customer Card ─── */}
-                  <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                    <Text style={[s.sectionLabel, { color: colors.muted }]}>CUSTOMER</Text>
+                  <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
+                    <Text style={[s.sectionLabel, { color: jobSheetColors.muted }]}>CUSTOMER</Text>
                     {/* Name row with action buttons */}
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                       <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <Text style={[s.detailValue, { color: colors.foreground }]}>{selectedJob.firstName} {selectedJob.lastName}</Text>
+                        <Text style={[s.detailValue, { color: jobSheetColors.foreground }]}>{selectedJob.firstName} {selectedJob.lastName}</Text>
                         {selectedJob.isNewCustomer && (
                           <View style={{ backgroundColor: "#F59E0B", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
                             <Text style={{ color: "#fff", fontSize: 11, fontWeight: "800" }}>⭐ FIRST TIME CUSTOMER</Text>
@@ -4842,21 +4844,21 @@ export default function ScheduleScreen() {
                         )}
                       </View>
                     </View>
-                    <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} />
                     {/* Address row with navigate button */}
                     {selectedJob.address ? (
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <Text style={[s.detailSub, { color: colors.muted, flex: 1, marginRight: 8 }]}>📍 {selectedJob.address}</Text>
-                        <TouchableOpacity onPress={() => openGoogleMaps(selectedJob.address)} style={[s.gpsBtn, { backgroundColor: colors.primary }]}>
+                        <Text style={[s.detailSub, { color: jobSheetColors.muted, flex: 1, marginRight: 8 }]}>📍 {selectedJob.address}</Text>
+                        <TouchableOpacity onPress={() => openGoogleMaps(selectedJob.address)} style={[s.gpsBtn, { backgroundColor: jobSheetColors.primary }]}>
                           <Text style={s.gpsBtnText}>🗺 Navigate</Text>
                         </TouchableOpacity>
                       </View>
                     ) : null}
-                    {selectedJob.email ? <Text style={[s.detailSub, { color: colors.muted, marginTop: 2 }]}>✉️ {selectedJob.email}</Text> : null}
+                    {selectedJob.email ? <Text style={[s.detailSub, { color: jobSheetColors.muted, marginTop: 2 }]}>✉️ {selectedJob.email}</Text> : null}
+                    <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} jobSheet />
                     {/* ── Pending Reward Redemptions (detailer view) ── */}
                     {!isJobSyncCompany && !isAdminRole && selectedJob.customerId && (pendingRedemptionsQ.data ?? []).length > 0 && (
-                      <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
-                        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700", marginBottom: 8, letterSpacing: 0.3 }}>🎁 PENDING REWARDS</Text>
+                      <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "700", marginBottom: 8, letterSpacing: 0.3 }}>🎁 PENDING REWARDS</Text>
                         {(pendingRedemptionsQ.data as any[]).map((r: any) => (
                           <TouchableOpacity
                             key={r.redemptionId}
@@ -4901,24 +4903,24 @@ export default function ScheduleScreen() {
                     )}
                     {/* ── In-App Messaging (portal jobs only, when window is open) ── */}
                     {chatIsPortalJob && (chatWindowOpen || (chatListQuery.data?.messages?.length ?? 0) > 0) && (
-                      <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                      <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                         <TouchableOpacity
                           onPress={() => setShowChatModal(true)}
                           style={{
                             flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-                            backgroundColor: chatWindowOpen ? "#EFF6FF" : colors.surface,
+                            backgroundColor: chatWindowOpen ? "#EFF6FF" : jobSheetColors.surface,
                             borderRadius: 12, padding: 14,
-                            borderWidth: 1.5, borderColor: chatWindowOpen ? "#BFDBFE" : colors.border,
+                            borderWidth: 1.5, borderColor: chatWindowOpen ? "#BFDBFE" : jobSheetColors.border,
                           }}
                           activeOpacity={0.8}
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                             <Text style={{ fontSize: 20 }}>💬</Text>
                             <View>
-                              <Text style={{ fontSize: 14, fontWeight: "700", color: chatWindowOpen ? "#1E40AF" : colors.foreground }}>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: chatWindowOpen ? "#1E40AF" : jobSheetColors.foreground }}>
                                 {chatWindowOpen ? "Chat with Customer" : "Message History"}
                               </Text>
-                              <Text style={{ fontSize: 12, color: chatWindowOpen ? "#3B82F6" : colors.muted, marginTop: 1 }}>
+                              <Text style={{ fontSize: 12, color: chatWindowOpen ? "#3B82F6" : jobSheetColors.muted, marginTop: 1 }}>
                                 {chatWindowOpen ? "Chat is active" : "Chat closed"}
                               </Text>
                             </View>
@@ -4929,32 +4931,32 @@ export default function ScheduleScreen() {
                                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "900" }}>{chatUnreadCount}</Text>
                               </View>
                             )}
-                            <Text style={{ color: colors.muted, fontSize: 18 }}>›</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 18 }}>›</Text>
                           </View>
                         </TouchableOpacity>
                       </View>
                     )}
                     {/* ── Location Photos (detailer view) ── */}
-                    {!companyJobMode && <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                    {!companyJobMode && <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>📸 Location Photos</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>📸 Location Photos</Text>
                         {addrPhotos.length < 2 && (
                           <TouchableOpacity
                             onPress={handleAddAddrPhoto}
                             disabled={addrPhotoUploading}
-                            style={{ backgroundColor: colors.primary + "22", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}
+                            style={{ backgroundColor: jobSheetColors.primary + "22", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}
                           >
-                            {addrPhotoUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>+ Add</Text>}
+                            {addrPhotoUploading ? <ActivityIndicator size="small" color={jobSheetColors.primary} /> : <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>+ Add</Text>}
                           </TouchableOpacity>
                         )}
                       </View>
                       {addrPhotos.length === 0 ? (
-                        <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos for this address yet.</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 12, fontStyle: "italic" }}>No location photos for this address yet.</Text>
                       ) : (
                         <View style={{ flexDirection: "row", gap: 8 }}>
                           {addrPhotos.map((photo: any) => (
                             <TouchableOpacity key={photo.photoId} onPress={() => { if (captureLegacyAction(selectedJob)()) setViewingAddrPhoto(photo.photoUrl); }}>
-                              <Image source={{ uri: photo.photoUrl }} style={{ width: 100, height: 100, borderRadius: 8, backgroundColor: colors.surface }} resizeMode="cover" />
+                              <Image source={{ uri: photo.photoUrl }} style={{ width: 100, height: 100, borderRadius: 8, backgroundColor: jobSheetColors.surface }} resizeMode="cover" />
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -4964,10 +4966,10 @@ export default function ScheduleScreen() {
                   </View>
 
                   {/* ─── Job Schedule Card ─── */}
-                  <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
                       <Text style={{ fontSize: 16 }}>📅</Text>
-                      <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>Job Schedule</Text>
+                      <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>Job Schedule</Text>
                     </View>
                     {(() => {
                       const jobDate = getWeekDates(selectedJob.weekOffset)[selectedJob.dayIndex];
@@ -4977,14 +4979,14 @@ export default function ScheduleScreen() {
                       return (
                         <View style={{ gap: 6 }}>
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <Text style={{ color: colors.muted, fontSize: 14, width: 40 }}>From</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600", flex: 1 }}>{dateStr}</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>{fromTime}</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 14, width: 40 }}>From</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600", flex: 1 }}>{dateStr}</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>{fromTime}</Text>
                           </View>
                           <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <Text style={{ color: colors.muted, fontSize: 14, width: 40 }}>To</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600", flex: 1 }}>{dateStr}</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>{toTime}</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 14, width: 40 }}>To</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600", flex: 1 }}>{dateStr}</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>{toTime}</Text>
                           </View>
                         </View>
                       );
@@ -5009,14 +5011,14 @@ export default function ScheduleScreen() {
                     ];
                     const totalVehicles = allVehicles.length;
                     return (
-                      <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                         {/* Header row with Edit button */}
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
                           <Text style={{ fontSize: 16 }}>🚗</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700", flex: 1 }}>Vehicles & Services</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700", flex: 1 }}>{companyJobMode ? "Services" : "Vehicles & Services"}</Text>
                           {totalVehicles > 1 && (
-                            <View style={{ backgroundColor: colors.primary + "22", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, marginRight: 6 }}>
-                              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "700" }}>{totalVehicles} vehicles</Text>
+                            <View style={{ backgroundColor: jobSheetColors.primary + "22", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, marginRight: 6 }}>
+                              <Text style={{ color: jobSheetColors.primary, fontSize: 11, fontWeight: "700" }}>{totalVehicles} vehicles</Text>
                             </View>
                           )}
                           {!companyJobMode && <TouchableOpacity
@@ -5026,7 +5028,7 @@ export default function ScheduleScreen() {
                               setEditVehicles(allVehicles.length > 0 ? allVehicles : [{ vehicleType: "sedan", packageId: "", addonIds: [], addonQtys: {}, price: 0 }]);
                               setShowEditServicesSheet(true);
                             }}
-                            style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                            style={{ backgroundColor: jobSheetColors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
                             activeOpacity={0.75}
                           >
                             <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "700" }}>Edit</Text>
@@ -5044,47 +5046,47 @@ export default function ScheduleScreen() {
                           const pkgBasePrice = pkg && av.vehicleType ? (pkg.basePrice as Record<string, number>)[av.vehicleType] ?? 0 : undefined;
                           const pkgPrice = pkgBasePrice !== undefined ? pkgBasePrice : (av.price ?? 0);
                           return (
-                            <View key={idx} style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 8 }}>
+                            <View key={idx} style={{ backgroundColor: jobSheetColors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: jobSheetColors.border, marginBottom: 8 }}>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
                                 <Text style={{ fontSize: 20 }}>{vt?.emoji ?? "🚗"}</Text>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>
                                     {[av.vehicleYear, av.vehicleMake, av.vehicleModel].filter(Boolean).join(" ") || vt?.label || (idx === 0 ? "Vehicle" : `Vehicle ${idx + 1}`)}
                                   </Text>
-                                  {av.vehicleColor ? <Text style={{ color: colors.muted, fontSize: 12 }}>{av.vehicleColor}</Text> : null}
+                                  {av.vehicleColor ? <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>{av.vehicleColor}</Text> : null}
                                 </View>
                               </View>
                               {pkg ? (
                                 <View style={{ marginBottom: 6 }}>
                                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                    <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 14 }}>{pkg.emoji} {pkg.title}</Text>
-                                    <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14 }}>${pkgPrice.toFixed(2)}</Text>
+                                    <Text style={{ color: jobSheetColors.foreground, fontWeight: "700", fontSize: 14 }}>{pkg.emoji} {pkg.title}</Text>
+                                    <Text style={{ color: jobSheetColors.foreground, fontWeight: "600", fontSize: 14 }}>${pkgPrice.toFixed(2)}</Text>
                                   </View>
-                                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2, marginBottom: 6 }}>Qty 1 @ ${pkgPrice.toFixed(2)}/Each</Text>
-                                  <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>This package includes:</Text>
+                                  <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginTop: 2, marginBottom: 6 }}>Qty 1 @ ${pkgPrice.toFixed(2)}/Each</Text>
+                                  <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginBottom: 4 }}>This package includes:</Text>
                                   {pkg.features.map((f, i) => (
                                     <View key={i} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 3 }}>
-                                      <Text style={{ color: colors.primary, fontSize: 13, marginRight: 6, marginTop: 1 }}>•</Text>
-                                      <Text style={{ color: colors.foreground, fontSize: 13, flex: 1, lineHeight: 18 }}>{f}</Text>
+                                      <Text style={{ color: jobSheetColors.primary, fontSize: 13, marginRight: 6, marginTop: 1 }}>•</Text>
+                                      <Text style={{ color: jobSheetColors.foreground, fontSize: 13, flex: 1, lineHeight: 18 }}>{f}</Text>
                                     </View>
                                   ))}
                                 </View>
                               ) : (
-                                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600", marginBottom: 6 }}>
-                                  {idx === 0 ? (selectedJob.serviceTitle || "Detail Service") : "Detail Service"}
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600", marginBottom: 6 }}>
+                                  {idx === 0 ? (selectedJob.serviceTitle || "Service") : "Detail Service"}
                                 </Text>
                               )}
                               {(av.addonIds ?? []).length > 0 && (
                                 <View style={{ marginTop: 4 }}>
-                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginBottom: 4 }}>ADD-ONS</Text>
+                                  <Text style={{ color: jobSheetColors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginBottom: 4 }}>ADD-ONS</Text>
                                   {(av.addonIds ?? []).map((adId: string) => {
                                     const ad = ADDONS.find((a) => a.id === adId);
                                     if (!ad) return null;
                                     const qty = av.addonQtys?.[adId] ?? 1;
                                     return (
                                       <View key={adId} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
-                                        <Text style={{ color: colors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
-                                        <Text style={{ color: colors.foreground, fontSize: 13 }}>${(ad.price * qty).toFixed(2)}</Text>
+                                        <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
+                                        <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>${(ad.price * qty).toFixed(2)}</Text>
                                       </View>
                                     );
                                   })}
@@ -5094,16 +5096,16 @@ export default function ScheduleScreen() {
                           );
                         })}
                         {allVehicles.length === 0 && (
-                          <Text style={{ color: colors.muted, fontSize: 14 }}>{selectedJob.serviceTitle || "Detail Service"}</Text>
+                          <Text style={{ color: jobSheetColors.muted, fontSize: 14 }}>{selectedJob.serviceTitle || "Service"}</Text>
                         )}
                       </View>
                     );
                   })()}
 
                   {/* ─── Upsells Section ─── always visible so detailers can add upsells at any stage */}
-                  {!companyJobMode && <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {!companyJobMode && <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <Text style={[s.sectionLabel, { color: colors.muted }]}>UPSELLS</Text>
+                        <Text style={[s.sectionLabel, { color: jobSheetColors.muted }]}>UPSELLS</Text>
                         <TouchableOpacity
                           onPress={() => {
                             if (!captureLegacyAction(selectedJob)()) return;
@@ -5113,7 +5115,7 @@ export default function ScheduleScreen() {
                             setShowUpsellPanel(true);
                           }}
                           activeOpacity={0.75}
-                          style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                          style={{ backgroundColor: jobSheetColors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
                         >
                           <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "700" }}>
                             {selectedJob.upsellIds && selectedJob.upsellIds.length > 0 ? "Edit Upsells" : "+ Add Upsells"}
@@ -5128,39 +5130,34 @@ export default function ScheduleScreen() {
                             const qty = selectedJob.upsellQtys?.[id] ?? 1;
                             return (
                               <View key={id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
-                                <Text style={{ color: colors.foreground, fontSize: 13 }}>${(ad.price * qty).toFixed(2)}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>{ad.emoji} {ad.title}{qty > 1 ? ` × ${qty}` : ""}</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 13 }}>${(ad.price * qty).toFixed(2)}</Text>
                               </View>
                             );
                           })}
-                          <View style={[s.divider, { backgroundColor: colors.border, marginTop: 8 }]} />
+                          <View style={[s.divider, { backgroundColor: jobSheetColors.border, marginTop: 8 }]} />
                           <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
-                            <Text style={{ color: colors.muted, fontSize: 13 }}>Upsell Total</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>${(selectedJob.upsellTotal ?? 0).toFixed(2)}</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Upsell Total</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>${(selectedJob.upsellTotal ?? 0).toFixed(2)}</Text>
                           </View>
 
                           {/* Sync button: pushes upsellTotal to DB so dashboard bonus reflects correctly */}
                           <TouchableOpacity
                             onPress={() => syncUpsellsToServer(selectedJob)}
                             activeOpacity={0.75}
-                            style={{ marginTop: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 6, alignItems: 'center' }}
+                            style={{ marginTop: 8, backgroundColor: jobSheetColors.surface, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingVertical: 6, alignItems: 'center' }}
                           >
-                            <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>↑ Sync upsells to dashboard</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 12, fontWeight: '600' }}>↑ Sync upsells to dashboard</Text>
                           </TouchableOpacity>
                         </>
                       ) : (
-                        <Text style={{ color: colors.muted, fontSize: 13 }}>No upsells added yet. Tap + Add Upsells to add extras to this job.</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>No upsells added yet. Tap + Add Upsells to add extras to this job.</Text>
                       )}
                   </View>}
 
                   {/* ─── Line Items Card ─── */}
                     {(() => {
-                    if (companyJobMode) return <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Text style={{ color: colors.foreground, fontWeight: "700" }}>Company Billing</Text>
-                      <Text style={{ color: colors.foreground }}>Service amount: ${selectedJob.price.toFixed(2)}</Text>
-                      <Text style={{ color: colors.foreground }}>Balance: {selectedCompanyBilling?.balance == null ? "Unavailable" : `$${selectedCompanyBilling.balance.toFixed(2)}`}</Text>
-                      <Text style={{ color: colors.muted }}>Payment status: {selectedCompanyBilling?.paymentStatus ?? "Unavailable"}</Text>
-                    </View>;
+                    if (companyJobMode) return <CompanyJobLineItems amount={selectedJob.price} balance={selectedJob.balance} paymentStatus={selectedJob.paymentStatus} paidTotal={selectedJob.paidTotal} refundTotal={selectedJob.refundTotal} appliedEstimateCredit={selectedJob.appliedEstimateCredit} />;
                     const serviceTotal = selectedJob.price ?? 0;
                     const upsellAmt = selectedJob.upsellTotal ?? 0;
                     const subtotal = serviceTotal + upsellAmt;
@@ -5170,94 +5167,94 @@ export default function ScheduleScreen() {
                     const total = subtotal - discount + tax;
                     const balanceDue = total - deposit;
                     return (
-                      <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
                           <Text style={{ fontSize: 16 }}>💳</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>Line Items</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>Line Items</Text>
                         </View>
 
                         {/* Service Total (base price — never changes) */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 14 }}>Service Total</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 14 }}>${serviceTotal.toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Service Total</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>${serviceTotal.toFixed(2)}</Text>
                         </View>
 
                         {/* Upsells (separate line, only shown when > 0) */}
                         {upsellAmt > 0 && (
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                            <Text style={{ color: colors.foreground, fontSize: 14 }}>Upsells</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 14 }}>+${upsellAmt.toFixed(2)}</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Upsells</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>+${upsellAmt.toFixed(2)}</Text>
                           </View>
                         )}
 
                         {/* Subtotal = Service + Upsells */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>Subtotal</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>${subtotal.toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>Subtotal</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>${subtotal.toFixed(2)}</Text>
                         </View>
 
                         {/* Discount (read-only for detailer) */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
                           <View>
-                            <Text style={{ color: colors.foreground, fontSize: 14 }}>Discount</Text>
-                            {selectedJob.discountCode ? <Text style={{ color: colors.muted, fontSize: 12 }}>{selectedJob.discountCode}</Text> : null}
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Discount</Text>
+                            {selectedJob.discountCode ? <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>{selectedJob.discountCode}</Text> : null}
                           </View>
-                          <Text style={{ color: discount > 0 ? "#EF4444" : colors.muted, fontSize: 14, fontWeight: "600" }}>{discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"}</Text>
+                          <Text style={{ color: discount > 0 ? "#EF4444" : jobSheetColors.muted, fontSize: 14, fontWeight: "600" }}>{discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"}</Text>
                         </View>
 
                         {/* Tax */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 14 }}>Tax</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Tax</Text>
                           {!companyJobMode && editingTax ? (
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                               <TextInput
                                 value={taxInput}
                                 onChangeText={setTaxInput}
                                 keyboardType="decimal-pad"
-                                style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: colors.foreground, fontSize: 14, minWidth: 80, textAlign: "right" }}
+                                style={{ borderWidth: 1, borderColor: jobSheetColors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: jobSheetColors.foreground, fontSize: 14, minWidth: 80, textAlign: "right" }}
                                 placeholder="0.00"
-                                placeholderTextColor={colors.muted}
+                                placeholderTextColor={jobSheetColors.muted}
                                 returnKeyType="done"
                                 onSubmitEditing={() => { const val = parseFloat(taxInput) || 0; saveTaxAmount(selectedJob, val); setEditingTax(false); }}
                                 autoFocus
                               />
-                              <TouchableOpacity onPress={() => { const val = parseFloat(taxInput) || 0; saveTaxAmount(selectedJob, val); setEditingTax(false); }} style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                              <TouchableOpacity onPress={() => { const val = parseFloat(taxInput) || 0; saveTaxAmount(selectedJob, val); setEditingTax(false); }} style={{ backgroundColor: jobSheetColors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
                                 <Text style={{ color: "#FFF", fontSize: 13, fontWeight: "600" }}>Save</Text>
                               </TouchableOpacity>
                             </View>
                           ) : (
                             <TouchableOpacity disabled={companyJobMode} onPress={() => { if (!captureLegacyAction(selectedJob)()) return; setTaxInput((tax).toFixed(2)); setEditingTax(true); }} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Text style={{ color: colors.foreground, fontSize: 14 }}>${tax.toFixed(2)}</Text>
-                              {!companyJobMode && <Text style={{ color: colors.primary, fontSize: 12 }}>✏️</Text>}
+                              <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>${tax.toFixed(2)}</Text>
+                              {!companyJobMode && <Text style={{ color: jobSheetColors.primary, fontSize: 12 }}>✏️</Text>}
                             </TouchableOpacity>
                           )}
                         </View>
 
                         {/* Tip */}
                         {selectedJob.payment?.tipAmount ? (
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                            <Text style={{ color: colors.foreground, fontSize: 14 }}>Tip</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Tip</Text>
                             <Text style={{ color: "#22C55E", fontSize: 14, fontWeight: "600" }}>+${selectedJob.payment.tipAmount.toFixed(2)}</Text>
                           </View>
                         ) : null}
 
                         {/* Total */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "800" }}>Total</Text>
-                          <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "800" }}>${total.toFixed(2)}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "800" }}>Total</Text>
+                          <Text style={{ color: jobSheetColors.primary, fontSize: 16, fontWeight: "800" }}>${total.toFixed(2)}</Text>
                         </View>
 
                         {/* Deposit (read-only for detailer) */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: deposit > 0 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 14 }}>Deposit</Text>
-                          <Text style={{ color: deposit > 0 ? colors.success : colors.muted, fontSize: 14, fontWeight: "600" }}>{deposit > 0 ? `-$${deposit.toFixed(2)}` : "$0.00"}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: deposit > 0 ? StyleSheet.hairlineWidth : 0, borderBottomColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14 }}>Deposit</Text>
+                          <Text style={{ color: deposit > 0 ? jobSheetColors.success : jobSheetColors.muted, fontSize: 14, fontWeight: "600" }}>{deposit > 0 ? `-$${deposit.toFixed(2)}` : "$0.00"}</Text>
                         </View>
 
                         {/* Balance Due */}
                         {deposit > 0 ? (
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, marginTop: 2, backgroundColor: balanceDue <= 0 ? "#22C55E11" : colors.surface, borderRadius: 8, paddingHorizontal: 8 }}>
-                            <Text style={{ color: balanceDue <= 0 ? "#22C55E" : colors.foreground, fontSize: 14, fontWeight: "700" }}>{balanceDue <= 0 ? "✓ Paid in Full" : "Balance Due"}</Text>
-                            <Text style={{ color: balanceDue <= 0 ? "#22C55E" : colors.primary, fontSize: 14, fontWeight: "700" }}>${Math.max(0, balanceDue).toFixed(2)}</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, marginTop: 2, backgroundColor: balanceDue <= 0 ? "#22C55E11" : jobSheetColors.surface, borderRadius: 8, paddingHorizontal: 8 }}>
+                            <Text style={{ color: balanceDue <= 0 ? "#22C55E" : jobSheetColors.foreground, fontSize: 14, fontWeight: "700" }}>{balanceDue <= 0 ? "✓ Paid in Full" : "Balance Due"}</Text>
+                            <Text style={{ color: balanceDue <= 0 ? "#22C55E" : jobSheetColors.primary, fontSize: 14, fontWeight: "700" }}>${Math.max(0, balanceDue).toFixed(2)}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -5265,9 +5262,9 @@ export default function ScheduleScreen() {
                   })()}
 
                   {selectedJob.notes ? (
-                    <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Text style={[s.sectionLabel, { color: colors.muted }]}>NOTES</Text>
-                      <Text style={[s.detailSub, { color: colors.foreground }]}>{selectedJob.notes}</Text>
+                    <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
+                      <Text style={[s.sectionLabel, { color: jobSheetColors.muted }]}>NOTES</Text>
+                      <Text style={[s.detailSub, { color: jobSheetColors.foreground }]}>{selectedJob.notes}</Text>
                     </View>
                   ) : null}
 
@@ -5293,7 +5290,7 @@ export default function ScheduleScreen() {
                         }}
                       />
                     ) : (
-                      <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                      <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                         <TouchableOpacity
                           onPress={() => {
                             if (!captureLegacyAction(selectedJob)()) return;
@@ -5305,20 +5302,20 @@ export default function ScheduleScreen() {
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                             <Text style={{ fontSize: 16 }}>📝</Text>
-                            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>Private Notes</Text>
+                            <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600" }}>Private Notes</Text>
                           </View>
-                          <Text style={{ color: colors.primary, fontSize: 22, fontWeight: "300" }}>+</Text>
+                          <Text style={{ color: jobSheetColors.primary, fontSize: 22, fontWeight: "300" }}>+</Text>
                         </TouchableOpacity>
                       </View>
                     );
                   })()}
                   {/* ─── Before & After Photos ─── */}
-                  {companyJobMode ? <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} /> : <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {companyJobMode ? <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} /> : <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <Text style={[s.sectionLabel, { color: colors.muted }]}>BEFORE & AFTER PHOTOS</Text>
+                      <Text style={[s.sectionLabel, { color: jobSheetColors.muted }]}>BEFORE & AFTER PHOTOS</Text>
                       <View style={{ flexDirection: "row", gap: 8 }}>
-                        <TouchableOpacity onPress={openCameraSession} style={[s.photoAddBtn, { backgroundColor: colors.primary }]}><Text style={s.photoAddBtnText}>📷 Camera</Text></TouchableOpacity>
-                        <TouchableOpacity onPress={addPhotoFromLibrary} style={[s.photoAddBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}><Text style={[s.photoAddBtnText, { color: colors.foreground }]}>🖼 Library</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={openCameraSession} style={[s.photoAddBtn, { backgroundColor: jobSheetColors.primary }]}><Text style={s.photoAddBtnText}>📷 Camera</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={addPhotoFromLibrary} style={[s.photoAddBtn, { backgroundColor: jobSheetColors.surface, borderWidth: 1, borderColor: jobSheetColors.border }]}><Text style={[s.photoAddBtnText, { color: jobSheetColors.foreground }]}>🖼 Library</Text></TouchableOpacity>
                       </View>
                     </View>
                     {(() => {
@@ -5327,7 +5324,7 @@ export default function ScheduleScreen() {
                       // Remove duplicates and filter out empty strings
                       const uniquePhotos = Array.from(new Set(displayPhotos.filter(p => p && p.length > 0)));
                       return uniquePhotos.length === 0 ? (
-                        <View style={[s.emptyPhotos, { borderColor: colors.border }]}><Text style={{ color: colors.muted, fontSize: 13 }}>No before & after photos yet.</Text></View>
+                        <View style={[s.emptyPhotos, { borderColor: jobSheetColors.border }]}><Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>No before & after photos yet.</Text></View>
                       ) : (
                         <View style={s.photoGrid}>
                           {uniquePhotos.map((uri) => (
@@ -5338,26 +5335,26 @@ export default function ScheduleScreen() {
                         </View>
                       );
                     })()}
-                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 6 }}>Long-press to remove a local preview; server deletion is not verified.</Text>
+                    <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginTop: 6 }}>Long-press to remove a local preview; server deletion is not verified.</Text>
 
                     {/* ─── Videos ─── */}
                     {JOB_VIDEOS_ENABLED && <>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, marginBottom: 8 }}>
-                      <Text style={[s.sectionLabel, { color: colors.muted }]}>VIDEOS</Text>
+                      <Text style={[s.sectionLabel, { color: jobSheetColors.muted }]}>VIDEOS</Text>
                       <TouchableOpacity
                         onPress={addVideoFromLibrary}
                         disabled={uploadingVideo}
-                        style={[s.photoAddBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+                        style={[s.photoAddBtn, { backgroundColor: jobSheetColors.surface, borderWidth: 1, borderColor: jobSheetColors.border }]}
                       >
                         {uploadingVideo ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
+                          <ActivityIndicator size="small" color={jobSheetColors.primary} />
                         ) : (
-                          <Text style={[s.photoAddBtnText, { color: colors.foreground }]}>🎥 Add Video</Text>
+                          <Text style={[s.photoAddBtnText, { color: jobSheetColors.foreground }]}>🎥 Add Video</Text>
                         )}
                       </TouchableOpacity>
                     </View>
                     {(selectedJob.videoUrls ?? []).length === 0 ? (
-                      <View style={[s.emptyPhotos, { borderColor: colors.border }]}><Text style={{ color: colors.muted, fontSize: 13 }}>No videos yet.</Text></View>
+                      <View style={[s.emptyPhotos, { borderColor: jobSheetColors.border }]}><Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>No videos yet.</Text></View>
                     ) : (
                       <View style={s.photoGrid}>
                         {(selectedJob.videoUrls ?? []).map((url) => (
@@ -5371,35 +5368,35 @@ export default function ScheduleScreen() {
                       </View>
                     )}
                     {(selectedJob.videoUrls ?? []).length > 0 && (
-                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 6 }}>Long-press a video to delete it.</Text>
+                      <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginTop: 6 }}>Long-press a video to delete it.</Text>
                     )}
                     </>}
                   </View>}
 
                   {/* ─── Lead Source Card ─── */}
                   {selectedJob.leadSource ? (
-                    <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                           <Text style={{ fontSize: 16 }}>🎯</Text>
-                          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>Lead Source</Text>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>Lead Source</Text>
                         </View>
-                        <View style={{ backgroundColor: selectedJob.leadSource === "Portal Booking" ? "#06B6D422" : selectedJob.leadSource === "Website Booking" ? "#0EA5E922" : colors.surface, borderWidth: 1, borderColor: selectedJob.leadSource === "Portal Booking" ? "#06B6D466" : selectedJob.leadSource === "Website Booking" ? "#0EA5E966" : colors.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}>
-                          <Text style={{ color: selectedJob.leadSource === "Portal Booking" ? "#06B6D4" : selectedJob.leadSource === "Website Booking" ? "#0EA5E9" : colors.muted, fontSize: 13, fontWeight: "600" }}>{selectedJob.leadSource}</Text>
+                        <View style={{ backgroundColor: selectedJob.leadSource === "Portal Booking" ? "#06B6D422" : selectedJob.leadSource === "Website Booking" ? "#0EA5E922" : jobSheetColors.surface, borderWidth: 1, borderColor: selectedJob.leadSource === "Portal Booking" ? "#06B6D466" : selectedJob.leadSource === "Website Booking" ? "#0EA5E966" : jobSheetColors.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}>
+                          <Text style={{ color: selectedJob.leadSource === "Portal Booking" ? "#06B6D4" : selectedJob.leadSource === "Website Booking" ? "#0EA5E9" : jobSheetColors.muted, fontSize: 13, fontWeight: "600" }}>{selectedJob.leadSource}</Text>
                         </View>
                       </View>
                     </View>
                   ) : null}
 
                   {/* ─── Job Tags Card ─── */}
-                  {!companyJobMode && <View style={[s.detailCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {!companyJobMode && <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         <Text style={{ fontSize: 16 }}>🏷️</Text>
-                        <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "700" }}>Job Tags</Text>
+                        <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "700" }}>Job Tags</Text>
                       </View>
-                      <TouchableOpacity onPress={() => { if (captureLegacyAction(selectedJob)()) setEditingTags(!editingTags); }} style={{ backgroundColor: editingTags ? colors.surface : colors.primary + "22", borderWidth: 1, borderColor: editingTags ? colors.border : colors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
-                        <Text style={{ color: editingTags ? colors.muted : colors.primary, fontSize: 12, fontWeight: "600" }}>{editingTags ? "Done" : "+ Add"}</Text>
+                      <TouchableOpacity onPress={() => { if (captureLegacyAction(selectedJob)()) setEditingTags(!editingTags); }} style={{ backgroundColor: editingTags ? jobSheetColors.surface : jobSheetColors.primary + "22", borderWidth: 1, borderColor: editingTags ? jobSheetColors.border : jobSheetColors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+                        <Text style={{ color: editingTags ? jobSheetColors.muted : jobSheetColors.primary, fontSize: 12, fontWeight: "600" }}>{editingTags ? "Done" : "+ Add"}</Text>
                       </TouchableOpacity>
                     </View>
                     {/* Tag chips */}
@@ -5408,14 +5405,14 @@ export default function ScheduleScreen() {
                         <TouchableOpacity
                           key={i}
                           onPress={() => editingTags ? saveJobTags(selectedJob, (selectedJob.tags ?? []).filter((_, ti) => ti !== i)) : undefined}
-                          style={{ backgroundColor: colors.primary + "22", borderWidth: 1, borderColor: colors.primary + "66", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 4 }}
+                          style={{ backgroundColor: jobSheetColors.primary + "22", borderWidth: 1, borderColor: jobSheetColors.primary + "66", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 4 }}
                         >
-                          <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>{tag}</Text>
-                          {editingTags ? <Text style={{ color: colors.primary, fontSize: 12 }}>×</Text> : null}
+                          <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>{tag}</Text>
+                          {editingTags ? <Text style={{ color: jobSheetColors.primary, fontSize: 12 }}>×</Text> : null}
                         </TouchableOpacity>
                       ))}
                       {(selectedJob.tags ?? []).length === 0 && !editingTags && (
-                        <Text style={{ color: colors.muted, fontSize: 13 }}>No tags yet. Tap + Add to label this job.</Text>
+                        <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>No tags yet. Tap + Add to label this job.</Text>
                       )}
                     </View>
                     {editingTags && (
@@ -5424,8 +5421,8 @@ export default function ScheduleScreen() {
                           value={tagInput}
                           onChangeText={setTagInput}
                           placeholder="Type a tag and press Add"
-                          placeholderTextColor={colors.muted}
-                          style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: colors.foreground, fontSize: 14 }}
+                          placeholderTextColor={jobSheetColors.muted}
+                          style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: jobSheetColors.foreground, fontSize: 14 }}
                           returnKeyType="done"
                           onSubmitEditing={() => {
                             const trimmed = tagInput.trim();
@@ -5443,7 +5440,7 @@ export default function ScheduleScreen() {
                             }
                             setTagInput("");
                           }}
-                          style={{ backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
+                          style={{ backgroundColor: jobSheetColors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
                         >
                           <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 14 }}>Add</Text>
                         </TouchableOpacity>
@@ -5466,25 +5463,25 @@ export default function ScheduleScreen() {
                     />
                     {/* Panel */}
                     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 0 }}>
-                      <View style={{ flex: 1, backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 60, overflow: "hidden" }}>
+                      <View style={{ flex: 1, backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: 60, overflow: "hidden" }}>
                         {/* Header */}
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 20, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
                           <View>
-                            <Text style={{ fontSize: 22, fontWeight: "800", color: colors.foreground }}>🔍 Vehicle Inspection</Text>
-                            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>{selectedJob.firstName} {selectedJob.lastName} · {VEHICLE_TYPES.find(v => v.id === selectedJob.vehicleType)?.label ?? "Vehicle"}</Text>
+                            <Text style={{ fontSize: 22, fontWeight: "800", color: jobSheetColors.foreground }}>🔍 Vehicle Inspection</Text>
+                            <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginTop: 2 }}>{selectedJob.firstName} {selectedJob.lastName} · {VEHICLE_TYPES.find(v => v.id === selectedJob.vehicleType)?.label ?? "Vehicle"}</Text>
                           </View>
                           <TouchableOpacity onPress={() => setShowInspectionModal(false)} style={{ padding: 4 }}>
-                            <Text style={{ color: colors.muted, fontSize: 26 }}>✕</Text>
+                            <Text style={{ color: jobSheetColors.muted, fontSize: 26 }}>✕</Text>
                           </TouchableOpacity>
                         </View>
 
                         {inspViewMode === "report" ? (
                           /* ─── COMPLETED REPORT VIEW ─── */
                           <>
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.background }}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 10, backgroundColor: jobSheetColors.background }}>
                               <View>
-                                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground }}>Completed Report</Text>
-                                <Text style={{ fontSize: 12, color: colors.muted }}>By {selectedJob.inspection?.inspectedBy} · {selectedJob.inspection ? new Date(selectedJob.inspection.completedAt).toLocaleString([], { month: "numeric", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</Text>
+                                <Text style={{ fontSize: 14, fontWeight: "700", color: jobSheetColors.foreground }}>Completed Report</Text>
+                                <Text style={{ fontSize: 12, color: jobSheetColors.muted }}>By {selectedJob.inspection?.inspectedBy} · {selectedJob.inspection ? new Date(selectedJob.inspection.completedAt).toLocaleString([], { month: "numeric", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</Text>
                               </View>
                               {(() => {
                                 const hasPoor = INSP_CATEGORIES.some(c => selectedJob.inspection?.ratings[c.id] === "poor");
@@ -5507,13 +5504,13 @@ export default function ScheduleScreen() {
                                 const isDamage = cat.id === "damage";
                                 const allZones = [...(selectedJob.inspection?.exteriorZones ?? []), ...(selectedJob.inspection?.interiorZones ?? [])];
                                 return (
-                                  <View key={cat.id} style={{ backgroundColor: colors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                                  <View key={cat.id} style={{ backgroundColor: jobSheetColors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: jobSheetColors.border }}>
                                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                                       <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
                                         <Text style={{ fontSize: 26 }}>{cat.emoji}</Text>
                                         <View style={{ flex: 1 }}>
-                                          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>{cat.label}</Text>
-                                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{cat.desc}</Text>
+                                          <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>{cat.label}</Text>
+                                          <Text style={{ fontSize: 12, color: jobSheetColors.muted, marginTop: 2 }}>{cat.desc}</Text>
                                         </View>
                                       </View>
                                       {rOpt ? (
@@ -5522,14 +5519,14 @@ export default function ScheduleScreen() {
                                           <Text style={{ color: rOpt.color, fontWeight: "700", fontSize: 13 }}>{rOpt.label}</Text>
                                         </View>
                                       ) : (
-                                        <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
-                                          <Text style={{ color: colors.muted, fontSize: 12 }}>Not rated</Text>
+                                        <View style={{ backgroundColor: jobSheetColors.surface, borderColor: jobSheetColors.border, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
+                                          <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>Not rated</Text>
                                         </View>
                                       )}
                                     </View>
                                     {isDamage && allZones.length > 0 && (
                                       <View style={{ marginTop: 10 }}>
-                                        <Text style={[s.sectionLabel, { color: colors.muted, fontSize: 10, marginBottom: 6 }]}>DAMAGE LOCATIONS</Text>
+                                        <Text style={[s.sectionLabel, { color: jobSheetColors.muted, fontSize: 10, marginBottom: 6 }]}>DAMAGE LOCATIONS</Text>
                                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                                           {allZones.map(zid => {
                                             const zone = [...EXTERIOR_ZONES, ...INTERIOR_ZONES].find(z => z.id === zid);
@@ -5545,29 +5542,29 @@ export default function ScheduleScreen() {
                                   </View>
                                 );
                               })}
-                              <View style={{ backgroundColor: colors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                              <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: jobSheetColors.border }}>
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
                                   <Text style={{ fontSize: 22 }}>📋</Text>
-                                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Overall Notes</Text>
+                                  <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Overall Notes</Text>
                                 </View>
-                                <Text style={{ fontSize: 13, color: selectedJob.inspection?.notes ? colors.foreground : colors.muted, fontStyle: selectedJob.inspection?.notes ? "normal" : "italic" }}>
+                                <Text style={{ fontSize: 13, color: selectedJob.inspection?.notes ? jobSheetColors.foreground : jobSheetColors.muted, fontStyle: selectedJob.inspection?.notes ? "normal" : "italic" }}>
                                   {selectedJob.inspection?.notes || "No additional notes."}
                                 </Text>
                               </View>
                             </ScrollView>
                             {/* Footer */}
-                            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", gap: 12, padding: 20, paddingBottom: 36, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", gap: 12, padding: 20, paddingBottom: 36, backgroundColor: jobSheetColors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                               <TouchableOpacity
                                 onPress={() => setInspViewMode("form")}
                                 activeOpacity={0.8}
-                                style={{ flex: 1, backgroundColor: colors.background, borderRadius: 14, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: colors.border }}
+                                style={{ flex: 1, backgroundColor: jobSheetColors.background, borderRadius: 14, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: jobSheetColors.border }}
                               >
-                                <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>✏️ Edit</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>✏️ Edit</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setShowInspectionModal(false)}
                                 activeOpacity={0.8}
-                                style={{ flex: 2, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: "center" }}
+                                style={{ flex: 2, backgroundColor: jobSheetColors.primary, borderRadius: 14, paddingVertical: 14, alignItems: "center" }}
                               >
                                 <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>Done</Text>
                               </TouchableOpacity>
@@ -5582,12 +5579,12 @@ export default function ScheduleScreen() {
                                 const current = inspRatings[cat.id];
                                 const isDamage = cat.id === "damage";
                                 return (
-                                  <View key={cat.id} style={{ backgroundColor: colors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: current === "poor" ? "#EF4444" : colors.border }}>
+                                  <View key={cat.id} style={{ backgroundColor: jobSheetColors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: current === "poor" ? "#EF4444" : jobSheetColors.border }}>
                                     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
                                       <Text style={{ fontSize: 26 }}>{cat.emoji}</Text>
                                       <View style={{ flex: 1 }}>
-                                        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>{cat.label}</Text>
-                                        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{cat.desc}</Text>
+                                        <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>{cat.label}</Text>
+                                        <Text style={{ fontSize: 12, color: jobSheetColors.muted, marginTop: 2 }}>{cat.desc}</Text>
                                       </View>
                                     </View>
                                     {/* Rating buttons */}
@@ -5600,11 +5597,11 @@ export default function ScheduleScreen() {
                                             onPress={() => setInspRatings(prev => ({ ...prev, [cat.id]: opt.id }))}
                                             activeOpacity={0.7}
                                             style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", borderWidth: sel ? 2 : 1,
-                                              backgroundColor: sel ? opt.color + "25" : colors.surface,
-                                              borderColor: sel ? opt.color : colors.border }}
+                                              backgroundColor: sel ? opt.color + "25" : jobSheetColors.surface,
+                                              borderColor: sel ? opt.color : jobSheetColors.border }}
                                           >
                                             <Text style={{ fontSize: 16 }}>{opt.emoji}</Text>
-                                            <Text style={{ fontSize: 11, fontWeight: sel ? "700" : "500", color: sel ? opt.color : colors.muted, marginTop: 2 }}>{opt.label}</Text>
+                                            <Text style={{ fontSize: 11, fontWeight: sel ? "700" : "500", color: sel ? opt.color : jobSheetColors.muted, marginTop: 2 }}>{opt.label}</Text>
                                           </TouchableOpacity>
                                         );
                                       })}
@@ -5612,28 +5609,28 @@ export default function ScheduleScreen() {
                                     {/* Damage zone diagram — only for the damage category */}
                                     {isDamage && current === "poor" && (
                                       <View style={{ marginTop: 14 }}>
-                                        <Text style={[s.sectionLabel, { color: colors.muted, marginBottom: 8 }]}>TAP TO MARK DAMAGE LOCATION</Text>
+                                        <Text style={[s.sectionLabel, { color: jobSheetColors.muted, marginBottom: 8 }]}>TAP TO MARK DAMAGE LOCATION</Text>
                                         {/* Exterior / Interior toggle */}
-                                        <View style={{ flexDirection: "row", backgroundColor: colors.surface, borderRadius: 12, padding: 3, marginBottom: 10 }}>
+                                        <View style={{ flexDirection: "row", backgroundColor: jobSheetColors.surface, borderRadius: 12, padding: 3, marginBottom: 10 }}>
                                           <TouchableOpacity
                                             onPress={() => setInspDiagramTab("exterior")}
                                             activeOpacity={0.8}
-                                            style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: inspDiagramTab === "exterior" ? colors.primary : "transparent" }}
+                                            style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: inspDiagramTab === "exterior" ? jobSheetColors.primary : "transparent" }}
                                           >
-                                            <Text style={{ color: inspDiagramTab === "exterior" ? "#FFF" : colors.muted, fontWeight: "700", fontSize: 13 }}>🚗 Exterior</Text>
+                                            <Text style={{ color: inspDiagramTab === "exterior" ? "#FFF" : jobSheetColors.muted, fontWeight: "700", fontSize: 13 }}>🚗 Exterior</Text>
                                           </TouchableOpacity>
                                           <TouchableOpacity
                                             onPress={() => setInspDiagramTab("interior")}
                                             activeOpacity={0.8}
-                                            style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: inspDiagramTab === "interior" ? colors.primary : "transparent" }}
+                                            style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: inspDiagramTab === "interior" ? jobSheetColors.primary : "transparent" }}
                                           >
-                                            <Text style={{ color: inspDiagramTab === "interior" ? "#FFF" : colors.muted, fontWeight: "700", fontSize: 13 }}>🪑 Interior</Text>
+                                            <Text style={{ color: inspDiagramTab === "interior" ? "#FFF" : jobSheetColors.muted, fontWeight: "700", fontSize: 13 }}>🪑 Interior</Text>
                                           </TouchableOpacity>
                                         </View>
                                         {/* Zone count */}
                                         {(() => {
                                           const activeZones = inspDiagramTab === "exterior" ? inspExteriorZones : inspInteriorZones;
-                                          return <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Tap zones to mark damage · {activeZones.length} zone{activeZones.length !== 1 ? "s" : ""} selected</Text>;
+                                          return <Text style={{ color: jobSheetColors.muted, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Tap zones to mark damage · {activeZones.length} zone{activeZones.length !== 1 ? "s" : ""} selected</Text>;
                                         })()}
                                         {/* Car Diagram with image + tappable zones */}
                                         {(() => {
@@ -5707,22 +5704,22 @@ export default function ScheduleScreen() {
                                 );
                               })}
                               {/* Overall Notes */}
-                              <View style={{ backgroundColor: colors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground, marginBottom: 8 }}>📋 Overall Notes (optional)</Text>
+                              <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: jobSheetColors.border }}>
+                                <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground, marginBottom: 8 }}>📋 Overall Notes (optional)</Text>
                                 <TextInput
                                   value={inspNotes}
                                   onChangeText={setInspNotes}
                                   placeholder="Additional notes (optional)..."
-                                  placeholderTextColor={colors.muted}
+                                  placeholderTextColor={jobSheetColors.muted}
                                   multiline
                                   numberOfLines={3}
                                   returnKeyType="done"
-                                  style={{ color: colors.foreground, fontSize: 14, minHeight: 60, textAlignVertical: "top" }}
+                                  style={{ color: jobSheetColors.foreground, fontSize: 14, minHeight: 60, textAlignVertical: "top" }}
                                 />
                               </View>
                             </ScrollView>
                             {/* Save button */}
-                            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 36, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 36, backgroundColor: jobSheetColors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border }}>
                               <TouchableOpacity
                                 onPress={saveInspection}
                                 activeOpacity={0.8}
@@ -5748,37 +5745,37 @@ export default function ScheduleScreen() {
                       style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)" }}
                     />
                     {/* Panel */}
-                    <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%" }}>
+                    <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%" }}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                         <View>
-                          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>Add Upsells</Text>
+                          <Text style={{ fontSize: 18, fontWeight: "700", color: jobSheetColors.foreground }}>Add Upsells</Text>
 
                         </View>
                         <TouchableOpacity onPress={() => setShowUpsellPanel(false)}>
-                          <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
+                          <Text style={{ color: jobSheetColors.muted, fontSize: 24 }}>✕</Text>
                         </TouchableOpacity>
                       </View>
 
                       <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
                         {/* Custom Upsell Input — at top for quick access */}
-                        <View style={{ marginBottom: 16, padding: 14, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700", marginBottom: 10 }}>✏️ Custom Upsell</Text>
+                        <View style={{ marginBottom: 16, padding: 14, backgroundColor: jobSheetColors.surface, borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.border }}>
+                          <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "700", marginBottom: 10 }}>✏️ Custom Upsell</Text>
                           <View style={{ flexDirection: "row", gap: 8 }}>
                             <TextInput
                               value={customUpsellName}
                               onChangeText={setCustomUpsellName}
                               placeholder="Service name..."
-                              placeholderTextColor={colors.muted}
-                              style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.foreground, backgroundColor: colors.background, fontSize: 14 }}
+                              placeholderTextColor={jobSheetColors.muted}
+                              style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: jobSheetColors.foreground, backgroundColor: jobSheetColors.background, fontSize: 14 }}
                               returnKeyType="next"
                             />
                             <TextInput
                               value={customUpsellPrice}
                               onChangeText={setCustomUpsellPrice}
                               placeholder="$0.00"
-                              placeholderTextColor={colors.muted}
+                              placeholderTextColor={jobSheetColors.muted}
                               keyboardType="decimal-pad"
-                              style={{ width: 80, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.foreground, backgroundColor: colors.background, fontSize: 14 }}
+                              style={{ width: 80, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: jobSheetColors.foreground, backgroundColor: jobSheetColors.background, fontSize: 14 }}
                               returnKeyType="done"
                             />
                           </View>
@@ -5788,7 +5785,7 @@ export default function ScheduleScreen() {
                           const selected = upsellIds.includes(ad.id);
                           const qty = upsellQtys[ad.id] ?? 1;
                           return (
-                            <View key={ad.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                            <View key={ad.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border }}>
                               <TouchableOpacity
                                 onPress={() => {
                                   if (selected) {
@@ -5799,31 +5796,31 @@ export default function ScheduleScreen() {
                                     setUpsellQtys((prev) => ({ ...prev, [ad.id]: 1 }));
                                   }
                                 }}
-                                style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : "transparent", justifyContent: "center", alignItems: "center", marginRight: 12 }}
+                                style={{ width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: selected ? jobSheetColors.primary : jobSheetColors.border, backgroundColor: selected ? jobSheetColors.primary : "transparent", justifyContent: "center", alignItems: "center", marginRight: 12 }}
                               >
                                 {selected && <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "700" }}>✓</Text>}
                               </TouchableOpacity>
                               <Text style={{ fontSize: 15, marginRight: 6 }}>{ad.emoji}</Text>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>{ad.title}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 12 }}>${ad.price.toFixed(2)} each</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 14, fontWeight: "600" }}>{ad.title}</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 12 }}>${ad.price.toFixed(2)} each</Text>
                               </View>
                               {selected && (
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                   <TouchableOpacity
                                     onPress={() => setUpsellQtys((prev) => ({ ...prev, [ad.id]: Math.max(1, (prev[ad.id] ?? 1) - 1) }))}
-                                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}
+                                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: jobSheetColors.surface, borderWidth: 1, borderColor: jobSheetColors.border, justifyContent: "center", alignItems: "center" }}
                                   >
-                                    <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "700" }}>−</Text>
+                                    <Text style={{ color: jobSheetColors.foreground, fontSize: 16, fontWeight: "700" }}>−</Text>
                                   </TouchableOpacity>
-                                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600", minWidth: 20, textAlign: "center" }}>{qty}</Text>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 15, fontWeight: "600", minWidth: 20, textAlign: "center" }}>{qty}</Text>
                                   <TouchableOpacity
                                     onPress={() => setUpsellQtys((prev) => ({ ...prev, [ad.id]: (prev[ad.id] ?? 1) + 1 }))}
-                                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" }}
+                                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: jobSheetColors.primary, justifyContent: "center", alignItems: "center" }}
                                   >
                                     <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>+</Text>
                                   </TouchableOpacity>
-                                  <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600", minWidth: 52, textAlign: "right" }}>${(ad.price * qty).toFixed(2)}</Text>
+                                  <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600", minWidth: 52, textAlign: "right" }}>${(ad.price * qty).toFixed(2)}</Text>
                                 </View>
                               )}
                             </View>
@@ -5845,10 +5842,10 @@ export default function ScheduleScreen() {
                           const hasAny = upsellIds.length > 0 || customTotal > 0;
                           if (!hasAny) return null;
                           return (
-                            <View style={{ marginTop: 12, padding: 14, backgroundColor: colors.success + "15", borderRadius: 12, borderWidth: 1, borderColor: colors.success + "40" }}>
+                            <View style={{ marginTop: 12, padding: 14, backgroundColor: jobSheetColors.success + "15", borderRadius: 12, borderWidth: 1, borderColor: jobSheetColors.success + "40" }}>
                               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                                <Text style={{ color: colors.muted, fontSize: 13 }}>Upsell Total (added to job)</Text>
-                                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>+${total.toFixed(2)}</Text>
+                                <Text style={{ color: jobSheetColors.muted, fontSize: 13 }}>Upsell Total (added to job)</Text>
+                                <Text style={{ color: jobSheetColors.foreground, fontSize: 13, fontWeight: "600" }}>+${total.toFixed(2)}</Text>
                               </View>
 
                             </View>
@@ -5859,7 +5856,7 @@ export default function ScheduleScreen() {
                           onPress={saveUpsells}
                           disabled={savingUpsells}
                           activeOpacity={0.8}
-                          style={{ marginTop: 16, marginBottom: 8, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: "center", opacity: savingUpsells ? 0.6 : 1 }}
+                          style={{ marginTop: 16, marginBottom: 8, backgroundColor: jobSheetColors.primary, borderRadius: 14, paddingVertical: 14, alignItems: "center", opacity: savingUpsells ? 0.6 : 1 }}
                         >
                           <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>
                             {savingUpsells ? "Saving..." : upsellIds.length === 0 && !(customUpsellName.trim() && parseFloat(customUpsellPrice) > 0) ? "Remove All Upsells" : "Save Upsells"}
@@ -6016,7 +6013,7 @@ export default function ScheduleScreen() {
           {/* ─── In-App Chat — rendered INSIDE job detail Modal to avoid iOS two-modal limitation ─── */}
           {showChatModal && (
             <KeyboardAvoidingView
-              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.background, zIndex: 999 }}
+              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: jobSheetColors.background, zIndex: 999 }}
               behavior={Platform.OS === "ios" ? "padding" : "height"}
               keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
             >
@@ -6024,18 +6021,18 @@ export default function ScheduleScreen() {
               <View style={{
                 flexDirection: "row", alignItems: "center", justifyContent: "space-between",
                 paddingHorizontal: 16, paddingTop: Platform.OS === "ios" ? 56 : 12, paddingBottom: 14,
-                borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
-                backgroundColor: colors.background,
+                borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jobSheetColors.border,
+                backgroundColor: jobSheetColors.background,
               }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: jobSheetColors.primary, alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ fontSize: 18 }}>👤</Text>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 16, fontWeight: "800", color: colors.foreground }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: jobSheetColors.foreground }}>
                       {selectedJob ? `${selectedJob.firstName} ${selectedJob.lastName}` : "Customer"}
                     </Text>
-                    <Text style={{ fontSize: 12, color: chatWindowOpen ? "#22C55E" : colors.muted, marginTop: 1 }}>
+                    <Text style={{ fontSize: 12, color: chatWindowOpen ? "#22C55E" : jobSheetColors.muted, marginTop: 1 }}>
                       {chatWindowOpen ? "● Chat Active" : "● Chat Closed"}
                     </Text>
                   </View>
@@ -6045,19 +6042,19 @@ export default function ScheduleScreen() {
                   style={{ width: 36, height: 36, justifyContent: "center", alignItems: "center" }}
                   activeOpacity={0.7}
                 >
-                  <Text style={{ color: colors.muted, fontSize: 22, fontWeight: "700" }}>✕</Text>
+                  <Text style={{ color: jobSheetColors.muted, fontSize: 22, fontWeight: "700" }}>✕</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Messages */}
               {chatListQuery.isLoading ? (
                 <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color={jobSheetColors.primary} />
                 </View>
               ) : (chatListQuery.data?.messages?.length ?? 0) === 0 ? (
                 <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 32 }}>
                   <Text style={{ fontSize: 40, marginBottom: 12 }}>💬</Text>
-                  <Text style={{ color: colors.muted, fontSize: 15, textAlign: "center" }}>
+                  <Text style={{ color: jobSheetColors.muted, fontSize: 15, textAlign: "center" }}>
                     No messages yet.{"\n"}{chatWindowOpen ? "Start the conversation!" : "Chat window is not open."}
                   </Text>
                 </View>
@@ -6075,16 +6072,16 @@ export default function ScheduleScreen() {
                     return (
                       <View style={[{ flexDirection: "row", alignItems: "flex-end", marginBottom: 12 }, isMe ? { justifyContent: "flex-end" } : { justifyContent: "flex-start" }]}>
                         {!isMe && (
-                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 2 }}>
+                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: jobSheetColors.muted, alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 2 }}>
                             <Text style={{ color: "#fff", fontSize: 12 }}>👤</Text>
                           </View>
                         )}
                         <View style={[
                           { maxWidth: "75%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
-                          isMe ? { backgroundColor: colors.primary, borderBottomRightRadius: 4 } : { backgroundColor: colors.surface, borderBottomLeftRadius: 4 }
+                          isMe ? { backgroundColor: jobSheetColors.primary, borderBottomRightRadius: 4 } : { backgroundColor: jobSheetColors.surface, borderBottomLeftRadius: 4 }
                         ]}>
-                          <Text style={{ fontSize: 15, color: isMe ? "#fff" : colors.foreground, lineHeight: 21 }}>{item.message}</Text>
-                          <Text style={{ fontSize: 10, marginTop: 4, textAlign: "right", color: isMe ? "rgba(255,255,255,0.7)" : colors.muted }}>{time}</Text>
+                          <Text style={{ fontSize: 15, color: isMe ? "#fff" : jobSheetColors.foreground, lineHeight: 21 }}>{item.message}</Text>
+                          <Text style={{ fontSize: 10, marginTop: 4, textAlign: "right", color: isMe ? "rgba(255,255,255,0.7)" : jobSheetColors.muted }}>{time}</Text>
                         </View>
                       </View>
                     );
@@ -6098,20 +6095,20 @@ export default function ScheduleScreen() {
               <View style={{
                 flexDirection: "row", alignItems: "flex-end", gap: 10,
                 paddingHorizontal: 16, paddingVertical: 12,
-                borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
-                backgroundColor: colors.background,
+                borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: jobSheetColors.border,
+                backgroundColor: jobSheetColors.background,
               }}>
                 <TextInput
                   style={{
                     flex: 1, minHeight: 42, maxHeight: 120,
-                    backgroundColor: colors.surface, borderRadius: 21,
+                    backgroundColor: jobSheetColors.surface, borderRadius: 21,
                     paddingHorizontal: 16, paddingVertical: 10,
-                    fontSize: 15, color: colors.foreground,
+                    fontSize: 15, color: jobSheetColors.foreground,
                   }}
                   value={chatMessage}
                   onChangeText={setChatMessage}
                   placeholder={chatWindowOpen ? "Message customer…" : "Chat is no longer active"}
-                  placeholderTextColor={colors.muted}
+                  placeholderTextColor={jobSheetColors.muted}
                   multiline
                   maxLength={500}
                   editable={chatWindowOpen}
@@ -6120,8 +6117,8 @@ export default function ScheduleScreen() {
                 />
                 <TouchableOpacity
                   style={[
-                    { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-                    (!chatMessage.trim() || !chatWindowOpen) && { backgroundColor: colors.border },
+                    { width: 42, height: 42, borderRadius: 21, backgroundColor: jobSheetColors.primary, alignItems: "center", justifyContent: "center" },
+                    (!chatMessage.trim() || !chatWindowOpen) && { backgroundColor: jobSheetColors.border },
                   ]}
                   onPress={handleChatSend}
                   disabled={!chatMessage.trim() || !chatWindowOpen || chatSendMutation.isPending}

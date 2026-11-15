@@ -304,7 +304,8 @@ describe("shared job screen integration boundaries", () => {
     const tech = source("app/(tabs)/schedule.tsx");
     const admin = source("app/(tabs)/admin-schedule.tsx");
     expect(tech).toContain("companyJobMode ? <CompanyJobProgress");
-    expect(admin).toContain("if (companyJobMode) return <CompanyJobProgress");
+    expect(admin).toContain("{companyJobMode && <CompanyJobProgress");
+    expect(admin).toContain("if (companyJobMode) return null;");
     const advance = tech.slice(tech.indexOf("const advanceStatus ="), tech.indexOf("const deleteJob ="));
     expect(advance.indexOf("if (companyJobMode || job.companyId !== undefined) return;")).toBeLessThan(advance.indexOf("const now ="));
     for (const screen of [tech, admin]) {
@@ -349,8 +350,8 @@ describe("shared job screen integration boundaries", () => {
     expect(hook).toContain("focused && snapshot.key === key && snapshot.identity === identity");
     expect(hook).toContain("live.current.mounted && live.current.focused && live.current.key === key");
     const progress = source("components/company-job-progress.tsx");
-    expect(progress).toContain("timeZone: timezone");
-    expect(progress).toContain('return "Unknown"');
+    expect(progress).toContain("companyDurationMs(detail?.enRouteAt");
+    expect(progress).not.toContain('return "Unknown"');
     expect(progress).toContain("Only tap Arrived when you are physically at the customer location.");
   });
   it("preserves Job invoice and collection UI while Company invoice uses only canonical request", () => {
@@ -368,8 +369,8 @@ describe("shared job screen integration boundaries", () => {
     const progress = source("components/company-job-progress.tsx");
     expect(progress).toContain("companyFieldworkBlockReason(job.actor, detail)");
     expect(progress).not.toMatch(/ADMIN_FIELDWORK_PENDING|cancelManagement|user.role !== "technician"/);
-    expect(progress.match(/label: /g)).toHaveLength(4); // One type plus exactly three field buttons.
-    const block = admin.slice(admin.indexOf('>Management actions</Text>'), admin.indexOf('                {!showReassignPicker', admin.indexOf('>Management actions</Text>')));
+    expect(progress.match(/target: "(?:en_route|on_site|completed)"/g)).toHaveLength(3); // Exactly three canonical field buttons; style labels are not actions.
+    const block = admin.slice(admin.indexOf('Alert.alert("Company management Cancel"'), admin.indexOf('                {!showReassignPicker', admin.indexOf('Alert.alert("Company management Cancel"')));
     expect(block).toContain('Company management Cancel');
     expect(block).toContain('void companyJob.cancelManagement()');
     expect(block).toContain('{!companyJobMode && !selectedJob?.recurrenceParentId');
