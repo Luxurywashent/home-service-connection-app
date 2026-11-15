@@ -34,7 +34,12 @@ import { useCustomerAuth } from "@/lib/customer-context";
 
 // Register background geofence task at module level (required by expo-task-manager)
 // Must be called outside any component, at the top level of the entry file
-if ((Platform.OS as string) !== "web") {
+if (Platform.OS === "android") {
+  // Stop legacy registrations only; never initialize a background callback on Android.
+  import("@/lib/geofence-task").then(({ cleanupAndroidGeofencing }) => {
+    return cleanupAndroidGeofencing();
+  }).catch(() => {});
+} else if ((Platform.OS as string) !== "web") {
   // Lazy import to avoid issues on web
   import("@/lib/geofence-task").then(({ defineGeofenceTask }) => {
     // The logEvent mutation is called from within the task via a direct fetch

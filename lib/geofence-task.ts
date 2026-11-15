@@ -9,8 +9,8 @@
  *   1. Call `startGeofencing(zones, employeeId, fullName)` when the detailer logs in.
  *   2. Call `stopGeofencing()` when the detailer logs out.
  *
- * Note: Background geofencing only works on physical iOS/Android devices.
- *       It is silently skipped on web and simulators.
+ * Note: Background geofencing is enabled only on iOS for this release.
+ *       Android and web cannot define or start background monitoring.
  */
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager/build/TaskManager";
@@ -28,9 +28,11 @@ export function defineGeofenceTask(trpcMutate: (data: {
   zoneId: string; zoneName?: string; eventType: "enter" | "exit";
   latitude?: number; longitude?: number;
 }) => Promise<void>) {
-  if (Platform.OS === "web") return;
+  if (Platform.OS === "web" || Platform.OS === "android") return;
 
   TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
+    // Defense in depth: never process an Android event, even via an indirect caller.
+    if (Platform.OS === "web" || Platform.OS === "android") return;
     if (error) { console.warn("[Geofence] Task error:", error.message); return; }
     if (!data) return;
 
@@ -73,7 +75,7 @@ export async function startGeofencing(
   employeeId: string,
   fullName: string,
 ): Promise<void> {
-  if (Platform.OS === "web") return;
+  if (Platform.OS === "web" || Platform.OS === "android") return;
   if (zones.length === 0) return;
 
   _employeeId = employeeId;
@@ -135,9 +137,23 @@ export async function stopGeofencing(): Promise<void> {
   }
 }
 
+/** Remove legacy Android monitoring without defining a task or requesting permission. */
+export async function cleanupAndroidGeofencing(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await stopGeofencing();
+  // A failed native stop must not leave an old registered task behind.
+  try {
+    if (await TaskManager.isTaskRegisteredAsync(GEOFENCE_TASK_NAME)) {
+      await TaskManager.unregisterTaskAsync(GEOFENCE_TASK_NAME);
+    }
+  } catch (e) {
+    console.warn("[Geofence] Legacy Android task cleanup failed:", e);
+  }
+}
+
 /** Check if geofencing is currently active */
 export async function isGeofencingActive(): Promise<boolean> {
-  if (Platform.OS === "web") return false;
+  if (Platform.OS === "web" || Platform.OS === "android") return false;
   try {
     return await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
   } catch {

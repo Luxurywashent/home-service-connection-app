@@ -71,6 +71,11 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
+    // This Android release supports location only while the app is active.
+    blockedPermissions: [
+      "android.permission.ACCESS_BACKGROUND_LOCATION",
+      "android.permission.FOREGROUND_SERVICE_LOCATION",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -133,7 +138,8 @@ const config: ExpoConfig = {
       {
         locationAlwaysAndWhenInUsePermission: "Allow Home Service Connection to access your location in the background for service-area alerts.",
         locationWhenInUsePermission: "Allow Home Service Connection to access your location so customers can track service arrival.",
-        isAndroidBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: false,
+        isAndroidForegroundServiceEnabled: false,
       },
     ],
     [

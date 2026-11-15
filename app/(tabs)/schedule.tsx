@@ -49,7 +49,7 @@ import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/jo
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
+import { createForegroundLocationSession } from "@/lib/foreground-location-session";
 
 // ─── Service Catalog ──────────────────────────────────────────────────────────
 
@@ -2370,9 +2370,17 @@ export default function ScheduleScreen() {
   const locationDeactivateMutation = trpc.location.deactivate.useMutation();
   const createTokenMutation = trpc.location.createToken.useMutation();
   const expireTokensMutation = trpc.location.expireTokens.useMutation();
-  const [locationWatcher, setLocationWatcher] = useState<Location.LocationSubscription | null>(null);
+  const locationSessionRef = useRef<ReturnType<typeof createForegroundLocationSession> | null>(null);
+  if (!locationSessionRef.current) locationSessionRef.current = createForegroundLocationSession();
+  const locationSession = locationSessionRef.current;
   const [isSharing, setIsSharing] = useState(false);
   const [trackingToken, setTrackingToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    locationSession.mount();
+    // Local resource cleanup only: background/unmount must never invoke the Arrived handler.
+    return () => locationSession.dispose();
+  }, [locationSession]);
 
   // ─── Messaging State ──────────────────────────────────────────────────────────
   const [showChatModal, setShowChatModal] = useState(false);
@@ -3383,26 +3391,26 @@ export default function ScheduleScreen() {
   // Start GPS location sharing and create a customer tracking token
   const startLocationSharing = async (job: Job) => {
     if (!employee) return;
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") return;
-    // Create tracking token for the customer
-    try {
-      const address = job.address || "";
-      const result = await createTokenMutation.mutateAsync({
-        employeeId: employee.employeeId,
-        jobId: job.id,
-        customerAddress: address || undefined,
-        customerName: `${job.firstName} ${job.lastName}`.trim() || undefined,
-        detailerName: employee.fullName,
-      });
-      setTrackingToken(result.token);
-    } catch (e) {
-      console.warn("[Tracking] Failed to create token:", e);
-    }
-    // Start watching position every 5s / 10m (matches Uber/DoorDash cadence)
-    const sub = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
-      (loc) => {
+    await locationSession.start({
+      key: `${employee.employeeId}:${job.id}`,
+      onReady: async (isCurrent) => {
+        // Create a token once for this user-started session, never on foreground resume.
+        try {
+          const address = job.address || "";
+          const result = await createTokenMutation.mutateAsync({
+            employeeId: employee.employeeId,
+            jobId: job.id,
+            customerAddress: address || undefined,
+            customerName: `${job.firstName} ${job.lastName}`.trim() || undefined,
+            detailerName: employee.fullName,
+          });
+          if (isCurrent()) setTrackingToken(result.token);
+        } catch (e) {
+          console.warn("[Tracking] Failed to create token:", e);
+        }
+      },
+      // The session rejects stale callbacks and Android callbacks outside active AppState.
+      onLocation: (loc) => {
         locationUpsertMutation.mutate({
           employeeId: employee.employeeId,
           fullName: employee.fullName,
@@ -3412,36 +3420,34 @@ export default function ScheduleScreen() {
           customerAddress: job.address || undefined,
           status: "on_my_way",
         });
-      }
-    );
-    setLocationWatcher(sub);
-    setIsSharing(true);
+      },
+      onStarted: () => setIsSharing(true),
+    });
   };
 
   // Stop GPS sharing — push a final 'arrived' location update so pin stays on fleet map
   const stopLocationSharing = (jobId?: string) => {
-    if (locationWatcher) { locationWatcher.remove(); setLocationWatcher(null); }
+    locationSession.stop();
     setIsSharing(false);
     setTrackingToken(null);
     if (employee) {
       if (Platform.OS !== "web") {
         // Push current GPS with 'arrived' status so pin stays visible and up-to-date
+        const isAllowed = locationSession.captureForegroundGuard();
         (async () => {
-          try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === "granted") {
-              const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-              locationUpsertMutation.mutate({
-                employeeId: employee.employeeId,
-                fullName: employee.fullName,
-                lat: loc.coords.latitude,
-                lng: loc.coords.longitude,
-                status: "arrived",
-              });
-            } else {
-              locationDeactivateMutation.mutate({ employeeId: employee.employeeId });
-            }
-          } catch (_) {
+          const result = await locationSession.getCurrentPosition();
+          // Includes permission/current-position resolving after backgrounding or unmount.
+          if (!isAllowed() || result.status === "cancelled") return;
+          if (result.status === "available") {
+            const loc = result.location;
+            locationUpsertMutation.mutate({
+              employeeId: employee.employeeId,
+              fullName: employee.fullName,
+              lat: loc.coords.latitude,
+              lng: loc.coords.longitude,
+              status: "arrived",
+            });
+          } else {
             locationDeactivateMutation.mutate({ employeeId: employee.employeeId });
           }
         })();

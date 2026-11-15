@@ -120,11 +120,11 @@ export default function TabLayout() {
 
   // Auto-start geofencing for detailers when they log in
   const zonesQuery = trpc.geofence.listZones.useQuery(undefined, {
-    enabled: !!employee && !isAdmin && Platform.OS !== "web",
+    enabled: !!employee && !isAdmin && Platform.OS !== "web" && Platform.OS !== "android",
     staleTime: 5 * 60 * 1000,
   });
   useEffect(() => {
-    if (!employeeId || isAdmin || Platform.OS === "web") return;
+    if (!employeeId || isAdmin || Platform.OS === "web" || Platform.OS === "android") return;
     const zones = (zonesQuery.data ?? []) as any[];
     const activeZones = zones.filter((z: any) => z.isActive === 1 && z.latitude && z.longitude);
     if (activeZones.length === 0) return;
