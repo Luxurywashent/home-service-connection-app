@@ -59,6 +59,7 @@ function fixture(overrides: Record<string, any> = {}) {
     utils: { jobs: { listByLocation: { fetch: vi.fn().mockResolvedValue([]) }, getAddressPhotos: { fetch: vi.fn().mockResolvedValue([]) }, getPhotos: { fetch: vi.fn().mockResolvedValue({ urls: [] }) } }, customer: { listByLocation: { fetch: vi.fn().mockResolvedValue([]) } }, performance: { getDateRange: { invalidate: vi.fn() } } },
     setAddrPhotoUploading: vi.fn(), setSavingMeta: vi.fn(), setSavingUpsells: vi.fn(), setShowUpsellPanel: vi.fn(), setUpsellIds: vi.fn(), setUpsellQtys: vi.fn(),
     setCustomUpsellName: vi.fn(), setCustomUpsellPrice: vi.fn(), setShowCheckout: vi.fn(), setIsRefunding: vi.fn(), setViewingAddrPhoto: vi.fn(),
+    setCheckoutDisplayJob: vi.fn(),
     addrPhotos: [], upsellIds: [], upsellQtys: {}, customUpsellName: "Offline add-on", customUpsellPrice: "25", ADDONS: [],
     checkoutJobRef: { current: legacyJob }, checkoutScopeRef: { current: null }, checkoutRenderOrigin: null, checkoutTimerRef: { current: null },
     checkoutIdentity: "checkout-scope", checkoutLiveRef: { current: { identity: "checkout-scope", generation: 1, selectedId: undefined } },

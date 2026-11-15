@@ -18,6 +18,8 @@ export type JobSyncNativeSession = {
     memberId?: string;
     /** Raw individual override from the signed Company session, not position eligibility. */
     calendarEligible?: boolean | null;
+    /** Computed live Company capability; missing/null is unknown, never inferred from role. */
+    paymentCollectionEnabled?: boolean | null;
   };
   company?: {
     id: number;
@@ -200,7 +202,7 @@ export class JobSyncApiError extends Error {
   }
 }
 
-async function requestJson(path: string, init: RequestInit, expectedSuccessStatus?: number) {
+async function requestJson(path: string, init: RequestInit, expectedSuccessStatus?: number | readonly number[]) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
@@ -221,7 +223,8 @@ async function requestJson(path: string, init: RequestInit, expectedSuccessStatu
       const error = asRecord(asRecord(payload)?.error);
       throw new JobSyncApiError(errorMessage(payload, response.status === 401 ? "Invalid email or password." : "Home Service Connected could not complete this request."), response.status, firstString(error?.code));
     }
-    if (expectedSuccessStatus !== undefined && response.status !== expectedSuccessStatus) {
+    if (expectedSuccessStatus !== undefined && (typeof expectedSuccessStatus === "number"
+      ? response.status !== expectedSuccessStatus : !expectedSuccessStatus.includes(response.status))) {
       throw new JobSyncApiError("The backend returned an unexpected acknowledgment. Refresh before trying again.", response.status, "INVALID_RESPONSE");
     }
     return payload;
@@ -547,6 +550,60 @@ function requireJobSyncMutationToken(token: string) {
   }
 }
 
+/** Flat projection of the exact wire { checkout: ... } acknowledgment, not payment-ledger truth. */
+export type JobSyncCompanyJobCheckout = {
+  url: string | null;
+  amountCents: number;
+  attemptId: number;
+  attemptStatus: "creating" | "pending" | "processing" | "succeeded" | "failed" | "expired" | "canceled";
+  checkoutState: "open" | "processing" | "creating";
+  reused: boolean;
+};
+
+/** Validates provider-hosted checkout only; callers must ALSO require checkoutState === "open". */
+export function validateCompanyCheckoutUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 8192 || /[\u0000-\u0020\u007f\\]/.test(value)
+    || /%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
+  // Inspect the raw authority too: URL parsing otherwise hides an explicit :443 port.
+  // Stripe's official Checkout URL includes an opaque #fidkdWx... provider fragment.
+  const match = value.match(/^https:\/\/checkout\.stripe\.com(\/[^?#]*)(?:\?[^#]*)?(?:#[A-Za-z0-9_%+=/.-]+)?$/i);
+  if (!match || !/^\/c\/pay\/cs_[A-Za-z0-9_]+$/.test(match[1])) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "checkout.stripe.com"
+      && !url.username && !url.password && !url.port && url.pathname === match[1] ? value : null;
+  } catch { return null; }
+}
+
+function isPositiveCheckoutInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+/** One hosted checkout POST; the server selects the entire canonical balance and account. */
+export async function createJobSyncCompanyJobCheckout(token: string, jobId: number): Promise<JobSyncCompanyJobCheckout> {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/checkout`, {
+    method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({}),
+  }, [200, 201]));
+  const checkout = asRecord(result?.checkout);
+  const url = validateCompanyCheckoutUrl(checkout?.url);
+  if (!checkout || !isPositiveCheckoutInteger(checkout.amountCents) || checkout.amountCents < 50
+    || !isPositiveCheckoutInteger(checkout.attemptId)
+    || !["creating", "pending", "processing", "succeeded", "failed", "expired", "canceled"].includes(checkout.attemptStatus as string)
+    || !["open", "processing", "creating"].includes(checkout.checkoutState as string)
+    || typeof checkout.reused !== "boolean" || (checkout.url !== null && !url)
+    || (checkout.checkoutState === "open" && !url)) {
+    throw new JobSyncApiError("The backend did not acknowledge a safe Company checkout. Refresh the Job before trying again.", null, "INVALID_RESPONSE");
+  }
+  return {
+    url, amountCents: checkout.amountCents, attemptId: checkout.attemptId,
+    attemptStatus: checkout.attemptStatus as JobSyncCompanyJobCheckout["attemptStatus"],
+    checkoutState: checkout.checkoutState as JobSyncCompanyJobCheckout["checkoutState"],
+    reused: checkout.reused,
+  };
+}
+
 /** Validate actual encoded file bytes without Buffer/atob dependencies in native bundles. */
 function validateJobSyncPhotoUpload(input: JobSyncJobPhotoUploadInput) {
   if (!asRecord(input) || !["image/jpeg", "image/png", "image/webp"].includes(input.contentType)) {
@@ -814,12 +871,17 @@ export function normalizeJobSyncMobileSession(payload: unknown, token: string): 
   // Missing is unavailable, null is inherited/unset, and malformed is rejected.
   // Do not confer a Company capability on a platform session or use roster defaults.
   if (user.calendarEligible !== undefined && rawNullableBoolean(user.calendarEligible) === undefined) return null;
+  if (user.paymentCollectionEnabled !== undefined && rawNullableBoolean(user.paymentCollectionEnabled) === undefined) return null;
   const companyId = firstNumber(company?.id, company?.companyId, profile.companyId, session.companyId, user.companyId);
   if (!companyId || !company) return null;
   return {
     token,
     portal: "company",
-    user: { ...normalizedUser, ...(user.calendarEligible !== undefined ? { calendarEligible: rawNullableBoolean(user.calendarEligible) } : {}) },
+    user: {
+      ...normalizedUser,
+      ...(user.calendarEligible !== undefined ? { calendarEligible: rawNullableBoolean(user.calendarEligible) } : {}),
+      ...(user.paymentCollectionEnabled !== undefined ? { paymentCollectionEnabled: rawNullableBoolean(user.paymentCollectionEnabled) } : {}),
+    },
     company: {
       id: companyId,
       name: firstString(company.name, company.companyName, profile.companyName) ?? "Company workspace",

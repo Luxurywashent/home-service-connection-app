@@ -60,6 +60,7 @@ import {
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { CompanyJobProgress } from "@/components/company-job-progress";
+import { CompanyJobCheckout } from "@/components/company-job-checkout";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
@@ -5419,7 +5420,29 @@ export default function AdminScheduleScreen() {
         ) : null}
 
         {/* Checkout overlay — rendered inside the job detail Modal to avoid stacked-modal iOS touch issues */}
-        {selectedJob && (
+        {selectedJob && companyJobMode && <CompanyJobCheckout
+          visible={showCheckout}
+          presentation="overlay"
+          session={jobSyncSession}
+          jobId={positiveJobSyncId(selectedJob.id)}
+          customerName={`${selectedJob.firstName} ${selectedJob.lastName}`.trim()}
+          isCurrent={() => managementActionRef.current.mounted && managementActionRef.current.focused
+            && showCheckout && checkoutEpochRef.current === renderedCheckoutEpoch && sheetEpochRef.current === renderedSheetEpoch
+            && invoiceSessionRef.current.key === invoiceIdentityKey && invoiceSessionRef.current.generation === invoiceGeneration}
+          onClose={() => { if (managementActionRef.current.mounted && managementActionRef.current.focused
+            && checkoutEpochRef.current === renderedCheckoutEpoch && sheetEpochRef.current === renderedSheetEpoch) setShowCheckout(false); }}
+          onVerifiedDetail={(detail) => {
+            if (!managementActionRef.current.mounted || !managementActionRef.current.focused || !showCheckout
+              || checkoutEpochRef.current !== renderedCheckoutEpoch || sheetEpochRef.current !== renderedSheetEpoch
+              || invoiceSessionRef.current.key !== invoiceIdentityKey || invoiceSessionRef.current.generation !== invoiceGeneration
+              || detail.companyId !== jobSyncSession?.company?.id || detail.id !== positiveJobSyncId(selectedJob.id)) return;
+            const fields = { paidTotal: detail.paidTotal, refundTotal: detail.refundTotal, appliedEstimateCredit: detail.appliedEstimateCredit,
+              balance: detail.balance, paymentStatus: detail.paymentStatus, price: detail.amount ?? selectedJob.price };
+            setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
+            setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
+          }}
+        />}
+        {selectedJob && !companyJobMode && (
           <AdminCheckoutModal
             visible={showCheckout}
             job={selectedJob}

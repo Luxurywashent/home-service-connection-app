@@ -50,6 +50,7 @@ import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingState, positiveJobSyncId } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { CompanyJobProgress } from "@/components/company-job-progress";
+import { CompanyJobCheckout } from "@/components/company-job-checkout";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, isAssignedCompanyTechnician, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
 import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
@@ -2509,6 +2510,7 @@ export default function ScheduleScreen() {
     },
   });
   const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutDisplayJob, setCheckoutDisplayJob] = useState<Job | null>(null);
   const checkoutJobRef = useRef<Job | null>(null); // keeps job data alive after detail modal closes
   const checkoutScopeRef = useRef<{ identity: string; generation: number; isCurrent: () => boolean; completed: boolean } | null>(null);
   const checkoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2688,6 +2690,7 @@ export default function ScheduleScreen() {
   useEffect(() => { highlightJobHandledRef.current = null; }, [checkoutIdentity]);
   useEffect(() => {
     setShowCheckout(false);
+    setCheckoutDisplayJob(null);
   }, [checkoutIdentity, screenFocusEpoch]);
   useEffect(() => () => {
     checkoutLiveRef.current.generation += 1;
@@ -2707,6 +2710,7 @@ export default function ScheduleScreen() {
       && (!checkoutLiveRef.current.selectedId || checkoutLiveRef.current.selectedId === job.id);
     checkoutJobRef.current = job;
     checkoutScopeRef.current = { identity, generation, isCurrent, completed: false };
+    setCheckoutDisplayJob(job);
     setSelectedJob(null);
     setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({});
     if (checkoutTimerRef.current) clearTimeout(checkoutTimerRef.current);
@@ -2717,6 +2721,7 @@ export default function ScheduleScreen() {
     const job = checkoutJobRef.current;
     if (!origin?.isCurrent() || origin !== checkoutRenderOrigin || !job) return;
     setShowCheckout(false);
+    setCheckoutDisplayJob(null);
     checkoutJobRef.current = null; checkoutScopeRef.current = null;
     const generation = ++checkoutLiveRef.current.generation;
     const focusGeneration = legacyMediaSessionRef.current.focusGeneration;
@@ -6426,10 +6431,28 @@ export default function ScheduleScreen() {
       </Modal>
 
       {/* Checkout Modal - rendered at root level to avoid iOS nested-modal issue */}
-      {(checkoutJobRef.current ?? selectedJob) && showCheckout && (
+      {checkoutDisplayJob && showCheckout && companyJobMode && <CompanyJobCheckout
+        visible={showCheckout}
+        session={jobSyncSession}
+        jobId={positiveJobSyncId(checkoutDisplayJob.id)}
+        customerName={`${checkoutDisplayJob.firstName} ${checkoutDisplayJob.lastName}`.trim()}
+        isCurrent={() => checkoutRenderOrigin === checkoutScopeRef.current && Boolean(checkoutRenderOrigin?.isCurrent())}
+        onClose={closeCheckout}
+        onVerifiedDetail={(detail) => {
+          const job = checkoutJobRef.current;
+          if (!job || checkoutRenderOrigin !== checkoutScopeRef.current || !checkoutRenderOrigin?.isCurrent()
+            || detail.companyId !== jobSyncSession?.company?.id || detail.id !== positiveJobSyncId(job.id) || job.companyId !== detail.companyId) return;
+          const fields = { paidTotal: detail.paidTotal, refundTotal: detail.refundTotal, appliedEstimateCredit: detail.appliedEstimateCredit,
+            balance: detail.balance, paymentStatus: detail.paymentStatus, price: detail.amount ?? job.price };
+          checkoutJobRef.current = { ...job, ...fields };
+          setCheckoutDisplayJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
+          setJobs((previous) => previous.map((item) => item.id === String(detail.id) && item.companyId === detail.companyId ? { ...item, ...fields } : item));
+        }}
+      />}
+      {checkoutDisplayJob && showCheckout && !companyJobMode && (
         <CheckoutModal
           visible={showCheckout}
-          job={(checkoutJobRef.current ?? selectedJob)!}
+          job={checkoutDisplayJob}
           canUseLegacyBilling={canUseLegacyBilling}
           onClose={closeCheckout}
           onComplete={(p) => {
