@@ -39,7 +39,7 @@ type PhotoJobProps = {
   job: Pick<
     ReturnType<typeof useCompanyJob>,
     "detail" | "loading" | "pending" | "error" | "refresh"
-  >;
+  > & Partial<Pick<ReturnType<typeof useCompanyJob>, "verifiedPhotoDetail" | "acceptVerifiedDetail">>;
   /** Must refresh canonical bearer Job detail; never an Image reload or legacy media read. */
   onRefresh?: () => void | Promise<void>;
 };
@@ -53,6 +53,12 @@ type PreviewProps = PhotoJobProps & {
 
 const IMAGE_ERROR =
   "Photo could not load. Its signed link may have expired. Refresh Job photos to retry; JobSync must renew expired links.";
+
+function photoProps<T extends PhotoJobProps>(props: T): T {
+  return props.job.verifiedPhotoDetail && !props.job.loading && !props.job.pending
+    ? { ...props, job: { ...props.job, detail: props.job.verifiedPhotoDetail, error: null } }
+    : props;
+}
 
 function useMounted() {
   const mounted = useRef(true);
@@ -202,8 +208,27 @@ function ScopedCompanyJobPhotos(
     Boolean(props.scope) &&
     companyPhotoScope(live.current.session, live.current.jobId) === props.scope;
   const { refreshing, error, refresh } = usePhotoRefresh(props, current);
-  const operation = useCompanyPhotoOperation({ ...props, onRefresh: props.onRefresh ?? props.job.refresh });
-  const canonicalProps = operation.detail ? { ...props, job: { ...props.job, detail: operation.detail } } : props;
+  const sharedProps = photoProps(props);
+  // The helper deliberately rejects private detail when a parent read is unavailable. During its
+  // own reconciliation only, retain the accessible pre-refresh input so its independent verified
+  // readback can be handed to the parent even if that parent's progress read failed. This input is
+  // never rendered as a fallback gallery and cannot authorize a new operation while pending.
+  const ownRead = useRef<PhotoJobProps["job"] | null>(null);
+  const sameAccess = !sharedProps.job.detail || (sharedProps.job.detail.id === props.jobId && sharedProps.job.detail.companyId === props.session?.company?.id && (props.session?.user.role !== "technician" || sharedProps.job.detail.assignedUserId === props.session.user.id));
+  const readbackInput = ownRead.current && sameAccess && !sharedProps.job.pending
+    ? { ...sharedProps, job: ownRead.current } : sharedProps;
+  const operation = useCompanyPhotoOperation({ ...readbackInput, onRefresh: async () => {
+    if (!current()) return;
+    ownRead.current = currentCompanyGallery(sharedProps) !== null ? sharedProps.job : ownRead.current;
+    await (props.onRefresh ? props.onRefresh() : props.job.refresh());
+  } });
+  useEffect(() => {
+    if (operation.detail && !operation.pending && current()) {
+      props.job.acceptVerifiedDetail?.(operation.detail, props.scope!);
+      ownRead.current = null;
+    } else if (!operation.pending) ownRead.current = null;
+  }, [operation.detail, operation.pending, props.scope]);
+  const canonicalProps = operation.detail ? { ...sharedProps, job: { ...sharedProps.job, detail: operation.detail, error: null } } : sharedProps;
   const photos = operation.focused ? currentCompanyPhotos(canonicalProps) : [];
   const [confirmation, setConfirmation] = useState<{ photoId: number; detail: unknown } | null>(null);
   const removeLock = useRef(false);
@@ -222,6 +247,10 @@ function ScopedCompanyJobPhotos(
     sameCompanyPhoto(currentCompanyPhotos(canonicalLive.current.props), photo);
   const busy = props.job.loading || props.job.pending || refreshing || operation.pending;
   const authoritative = operation.focused && !busy && currentCompanyGallery(canonicalProps) !== null;
+  const persistedIds = canonicalProps.job.detail?.persistedPhotoIds;
+  const completeIds = authoritative && Array.isArray(persistedIds);
+  const trulyEmpty = completeIds && persistedIds.length === 0;
+  const hiddenPhotos = completeIds && persistedIds.length > photos.length;
   return (
     <View
       style={[
@@ -230,7 +259,7 @@ function ScopedCompanyJobPhotos(
       ]}
     >
       <Text style={[styles.heading, { color: colors.foreground }]}>
-        BEFORE & AFTER PHOTOS ({busy ? "…" : photos.length})
+        BEFORE & AFTER PHOTOS ({busy ? "…" : completeIds ? persistedIds.length : photos.length || "unavailable"})
       </Text>
       <CompanyPhotoDraft
         session={props.session}
@@ -248,18 +277,21 @@ function ScopedCompanyJobPhotos(
       ) : null}
       {operation.message ? <Text style={{ color: colors.muted }}>{operation.message}</Text> : null}
       {operation.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{operation.error}</Text> : null}
-      {props.job.error || error ? (
+      {canonicalProps.job.error || error ? (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {props.job.error || error}
+          {canonicalProps.job.error || error}
         </Text>
       ) : null}
       {!busy && !photos.length ? (
         <Text style={{ color: colors.muted }}>
-          {authoritative
+          {trulyEmpty
             ? "No server photos for this Job."
-            : "Server gallery unavailable. Refresh Job to retry."}
+            : hiddenPhotos
+              ? "Server photos are stored for this Job, but their images are unavailable. Refresh photos to retry."
+              : "Server gallery unavailable. Refresh Job to retry."}
         </Text>
       ) : null}
+      {!busy && photos.length > 0 && hiddenPhotos ? <Text style={{ color: colors.muted }}>Some stored server photos have unavailable images. Refresh photos to retry.</Text> : null}
       <FlatList
         data={busy ? [] : photos}
         horizontal
@@ -332,7 +364,8 @@ export function CompanyJobPhotoPreview(props: PreviewProps) {
   const focused = useIsFocused();
   const scope = companyPhotoScope(props.session, props.jobId);
   const selection = props.photo;
-  const photos = currentCompanyPhotos(props);
+  const canonicalProps = photoProps(props);
+  const photos = currentCompanyPhotos(canonicalProps);
   const photo =
     focused && selection && selection.scope === scope
       ? photos.find(
@@ -350,7 +383,7 @@ export function CompanyJobPhotoPreview(props: PreviewProps) {
   return (
     <ScopedCompanyJobPhotoPreview
       key={`${scope}:${photo.id}:${photo.imageUrl}`}
-      {...props}
+      {...canonicalProps}
       currentPhoto={photo}
       scope={scope}
     />

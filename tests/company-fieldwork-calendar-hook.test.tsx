@@ -146,7 +146,11 @@ describe("screen integration safeguards", () => {
     expect(source).toContain("<CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId}");
     expect(source).toContain("<CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId}");
     expect(source).toContain("onRefresh={refreshCompanyJob}");
-    expect(source).toMatch(/const refreshCompanyJob = async \(\) => \{\s*setCompanyPhotoPreview\(null\);\s*await companyJob.refresh\(\)/);
+    if (name === "admin-customer-profile") {
+      expect(source).toMatch(/const refreshCompanyJob = async \(\) => \{\s*if \(!currentScope\(previewScope\) \|\| !verifiedSelectedCompanyJob\) return;\s*setCompanyPhotoPreview\(null\);\s*await companyJob.refresh\(\)/);
+    } else {
+      expect(source).toMatch(/const refreshCompanyJob = async \(\) => \{\s*setCompanyPhotoPreview\(null\);\s*await companyJob.refresh\(\)/);
+    }
     expect(source).not.toContain("<CompanyJobPhotoPreview url=");
   });
   it("retains canonical assignments in a visible fallback and verifies every new calendar assignment", () => {

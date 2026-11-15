@@ -11,8 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useState, useMemo, useEffect } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -22,9 +22,11 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { AddJobModal } from "@/components/add-job-modal";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useCompanyJob } from "@/hooks/use-company-job";
-import { positiveJobSyncId } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyCustomers, getJobSyncCompanyJobs, getJobSyncMobileSession, positiveJobSyncId, type JobSyncCompanyCustomer, type JobSyncMobileJob } from "@/lib/jobsync-mobile-api";
+import { useEmployeeAuth } from "@/lib/auth-context";
+import { getSessionToken } from "@/lib/_core/auth";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
-import { JOB_VIDEOS_ENABLED } from "@/lib/company-job-fieldwork";
+import { companyManagementCancelBlockReason, JOB_VIDEOS_ENABLED } from "@/lib/company-job-fieldwork";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtCurrency(val: number | string | null | undefined): string {
@@ -86,20 +88,113 @@ export default function AdminCustomerProfileScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
   const [showAddJobModal, setShowAddJobModal] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [selectedJob, updateSelectedJob] = useState<any | null>(null);
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
-  const companyJobMode = jobSyncLoading || jobSyncSession !== null || selectedJob?.companyId !== undefined;
+  const { employee, loading: employeeLoading } = useEmployeeAuth();
+  const focused = useIsFocused();
+  // Retain Company provenance for this mounted profile, including a signed-session logout.
+  const companyProvenance = useRef(false);
+  if (jobSyncSession || employee?.sessionSource === "jobsync" || employee?.companyId != null || selectedJob?.companyId !== undefined) companyProvenance.current = true;
+  const companyJobMode = jobSyncLoading || employeeLoading || companyProvenance.current;
+  const legacyAllowed = !companyJobMode && focused && !!employee;
+  const profileKey = JSON.stringify([companyJobMode, focused, params.customerId, params.fullName, params.phone, params.email,
+    employee?.employeeId, employee?.role, employee?.sessionSource, employee?.companyId,
+    jobSyncSession?.portal, jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id,
+    jobSyncSession?.user.role, jobSyncSession?.user.calendarEligible]);
+  const live = useRef({ key: profileKey, epoch: 0, selectionEpoch: 0, mounted: true, legacyAllowed, selected: selectedJob });
+  if (live.current.key !== profileKey) live.current.epoch++;
+  Object.assign(live.current, { key: profileKey, legacyAllowed, selected: selectedJob });
+  const profileEpoch = live.current.epoch;
+  const setSelectedJob = (job: any | null) => {
+    live.current.selectionEpoch++; // Close/reopen the same ID invalidates retained callbacks synchronously.
+    live.current.selected = job;
+    updateSelectedJob(job);
+  };
+  useEffect(() => {
+    live.current.mounted = true;
+    return () => { live.current.mounted = false; live.current.epoch++; };
+  }, []);
+  useEffect(() => { setSelectedJob(null); }, [profileKey]);
+  const captureScope = () => ({ key: profileKey, epoch: profileEpoch, selectionEpoch: live.current.selectionEpoch, token: legacyToken?.token });
+  type Scope = ReturnType<typeof captureScope>;
+  const currentScope = (scope: Scope, legacy = false) => live.current.mounted && live.current.key === scope.key
+    && live.current.epoch === scope.epoch && live.current.selectionEpoch === scope.selectionEpoch
+    && (!legacy || live.current.legacyAllowed);
+  // Native legacy token is not observable through EmployeeAuth. Read it on focus and independently
+  // before every dispatch/result/refetch; never let a replaced token continue an old callback.
+  const [legacyToken, setLegacyToken] = useState<{ key: string; epoch: number; token: string | null } | null>(null);
+  useEffect(() => {
+    if (!legacyAllowed) return;
+    const key = profileKey, epoch = profileEpoch;
+    void getSessionToken().then((token) => {
+      if (live.current.mounted && live.current.key === key && live.current.epoch === epoch) setLegacyToken({ key, epoch, token });
+    }).catch(() => {});
+  }, [profileKey, profileEpoch, legacyAllowed]);
+  const legacyReady = legacyAllowed && legacyToken?.key === profileKey && legacyToken.epoch === profileEpoch;
+  const currentLegacy = async (scope: Scope) => {
+    if (!currentScope(scope, true) || !legacyReady) return false;
+    try { return (await getSessionToken()) === scope.token && currentScope(scope, true); }
+    catch { return false; }
+  };
+  const writeLock = useRef<object | null>(null);
+  const [companyHistory, setCompanyHistory] = useState<{ key: string; epoch: number; customer: JobSyncCompanyCustomer; jobs: JobSyncMobileJob[] } | null>(null);
+  const [companyHistoryError, setCompanyHistoryError] = useState<{ key: string; epoch: number; message: string } | null>(null);
+  const historyRequest = useRef(0);
+  useEffect(() => {
+    const request = ++historyRequest.current;
+    if (!companyJobMode || !focused || jobSyncLoading || jobSyncSession?.portal !== "company" || !jobSyncSession.company) return;
+    const session = jobSyncSession, key = profileKey, epoch = profileEpoch;
+    const isCurrent = () => live.current.mounted && live.current.key === key && live.current.epoch === epoch && historyRequest.current === request;
+    const unavailable = "Company customer Jobs unavailable: this profile's canonical customer ID could not be verified. No legacy history was loaded.";
+    void (async () => {
+      try {
+        const id = typeof params.customerId === "string" && /^[1-9]\d*$/.test(params.customerId) ? positiveJobSyncId(Number(params.customerId)) : null;
+        if (!id) throw new Error(unavailable);
+        const actor = await getJobSyncMobileSession(session.token);
+        if (!isCurrent()) return;
+        if (actor.portal !== "company" || actor.token !== session.token || actor.company?.id !== session.company?.id
+          || actor.user.id !== session.user.id || actor.user.role !== session.user.role) throw new Error(unavailable);
+        const customers = await getJobSyncCompanyCustomers(session.token);
+        if (!isCurrent()) return;
+        // Route ID is only a lookup candidate: exact returned canonical ID establishes customer evidence.
+        // Never match by phone/email/name or convert a legacy Job/booking identifier.
+        const customer = customers.find((row) => typeof row.id === "number" && positiveJobSyncId(row.id) === id);
+        if (!customer) throw new Error(unavailable);
+        const jobs = await getJobSyncCompanyJobs(session.token);
+        if (!isCurrent()) return;
+        setCompanyHistory({ key, epoch, customer, jobs: jobs.filter((job) => typeof job.id === "number" && positiveJobSyncId(job.id) !== null
+          && typeof job.customerId === "number" && job.customerId === customer.id) });
+      } catch (error) {
+        if (isCurrent()) setCompanyHistoryError({ key, epoch, message: error instanceof Error && error.message === unavailable
+          ? unavailable : "Company customer Jobs unavailable. Could not verify/load the current signed customer and recent Jobs. Reopen this profile to retry; no legacy history was loaded." });
+      }
+    })();
+    return () => { historyRequest.current++; };
+  }, [profileKey, profileEpoch, companyJobMode, focused, jobSyncLoading]);
+  const verifiedHistory = companyHistory?.key === profileKey && companyHistory.epoch === profileEpoch ? companyHistory : null;
+  const historyError = companyHistoryError?.key === profileKey && companyHistoryError.epoch === profileEpoch ? companyHistoryError.message : null;
+  const verifiedSelectedCompanyJob = !!verifiedHistory && selectedJob?.companyId === jobSyncSession?.company?.id
+    && selectedJob?.customerId === verifiedHistory.customer.id && verifiedHistory.jobs.includes(selectedJob?.canonicalJob);
   const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
-  // This legacy customer-history reader does not establish a canonical Company Job ID.
-  // Only explicit Company DTO provenance may select a bearer gallery; never guess from a legacy numeric ID.
-  const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id && selectedJob?.companyId !== undefined ? positiveJobSyncId(selectedJob?.id) : null;
-  const companyJob = useCompanyJob(jobSyncSession,
+  // Only the authenticated, customer-filtered canonical subset above can select the existing bearer gallery.
+  const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id && verifiedSelectedCompanyJob ? positiveJobSyncId(selectedJob?.id) : null;
+  // A same-ID sheet reopen still needs a new controller. On intervening scope/blur the existing
+  // controller is invalidated immediately; its already-sent request may finish, not publish follow-ups.
+  const selectedSheetEpoch = live.current.selectionEpoch;
+  const controllerBindingKey = JSON.stringify([profileKey, profileEpoch, selectedSheetEpoch, companyPhotoJobId]);
+  const [controllerBinding, setControllerBinding] = useState<string | null>(null);
+  useEffect(() => { setControllerBinding(verifiedSelectedCompanyJob && focused ? controllerBindingKey : null); }, [controllerBindingKey, verifiedSelectedCompanyJob, focused]);
+  const controllerSession = controllerBinding === controllerBindingKey && verifiedSelectedCompanyJob && focused ? jobSyncSession : null;
+  const companyJob = useCompanyJob(controllerSession,
     companyPhotoJobId);
   const refreshCompanyJob = async () => {
+    if (!currentScope(previewScope) || !verifiedSelectedCompanyJob) return;
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
   };
-  useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id, selectedJob?.jobId, jobSyncSession?.token, jobSyncSession?.company?.id]);
+  const previewScope = captureScope();
+  const previewCompanyPhoto = (photo: CompanyPhotoSelection) => { if (currentScope(previewScope) && verifiedSelectedCompanyJob) setCompanyPhotoPreview(photo); };
+  useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id, selectedJob?.jobId, profileKey]);
   const [noteText, setNoteText] = useState("");
   const [localNotes, setLocalNotes] = useState<{ id: string; text: string; createdAt: string }[]>([]);
   const [newEstVehYear, setNewEstVehYear] = useState("");
@@ -158,16 +253,18 @@ export default function AdminCustomerProfileScreen() {
     onSuccess: () => refetchEstimates(),
   });
 
-  const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = trpc.customers.getJobs.useQuery({
+  const { data: jobsData, isLoading: legacyJobsLoading, refetch: refetchJobs } = trpc.customers.getJobs.useQuery({
     phone: params.phone ?? null,
     email: params.email ?? null,
     name: params.fullName ?? "",
     customerId: params.customerId ?? null,
-  });
+  }, { enabled: !!legacyReady });
+  const jobsLoading = companyJobMode ? !verifiedHistory && !historyError : legacyJobsLoading;
+  const refetchLegacyJobs = async (scope: Scope) => { if (await currentLegacy(scope)) await refetchJobs(); };
 
   // Merge schedule jobs and online bookings from getCustomerJobs response
-  const scheduleJobsList = (jobsData as any)?.scheduleJobsList ?? [];
-  const onlineBookingsList = ((jobsData as any)?.onlineBookingsList ?? []).map((b: any) => ({
+  const scheduleJobsList = !legacyReady ? [] : (jobsData as any)?.scheduleJobsList ?? [];
+  const onlineBookingsList = (!legacyReady ? [] : (jobsData as any)?.onlineBookingsList ?? []).map((b: any) => ({
     jobId: b.bookingId ?? `ob_${b.id}`,
     date: b.bookingDate ?? "",
     timeSlot: b.timeSlot ?? "",
@@ -200,9 +297,21 @@ export default function AdminCustomerProfileScreen() {
     if (onlineDateTimeKeys.has(key)) return false;
     return true;
   });
-  const allJobs = [...filteredScheduleJobs, ...onlineBookingsList].sort((a: any, b: any) =>
+  const companyJobs = (verifiedHistory?.jobs ?? []).map((job) => ({
+    ...job, canonicalJob: job, companyId: jobSyncSession!.company!.id, jobId: String(job.id),
+    date: job.scheduledStartAt?.slice(0, 10) ?? "", timeSlot: job.scheduledStartAt?.slice(11, 16) ?? "",
+    packageType: job.serviceName || job.title, assignedTo: job.assignedName, totalPrice: job.amount,
+    customerAddress: [job.addressLine1, job.city].filter(Boolean).join(", "),
+  }));
+  const allJobs: any[] = (companyJobMode ? companyJobs : [...filteredScheduleJobs, ...onlineBookingsList]).sort((a: any, b: any) =>
     (b.date ?? "").localeCompare(a.date ?? "")
   );
+  const rowScope = captureScope();
+  const selectHistoryJob = (job: any) => {
+    if (!currentScope(rowScope)) return;
+    if (companyJobMode ? !verifiedHistory?.jobs.includes(job.canonicalJob) : !live.current.legacyAllowed) return;
+    setSelectedJob(job);
+  };
   const today = new Date().toISOString().split("T")[0];
 
   // Only completed jobs count toward the total jobs count and LTV displayed on the profile
@@ -301,20 +410,58 @@ export default function AdminCustomerProfileScreen() {
   const jobCount = derivedJobCount;
 
   // ── Cancel / Delete Job ──
-  const cancelJobMutation = trpc.jobs.cancel.useMutation({
-    onSuccess: () => { refetchJobs(); setSelectedJob(null); },
-    onError: (e) => Alert.alert("Error", e.message),
-  });
-  const deleteJobMutation = trpc.jobs.delete.useMutation({
-    onSuccess: () => { refetchJobs(); setSelectedJob(null); },
-    onError: (e) => Alert.alert("Error", e.message),
-  });
-  const deleteRecurringSeriesMutation = trpc.jobs.deleteRecurringSeries.useMutation({
-    onSuccess: () => { refetchJobs(); setSelectedJob(null); },
-    onError: (e) => Alert.alert("Error", e.message),
-  });
-
+  // No unscoped hook callbacks: each request owns its captured scope through completion.
+  const cancelJobMutation = trpc.jobs.cancel.useMutation();
+  const deleteJobMutation = trpc.jobs.delete.useMutation();
+  const deleteRecurringSeriesMutation = trpc.jobs.deleteRecurringSeries.useMutation();
+  const runLegacyWrite = async (scope: Scope, operation: () => Promise<unknown>, onSuccess: () => Promise<void> | void,
+    onPending?: (pending: boolean) => void, surfaceCurrent: () => boolean = () => true) => {
+    if (writeLock.current || !currentScope(scope, true) || !legacyReady || !surfaceCurrent()) return;
+    const lock = {}; writeLock.current = lock; // Exclude duplicates before the first await/React render.
+    try {
+      if (!await currentLegacy(scope) || !surfaceCurrent()) return;
+      onPending?.(true);
+      await operation(); // A legitimate already-sent request cannot be unsent on blur/scope change.
+      if (!await currentLegacy(scope) || !surfaceCurrent()) return;
+      await onSuccess();
+    } catch (error) {
+      if (await currentLegacy(scope) && surfaceCurrent()) Alert.alert("Error", error instanceof Error ? error.message : "Operation failed.");
+    } finally {
+      if (await currentLegacy(scope) && surfaceCurrent()) onPending?.(false);
+      if (writeLock.current === lock) writeLock.current = null;
+    }
+  };
+  const finishLegacyJobWrite = async (scope: Scope) => {
+    await refetchLegacyJobs(scope);
+    if (await currentLegacy(scope)) setSelectedJob(null);
+  };
+  const legacyJobPayload = (job: any) => ({ jobId: job.jobId ?? job.id, customerName: job.customerName ?? undefined,
+    location: job.location ?? undefined, dateStr: job.date ?? undefined, timeSlot: job.timeSlot ?? undefined });
+  const actionScope = captureScope();
+  const canCancelCompany = verifiedSelectedCompanyJob && !!companyPhotoJobId && !companyJob.pending
+    && companyManagementCancelBlockReason(companyJob.actor, companyJob.detail) === null;
   const handleCancelJob = (job: any) => {
+    if (!job || !currentScope(actionScope)) return;
+    if (companyJobMode) {
+      if (!canCancelCompany || writeLock.current) return;
+      Alert.alert("Cancel Company Job", "Cancel this canonical Company Job? Permanent and series deletion are unavailable.", [
+        { text: "Dismiss", style: "cancel" },
+        { text: "Cancel Company Job", style: "destructive", onPress: async () => {
+          if (!currentScope(actionScope) || !canCancelCompany || writeLock.current) return;
+          const lock = {}; writeLock.current = lock;
+          try {
+            const cancelled = await companyJob.cancelManagement();
+            if (!currentScope(actionScope) || !cancelled) return;
+            setSelectedJob(null);
+            setCompanyHistory(null); // Refresh the same verified subset; never refetch legacy history.
+            historyRequest.current++;
+            live.current.epoch++;
+          } finally { if (writeLock.current === lock) writeLock.current = null; }
+        } },
+      ]);
+      return;
+    }
+    if (!currentScope(actionScope, true) || !legacyReady || writeLock.current) return;
     Alert.alert(
       "Cancel Job",
       `Mark this job as cancelled? It will remain visible in history with a Cancelled badge.`,
@@ -323,19 +470,14 @@ export default function AdminCustomerProfileScreen() {
         {
           text: "Cancel Job",
           style: "destructive",
-          onPress: () => cancelJobMutation.mutate({
-            jobId: job.jobId ?? job.id,
-            customerName: job.customerName ?? undefined,
-            location: job.location ?? undefined,
-            dateStr: job.date ?? undefined,
-            timeSlot: job.timeSlot ?? undefined,
-          }),
+          onPress: () => runLegacyWrite(actionScope, () => cancelJobMutation.mutateAsync(legacyJobPayload(job)), () => finishLegacyJobWrite(actionScope)),
         },
       ]
     );
   };
 
   const handleDeleteJob = (job: any) => {
+    if (!job || companyJobMode || !currentScope(actionScope, true) || !legacyReady || writeLock.current) return;
     const isRecurring = !!(job.recurrenceParentId || job.recurrenceRule);
     if (isRecurring) {
       Alert.alert(
@@ -346,22 +488,16 @@ export default function AdminCustomerProfileScreen() {
           {
             text: "This Job Only",
             style: "destructive",
-            onPress: () => deleteJobMutation.mutate({
-              jobId: job.jobId ?? job.id,
-              customerName: job.customerName ?? undefined,
-              location: job.location ?? undefined,
-              dateStr: job.date ?? undefined,
-              timeSlot: job.timeSlot ?? undefined,
-            }),
+            onPress: () => runLegacyWrite(actionScope, () => deleteJobMutation.mutateAsync(legacyJobPayload(job)), () => finishLegacyJobWrite(actionScope)),
           },
           {
             text: "This & All Future",
             style: "destructive",
-            onPress: () => deleteRecurringSeriesMutation.mutate({
+            onPress: () => runLegacyWrite(actionScope, () => deleteRecurringSeriesMutation.mutateAsync({
               recurrenceParentId: job.recurrenceParentId ?? (job.jobId ?? job.id),
               mode: "future",
               fromDate: job.date,
-            }),
+            }), () => finishLegacyJobWrite(actionScope)),
           },
         ]
       );
@@ -374,13 +510,7 @@ export default function AdminCustomerProfileScreen() {
           {
             text: "Delete Permanently",
             style: "destructive",
-                        onPress: () => deleteJobMutation.mutate({
-              jobId: job.jobId ?? job.id,
-              customerName: job.customerName ?? undefined,
-              location: job.location ?? undefined,
-              dateStr: job.date ?? undefined,
-              timeSlot: job.timeSlot ?? undefined,
-            }),
+            onPress: () => runLegacyWrite(actionScope, () => deleteJobMutation.mutateAsync(legacyJobPayload(job)), () => finishLegacyJobWrite(actionScope)),
           },
         ]
       );
@@ -435,9 +565,22 @@ export default function AdminCustomerProfileScreen() {
     };
     return legacyMap[packageType] ?? packageType;
   };
-  const { data: savedCards, refetch: refetchCards } = trpc.savedCards.list.useQuery({ customerKey });
-  const deleteCardMutation = trpc.savedCards.delete.useMutation({ onSuccess: () => refetchCards() });
-  const setDefaultMutation = trpc.savedCards.setDefault.useMutation({ onSuccess: () => refetchCards() });
+  const { data: legacySavedCards, refetch: refetchCards } = trpc.savedCards.list.useQuery({ customerKey }, { enabled: !!legacyReady });
+  const savedCards = legacyReady ? legacySavedCards : undefined;
+  const refetchLegacyCards = async (scope: Scope) => { if (await currentLegacy(scope)) await refetchCards(); };
+  const deleteCardMutation = trpc.savedCards.delete.useMutation();
+  const setDefaultMutation = trpc.savedCards.setDefault.useMutation();
+  const cardScope = captureScope();
+  const handleSetDefaultCard = (card: any) => runLegacyWrite(cardScope,
+    () => setDefaultMutation.mutateAsync({ customerKey, methodId: card.methodId }), () => refetchLegacyCards(cardScope));
+  const handleDeleteCard = (card: any) => {
+    if (!currentScope(cardScope, true) || !legacyReady || writeLock.current) return;
+    Alert.alert("Remove Card", `Remove the ${card.cardBrand} ending in ${card.cardLast4}?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: () => runLegacyWrite(cardScope,
+        () => deleteCardMutation.mutateAsync({ methodId: card.methodId, stripePaymentMethodId: card.stripePaymentMethodId }), () => refetchLegacyCards(cardScope)) },
+    ]);
+  };
 
   // ── Do Not Service ──
   const [showDnsModal, setShowDnsModal] = useState(false);
@@ -546,19 +689,30 @@ export default function AdminCustomerProfileScreen() {
 
   const sendJobReceiptMutation = trpc.jobs.sendReceipt.useMutation();
   const [sendingJobReceipt, setSendingJobReceipt] = useState(false);
-  const chargeCardMutation = trpc.savedCards.chargeCard.useMutation({
-    onSuccess: (data) => {
-      setChargingCard(false);
-      setShowChargeModal(false);
-      setChargeAmount("");
-      if ((Platform.OS as string) !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Payment Successful ✅", `Card charged ${fmtCurrency(parseFloat(chargeAmount) || 0)} successfully.\n\nPayment ID: ${data.paymentIntentId?.slice(-8) ?? "—"}`);
-      refetchJobs();
-    },
-    onError: (e) => { setChargingCard(false); Alert.alert("Charge Failed", e.message); },
-  });
+  const chargeCardMutation = trpc.savedCards.chargeCard.useMutation();
+  const chargeOrigin = useRef<Scope | null>(null);
+  const chargeModalEpoch = useRef(0);
+  const renderedChargeEpoch = chargeModalEpoch.current;
+  useEffect(() => {
+    chargeOrigin.current = null; chargeModalEpoch.current++;
+    setShowChargeModal(false); setChargeAmount(""); setChargingCard(false); setSendingJobReceipt(false);
+    setShowAdminAddCardModal(false); setAdminCardSaving(false);
+  }, [profileKey, selectedJob?.id, selectedJob?.jobId, !!selectedJob]);
+  const closeChargeModal = () => {
+    if (!currentScope(actionScope, true) || chargeModalEpoch.current !== renderedChargeEpoch) return;
+    if (chargingCard || writeLock.current) return;
+    chargeOrigin.current = null; chargeModalEpoch.current++;
+    setShowChargeModal(false); setChargeAmount("");
+  };
+  const handleSendJobReceipt = () => {
+    const job = selectedJob;
+    if (!job?.paymentMethod || !job?.email || !currentScope(actionScope, true)) return;
+    void runLegacyWrite(actionScope, () => sendJobReceiptMutation.mutateAsync({ jobId: String(job.id) }),
+      () => { Alert.alert("Receipt Sent ✅", `Payment receipt emailed to ${job.email}.`); }, setSendingJobReceipt);
+  };
 
   const handleChargeCard = () => {
+    if (!selectedJob || !currentScope(actionScope, true) || !legacyReady || writeLock.current) return;
     const cards = (savedCards as any[]) ?? [];
     if (cards.length === 0) {
       Alert.alert("No Card on File", "This customer has no saved cards. Use \"Send Portal Access\" so they can add a card.");
@@ -571,10 +725,17 @@ export default function AdminCustomerProfileScreen() {
     // Default to the first card
     const defaultCard = cards.find((c: any) => c.isDefault) ?? cards[0];
     setSelectedCardId(defaultCard?.stripePaymentMethodId ?? null);
+    chargeOrigin.current = actionScope; chargeModalEpoch.current++;
     setShowChargeModal(true);
   };
 
   const handleConfirmCharge = () => {
+    const scope = chargeOrigin.current;
+    const modalEpoch = chargeModalEpoch.current;
+    const job = selectedJob;
+    if (!scope || !job || !currentScope(scope, true) || !showChargeModal || writeLock.current) return;
+    const currentCharge = () => chargeOrigin.current === scope && chargeModalEpoch.current === modalEpoch && currentScope(scope, true);
+    if (modalEpoch !== renderedChargeEpoch) return;
     const cards = (savedCards as any[]) ?? [];
     const card = cards.find((c: any) => c.stripePaymentMethodId === selectedCardId) ?? cards[0];
     if (!card) { Alert.alert("No Card Selected"); return; }
@@ -590,13 +751,25 @@ export default function AdminCustomerProfileScreen() {
           text: "Charge",
           style: "default",
           onPress: () => {
-            setChargingCard(true);
-            chargeCardMutation.mutate({
+            if (!currentCharge()) return;
+            let paymentIntentId: string | undefined;
+            void runLegacyWrite(scope, async () => {
+              if (!currentCharge()) return;
+              const data = await chargeCardMutation.mutateAsync({
               stripeCustomerId: card.stripeCustomerId,
               stripePaymentMethodId: card.stripePaymentMethodId,
               amountCents,
-              description: `Admin charge — ${selectedJob?.packageType ?? "Service"} for ${params.fullName ?? "customer"} (Job ${selectedJob?.jobId ?? ""})`,
-            });
+              description: `Admin charge — ${job.packageType ?? "Service"} for ${params.fullName ?? "customer"} (Job ${job.jobId ?? ""})`,
+              });
+              paymentIntentId = data.paymentIntentId;
+            }, async () => {
+              if (!currentCharge()) return;
+              await refetchLegacyJobs(scope);
+              if (!currentCharge() || !await currentLegacy(scope)) return;
+              setShowChargeModal(false); setChargeAmount("");
+              if ((Platform.OS as string) !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("Payment Successful ✅", `Card charged ${fmtCurrency(amountDollars)} successfully.\n\nPayment ID: ${paymentIntentId?.slice(-8) ?? "—"}`);
+            }, (pending) => { if (currentCharge()) setChargingCard(pending); }, currentCharge);
           },
         },
       ]
@@ -606,24 +779,27 @@ export default function AdminCustomerProfileScreen() {
   // ── Live-refresh photos from server whenever a job detail modal is opened ──
   const utils = trpc.useUtils();
   useEffect(() => {
-    if (companyJobMode || !selectedJob?.jobId) return;
+    if (!legacyReady || !selectedJob?.jobId) return;
     let cancelled = false;
+    const scope = captureScope();
     const jobId = selectedJob.jobId;
-    utils.jobs.getPhotos.fetch({ jobId })
-      .then(({ urls }) => {
-        if (cancelled) return;
-        if (!urls || urls.length === 0) return;
-        setSelectedJob((prev: any) => {
+    void (async () => {
+      if (!await currentLegacy(scope) || cancelled) return;
+      const { urls } = await utils.jobs.getPhotos.fetch({ jobId });
+      if (cancelled || !await currentLegacy(scope) || !urls?.length) return;
+      updateSelectedJob((prev: any) => {
           if (!prev || prev.jobId !== jobId) return prev;
+          if (!currentScope(scope, true)) return prev;
           return { ...prev, photoUrls: JSON.stringify(urls) };
-        });
-      })
-      .catch(() => { /* offline or job not found — keep cached data */ });
+      });
+    })().catch(() => { /* offline or job not found — keep cached data */ });
     return () => { cancelled = true; };
-  }, [selectedJob?.jobId, companyJobMode]);
+  }, [selectedJob?.jobId, legacyReady, profileKey]);
 
   // ── Admin Add Card on File ──
   const [showAdminAddCardModal, setShowAdminAddCardModal] = useState(false);
+  const addCardOrigin = useRef<Scope | null>(null);
+  const addCardEpoch = useRef(0);
   const [adminCardName, setAdminCardName] = useState("");
   const [adminCardNumber, setAdminCardNumber] = useState("");
   const [adminCardExpiry, setAdminCardExpiry] = useState("");
@@ -632,16 +808,7 @@ export default function AdminCustomerProfileScreen() {
   const [adminCardSaving, setAdminCardSaving] = useState(false);
 
   const adminCreateSetupIntentMutation = trpc.savedCards.createSetupIntent.useMutation();
-  const adminSaveCardMutation = trpc.savedCards.saveCard.useMutation({
-    onSuccess: () => {
-      refetchCards();
-      setShowAdminAddCardModal(false);
-      setAdminCardName(""); setAdminCardNumber(""); setAdminCardExpiry(""); setAdminCardCvc(""); setAdminCardComplete(false);
-      if ((Platform.OS as string) !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Card Saved ✅", `Card saved on file for ${params.fullName ?? "this customer"}.`);
-    },
-    onError: (e) => { setAdminCardSaving(false); Alert.alert("Error", e.message ?? "Could not save card."); },
-  });
+  const adminSaveCardMutation = trpc.savedCards.saveCard.useMutation();
 
   const formatCardNumber = (t: string) => {
     const digits = t.replace(/\D/g, "").slice(0, 16);
@@ -654,7 +821,11 @@ export default function AdminCustomerProfileScreen() {
   };
 
   const handleAdminSaveCard = async () => {
+    const scope = addCardOrigin.current, epoch = addCardEpoch.current;
+    if (!scope || !showAdminAddCardModal || !currentScope(scope, true) || !legacyReady || writeLock.current) return;
+    const currentCardModal = () => addCardOrigin.current === scope && addCardEpoch.current === epoch && currentScope(scope, true);
     const _constMod = await import("expo-constants");
+    if (!await currentLegacy(scope) || !currentCardModal()) return;
     const Constants = (_constMod as any).default ?? _constMod;
     const isExpoGo = Constants?.appOwnership === "expo";
     const isNative = Platform.OS !== "web" && !isExpoGo;
@@ -667,13 +838,14 @@ export default function AdminCustomerProfileScreen() {
       if (adminCardCvc.length < 3) { Alert.alert("Invalid CVC", "Please enter a valid CVC."); return; }
     }
     if (!adminCardName.trim()) { Alert.alert("Missing Name", "Please enter the name on the card."); return; }
-    setAdminCardSaving(true);
-    try {
+    await runLegacyWrite(scope, async () => {
+      if (!currentCardModal()) return;
       const setupResult = await adminCreateSetupIntentMutation.mutateAsync({
         customerKey,
         customerName: adminCardName.trim(),
         customerEmail: params.email ?? undefined,
       });
+      if (!await currentLegacy(scope) || !currentCardModal()) return;
       let stripePaymentMethodId: string | null = null;
       let cardLast4: string | null = null;
       let cardBrand: string | null = null;
@@ -697,20 +869,44 @@ export default function AdminCustomerProfileScreen() {
         ...(cardLast4 ? { cardLast4 } : {}),
         ...(cardBrand ? { cardBrand } : {}),
       });
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Could not save card. Please try again.");
-    } finally {
-      setAdminCardSaving(false);
-    }
+    }, async () => {
+      if (!currentCardModal()) return;
+      await refetchLegacyCards(scope);
+      if (!await currentLegacy(scope) || !currentCardModal()) return;
+      setShowAdminAddCardModal(false);
+      setAdminCardName(""); setAdminCardNumber(""); setAdminCardExpiry(""); setAdminCardCvc(""); setAdminCardComplete(false);
+      if ((Platform.OS as string) !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Card Saved ✅", `Card saved on file for ${params.fullName ?? "this customer"}.`);
+    }, (pending) => { if (currentCardModal()) setAdminCardSaving(pending); }, currentCardModal);
   };
 
   const handleOpenCardModal = () => {
+    if (!currentScope(cardScope, true) || !legacyReady || writeLock.current) return;
+    addCardOrigin.current = cardScope; addCardEpoch.current++;
     setAdminCardName(params.fullName ?? "");
     setAdminCardNumber(""); setAdminCardExpiry(""); setAdminCardCvc(""); setAdminCardComplete(false);
     setShowAdminAddCardModal(true);
   };
+  const closeAddCardModal = () => {
+    if (!currentScope(cardScope, true) || adminCardSaving || writeLock.current) return;
+    addCardOrigin.current = null; addCardEpoch.current++;
+    setShowAdminAddCardModal(false);
+  };
   const firstDate = fmtDate(params.firstServiceDate);
   const lastDate = fmtDate(params.lastServiceDate);
+  const closeJob = () => { if (currentScope(actionScope)) setSelectedJob(null); };
+  const rebookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (rebookTimer.current) clearTimeout(rebookTimer.current); }, [profileKey]);
+  const handleRebook = () => {
+    if (!selectedJob || !currentScope(actionScope)) return;
+    setSelectedJob(null);
+    const scope = captureScope();
+    if (rebookTimer.current) clearTimeout(rebookTimer.current);
+    rebookTimer.current = setTimeout(() => {
+      if (currentScope(scope)) setShowAddJobModal(true);
+      rebookTimer.current = null;
+    }, 300);
+  };
 
   return (
     <ScreenContainer edges={["left", "right"]} className="flex-1">
@@ -727,7 +923,7 @@ export default function AdminCustomerProfileScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerName}>{params.fullName ?? "—"}</Text>
           <Text style={styles.headerSub}>
-            {jobCount} job{jobCount !== 1 ? "s" : ""} · Customer since {firstDate}
+            {companyJobMode ? "Company customer · loaded Jobs subset only" : `${jobCount} job${jobCount !== 1 ? "s" : ""} · Customer since ${firstDate}`}
           </Text>
         </View>
         {/* Create Job shortcut — top-right corner */}
@@ -749,7 +945,7 @@ export default function AdminCustomerProfileScreen() {
         return (
           <View style={styles.nextApptBanner}>
             <View style={styles.nextApptLeft}>
-              <Text style={styles.nextApptLabel}>NEXT APPOINTMENT</Text>
+              <Text style={styles.nextApptLabel}>{companyJobMode ? "NEXT LOADED APPOINTMENT" : "NEXT APPOINTMENT"}</Text>
               <Text style={styles.nextApptDate}>{fmtDateLong(next.date)}</Text>
               {next.timeSlot ? <Text style={styles.nextApptTime}>{next.timeSlot}</Text> : null}
             </View>
@@ -854,13 +1050,14 @@ export default function AdminCustomerProfileScreen() {
                 </View>
                 <View style={styles.summaryItem}>
                   <Text style={styles.summaryLabel}>LIFETIME VALUE</Text>
-                  <Text style={[styles.summaryValue, { color: colors.success, fontSize: 20 }]}>{lv}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.success, fontSize: 20 }]}>{companyJobMode ? "Unavailable" : lv}</Text>
                 </View>
                 <View style={styles.summaryItem}>
                   <Text style={styles.summaryLabel}>TOTAL JOBS</Text>
-                  <Text style={styles.summaryValue}>{jobCount}</Text>
+                  <Text style={styles.summaryValue}>{companyJobMode ? "Unavailable" : jobCount}</Text>
                 </View>
               </View>
+              {companyJobMode && <Text style={styles.noData}>Recent/loaded Company Jobs are a single-page subset, not complete history or lifetime value.</Text>}
             </View>
 
             {/* Contact Info */}
@@ -923,7 +1120,7 @@ export default function AdminCustomerProfileScreen() {
                   <Text style={styles.cardSubtitle}>Next {Math.min(upcomingJobs.length, 5)} of {upcomingJobs.length}</Text>
                 </View>
                 {upcomingJobs.slice(0, 5).map((job) => (
-                  <TouchableOpacity key={job.jobId} style={styles.apptRow} onPress={() => setSelectedJob(job)} activeOpacity={0.75}>
+                  <TouchableOpacity key={job.jobId} style={styles.apptRow} onPress={() => selectHistoryJob(job)} activeOpacity={0.75}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.apptDate}>{fmtDateLong(job.date)}</Text>
                       <Text style={styles.apptService}>{resolvePackageName(job.packageType)}</Text>
@@ -966,6 +1163,7 @@ export default function AdminCustomerProfileScreen() {
             )}
 
             {/* Payment Method */}
+            {companyJobMode ? <View style={styles.card}><Text style={styles.noData}>Saved-card billing is unavailable for Company Jobs on this screen.</Text></View> :
             <View style={styles.card}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardTitle}>💳 Payment Method</Text>
@@ -1007,7 +1205,7 @@ export default function AdminCustomerProfileScreen() {
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {card.isDefault !== 1 && (
                         <TouchableOpacity
-                          onPress={() => setDefaultMutation.mutate({ customerKey, methodId: card.methodId })}
+                          onPress={() => handleSetDefaultCard(card)}
                           style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primary + "22" }}
                           activeOpacity={0.7}
                         >
@@ -1015,10 +1213,7 @@ export default function AdminCustomerProfileScreen() {
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        onPress={() => Alert.alert("Remove Card", `Remove the ${card.cardBrand} ending in ${card.cardLast4}?`, [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Remove", style: "destructive", onPress: () => deleteCardMutation.mutate({ methodId: card.methodId, stripePaymentMethodId: card.stripePaymentMethodId }) },
-                        ])}
+                        onPress={() => handleDeleteCard(card)}
                         style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: "#EF444422" }}
                         activeOpacity={0.7}
                       >
@@ -1028,7 +1223,7 @@ export default function AdminCustomerProfileScreen() {
                   </View>
                 ))
               )}
-            </View>
+            </View>}
             {/* Admin Actions */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Admin Actions</Text>
@@ -1117,18 +1312,21 @@ export default function AdminCustomerProfileScreen() {
         {activeTab === "jobs" && (
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>{allJobs.length} Jobs</Text>
-              <Text style={[styles.cardSubtitle, { color: colors.success, fontWeight: "700" }]}>{lv} total</Text>
+              <Text style={styles.cardTitle}>{companyJobMode ? "Recent/loaded Company Jobs" : `${allJobs.length} Jobs`}</Text>
+              {!companyJobMode && <Text style={[styles.cardSubtitle, { color: colors.success, fontWeight: "700" }]}>{lv} total</Text>}
             </View>
-            {jobsLoading ? (
+            {companyJobMode && <Text style={styles.noData}>Single-page subset only; not complete history, photo history, or lifetime value.</Text>}
+            {companyJobMode && !verifiedHistory ? (
+              <Text style={styles.noData}>{historyError ?? (jobsLoading && jobSyncSession?.portal === "company" && focused ? "Verifying canonical Company customer and loading recent Jobs..." : "Company customer Jobs unavailable until the current signed Company customer is verified.")}</Text>
+            ) : jobsLoading ? (
               <Text style={styles.noData}>Loading jobs...</Text>
             ) : allJobs.length === 0 ? (
-              <Text style={styles.noData}>No jobs found</Text>
+              <Text style={styles.noData}>{companyJobMode ? "No matching Jobs in the loaded subset. Older Jobs may exist." : "No jobs found"}</Text>
             ) : (
               allJobs.map((job) => {
                 const vehicle = [job.vehicleYear, job.vehicleMake, job.vehicleModel].filter(Boolean).join(" ");
                 return (
-                  <TouchableOpacity key={job.jobId} style={styles.jobCard} onPress={() => setSelectedJob(job)} activeOpacity={0.75}>
+                  <TouchableOpacity key={job.jobId} style={styles.jobCard} onPress={() => selectHistoryJob(job)} activeOpacity={0.75}>
                     <View style={styles.jobCardTop}>
                       <Text style={styles.jobDate}>{fmtDate(job.date)}</Text>
                       <View style={[styles.statusPill, { backgroundColor: statusColor(job.status) + "22" }]}>
@@ -1157,7 +1355,7 @@ export default function AdminCustomerProfileScreen() {
         {activeTab === "attachments" && (() => {
           // Extract before/after photos from completed jobs, grouped by date
           const jobPhotos: { date: string; photos: string[]; jobId: string; packageType: string }[] = [];
-          for (const j of allJobs) {
+          for (const j of companyJobMode ? [] : allJobs) {
             const raw = (j as any).photoUrls;
             if (!raw) continue;
             let urls: string[] = [];
@@ -1179,6 +1377,7 @@ export default function AdminCustomerProfileScreen() {
           return (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Attachments ({totalCount})</Text>
+              {companyJobMode && <Text style={styles.noData}>Company Job-photo history is unavailable here. Open a verified Job in the loaded Jobs subset for its canonical gallery. Separately uploaded files remain below.</Text>}
               {jobsLoading && attachmentsLoading ? (
                 <Text style={styles.noData}>Loading...</Text>
               ) : totalCount === 0 ? (
@@ -1200,7 +1399,7 @@ export default function AdminCustomerProfileScreen() {
                         {group.photos.map((url, idx) => (
                           <TouchableOpacity
                             key={`${group.jobId}-${idx}`}
-                            onPress={() => Linking.openURL(url)}
+                            onPress={() => { if (currentScope(rowScope, true)) Linking.openURL(url); }}
                             activeOpacity={0.8}
                             style={{ width: 100, height: 80, borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}
                           >
@@ -1451,10 +1650,10 @@ export default function AdminCustomerProfileScreen() {
 
       {/* ── Job Detail Modal ── */}
       <Modal
-        visible={!!selectedJob}
+        visible={!!selectedJob && focused && (companyJobMode ? verifiedSelectedCompanyJob : !!legacyReady)}
         transparent
         animationType="slide"
-        onRequestClose={() => setSelectedJob(null)}
+        onRequestClose={closeJob}
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: "90%" }}>
@@ -1563,7 +1762,7 @@ export default function AdminCustomerProfileScreen() {
                   <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6, textAlign: "right" }}>Paid via {selectedJob.paymentMethod.replace("_", " ")}</Text>
                 ) : null}
                 {/* Charge Card button — only show if job is not already paid */}
-                {!selectedJob?.paymentMethod && (
+                {!companyJobMode && !selectedJob?.paymentMethod && (
                   <TouchableOpacity
                     onPress={handleChargeCard}
                     style={{ marginTop: 14, padding: 14, backgroundColor: "#22c55e15", borderRadius: 14, alignItems: "center", borderWidth: 1, borderColor: "#22c55e40" }}
@@ -1589,7 +1788,7 @@ export default function AdminCustomerProfileScreen() {
 
               {/* Photos — always fetch fresh from server when job opens */}
               {(() => {
-                if (companyJobMode) return <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={setCompanyPhotoPreview} onRefresh={refreshCompanyJob} />;
+                if (companyJobMode) return <CompanyJobPhotos session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} onPreview={previewCompanyPhoto} onRefresh={refreshCompanyJob} />;
                 let photos: string[] = [];
                 try {
                   const raw = selectedJob?.photoUrls;
@@ -1602,7 +1801,7 @@ export default function AdminCustomerProfileScreen() {
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <View style={{ flexDirection: "row", gap: 10 }}>
                         {photos.map((url: string, i: number) => (
-                          <TouchableOpacity key={`${url}-${i}`} onPress={() => Linking.openURL(url)} activeOpacity={0.85}>
+                          <TouchableOpacity key={`${url}-${i}`} onPress={() => { if (currentScope(actionScope, true)) Linking.openURL(url); }} activeOpacity={0.85}>
                             <Image
                               source={{ uri: url }}
                               style={{ width: 110, height: 85, borderRadius: 10, backgroundColor: colors.border }}
@@ -1650,19 +1849,9 @@ export default function AdminCustomerProfileScreen() {
 
             {/* Action buttons */}
             {/* Send Receipt — only when job has a recorded payment and customer has email */}
-            {selectedJob?.paymentMethod && selectedJob?.email && (
+            {!companyJobMode && selectedJob?.paymentMethod && selectedJob?.email && (
               <TouchableOpacity
-                onPress={async () => {
-                  setSendingJobReceipt(true);
-                  try {
-                    await sendJobReceiptMutation.mutateAsync({ jobId: String(selectedJob.id) });
-                    Alert.alert("Receipt Sent ✅", `Payment receipt emailed to ${selectedJob.email}.`);
-                  } catch (err: any) {
-                    Alert.alert("Error", err.message ?? "Failed to send receipt");
-                  } finally {
-                    setSendingJobReceipt(false);
-                  }
-                }}
+                onPress={handleSendJobReceipt}
                 style={{ padding: 14, backgroundColor: "#6366F115", borderRadius: 14, alignItems: "center", marginTop: 12, borderWidth: 1, borderColor: "#6366F140", opacity: sendingJobReceipt ? 0.6 : 1 }}
                 activeOpacity={0.8}
                 disabled={sendingJobReceipt}
@@ -1673,56 +1862,52 @@ export default function AdminCustomerProfileScreen() {
               </TouchableOpacity>
             )}
             {/* Cancel Job — marks as cancelled, stays in history */}
-            {!selectedJob?.recurrenceParentId && (
+            {(companyJobMode ? canCancelCompany : !selectedJob?.recurrenceParentId) && (
               <TouchableOpacity
                 onPress={() => handleCancelJob(selectedJob)}
                 style={{ padding: 14, backgroundColor: "#F59E0B15", borderRadius: 14, alignItems: "center", marginTop: 12, borderWidth: 1, borderColor: "#F59E0B40" }}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontSize: 14, fontWeight: "700", color: "#F59E0B" }}>🚫 Cancel Job</Text>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: "#F59E0B" }}>{companyJobMode ? "Cancel Company Job (management)" : "🚫 Cancel Job"}</Text>
               </TouchableOpacity>
             )}
+            {companyJobMode && <Text style={styles.noData}>Permanent/series deletion and copied saved-card/receipt actions are unavailable for Company Jobs.</Text>}
             {/* Delete Job — permanently removes from all views */}
+            {!companyJobMode &&
             <TouchableOpacity
               onPress={() => handleDeleteJob(selectedJob)}
               style={{ padding: 14, backgroundColor: "#EF444415", borderRadius: 14, alignItems: "center", marginTop: 8, borderWidth: 1, borderColor: "#EF444440" }}
               activeOpacity={0.8}
             >
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#EF4444" }}>🗑 Delete Job</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
             <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
               <TouchableOpacity
-                onPress={() => setSelectedJob(null)}
+                onPress={closeJob}
                 style={{ flex: 1, padding: 16, backgroundColor: colors.border, borderRadius: 14, alignItems: "center" }}
                 activeOpacity={0.8}
               >
                 <Text style={{ fontSize: 15, fontWeight: "700", color: colors.foreground }}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  const job = selectedJob;
-                  setSelectedJob(null);
-                  setTimeout(() => {
-                    setShowAddJobModal(true);
-                  }, 300);
-                }}
+                onPress={handleRebook}
                 style={{ flex: 2, padding: 16, backgroundColor: colors.primary, borderRadius: 14, alignItems: "center" }}
                 activeOpacity={0.8}
               >
                 <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>🔄 Rebook</Text>
               </TouchableOpacity>
             </View>
-            <CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} photo={companyJobMode ? companyPhotoPreview : null} onClose={() => setCompanyPhotoPreview(null)} onRefresh={refreshCompanyJob} />
+            <CompanyJobPhotoPreview session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob} photo={companyJobMode ? companyPhotoPreview : null} onClose={() => { if (currentScope(previewScope)) setCompanyPhotoPreview(null); }} onRefresh={refreshCompanyJob} />
           </View>
         </View>
       </Modal>
 
       {/* ── Charge Card Modal ── */}
       <Modal
-        visible={showChargeModal}
+        visible={showChargeModal && !!legacyReady}
         transparent
         animationType="slide"
-        onRequestClose={() => { if (!chargingCard) setShowChargeModal(false); }}
+        onRequestClose={closeChargeModal}
       >
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
@@ -1737,7 +1922,7 @@ export default function AdminCustomerProfileScreen() {
                 {((savedCards as any[]) ?? []).map((card: any) => (
                   <TouchableOpacity
                     key={card.stripePaymentMethodId}
-                    onPress={() => setSelectedCardId(card.stripePaymentMethodId)}
+                    onPress={() => { if (currentScope(actionScope, true) && chargeModalEpoch.current === renderedChargeEpoch) setSelectedCardId(card.stripePaymentMethodId); }}
                     style={{ flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 2, borderColor: selectedCardId === card.stripePaymentMethodId ? colors.primary : colors.border, backgroundColor: colors.background }}
                     activeOpacity={0.8}
                   >
@@ -1770,7 +1955,7 @@ export default function AdminCustomerProfileScreen() {
               <Text style={{ fontSize: 18, color: colors.muted, marginRight: 4 }}>$</Text>
               <TextInput
                 value={chargeAmount}
-                onChangeText={setChargeAmount}
+                onChangeText={(value) => { if (currentScope(actionScope, true) && chargeModalEpoch.current === renderedChargeEpoch) setChargeAmount(value); }}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
@@ -1783,7 +1968,7 @@ export default function AdminCustomerProfileScreen() {
             {/* Buttons */}
             <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity
-                onPress={() => { if (!chargingCard) { setShowChargeModal(false); setChargeAmount(""); } }}
+                onPress={closeChargeModal}
                 style={{ flex: 1, padding: 16, backgroundColor: colors.border, borderRadius: 14, alignItems: "center" }}
                 activeOpacity={0.8}
               >
@@ -1890,10 +2075,10 @@ export default function AdminCustomerProfileScreen() {
 
       {/* ─── Admin Add Card on File Modal ─────────────────────────────────────────── */}
       <Modal
-        visible={showAdminAddCardModal}
+        visible={showAdminAddCardModal && !!legacyReady}
         transparent
         animationType="slide"
-        onRequestClose={() => { if (!adminCardSaving) setShowAdminAddCardModal(false); }}
+        onRequestClose={closeAddCardModal}
       >
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
           <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
@@ -1914,6 +2099,7 @@ export default function AdminCustomerProfileScreen() {
 
             {/* Card Fields — Stripe native or manual fallback */}
             {(() => {
+              if (!showAdminAddCardModal || !legacyReady) return null;
               const Constants = require("expo-constants").default ?? require("expo-constants");
               const isExpoGo = Constants?.appOwnership === "expo";
               const isNative = Platform.OS !== "web" && !isExpoGo;
@@ -1983,7 +2169,7 @@ export default function AdminCustomerProfileScreen() {
             {/* Buttons */}
             <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
               <TouchableOpacity
-                onPress={() => { if (!adminCardSaving) setShowAdminAddCardModal(false); }}
+                onPress={closeAddCardModal}
                 style={{ flex: 1, padding: 16, borderRadius: 14, backgroundColor: colors.border, alignItems: "center" }}
                 activeOpacity={0.7}
               >

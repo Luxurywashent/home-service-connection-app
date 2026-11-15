@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useIsFocused, useLocalSearchParams } from "expo-router";
 import {
   View,
   Text,
@@ -28,6 +28,8 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS, withTiming } from "react-native-reanimated";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEmployeeAuth } from "@/lib/auth-context";
+import * as LegacyAuth from "@/lib/_core/auth";
+import { getCompanyJobBillingState } from "@/lib/company-job-billing";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { Alert } from "react-native";
 import * as Haptics from "expo-haptics";
@@ -44,6 +46,8 @@ import {
   filterJobSyncCompanyCustomers,
   getJobSyncCompanyCustomers,
   getJobSyncCompanyJobs,
+  getJobSyncMobileSession,
+  getJobSyncCompanyJobDetail,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
   updateJobSyncCompanyJobAssignment,
@@ -233,6 +237,11 @@ interface Job {
   companyId?: number;
   assignedUserId?: number | null;
   updatedAt?: string | null;
+  paidTotal?: number | null;
+  refundTotal?: number | null;
+  appliedEstimateCredit?: number | null;
+  balance?: number | null;
+  paymentStatus?: string | null;
   _rawStatus?: string;
   customerId?: string;
   firstName: string;
@@ -896,9 +905,11 @@ function DualLaneTimeline({
 function AdminPrivateNotesCard({
   job,
   onNotesChange,
+  isCurrentAction,
 }: {
   job: Job;
   onNotesChange: (notes: PrivateNote[]) => void;
+  isCurrentAction: (() => boolean) & { verify: () => Promise<boolean> };
 }) {
   const colors = useColors();
   const { employee } = useEmployeeAuth();
@@ -915,6 +926,7 @@ function AdminPrivateNotesCard({
   const isAdmin = ["admin", "office", "operations_manager"].includes(currentRole);
 
   const addNote = async () => {
+    if (!isCurrentAction() || job.companyId !== undefined) return;
     const text = newNoteText.trim();
     if (!text || !job.id) return;
     // Optimistic update: show the note immediately with a temp ID
@@ -931,6 +943,7 @@ function AdminPrivateNotesCard({
     setNewNoteText("");
     setSaving(true);
     try {
+      if (!await isCurrentAction.verify()) return;
       const resp = await fetch(
         `${APP_API_BASE}/api/trpc/jobs.addPrivateNote`,
         {
@@ -939,20 +952,24 @@ function AdminPrivateNotesCard({
           body: JSON.stringify({ json: { jobId: job.id, authorId: currentEmployeeId, authorName: currentEmployeeName, text } }),
         }
       );
+      if (!await isCurrentAction.verify()) return;
       const data = await resp.json();
+      if (!await isCurrentAction.verify()) return;
       const note: PrivateNote = data?.result?.data?.note;
       if (note) {
         // Replace the temp note with the real one from the server
         onNotesChange([...notes, note]);
       }
-    } catch { /* optimistic note already shown, fail silently */ } finally { setSaving(false); }
+    } catch { /* optimistic note already shown, fail silently */ } finally { if (isCurrentAction()) setSaving(false); }
   };
 
   const saveEdit = async (noteId: string) => {
+    if (!isCurrentAction() || job.companyId !== undefined) return;
     const text = editText.trim();
     if (!text) return;
     setSaving(true);
     try {
+      if (!await isCurrentAction.verify()) return;
       await fetch(
         `${APP_API_BASE}/api/trpc/jobs.editPrivateNote`,
         {
@@ -961,18 +978,22 @@ function AdminPrivateNotesCard({
           body: JSON.stringify({ json: { jobId: job.id, noteId, requesterId: currentEmployeeId, newText: text } }),
         }
       );
+      if (!await isCurrentAction.verify()) return;
       onNotesChange(notes.map((n) => n.id === noteId ? { ...n, text, updatedAt: new Date().toISOString() } : n));
       setEditingNoteId(null);
-    } catch { /* fail silently */ } finally { setSaving(false); }
+    } catch { /* fail silently */ } finally { if (isCurrentAction()) setSaving(false); }
   };
 
   const deleteNote = (noteId: string) => {
+    if (!isCurrentAction() || job.companyId !== undefined) return;
     Alert.alert("Delete Note", "Remove this note?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete", style: "destructive", onPress: async () => {
+          if (!isCurrentAction()) return;
           try {
-            await fetch(
+            if (!await isCurrentAction.verify()) return;
+      await fetch(
               `${APP_API_BASE}/api/trpc/jobs.deletePrivateNote`,
               {
                 method: "POST",
@@ -980,6 +1001,7 @@ function AdminPrivateNotesCard({
                 body: JSON.stringify({ json: { jobId: job.id, noteId, requesterId: currentEmployeeId, requesterRole: currentRole } }),
               }
             );
+            if (!await isCurrentAction.verify()) return;
             onNotesChange(notes.filter((n) => n.id !== noteId));
           } catch { /* fail silently */ }
         },
@@ -1358,7 +1380,10 @@ function DragTimePicker({
 export default function AdminScheduleScreen() {
   const colors = useColors();
   const utils = trpc.useUtils();
-  const { employee: currentEmployee } = useEmployeeAuth();
+  const { employee: currentEmployee, loading: employeeLoading } = useEmployeeAuth();
+  const isFocused = useIsFocused();
+  const [legacyToken, setLegacyToken] = useState<string | null>(null);
+  const [legacyTokenReady, setLegacyTokenReady] = useState(Platform.OS === "web");
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const hasJobSyncEmployee = currentEmployee?.sessionSource === "jobsync";
@@ -1387,6 +1412,7 @@ export default function AdminScheduleScreen() {
   const [savingAddress, setSavingAddress] = useState(false);
   const jobSavePaymentMutation = trpc.jobs.savePayment.useMutation({
     onError: (err) => {
+      if (!paymentActionRef.current?.()) return;
       Alert.alert(
         "⚠️ Payment Record Error",
         "The payment was collected but could not be saved to the server. Please manually record this payment in the Unpaid Jobs screen.\n\nError: " + (err.message ?? "Unknown error"),
@@ -1448,14 +1474,33 @@ export default function AdminScheduleScreen() {
     : []; // New Job is intentionally limited to active Price Book services.
   const rvPackages = allJobPackages.filter((p) => p.isRv);
   const [showReassignPicker, setShowReassignPicker] = useState(false);
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [showInvoiceSheet, setShowInvoiceSheet] = useState(false);
+  const [showCheckout, setShowCheckoutState] = useState(false);
+  const [showInvoiceSheet, setShowInvoiceSheetState] = useState(false);
+  // Synchronous epochs also invalidate callbacks closed/reopened before React commits.
+  const sheetEpochRef = useRef(0);
+  const invoiceEpochRef = useRef(0);
+  const checkoutEpochRef = useRef(0);
+  const setShowInvoiceSheet = (visible: boolean) => { invoiceEpochRef.current++; setShowInvoiceSheetState(visible); };
+  const setShowCheckout = (visible: boolean) => { checkoutEpochRef.current++; setShowCheckoutState(visible); };
   // ── Charge Card on File state ──
-  const [showChargeModal, setShowChargeModal] = useState(false);
+  const [showChargeModal, setShowChargeModalState] = useState(false);
+  const chargeEpochRef = useRef(0);
+  const setShowChargeModal = (visible: boolean) => { chargeEpochRef.current++; setShowChargeModalState(visible); };
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargingCard, setChargingCard] = useState(false);
   const [selectedChargeCardId, setSelectedChargeCardId] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJobState] = useState<Job | null>(null);
+  const setSelectedJob: React.Dispatch<React.SetStateAction<Job | null>> = (value) => {
+    if (typeof value !== "function") { sheetEpochRef.current++; invoiceEpochRef.current++; checkoutEpochRef.current++; }
+    setSelectedJobState(value);
+  };
+  const legacyBillingAllowed = legacyTokenReady && !jobSyncSession && !jobSyncLoading && !hasJobSyncEmployee
+    && selectedJob?.companyId === undefined && !!currentEmployee && !employeeLoading && isFocused;
+  const chargeLockRef = useRef(false);
+  const chargeActionRef = useRef<(() => boolean) | null>(null);
+  const paymentActionRef = useRef<(() => boolean) | null>(null);
+  const refundLockRef = useRef(false);
+  const receiptLockRef = useRef(false);
   // Build customerKey from selectedJob for savedCards query
   const scheduleCustomerKey = selectedJob
     ? selectedJob.email
@@ -1466,10 +1511,12 @@ export default function AdminScheduleScreen() {
     : "";
   const { data: scheduleSavedCards, refetch: refetchScheduleCards } = trpc.savedCards.list.useQuery(
     { customerKey: scheduleCustomerKey },
-    { enabled: !!scheduleCustomerKey && showChargeModal }
+    { enabled: legacyBillingAllowed && !!scheduleCustomerKey && showChargeModal }
   );
   const scheduleChargeCardMutation = trpc.savedCards.chargeCard.useMutation({
     onSuccess: (data) => {
+      chargeLockRef.current = false;
+      if (!chargeActionRef.current?.()) return;
       setChargingCard(false);
       setShowChargeModal(false);
       setChargeAmount("");
@@ -1477,10 +1524,12 @@ export default function AdminScheduleScreen() {
       const amt = parseFloat(chargeAmount) || 0;
       Alert.alert("Payment Successful ✅", `Card charged $${amt.toFixed(2)} successfully.\n\nPayment ID: ${data.paymentIntentId?.slice(-8) ?? "—"}`);
     },
-    onError: (e) => { setChargingCard(false); Alert.alert("Charge Failed", e.message); },
+    onError: (e) => { chargeLockRef.current = false; if (!chargeActionRef.current?.()) return; setChargingCard(false); Alert.alert("Charge Failed", e.message); },
   });
   // ── Refund state ──
-  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [showRefundModal, setShowRefundModalState] = useState(false);
+  const refundEpochRef = useRef(0);
+  const setShowRefundModal = (visible: boolean) => { refundEpochRef.current++; setShowRefundModalState(visible); };
   const [refundAmount, setRefundAmount] = useState("");
   const [refundNote, setRefundNote] = useState("");
   const [refundReason, setRefundReason] = useState<"duplicate" | "fraudulent" | "requested_by_customer">("requested_by_customer");
@@ -1488,7 +1537,7 @@ export default function AdminScheduleScreen() {
   const refundMutation = trpc.stripe.refundPayment.useMutation();
   const { data: refundHistory = [] } = trpc.stripe.listRefunds.useQuery(
     { jobId: selectedJob?.id },
-    { enabled: !!selectedJob?.id && !!selectedJob?.payment?.paymentIntentId }
+    { enabled: legacyBillingAllowed && !!selectedJob?.id && !!selectedJob?.payment?.paymentIntentId }
   );
   const [invoiceMethod, setInvoiceMethod] = useState<"email" | "sms">("email");
   const [invoiceSending, setInvoiceSending] = useState(false);
@@ -1505,22 +1554,72 @@ export default function AdminScheduleScreen() {
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
   const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
   const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
-  const companyJobMode = isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
-  const managementActionKey = JSON.stringify([companyJobMode, currentEmployee?.employeeId, jobSyncSession?.token,
-    jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role, jobSyncSession?.user.calendarEligible, selectedJob?.id]);
-  const managementActionRef = useRef({ key: managementActionKey, generation: 0, companyMode: companyJobMode, mounted: true });
+  const companyJobMode = jobSyncSession !== null || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
+  const managementActionKey = JSON.stringify([companyJobMode, currentEmployee?.employeeId, currentEmployee?.role,
+    currentEmployee?.sessionSource, employeeLoading, legacyToken, legacyTokenReady, isFocused, jobSyncSession?.token,
+    jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role, jobSyncSession?.user.calendarEligible, selectedJob?.id, selectedJob?.address, sheetEpochRef.current]);
+  const managementActionRef = useRef({ key: managementActionKey, generation: 0, companyMode: companyJobMode, mounted: true, focused: isFocused });
   if (managementActionRef.current.key !== managementActionKey) managementActionRef.current.generation++;
   managementActionRef.current.key = managementActionKey;
   managementActionRef.current.companyMode = companyJobMode;
+  managementActionRef.current.focused = isFocused;
   useEffect(() => {
     managementActionRef.current.mounted = true;
     return () => { managementActionRef.current.mounted = false; managementActionRef.current.generation++; };
   }, []);
-  const captureLegacyJobAction = () => {
-    const generation = managementActionRef.current.generation;
-    return () => managementActionRef.current.mounted && !managementActionRef.current.companyMode
-      && managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === generation;
+  useFocusEffect(useCallback(() => {
+    managementActionRef.current.focused = true;
+    let cancelled = false;
+    if (Platform.OS !== "web") {
+      setLegacyTokenReady(false);
+      void LegacyAuth.getSessionToken().then((token) => {
+        if (!cancelled) { setLegacyToken(token); setLegacyTokenReady(true); }
+      });
+    }
+    return () => {
+      cancelled = true;
+      managementActionRef.current.focused = false;
+      managementActionRef.current.generation++;
+      calendarScopeRef.current.generation++;
+      sheetEpochRef.current++; invoiceEpochRef.current++; checkoutEpochRef.current++;
+    };
+  }, [currentEmployee?.employeeId, currentEmployee?.role, currentEmployee?.sessionSource]));
+  // Calendar reads must not refetch/clear the board simply because a Job sheet opens.
+  const calendarScopeKey = JSON.stringify([companyJobMode, currentEmployee?.employeeId, currentEmployee?.role,
+    currentEmployee?.sessionSource, employeeLoading, legacyToken, legacyTokenReady, isFocused,
+    jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
+  const calendarScopeRef = useRef({ key: calendarScopeKey, generation: 0 });
+  if (calendarScopeRef.current.key !== calendarScopeKey) calendarScopeRef.current.generation++;
+  calendarScopeRef.current.key = calendarScopeKey;
+  const captureLegacyJobAction = (sheetScoped = true) => {
+    const generation = sheetScoped ? managementActionRef.current.generation : calendarScopeRef.current.generation;
+    const sheetEpoch = sheetEpochRef.current;
+    const isCurrent = () => managementActionRef.current.mounted && managementActionRef.current.focused
+      && !managementActionRef.current.companyMode && !!currentEmployee && !employeeLoading && legacyTokenReady
+      && (sheetScoped
+        ? managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === generation && sheetEpochRef.current === sheetEpoch
+        : calendarScopeRef.current.key === calendarScopeKey && calendarScopeRef.current.generation === generation);
+    // Native core credentials are read again at every asynchronous dispatch/result boundary.
+    isCurrent.verify = async () => {
+      if (!isCurrent()) return false;
+      if (Platform.OS !== "web" && (await LegacyAuth.getSessionToken()) !== legacyToken) {
+        // A credential mismatch invalidates this action even if the old token later returns.
+        if (isCurrent()) { managementActionRef.current.generation++; calendarScopeRef.current.generation++; }
+        return false;
+      }
+      return isCurrent();
+    };
+    return isCurrent;
   };
+  // Capture during render, NOT when a retained callback executes against newer refs.
+  const renderedLegacyAction = captureLegacyJobAction();
+  const renderedLegacyReadAction = captureLegacyJobAction(false);
+  const renderedChargeEpoch = chargeEpochRef.current;
+  const renderedRefundEpoch = refundEpochRef.current;
+  const isCurrentCharge = () => renderedLegacyAction() && chargeEpochRef.current === renderedChargeEpoch && showChargeModal;
+  isCurrentCharge.verify = async () => isCurrentCharge() && await renderedLegacyAction.verify() && isCurrentCharge();
+  const isCurrentRefund = () => renderedLegacyAction() && refundEpochRef.current === renderedRefundEpoch && showRefundModal;
+  isCurrentRefund.verify = async () => isCurrentRefund() && await renderedLegacyAction.verify() && isCurrentRefund();
   const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
   const companyJob = useCompanyJob(jobSyncSession,
     companyPhotoJobId,
@@ -1528,23 +1627,39 @@ export default function AdminScheduleScreen() {
       const current = new Map(serverJobs.map((job) => [String(job.id), job]));
       setJobs((previous) => previous.flatMap((job) => {
         const fresh = current.get(job.id);
-        return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
+        return fresh ? [{ ...job, ...companyJobDisplayFields(fresh), paidTotal: fresh.paidTotal, refundTotal: fresh.refundTotal, appliedEstimateCredit: fresh.appliedEstimateCredit, balance: fresh.balance, paymentStatus: fresh.paymentStatus }] : [];
       }));
     });
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
   };
-  const invoiceSessionRef = useRef({ token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id });
-  invoiceSessionRef.current = { token: jobSyncSession?.token, companyId: jobSyncSession?.company?.id, jobId: selectedJob?.id };
+  const invoiceIdentityKey = JSON.stringify([jobSyncSession?.portal, jobSyncSession?.token, jobSyncSession?.company?.id,
+    jobSyncSession?.user.id, jobSyncSession?.user.role, jobSyncLoading, hasJobSyncEmployee, selectedJob?.id, selectedJob?.companyId, isFocused]);
+  const invoiceSessionRef = useRef({ key: invoiceIdentityKey, generation: 0 });
+  if (invoiceSessionRef.current.key !== invoiceIdentityKey) invoiceSessionRef.current.generation++;
+  invoiceSessionRef.current.key = invoiceIdentityKey;
+  const invoiceGeneration = invoiceSessionRef.current.generation;
+  const renderedSheetEpoch = sheetEpochRef.current;
+  const renderedInvoiceEpoch = invoiceEpochRef.current;
+  const renderedCheckoutEpoch = checkoutEpochRef.current;
+  const isCurrentInvoice = () => managementActionRef.current.mounted && managementActionRef.current.focused
+    && invoiceSessionRef.current.key === invoiceIdentityKey && invoiceSessionRef.current.generation === invoiceGeneration
+    && sheetEpochRef.current === renderedSheetEpoch && invoiceEpochRef.current === renderedInvoiceEpoch && showInvoiceSheet;
   const invoiceLockRef = useRef(false);
+  const companyBilling = getCompanyJobBillingState(selectedJob ?? {});
+  const canonicalCalendarKey = JSON.stringify([jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
+  const canonicalCalendarScopeRef = useRef<string | null>(null);
+  const legacyManagementWriteLockRef = useRef(false);
+  const calendarGestureLockRef = useRef(false);
   useEffect(() => {
     setSelectedJob(null);
     setCompanyPhotoPreview(null);
     setAdminPhotoPreview(null);
     setInvoiceSentUrl(null);
     setCompanyTimezone(null);
-  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
+    setShowInvoiceSheet(false); setShowCheckout(false);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
   useEffect(() => {
     setCompanyPhotoPreview(null);
     setAdminPhotoPreview(null);
@@ -1553,7 +1668,7 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     const detail = companyJob.detail;
     if (!detail) return;
-    const fields = companyJobMilestoneFields(detail);
+    const fields = { ...companyJobMilestoneFields(detail), paidTotal: detail.paidTotal, refundTotal: detail.refundTotal, appliedEstimateCredit: detail.appliedEstimateCredit, balance: detail.balance, paymentStatus: detail.paymentStatus };
     setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
     setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
   }, [companyJob.detail]);
@@ -1670,34 +1785,48 @@ export default function AdminScheduleScreen() {
   const uploadAddrPhotoMutation = trpc.jobs.uploadAddressPhoto.useMutation();
   const deleteAddrPhotoMutation = trpc.jobs.deleteAddressPhoto.useMutation();
 
+  const addressPhotoLockRef = useRef(false);
   const handleAddAddressPhoto = async () => {
-    if (!selectedJob) return;
+    const isCurrentAction = renderedLegacyAction;
+    if (!selectedJob || !isCurrentAction() || addressPhotoLockRef.current) return;
     if (addressPhotos.length >= 2) { Alert.alert("Limit Reached", "Maximum 2 photos per address."); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
-    if (result.canceled || !result.assets[0]?.base64) return;
-    setAddrPhotoUploading(true);
+    addressPhotoLockRef.current = true;
+    const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
     try {
+      if (!await isCurrentAction.verify()) return;
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
+      if (!await isCurrentAction.verify() || result.canceled || !result.assets[0]?.base64) return;
+      setAddrPhotoUploading(true);
       const asset = result.assets[0];
-      const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
+      if (!await isCurrentAction.verify()) return;
       const res = await uploadAddrPhotoMutation.mutateAsync({ addressKey, base64: asset.base64!, mimeType: asset.mimeType ?? "image/jpeg", uploadedBy: currentEmployee?.fullName, uploadedByRole: "admin" });
-      if (res.success && res.photos) setAddressPhotos(res.photos);
-    } catch (e: any) { Alert.alert("Upload Failed", e.message ?? "Could not upload photo."); }
-    setAddrPhotoUploading(false);
+      if (await isCurrentAction.verify() && res.success && res.photos) setAddressPhotos(res.photos);
+    } catch (e: any) { if (await isCurrentAction.verify()) Alert.alert("Upload Failed", e.message ?? "Could not upload photo."); }
+    finally { addressPhotoLockRef.current = false; if (isCurrentAction()) setAddrPhotoUploading(false); }
   };
 
-  const handleDeleteAddressPhoto = (photoId: string) => {
+  const handleDeleteAddressPhoto = async (photoId: string) => {
+    const isCurrentAction = renderedLegacyAction;
+    if (!selectedJob || !isCurrentAction() || addressPhotoLockRef.current || !addressPhotos.some((p) => p.photoId === photoId)) return;
+    if (!await isCurrentAction.verify()) return;
     Alert.alert("Delete Photo", "Remove this location photo?", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: async () => {
-        await deleteAddrPhotoMutation.mutateAsync({ photoId });
-        setAddressPhotos(prev => prev.filter(p => p.photoId !== photoId));
+        if (!isCurrentAction() || addressPhotoLockRef.current) return;
+        addressPhotoLockRef.current = true;
+        try {
+          if (!await isCurrentAction.verify()) return;
+          await deleteAddrPhotoMutation.mutateAsync({ photoId });
+          if (await isCurrentAction.verify()) setAddressPhotos(prev => prev.filter(p => p.photoId !== photoId));
+        } catch (error: any) { if (await isCurrentAction.verify()) Alert.alert("Delete Failed", error.message ?? "Could not remove location photo."); }
+        finally { addressPhotoLockRef.current = false; }
       }},
     ]);
   };
 
   const forceSync = useCallback(() => {
     // Invalidate tRPC cache so the next fetch bypasses any stale cached response
-    utils.jobs.listByLocation.invalidate().catch(() => {});
+    if (!managementActionRef.current.companyMode && managementActionRef.current.focused) utils.jobs.listByLocation.invalidate().catch(() => {});
     setSyncKey((k) => k + 1);
   }, [utils]);
 
@@ -1767,24 +1896,27 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     if (!selectedJob || companyJobMode) return;
     let cancelled = false;
+    const isCurrentAction = renderedLegacyAction;
+    if (!isCurrentAction()) return;
     const jobId = selectedJob.id;
-    utils.jobs.getPhotos.fetch({ jobId })
-      .then(({ urls }) => {
-        if (cancelled) return;
+    void isCurrentAction.verify().then(async (current) => {
+      if (!current || cancelled) return;
+      const { urls } = await utils.jobs.getPhotos.fetch({ jobId });
+        if (cancelled || !await isCurrentAction.verify()) return;
         if (!urls || urls.length === 0) return;
         setSelectedJob((prev) => {
-          if (!prev || prev.id !== jobId) return prev;
+          if (!isCurrentAction() || !prev || prev.id !== jobId) return prev;
           // Only update if server has more/different photos
           const existing = JSON.stringify(prev.photoUrls ?? []);
           const incoming = JSON.stringify(urls);
           if (existing === incoming) return prev;
           return { ...prev, photoUrls: urls };
         });
-        setJobs((prev) => prev.map((j) => j.id === jobId ? { ...j, photoUrls: urls } : j));
+        setJobs((prev) => isCurrentAction() ? prev.map((j) => j.id === jobId ? { ...j, photoUrls: urls } : j) : prev);
       })
       .catch(() => { /* ignore — offline or job not found */ });
     return () => { cancelled = true; };
-  }, [selectedJob?.id, companyJobMode]);
+  }, [selectedJob?.id, companyJobMode, managementActionKey]);
 
   // Per-employee storage key: prevents cross-user cache leakage
   const STORAGE_KEY = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
@@ -1795,17 +1927,23 @@ export default function AdminScheduleScreen() {
     // Never show records stored by an earlier local calendar session in a
     // Company workspace. Company jobs are bearer-scoped and must come from
     // the authoritative mobile endpoint on every screen entry.
-    if (isJobSyncCompany || hasJobSyncEmployee || jobSyncLoading) {
-      void Promise.resolve().then(() => setJobs([]));
+    if (companyJobMode) {
+      setJobs([]);
       return;
     }
     const key = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
-    AsyncStorage.getItem(key).then((raw) => {
-      if (raw) { try { setJobs(JSON.parse(raw)); } catch {} }
+    const isCurrentAction = renderedLegacyReadAction;
+    let cancelled = false;
+    if (!isCurrentAction()) return;
+    void isCurrentAction.verify().then(async (current) => {
+      if (!current || cancelled) return;
+      const raw = await AsyncStorage.getItem(key);
+      if (!cancelled && await isCurrentAction.verify() && raw) { try { setJobs(JSON.parse(raw).filter((job: Job) => job.companyId === undefined)); } catch {} }
     });
     // Clear old shared cache key
-    AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
-  }, [currentEmployee?.employeeId, hasJobSyncEmployee, isJobSyncCompany, jobSyncLoading]);
+    if (isCurrentAction()) AsyncStorage.removeItem('tlw_schedule_jobs_v8').catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentEmployee?.employeeId, hasJobSyncEmployee, isJobSyncCompany, jobSyncLoading, companyJobMode, calendarScopeKey]);
 
   // One existing Company calendar: ordinary technicians plus only a freshly
   // verified opted-in self owner. The hook clears candidacy on blur/change/expiry.
@@ -1839,7 +1977,7 @@ export default function AdminScheduleScreen() {
             getJobSyncCompanyJobs(token),
             getJobSyncCompanySettings(token),
           ]);
-          if (cancelled) return;
+          if (cancelled || !managementActionRef.current.mounted || !managementActionRef.current.focused || calendarScopeRef.current.key !== calendarScopeKey) return;
           const companyTimezone = companySettings.timezone;
           setCompanyTimezone(companyTimezone);
           const mappedJobs = serverJobs.flatMap((job) => {
@@ -1860,6 +1998,8 @@ export default function AdminScheduleScreen() {
               companyId: jobSyncSession.company?.id,
               assignedUserId: job.assignedUserId,
               updatedAt: job.updatedAt,
+              paidTotal: job.paidTotal, refundTotal: job.refundTotal, appliedEstimateCredit: job.appliedEstimateCredit,
+              balance: job.balance, paymentStatus: job.paymentStatus,
               customerId: String(job.customerId),
               // A Company calendar has one authenticated workspace, not legacy city partitions.
               location: selectedCity,
@@ -1893,22 +2033,27 @@ export default function AdminScheduleScreen() {
               additionalVehicles: [],
             } as Job];
           });
-          if (!cancelled) setJobs(mappedJobs);
+          if (!cancelled) { canonicalCalendarScopeRef.current = canonicalCalendarKey; setJobs(mappedJobs); }
         } catch {
           // Do not present a cached legacy schedule as current Company data.
-          if (!cancelled) {
+          if (!cancelled && managementActionRef.current.mounted && managementActionRef.current.focused && calendarScopeRef.current.key === calendarScopeKey) {
             setJobs([]);
             setCompanyCalendarError("Could not refresh the Company calendar. Check your connection and tap Refresh.");
           }
         } finally {
-          if (!cancelled) setIsSyncing(false);
+          if (!cancelled && managementActionRef.current.mounted && managementActionRef.current.focused && calendarScopeRef.current.key === calendarScopeKey) setIsSyncing(false);
         }
       };
       void syncCompanyJobs();
       return () => { cancelled = true; };
     }
 
+    if (companyJobMode) return;
+    const isCurrentAction = renderedLegacyReadAction;
+    let cancelled = false;
+    const storageKey = STORAGE_KEY;
     const syncServerJobs = async () => {
+      if (!await isCurrentAction.verify() || cancelled) return;
       setIsSyncing(true);
       try {
         const today = new Date();
@@ -1917,7 +2062,8 @@ export default function AdminScheduleScreen() {
         const toDate = new Date(today);
         toDate.setDate(today.getDate() + 365);
         const endDate = localDateStr(toDate);
-        const serverJobs = await utils.jobs.listByLocation.fetch({ location: selectedCity, startDate, endDate });
+        const serverJobs = (await utils.jobs.listByLocation.fetch({ location: selectedCity, startDate, endDate })).filter((job: any) => job.companyId === undefined);
+        if (cancelled || !await isCurrentAction.verify()) return;
         const mappedJobs: Job[] = serverJobs.map((sj: any) => {
           const bookingDate = parseLocalDate(sj.date);
           // Mon-based day index: 0=Mon…6=Sun
@@ -2014,6 +2160,7 @@ export default function AdminScheduleScreen() {
         // Filter out cancelled jobs — they must not appear on the admin calendar
         const activeJobs = mappedJobs.filter((j: any) => (j as any)._rawStatus !== 'cancelled');
         setJobs((prev) => {
+          if (cancelled || !isCurrentAction()) return prev;
           const otherCityJobs = prev.filter((j) => j.location && j.location.toLowerCase() !== selectedCity.toLowerCase());
           // Deduplicate by id — server data takes precedence over cached data
           const newIds = new Set(activeJobs.map((j) => j.id));
@@ -2021,17 +2168,18 @@ export default function AdminScheduleScreen() {
           // Also purge any previously-cached cancelled jobs for this city
           const cleanedOther = dedupedOther.filter((j: any) => (j as any)._rawStatus !== 'cancelled' && j.status !== 'cancelled');
           const merged = [...cleanedOther, ...activeJobs];
-          AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(merged));
+          AsyncStorage.setItem(storageKey, JSON.stringify(merged));
           return merged;
         });
       } catch {
         // Fail silently — offline mode still works from AsyncStorage
       } finally {
-        setIsSyncing(false);
+        if (!cancelled && isCurrentAction()) setIsSyncing(false);
       }
     };
-    syncServerJobs();
-  }, [isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedCity, syncKey]);
+    void syncServerJobs();
+    return () => { cancelled = true; };
+  }, [isJobSyncCompany, jobSyncLoading, jobSyncSession?.token, selectedCity, syncKey, companyJobMode, calendarScopeKey]);
 
   // Auto-sync when the tab gains focus so phone-booked jobs appear immediately
   useFocusEffect(
@@ -2071,12 +2219,19 @@ export default function AdminScheduleScreen() {
 
   // When navigated from AI Receptionist call log with a bookingId, find and open that job
   const highlightHandledRef = useRef<string | null>(null);
+  const [highlightUnavailable, setHighlightUnavailable] = useState(false);
   useEffect(() => {
-    if (!highlightBookingId || highlightHandledRef.current === highlightBookingId) return;
-    // Search across all loaded jobs first
-    const match = jobs.find((j) => j.id === highlightBookingId || j.bookingId === highlightBookingId);
+    const highlightKey = JSON.stringify([highlightBookingId, jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role, companyJobMode]);
+    if (!highlightBookingId || !isFocused || highlightHandledRef.current === highlightKey) return;
+    // Company booking references are not canonical Job IDs. Match only verified current DTOs.
+    const canonicalId = positiveJobSyncId(highlightBookingId);
+    const match = jobs.find((j) => companyJobMode
+      ? isJobSyncCompany && canonicalCalendarScopeRef.current === canonicalCalendarKey && canonicalId !== null && String(canonicalId) === highlightBookingId
+        && j.companyId === jobSyncSession?.company?.id && j.id === highlightBookingId
+      : j.companyId === undefined && (j.id === highlightBookingId || j.bookingId === highlightBookingId));
     if (match) {
-      highlightHandledRef.current = highlightBookingId;
+      setHighlightUnavailable(false);
+      highlightHandledRef.current = highlightKey;
       if (match.location && match.location !== selectedCity) setSelectedCity(match.location as any);
       setWeekOffset(match.weekOffset);
       setSelectedDay(match.dayIndex);
@@ -2089,13 +2244,17 @@ export default function AdminScheduleScreen() {
       setShowCustomerHistory(false);
       return;
     }
-    // Job not in local cache yet — fetch from server by bookingId
+    if (companyJobMode) { setHighlightUnavailable(true); return; }
+    const isCurrentAction = renderedLegacyAction;
+    let cancelled = false;
+    // Genuine legacy booking detail only; no Company/bridge/pending fallback.
     const fetchAndOpen = async () => {
       try {
+        if (cancelled || !await isCurrentAction.verify()) return;
         const res = await fetch(`${APP_API_BASE}/api/booking/job/${encodeURIComponent(highlightBookingId)}`);
-        if (!res.ok) return;
+        if (cancelled || !await isCurrentAction.verify() || !res.ok) return;
         const sj = await res.json();
-        if (!sj?.jobId) return;
+        if (cancelled || !await isCurrentAction.verify() || !sj?.jobId || sj.companyId !== undefined) return;
         const bookingDate = parseLocalDate(sj.date);
         // Mon-based day index: 0=Mon…6=Sun
         const dayOfWeek = (bookingDate.getDay() + 6) % 7;
@@ -2141,7 +2300,7 @@ export default function AdminScheduleScreen() {
           finishedAt: sj.finishedAt ? String(sj.finishedAt) : null,
           isNewCustomer: sj.isNewCustomer === 1 || (sj.isNewCustomer as any) === true,
         } as Job;
-        highlightHandledRef.current = highlightBookingId;
+        highlightHandledRef.current = highlightKey;
         if (sj.location && sj.location !== selectedCity) setSelectedCity(sj.location as any);
         setWeekOffset(wOffset);
         setSelectedDay(dayOfWeek);
@@ -2156,8 +2315,9 @@ export default function AdminScheduleScreen() {
         // Silently fail — job may not exist yet
       }
     };
-    fetchAndOpen();
-  }, [highlightBookingId, jobs]);
+    void fetchAndOpen();
+    return () => { cancelled = true; };
+  }, [highlightBookingId, jobs, companyJobMode, isFocused, managementActionKey]);
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
@@ -2329,6 +2489,7 @@ export default function AdminScheduleScreen() {
   // adminSavePrivateNotes removed — now handled by PrivateNotesCard component
 
   const adminAddTag = async (job: Job, tag: string) => {
+    if (job.companyId !== undefined || !renderedLegacyAction()) return;
     const trimmed = tag.trim();
     if (!trimmed) return;
     const newTags = [...(job.tags ?? []), trimmed];
@@ -2340,6 +2501,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminRemoveTag = async (job: Job, tag: string) => {
+    if (job.companyId !== undefined || !renderedLegacyAction()) return;
     const newTags = (job.tags ?? []).filter((t) => t !== tag);
     const updated = { ...job, tags: newTags };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2348,6 +2510,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveTax = async (job: Job, taxStr: string) => {
+    if (job.companyId !== undefined || !renderedLegacyAction()) return;
     const taxAmount = parseFloat(taxStr) || 0;
     const updated = { ...job, taxAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2357,6 +2520,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDiscount = async (job: Job, amountStr: string, code: string) => {
+    if (job.companyId !== undefined || !renderedLegacyAction()) return;
     const inputVal = parseFloat(amountStr) || 0;
     // If percent mode, convert to dollar amount based on subtotal (price + upsells)
     const subtotalForDiscount = job.price + (job.upsellTotal ?? 0);
@@ -2372,6 +2536,7 @@ export default function AdminScheduleScreen() {
   };
 
   const adminSaveDeposit = async (job: Job, amountStr: string) => {
+    if (job.companyId !== undefined || !renderedLegacyAction()) return;
     const depositAmount = parseFloat(amountStr) || 0;
     const updated = { ...job, depositAmount };
     setJobs((prev) => prev.map((j) => j.id === job.id ? updated : j));
@@ -2487,11 +2652,15 @@ export default function AdminScheduleScreen() {
     } catch {}
   };
 
-  const adminLoadCustomerHistory = async (job: Job) => {
+  const adminLoadCustomerHistory = async (job: Job, isCurrentAction = renderedLegacyAction) => {
+    if (job.companyId !== undefined || !isCurrentAction()) return;
     try {
+      if (!await isCurrentAction.verify()) return;
       const url = `${APP_API_BASE}/api/trpc/jobs.customerHistory?input=${encodeURIComponent(JSON.stringify({ phone: job.phone || undefined, email: job.email || undefined, excludeJobId: job.id }))}`;
       const res = await fetch(url);
+      if (!await isCurrentAction.verify()) return;
       const data = await res.json();
+      if (!await isCurrentAction.verify()) return;
       // tRPC v11 wraps response data in .result.data.json
       const items = data?.result?.data?.json ?? data?.result?.data ?? [];
       setCustomerHistory(items.map((sj: any) => ({
@@ -2516,15 +2685,27 @@ export default function AdminScheduleScreen() {
   useEffect(() => {
     setCustomerHistory([]);
     setAddressPhotos([]);
+    setViewingAddrPhoto(null);
+    setAddrPhotoUploading(false);
+    setChargingCard(false); setRefundLoading(false); setSendingJobReceipt(false); setInvoiceSending(false);
+    setShowChargeModal(false); setShowRefundModal(false);
+    const isCurrentAction = renderedLegacyAction;
+    let cancelled = false;
+    if (!selectedJob || !isCurrentAction()) return;
     if (selectedJob && (selectedJob.phone || selectedJob.email)) {
-      adminLoadCustomerHistory(selectedJob);
+      void adminLoadCustomerHistory(selectedJob, Object.assign(() => !cancelled && isCurrentAction(), { verify: async () => !cancelled && await isCurrentAction.verify() && !cancelled }));
     }
     if (selectedJob?.address) {
       const addressKey = selectedJob.address.trim().toLowerCase().replace(/\s+/g, "-");
-      utils.jobs.getAddressPhotos.fetch({ addressKey }).then((photos: any[]) => setAddressPhotos(photos)).catch(() => {});
+      void isCurrentAction.verify().then(async (current) => {
+        if (!current || cancelled) return;
+        const photos = await utils.jobs.getAddressPhotos.fetch({ addressKey });
+        if (!cancelled && await isCurrentAction.verify()) setAddressPhotos(photos);
+      }).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob?.id]);
+    return () => { cancelled = true; };
+  }, [selectedJob?.id, managementActionKey]);
 
   const saveCompanyCalendarChange = useCallback(async (previous: Job, next: Job) => {
     try {
@@ -2545,6 +2726,12 @@ export default function AdminScheduleScreen() {
   const handleMoveAdminJob = async (jobId: string, newStartHour: number, newLaneIdx?: number) => {
     const previous = jobs.find((job) => job.id === jobId);
     if (!previous) return;
+    if (calendarGestureLockRef.current) return;
+    calendarGestureLockRef.current = true;
+    try {
+    const isCurrentAction = renderedLegacyAction;
+    if (!isJobSyncCompany && (previous.companyId !== undefined || !await isCurrentAction.verify())) return;
+    if (isJobSyncCompany && (!managementActionRef.current.focused || invoiceSessionRef.current.key !== invoiceIdentityKey)) return;
 
     const cityConfig: CityConfig = {
       slug: selectedCity,
@@ -2569,7 +2756,7 @@ export default function AdminScheduleScreen() {
       detailerName,
       assignedTo,
     };
-    setJobs((current) => current.map((job) => job.id === jobId ? next : job));
+    setJobs((current) => (isJobSyncCompany ? managementActionRef.current.focused && invoiceSessionRef.current.key === invoiceIdentityKey : isCurrentAction()) ? current.map((job) => job.id === jobId ? next : job) : current);
 
     if (isJobSyncCompany) {
       await saveCompanyCalendarChange(previous, next);
@@ -2577,7 +2764,9 @@ export default function AdminScheduleScreen() {
     }
 
     // Legacy employee schedules retain their existing isolated mutation path.
+    if (!await isCurrentAction.verify()) return;
     jobReassignMutation.mutate({ jobId: next.id, newAssignedTo: next.assignedTo ?? "" });
+    if (!await isCurrentAction.verify()) return;
     jobUpsertMutation.mutate({
       jobId: next.id,
       location: next.location ?? selectedCity,
@@ -2597,12 +2786,20 @@ export default function AdminScheduleScreen() {
       source: "manual" as const,
       notifyCustomer: false,
     });
+    if (!await isCurrentAction.verify()) return;
     AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(jobs.map((job) => job.id === jobId ? next : job))).catch(() => {});
+      } finally { calendarGestureLockRef.current = false; }
   };
 
   const handleResizeAdminJob = async (jobId: string, newEndHour: number) => {
     const previous = jobs.find((job) => job.id === jobId);
     if (!previous) return;
+    if (calendarGestureLockRef.current) return;
+    calendarGestureLockRef.current = true;
+    try {
+    const isCurrentAction = renderedLegacyAction;
+    if (!isJobSyncCompany && (previous.companyId !== undefined || !await isCurrentAction.verify())) return;
+    if (isJobSyncCompany && (!managementActionRef.current.focused || invoiceSessionRef.current.key !== invoiceIdentityKey)) return;
 
     const displayedDate = localDateStr(getWeekDates(weekOffset)[previous.dayIndex]);
     const next: Job = {
@@ -2610,13 +2807,14 @@ export default function AdminScheduleScreen() {
       endHour: Math.max(previous.startHour + 1, Math.min(HOURS[HOURS.length - 1], newEndHour)),
       companyDate: previous.companyDate ?? displayedDate,
     };
-    setJobs((current) => current.map((job) => job.id === jobId ? next : job));
+    setJobs((current) => (isJobSyncCompany ? managementActionRef.current.focused && invoiceSessionRef.current.key === invoiceIdentityKey : isCurrentAction()) ? current.map((job) => job.id === jobId ? next : job) : current);
 
     if (isJobSyncCompany) {
       await saveCompanyCalendarChange(previous, next);
       return;
     }
 
+    if (!await isCurrentAction.verify()) return;
     jobUpsertMutation.mutate({
       jobId: next.id,
       location: next.location ?? selectedCity,
@@ -2636,7 +2834,9 @@ export default function AdminScheduleScreen() {
       source: "manual" as const,
       notifyCustomer: false,
     });
+    if (!await isCurrentAction.verify()) return;
     AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(jobs.map((job) => job.id === jobId ? next : job))).catch(() => {});
+      } finally { calendarGestureLockRef.current = false; }
   };
   const weekDates = getWeekDates(weekOffset);
   const selectedDate = weekDates[selectedDay];
@@ -2729,6 +2929,7 @@ export default function AdminScheduleScreen() {
       containerClassName="bg-background"
       onLayout={(e) => setScreenWidth(e.nativeEvent.layout.width)}
     >
+      {highlightUnavailable && companyJobMode ? <Text style={{ color: colors.muted, padding: 12 }}>Highlighted Company Job unavailable in the current verified calendar. Booking references cannot open legacy Jobs.</Text> : null}
       {/* Header */}
       <View style={[s.header, { borderBottomColor: colors.border }]}>
         <Text style={[s.title, { color: colors.foreground }]}>Schedule</Text>
@@ -2956,7 +3157,7 @@ export default function AdminScheduleScreen() {
                       <Text style={{ color: "#22C55E", fontWeight: "700", fontSize: 12 }}>✓ PAID</Text>
                     </View>
                   )}
-                  {!selectedJob.payment && (() => {
+                  {(companyJobMode ? companyBilling.canCollect : !selectedJob.payment) && (() => {
                     const subtotal = selectedJob.price;
                     const upsells = selectedJob.upsellTotal ?? 0;
                     const discount = selectedJob.discountAmount ?? 0;
@@ -3034,6 +3235,7 @@ export default function AdminScheduleScreen() {
                     </TouchableOpacity>
                   </View>
                   {/* ── Location Photos ── */}
+                  {companyJobMode ? <Text style={{ color: colors.muted }}>Company location-shared photos are unavailable. Use Job Photos below.</Text> : <>
                   <View style={{ paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                       <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "600" }}>📸 Location Photos</Text>
@@ -3052,7 +3254,7 @@ export default function AdminScheduleScreen() {
                       <View style={{ flexDirection: "row", gap: 8 }}>
                         {addressPhotos.map((photo: any) => (
                           <View key={photo.photoId} style={{ position: "relative" }}>
-                            <TouchableOpacity onPress={() => setViewingAddrPhoto(photo.photoUrl)}>
+                            <TouchableOpacity onPress={async () => { if (await renderedLegacyAction.verify() && addressPhotos.some((p) => p.photoId === photo.photoId && p.photoUrl === photo.photoUrl)) setViewingAddrPhoto(photo.photoUrl); }}>
                               <Image source={{ uri: photo.photoUrl }} style={{ width: 100, height: 100, borderRadius: 8, backgroundColor: colors.surface }} resizeMode="cover" />
                             </TouchableOpacity>
                             <TouchableOpacity
@@ -3068,7 +3270,9 @@ export default function AdminScheduleScreen() {
                     )}
                   </View>
 
-                  <TouchableOpacity onPress={() => setShowCustomerHistory(prev => !prev)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+                  </>}
+                  {companyJobMode ? <Text style={{ color: colors.muted, paddingVertical: 8 }}>Company customer history is unavailable in this Job sheet.</Text> : null}
+                  <TouchableOpacity onPress={() => { if (renderedLegacyAction()) setShowCustomerHistory(prev => !prev); }} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       <Text style={{ fontSize: 14 }}>🕐</Text>
                       <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "500" }}>Customer History</Text>
@@ -3076,7 +3280,7 @@ export default function AdminScheduleScreen() {
                     </View>
                     <Text style={{ color: colors.muted, fontSize: 18 }}>{showCustomerHistory ? "∧" : ">"}</Text>
                   </TouchableOpacity>
-                  {showCustomerHistory && (
+                  {showCustomerHistory && !companyJobMode && (
                     <View style={{ marginTop: 10 }}>
                       {customerHistory.length === 0 ? (
                         <Text style={{ color: colors.muted, fontSize: 13, fontStyle: "italic" }}>No previous jobs found</Text>
@@ -3795,9 +3999,9 @@ export default function AdminScheduleScreen() {
                     )}
 
                     {/* Issue Refund button — only for card payments with a paymentIntentId */}
-                    {selectedJob.payment.paymentIntentId && (
+                    {!companyJobMode && selectedJob.payment.paymentIntentId && (
                       <TouchableOpacity
-                        onPress={() => { setRefundAmount(""); setRefundNote(""); setRefundReason("requested_by_customer"); setShowRefundModal(true); }}
+                        onPress={() => { if (!renderedLegacyAction()) return; setRefundAmount(""); setRefundNote(""); setRefundReason("requested_by_customer"); setShowRefundModal(true); }}
                         activeOpacity={0.8}
                         style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#EF444418", borderWidth: 1, borderColor: "#EF444455", borderRadius: 10, paddingVertical: 10 }}
                       >
@@ -3809,7 +4013,7 @@ export default function AdminScheduleScreen() {
                 ) : null}
 
                 {/* ── Refund Modal ── */}
-                <Modal visible={showRefundModal} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
+                <Modal visible={!companyJobMode && isFocused && showRefundModal} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
                   <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
                     <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
                       <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 4 }}>↩️ Issue Refund</Text>
@@ -3857,15 +4061,18 @@ export default function AdminScheduleScreen() {
                         <TouchableOpacity
                           disabled={refundLoading || !refundAmount || parseFloat(refundAmount) <= 0}
                           onPress={async () => {
-                            if (!selectedJob?.payment?.paymentIntentId) return;
+                            const isCurrentAction = isCurrentRefund;
+                            if (!isCurrentAction() || refundLockRef.current || !selectedJob?.payment?.paymentIntentId) return;
                             const cents = Math.round(parseFloat(refundAmount) * 100);
                             const maxCents = Math.round((selectedJob.payment.total ?? 0) * 100);
                             if (cents > maxCents) {
                               Alert.alert("Invalid Amount", `Refund cannot exceed the original payment of $${selectedJob.payment.total.toFixed(2)}.`);
                               return;
                             }
+                            refundLockRef.current = true;
                             setRefundLoading(true);
                             try {
+                              if (!await isCurrentAction.verify()) return;
                               await refundMutation.mutateAsync({
                                 paymentIntentId: selectedJob.payment.paymentIntentId!,
                                 amountCents: cents,
@@ -3877,12 +4084,14 @@ export default function AdminScheduleScreen() {
                                 customerEmail: selectedJob.email || undefined,
                                 customerPhone: selectedJob.phone || undefined,
                               });
+                              if (!await isCurrentAction.verify()) return;
                               setShowRefundModal(false);
                               Alert.alert("✅ Refund Issued", `$${parseFloat(refundAmount).toFixed(2)} has been refunded to the customer${selectedJob.email ? " and a confirmation email has been sent" : ""}.`);
                             } catch (err: any) {
-                              Alert.alert("Refund Failed", err?.message ?? "An error occurred while processing the refund. Please try again.");
+                              if (await isCurrentAction.verify()) Alert.alert("Refund Failed", err?.message ?? "An error occurred while processing the refund. Please try again.");
                             } finally {
-                              setRefundLoading(false);
+                              refundLockRef.current = false;
+                              if (isCurrentAction()) setRefundLoading(false);
                             }
                           }}
                           style={{ flex: 2, backgroundColor: refundLoading || !refundAmount || parseFloat(refundAmount || "0") <= 0 ? "#EF444488" : "#EF4444", borderRadius: 12, paddingVertical: 13, alignItems: "center" }}
@@ -3908,7 +4117,7 @@ export default function AdminScheduleScreen() {
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                         {photos.map((url) => (
-                          <TouchableOpacity key={url} onPress={() => setAdminPhotoPreview(url)} activeOpacity={0.85}>
+                          <TouchableOpacity key={url} onPress={() => { if (renderedLegacyAction()) setAdminPhotoPreview(url); }} activeOpacity={0.85}>
                             <Image source={{ uri: url }} style={{ width: 90, height: 90, borderRadius: 8, backgroundColor: colors.surface }} resizeMode="cover" />
                           </TouchableOpacity>
                         ))}
@@ -3920,11 +4129,14 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Private Notes Card ── */}
                 {(() => {
+                  if (companyJobMode) return <Text style={{ color: colors.muted, padding: 14 }}>Company private-note editing is unavailable in this Job sheet.</Text>;
                   const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                   return hasNotes ? (
                     <AdminPrivateNotesCard
                       job={selectedJob}
+                      isCurrentAction={renderedLegacyAction}
                       onNotesChange={(notes: PrivateNote[]) => {
+                        if (!renderedLegacyAction()) return;
                         // Filter out __new__ placeholder before persisting
                         const realNotes = notes.filter((n) => n.id !== "__new__");
                         setSelectedJob((prev) => prev ? { ...prev, privateNotes: realNotes } : prev);
@@ -3935,7 +4147,7 @@ export default function AdminScheduleScreen() {
                   ) : (
                     <View style={{ backgroundColor: colors.background, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: colors.border }}>
                       <TouchableOpacity
-                        onPress={() => setSelectedJob((prev) => prev ? { ...prev, privateNotes: [{ id: "__new__", text: "", authorId: "admin", authorName: "Admin", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] } : prev)}
+                        onPress={() => { if (!renderedLegacyAction()) return; setSelectedJob((prev) => prev ? { ...prev, privateNotes: [{ id: "__new__", text: "", authorId: "admin", authorName: "Admin", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] } : prev); }}
                         style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                         activeOpacity={0.7}
                       >
@@ -3998,7 +4210,7 @@ export default function AdminScheduleScreen() {
                 {/* ── Collect Payment Button ── */}
                 {!selectedJob.payment && (
                   <TouchableOpacity
-                    onPress={() => setShowCheckout(true)}
+                    onPress={() => { if (managementActionRef.current.mounted && managementActionRef.current.focused && sheetEpochRef.current === renderedSheetEpoch && invoiceSessionRef.current.key === invoiceIdentityKey) { paymentActionRef.current = null; setShowCheckout(true); } }}
                     activeOpacity={0.8}
                     style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#22C55E18", borderWidth: 1, borderColor: "#22C55E55", borderRadius: 12, paddingVertical: 14 }}
                   >
@@ -4010,10 +4222,11 @@ export default function AdminScheduleScreen() {
                 {/* ── Send Invoice Button ── */}
                 <TouchableOpacity
                   onPress={() => {
+                    if (!managementActionRef.current.mounted || !managementActionRef.current.focused || sheetEpochRef.current !== renderedSheetEpoch || invoiceSessionRef.current.key !== invoiceIdentityKey) return;
                     const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
                     // If any payment has been recorded, show remaining balance mode automatically
-                    const remainingOnly = alreadyPaid > 0.01;
+                    const remainingOnly = companyJobMode ? (selectedJob.paidTotal ?? 0) > 0 : alreadyPaid > 0.01;
                     setInvoiceMethod("email");
                     setInvoiceSentUrl(null);
                     setInvoiceRemainingOnly(remainingOnly);
@@ -4028,21 +4241,27 @@ export default function AdminScheduleScreen() {
                 </TouchableOpacity>
 
                 {/* ── Send Receipt Button (only when job has payment recorded) ── */}
-                {selectedJob.payment && (
+                {!companyJobMode && selectedJob.payment && (
                   <TouchableOpacity
                     onPress={async () => {
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!isCurrentAction() || receiptLockRef.current) return;
                       if (!selectedJob.email) {
                         Alert.alert("No Email", "This customer has no email on file.");
                         return;
                       }
+                      receiptLockRef.current = true;
                       setSendingJobReceipt(true);
                       try {
+                        if (!await isCurrentAction.verify()) return;
                         await sendJobReceiptMutation.mutateAsync({ jobId: selectedJob.id });
+                        if (!await isCurrentAction.verify()) return;
                         Alert.alert("Receipt Sent ✅", `Payment receipt emailed to ${selectedJob.email}.`);
                       } catch (err: any) {
-                        Alert.alert("Error", err.message ?? "Failed to send receipt");
+                        if (await isCurrentAction.verify()) Alert.alert("Error", err.message ?? "Failed to send receipt");
                       } finally {
-                        setSendingJobReceipt(false);
+                        receiptLockRef.current = false;
+                        if (isCurrentAction()) setSendingJobReceipt(false);
                       }
                     }}
                     activeOpacity={0.8}
@@ -4058,13 +4277,14 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Send Remaining Balance Button (only when partial payment exists) ── */}
                 {(() => {
-                  if (!selectedJob.payment) return null;
+                  if (companyJobMode ? !((selectedJob.paidTotal ?? 0) > 0) : !selectedJob.payment) return null;
                   const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
-                  const remaining = Math.max(0, jobTotal - selectedJob.payment.total);
-                  if (remaining <= 0.01) return null;
+                  const remaining = companyJobMode ? companyBilling.balance : Math.max(0, jobTotal - selectedJob.payment!.total);
+                  if (remaining === null || remaining <= 0.01) return null;
                   return (
                     <TouchableOpacity
                       onPress={() => {
+                        if (!managementActionRef.current.mounted || !managementActionRef.current.focused || sheetEpochRef.current !== renderedSheetEpoch || invoiceSessionRef.current.key !== invoiceIdentityKey) return;
                         setInvoiceMethod("email");
                         setInvoiceSentUrl(null);
                         setInvoiceRemainingOnly(true);
@@ -4081,9 +4301,11 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 {/* Charge Card on File button — only shown when job is unpaid */}
-                {!selectedJob?.payment && (
+                {!companyJobMode && !selectedJob?.payment && (
                   <TouchableOpacity
                     onPress={() => {
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!isCurrentAction()) return;
                       const cards = (scheduleSavedCards as any[]) ?? [];
                       if (cards.length === 0) {
                         // Trigger query first, then show modal
@@ -4092,6 +4314,7 @@ export default function AdminScheduleScreen() {
                           "Checking Cards",
                           "Looking up saved cards for this customer...",
                           [{ text: "OK", onPress: () => {
+                            if (!isCurrentAction()) return;
                             const total = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                             setChargeAmount(total.toFixed(2));
                             const defaultCard = (scheduleSavedCards as any[] ?? []).find((c: any) => c.isDefault) ?? (scheduleSavedCards as any[] ?? [])[0];
@@ -4135,9 +4358,10 @@ export default function AdminScheduleScreen() {
                 {/* Cancel Job button — marks as cancelled, stays visible in history */}
                 {!companyJobMode && !selectedJob?.recurrenceParentId && (
                   <TouchableOpacity
-                    onPress={() => {
+                    onPress={async () => {
                       if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
-                      const isCurrentAction = captureLegacyJobAction();
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!await isCurrentAction.verify()) return;
                       Alert.alert("Cancel Job", "Mark this job as cancelled? It will remain visible in history with a Cancelled badge.", [
                         { text: "Dismiss", style: "cancel" },
                         {
@@ -4145,11 +4369,18 @@ export default function AdminScheduleScreen() {
                           style: "destructive",
                           onPress: async () => {
                             if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                             await jobCancelMutation.mutateAsync({ jobId: selectedJob.id });
                             if (!isCurrentAction()) return;
+                            if (!await isCurrentAction.verify()) return;
                             setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: "cancelled" } : j));
                             setSelectedJob(null);
-                          },
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
+                            },
                         },
                       ]);
                     }}
@@ -4164,9 +4395,10 @@ export default function AdminScheduleScreen() {
                 {/* Revert to Pending button — only for finished/completed jobs, keeps paid flag */}
                 {!companyJobMode && (selectedJob?.status === "finished" || selectedJob?.status === "completed") && (
                   <TouchableOpacity
-                    onPress={() => {
+                    onPress={async () => {
                       if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
-                      const isCurrentAction = captureLegacyJobAction();
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!await isCurrentAction.verify()) return;
                       Alert.alert(
                         "Revert to Pending",
                         "This will set the job back to Pending (as if not started). The PAID status and payment record will be kept. The customer portal will show this as an upcoming appointment.",
@@ -4176,6 +4408,10 @@ export default function AdminScheduleScreen() {
                             text: "Revert to Pending",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               try {
                                 await jobStatusMutation.mutateAsync({
                                   jobId: selectedJob.id,
@@ -4184,6 +4420,7 @@ export default function AdminScheduleScreen() {
                                   upsellTotal: selectedJob.upsellTotal ?? 0,
                                 });
                                 if (!isCurrentAction()) return;
+                                if (!await isCurrentAction.verify()) return;
                                 setJobs(prev => prev.map(j =>
                                   j.id === selectedJob.id ? { ...j, status: "scheduled" as any } : j
                                 ));
@@ -4192,8 +4429,11 @@ export default function AdminScheduleScreen() {
                                 Alert.alert("Reverted ✅", "Job is now Pending. Payment record is preserved.");
                               } catch (e: any) {
                                 if (!isCurrentAction()) return;
+                                if (!await isCurrentAction.verify()) return;
                                 Alert.alert("Error", e.message ?? "Failed to revert job status.");
                               }
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                         ]
@@ -4209,9 +4449,10 @@ export default function AdminScheduleScreen() {
 
                 {/* Delete Job button — completely removes from all views */}
                 {!companyJobMode && <TouchableOpacity
-                  onPress={() => {
+                  onPress={async () => {
                     if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
-                    const isCurrentAction = captureLegacyJobAction();
+                    const isCurrentAction = renderedLegacyAction;
+                      if (!await isCurrentAction.verify()) return;
                     if (selectedJob.recurrenceParentId) {
                       // Recurring job — show options
                       Alert.alert(
@@ -4223,10 +4464,17 @@ export default function AdminScheduleScreen() {
                             text: "This Job Only",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               await jobDeleteMutation.mutateAsync({ jobId: selectedJob.id });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                           {
@@ -4234,6 +4482,10 @@ export default function AdminScheduleScreen() {
                             style: "destructive",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               const jobDate = (() => {
                                 const today = new Date();
                 const monday = new Date(today);
@@ -4249,8 +4501,11 @@ export default function AdminScheduleScreen() {
                                 fromDate: jobDate,
                               });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               forceSync();
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                           {
@@ -4258,13 +4513,20 @@ export default function AdminScheduleScreen() {
                             style: "destructive",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               await jobDeleteRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "all",
                               });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               forceSync();
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                         ]
@@ -4277,11 +4539,18 @@ export default function AdminScheduleScreen() {
                           style: "destructive",
                           onPress: async () => {
                             if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                             await jobDeleteMutation.mutateAsync({ jobId: selectedJob.id });
                             if (!isCurrentAction()) return;
+                            if (!await isCurrentAction.verify()) return;
                             setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
                             setSelectedJob(null);
-                          },
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
+                            },
                         },
                       ]);
                     }
@@ -4295,9 +4564,10 @@ export default function AdminScheduleScreen() {
                 {/* Cancel Recurring Job button — only shown for recurring jobs */}
                 {!companyJobMode && selectedJob?.recurrenceParentId && (
                   <TouchableOpacity
-                    onPress={() => {
+                    onPress={async () => {
                       if (!selectedJob || companyJobMode || managementActionRef.current.companyMode) return;
-                      const isCurrentAction = captureLegacyJobAction();
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!await isCurrentAction.verify()) return;
                       const getJobDate = () => {
                         const today = new Date();
                         const monday = new Date(today);
@@ -4316,14 +4586,21 @@ export default function AdminScheduleScreen() {
                             text: "This Job Only",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "single",
                                 jobId: selectedJob.id,
                               });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: "cancelled" } : j));
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                           {
@@ -4331,6 +4608,10 @@ export default function AdminScheduleScreen() {
                             style: "destructive",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               const jobDate = getJobDate();
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
@@ -4338,8 +4619,11 @@ export default function AdminScheduleScreen() {
                                 fromDate: jobDate,
                               });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               forceSync();
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                           {
@@ -4347,13 +4631,20 @@ export default function AdminScheduleScreen() {
                             style: "destructive",
                             onPress: async () => {
                               if (!isCurrentAction()) return;
+                            if (legacyManagementWriteLockRef.current) return;
+                            legacyManagementWriteLockRef.current = true;
+                            try {
+                            if (!await isCurrentAction.verify()) return;
                               await jobCancelRecurringMutation.mutateAsync({
                                 recurrenceParentId: selectedJob.recurrenceParentId!,
                                 mode: "all",
                               });
                               if (!isCurrentAction()) return;
+                              if (!await isCurrentAction.verify()) return;
                               forceSync();
                               setSelectedJob(null);
+
+                            } finally { legacyManagementWriteLockRef.current = false; }
                             },
                           },
                         ]
@@ -4422,10 +4713,10 @@ export default function AdminScheduleScreen() {
         </View>
         {/* Edit Address Modal */}
         {/* Full-screen Address Photo Viewer */}
-        {viewingAddrPhoto && (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setViewingAddrPhoto(null)}>
+        {!companyJobMode && isFocused && viewingAddrPhoto && (
+          <Modal visible transparent animationType="fade" onRequestClose={() => { if (renderedLegacyAction()) setViewingAddrPhoto(null); }}>
             <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" }}>
-              <TouchableOpacity onPress={() => setViewingAddrPhoto(null)} style={{ position: "absolute", top: 60, right: 20, zIndex: 10, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
+              <TouchableOpacity onPress={() => { if (renderedLegacyAction()) setViewingAddrPhoto(null); }} style={{ position: "absolute", top: 60, right: 20, zIndex: 10, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>✕</Text>
               </TouchableOpacity>
               <Image source={{ uri: viewingAddrPhoto }} style={{ width: "92%", height: "70%", borderRadius: 12 }} resizeMode="contain" />
@@ -4916,7 +5207,7 @@ export default function AdminScheduleScreen() {
               {/* Header */}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>📧 Send Invoice</Text>
-                <TouchableOpacity onPress={() => setShowInvoiceSheet(false)}>
+                <TouchableOpacity onPress={() => { if (isCurrentInvoice()) setShowInvoiceSheet(false); }}>
                   <Text style={{ color: colors.muted, fontSize: 24 }}>✕</Text>
                 </TouchableOpacity>
               </View>
@@ -4924,12 +5215,12 @@ export default function AdminScheduleScreen() {
               {invoiceSentUrl ? (
                 <View style={{ alignItems: "center", paddingVertical: 24, gap: 12 }}>
                   <Text style={{ fontSize: 48 }}>✅</Text>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>{companyJobMode && companyInvoiceStatus !== "sent" ? "Invoice request acknowledged" : "Invoice Sent!"}</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>{companyJobMode ? (companyInvoiceStatus === "provider_accepted" ? "Invoice submitted — provider accepted" : "Invoice request acknowledged") : "Invoice Sent!"}</Text>
                   <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center" }}>
-                    {companyJobMode ? `Backend delivery status: ${companyInvoiceStatus ?? "unknown"}. The secure invoice link was returned by the Company backend.` : "The customer will receive a secure payment link to pay online."}
+                    {companyJobMode ? `Backend communication state: ${companyInvoiceStatus ?? "unknown"}. The secure invoice link was returned by the Company backend; customer delivery is not confirmed.` : "The customer will receive a secure payment link to pay online."}
                   </Text>
                   <TouchableOpacity
-                    onPress={() => setShowInvoiceSheet(false)}
+                    onPress={() => { if (isCurrentInvoice()) setShowInvoiceSheet(false); }}
                     style={{ marginTop: 8, backgroundColor: colors.primary, borderRadius: 50, paddingVertical: 12, paddingHorizontal: 32 }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Done</Text>
@@ -4952,13 +5243,17 @@ export default function AdminScheduleScreen() {
                       <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>{localDateStr(getWeekDates(selectedJob.weekOffset)[selectedJob.dayIndex])}</Text>
                     </View>
                     <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
-                    {selectedJob.payment && (
+                    {!companyJobMode && selectedJob.payment && (
                       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                         <Text style={{ color: colors.muted, fontSize: 13 }}>Previously Paid</Text>
                         <Text style={{ color: "#22C55E", fontSize: 13, fontWeight: "600" }}>-${selectedJob.payment.total.toFixed(2)}</Text>
                       </View>
                     )}
                     {(() => {
+                      if (companyJobMode) return <View style={{ gap: 4 }}>
+                        <Text style={{ color: colors.foreground, fontWeight: "700" }}>{companyBilling.isPaid === true ? "Paid in Full" : "Canonical Balance"}: {companyBilling.balance === null ? "UNKNOWN" : `$${companyBilling.balance.toFixed(2)}`}</Text>
+                        <Text style={{ color: colors.muted }}>Payment status: {companyBilling.paymentStatus ?? "UNKNOWN"}</Text>
+                      </View>;
                       const jobTotal = (selectedJob.price ?? 0) + (selectedJob.upsellTotal ?? 0) - (selectedJob.discountAmount ?? 0) - (selectedJob.depositAmount ?? 0) + (selectedJob.taxAmount ?? 0);
                       const alreadyPaid = selectedJob.payment?.total ?? 0;
                       const balanceDue = Math.max(0, jobTotal - alreadyPaid);
@@ -5026,35 +5321,44 @@ export default function AdminScheduleScreen() {
                   {/* Send button */}
                     <TouchableOpacity
                     onPress={async () => {
-                      if (invoiceLockRef.current) return;
+                      if (invoiceLockRef.current || !isCurrentInvoice()) return;
                       if (companyJobMode) {
                         const token = jobSyncSession?.token;
                         const jobId = positiveJobSyncId(selectedJob.id);
-                        if (!isJobSyncCompany || !token || !jobId || selectedJob.companyId !== jobSyncSession?.company?.id) {
-                          Alert.alert("Send Failed", "A current signed Company Job session is required.");
-                          return;
-                        }
-                        const identity = invoiceSessionRef.current;
-                        const isCurrent = () => invoiceSessionRef.current.token === identity.token && invoiceSessionRef.current.companyId === identity.companyId && invoiceSessionRef.current.jobId === identity.jobId;
+                        if (!isJobSyncCompany || jobSyncLoading || !token || !jobId || selectedJob.companyId !== jobSyncSession?.company?.id
+                          || !positiveJobSyncId(jobSyncSession?.user.id) || !["owner", "dispatcher"].includes(jobSyncSession!.user.role)) return;
                         invoiceLockRef.current = true;
                         setInvoiceSending(true);
                         setInvoiceSentUrl(null);
                         try {
+                          const fresh = await getJobSyncMobileSession(token);
+                          if (!isCurrentInvoice()) return;
+                          if (fresh.portal !== "company" || fresh.token !== token || fresh.company?.id !== jobSyncSession!.company!.id
+                            || fresh.user.id !== jobSyncSession!.user.id || fresh.user.role !== jobSyncSession!.user.role
+                            || !["owner", "dispatcher"].includes(fresh.user.role)) throw new Error("Signed Company identity changed. Reopen the Job before sending.");
+                          const detail = await getJobSyncCompanyJobDetail(token, jobId, jobSyncSession!.company!.id);
+                          if (!isCurrentInvoice()) return;
+                          if (detail.id !== jobId || detail.companyId !== fresh.company?.id) throw new Error("The originating Company Job is unavailable.");
+                          if (!isCurrentInvoice()) return;
                           const data = await sendJobSyncCompanyJobInvoice(token, jobId, { method: invoiceMethod });
-                          if (isCurrent()) {
-                            setCompanyInvoiceStatus(typeof data.status === "string" ? data.status : null);
+                          if (isCurrentInvoice()) {
+                            setCompanyInvoiceStatus(typeof data.communicationState === "string" ? data.communicationState : typeof data.status === "string" ? data.status : null);
                             setInvoiceSentUrl(data.publicUrl);
                           }
                         } catch (err: any) {
-                          if (isCurrent()) Alert.alert("Send Failed", err.message ?? "Could not send the Company invoice. Review delivery before retrying.");
+                          if (isCurrentInvoice()) Alert.alert("Send Failed", err.message ?? "Could not send the Company invoice. Review delivery before retrying.");
                         } finally {
                           invoiceLockRef.current = false;
-                          setInvoiceSending(false);
+                          if (isCurrentInvoice()) setInvoiceSending(false);
                         }
                         return; // Never fall back to copied legacy invoice transport.
                       }
+                      const isCurrentAction = renderedLegacyAction;
+                      if (!isCurrentAction()) return;
+                      invoiceLockRef.current = true;
                       setInvoiceSending(true);
                       try {
+                        if (!await isCurrentAction.verify() || !isCurrentInvoice()) return;
                         const resp = await fetch(`${APP_API_BASE}/api/invoice/send`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -5069,13 +5373,16 @@ export default function AdminScheduleScreen() {
                             overridePhone: invoiceMethod === "sms" ? invoiceOverrideContact : undefined,
                           }),
                         });
+                        if (!await isCurrentAction.verify() || !isCurrentInvoice()) return;
                         const data = await resp.json();
+                        if (!await isCurrentAction.verify() || !isCurrentInvoice()) return;
                         if (!resp.ok) throw new Error(data.error ?? "Failed to send");
                         setInvoiceSentUrl(data.paymentUrl);
                       } catch (err: any) {
-                        Alert.alert("Send Failed", err.message ?? "Could not send invoice. Please try again.");
+                        if (isCurrentInvoice() && isCurrentAction()) Alert.alert("Send Failed", err.message ?? "Could not send invoice. Please try again.");
                       } finally {
-                        setInvoiceSending(false);
+                        invoiceLockRef.current = false;
+                        if (isCurrentInvoice() && isCurrentAction()) setInvoiceSending(false);
                       }
                     }}
                     disabled={invoiceSending}
@@ -5093,7 +5400,7 @@ export default function AdminScheduleScreen() {
         )}
 
         {/* Photo Preview overlay — full-screen tap-to-close */}
-        {!companyJobMode && adminPhotoPreview ? (
+        {!companyJobMode && isFocused && adminPhotoPreview ? (
           <TouchableOpacity
             style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.93)", alignItems: "center", justifyContent: "center" }}
             onPress={() => setAdminPhotoPreview(null)}
@@ -5111,8 +5418,12 @@ export default function AdminScheduleScreen() {
             job={selectedJob}
             customerPhone={selectedJob.phone ?? null}
             customerEmail={selectedJob.email ?? null}
-            onClose={() => setShowCheckout(false)}
-            onComplete={(payment) => {
+            onClose={() => { if (managementActionRef.current.mounted && managementActionRef.current.focused && checkoutEpochRef.current === renderedCheckoutEpoch && sheetEpochRef.current === renderedSheetEpoch) setShowCheckout(false); }}
+            onComplete={async (payment) => {
+              const isCurrentAction = renderedLegacyAction;
+              if (!isCurrentAction() || !showCheckout || checkoutEpochRef.current !== renderedCheckoutEpoch || paymentActionRef.current) return;
+              paymentActionRef.current = isCurrentAction;
+              if (!await isCurrentAction.verify() || checkoutEpochRef.current !== renderedCheckoutEpoch) { paymentActionRef.current = null; return; }
               const completedJob = selectedJob;
               // Update local UI with payment info but do NOT change status to finished —
               // the detailer must tap Finished themselves to complete the job.
@@ -5761,7 +6072,7 @@ export default function AdminScheduleScreen() {
 
       {/* ─── Charge Card on File Modal ────────────────────────────────────────────────────────────────────────────────── */}
       <Modal
-        visible={showChargeModal}
+        visible={!companyJobMode && isFocused && showChargeModal}
         transparent
         animationType="slide"
         onRequestClose={() => { if (!chargingCard) setShowChargeModal(false); }}
@@ -5840,6 +6151,8 @@ export default function AdminScheduleScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
+                  const isCurrentAction = isCurrentCharge;
+                  if (!isCurrentAction() || chargeLockRef.current) return;
                   const cards = (scheduleSavedCards as any[]) ?? [];
                   const card = cards.find((c: any) => c.stripePaymentMethodId === selectedChargeCardId) ?? cards[0];
                   if (!card) { Alert.alert("No Card Selected", "This customer has no saved cards."); return; }
@@ -5854,7 +6167,11 @@ export default function AdminScheduleScreen() {
                       {
                         text: "Charge",
                         style: "default",
-                        onPress: () => {
+                        onPress: async () => {
+                          if (!isCurrentAction() || chargeLockRef.current) return;
+                          chargeLockRef.current = true;
+                          if (!await isCurrentAction.verify()) { chargeLockRef.current = false; return; }
+                          chargeActionRef.current = isCurrentAction;
                           setChargingCard(true);
                           scheduleChargeCardMutation.mutate({
                             stripeCustomerId: card.stripeCustomerId,

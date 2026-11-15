@@ -1,6 +1,8 @@
+import { useCallback, useEffect, useRef } from "react";
+import { useFocusEffect, useIsFocused } from "expo-router";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useColors } from "@/hooks/use-colors";
-import { companyDurationMs, companyFieldworkBlockReason, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
+import { companyDurationMs, companyFieldworkBlockReason, companyJobSessionKey, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
 import type { JobSyncNativeSession, JobSyncFieldStatus } from "@/lib/jobsync-mobile-api";
 import type { useCompanyJob } from "@/hooks/use-company-job";
 
@@ -17,25 +19,62 @@ function formatInstant(value: string | null, timezone?: string | null) {
 function formatDuration(value: number | null) {
   return value === null ? "Unknown" : `${Math.round(value / 60000)} min`;
 }
-export function CompanyJobProgress({ job, timezone, onRefresh }: Props) {
+export function CompanyJobProgress({ session, job, timezone, onRefresh }: Props) {
   const colors = useColors();
+  const focused = useIsFocused();
   const detail = job.detail;
+  const scope = companyJobSessionKey(session, detail?.id ?? null);
+  const live = useRef({ session, job, scope, focused, mounted: true });
+  live.current = { session, job, scope, focused, mounted: live.current.mounted };
+  const confirmation = useRef<object | null>(null);
+  const busy = job.loading || job.pending;
+  const epoch = useRef({ scope, focused, detail, busy, identity: {} });
+  if (epoch.current.scope !== scope || epoch.current.focused !== focused || epoch.current.detail !== detail || epoch.current.busy !== busy) {
+    epoch.current = { scope, focused, detail, busy, identity: {} };
+    confirmation.current = null;
+  }
+  const identity = epoch.current.identity;
+  const lock = useRef(false);
+  useEffect(() => {
+    live.current.mounted = true;
+    return () => { live.current.mounted = false; confirmation.current = null; epoch.current.identity = {}; };
+  }, []);
+  useFocusEffect(useCallback(() => {
+    return () => { live.current.focused = false; confirmation.current = null; epoch.current.identity = {}; };
+  }, []));
   const reason = companyFieldworkBlockReason(job.actor, detail);
   const next = detail ? nextCompanyFieldStatus(detail.status) : null;
+  const current = (target?: JobSyncFieldStatus) => {
+    const now = live.current;
+    return now.mounted && now.focused && Boolean(scope) && now.scope === scope && epoch.current.identity === identity && now.job.detail === detail && !now.job.loading && !now.job.pending
+      && (!target || (!companyFieldworkBlockReason(now.session, now.job.detail) && !companyFieldworkBlockReason(now.job.actor, now.job.detail) && nextCompanyFieldStatus(now.job.detail!.status) === target));
+  };
+  const advance = (target: JobSyncFieldStatus) => {
+    if (lock.current || !current(target)) return;
+    lock.current = true;
+    void job.advance(target).finally(() => { lock.current = false; });
+  };
   const press = (target: JobSyncFieldStatus) => {
-    if (reason || job.loading || job.pending || next !== target) return;
+    if (lock.current || !current(target)) return;
     if (target === "on_site") {
+      if (confirmation.current) return;
+      const ticket = {};
+      confirmation.current = ticket;
       Alert.alert("Mark as Arrived?", "Only tap Arrived when you are physically at the customer location.", [
-        { text: "Not Yet", style: "cancel" },
-        { text: "Yes, I've Arrived", onPress: () => { void job.advance(target); } },
-      ]);
-    } else { void job.advance(target); }
+        { text: "Not Yet", style: "cancel", onPress: () => { if (confirmation.current === ticket) confirmation.current = null; } },
+        { text: "Yes, I've Arrived", onPress: () => {
+          if (confirmation.current !== ticket || !current(target)) return;
+          confirmation.current = null;
+          advance(target);
+        } },
+      ], { onDismiss: () => { if (confirmation.current === ticket) confirmation.current = null; } });
+    } else advance(target);
   };
   return <View style={[styles.card, { backgroundColor: colors.background, borderColor: colors.border }]}>
     <Text style={[styles.heading, { color: colors.foreground }]}>Job Progress</Text>
     <Text style={{ color: colors.muted }}>Backend status: {detail?.status ?? (job.loading ? "Loading" : "Unavailable")}</Text>
     <View style={styles.row}>{actions.map(({ label, target }) => {
-      const disabled = Boolean(reason || job.loading || job.pending || next !== target);
+      const disabled = Boolean(!focused || reason || job.loading || job.pending || next !== target);
       return <TouchableOpacity key={target} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={() => press(target)} style={[styles.action, { backgroundColor: colors.primary, opacity: disabled ? 0.35 : 1 }]}>
         <Text style={styles.actionText}>{label}</Text>
       </TouchableOpacity>;
@@ -44,7 +83,7 @@ export function CompanyJobProgress({ job, timezone, onRefresh }: Props) {
     {reason ? <Text style={{ color: colors.muted }}>{reason}</Text> : null}
     {job.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{job.error}</Text> : null}
     {job.success ? <Text style={{ color: colors.success }}>{job.success}</Text> : null}
-    <TouchableOpacity disabled={job.pending || job.loading} onPress={() => { void (onRefresh ? onRefresh() : job.refresh()); }} style={styles.refresh}><Text style={{ color: colors.primary }}>Refresh Job</Text></TouchableOpacity>
+    <TouchableOpacity disabled={!focused || job.pending || job.loading} onPress={() => { if (current()) void (onRefresh ? onRefresh() : job.refresh()); }} style={styles.refresh}><Text style={{ color: colors.primary }}>Refresh Job</Text></TouchableOpacity>
     {[
       ["On My Way", detail?.enRouteAt ?? null], ["Arrived / Started", detail?.onSiteAt ?? null], ["Finished", detail?.completedAt ?? null],
     ].map(([label, value]) => <View key={label} style={styles.milestone}><Text style={{ color: colors.foreground }}>{label}</Text><Text style={{ color: colors.muted }}>{formatInstant(value, timezone)}</Text></View>)}

@@ -346,7 +346,8 @@ describe("shared job screen integration boundaries", () => {
     expect(photos).toContain('Platform.OS !== "web"');
     const hook = source("hooks/use-company-job.ts");
     expect(hook).toContain("instance.current === identity");
-    expect(hook).toContain("snapshot.identity === instance.current");
+    expect(hook).toContain("focused && snapshot.key === key && snapshot.identity === identity");
+    expect(hook).toContain("live.current.mounted && live.current.focused && live.current.key === key");
     const progress = source("components/company-job-progress.tsx");
     expect(progress).toContain("timeZone: timezone");
     expect(progress).toContain('return "Unknown"');

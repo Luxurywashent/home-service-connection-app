@@ -1,3 +1,7 @@
+import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
+
+export { getCompanyJobBillingState } from "./company-job-billing";
+
 export type JobSyncAccountType = "company" | "platform_admin";
 export type JobSyncPortalKind = "company" | "platform";
 export type JobSyncCompanyRole = "owner" | "dispatcher" | "technician";
@@ -283,6 +287,12 @@ export type JobSyncMobileJob = {
   amount: number;
   customerName: string;
   assignedName: string | null;
+  /** Canonical major currency units; optional for legacy fixtures, unknown when invalid. */
+  paidTotal?: number | null;
+  refundTotal?: number | null;
+  appliedEstimateCredit?: number | null;
+  balance?: number | null;
+  paymentStatus?: string | null;
 };
 
 export type JobSyncCompanySettings = {
@@ -324,6 +334,11 @@ function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
     amount: Number(row.amount || 0),
     customerName: firstString(row.customerName) ?? "",
     assignedName: firstString(row.assignedName),
+    paidTotal: normalizeCompanyJobBillingAmount(row.paidTotal),
+    refundTotal: normalizeCompanyJobBillingAmount(row.refundTotal),
+    appliedEstimateCredit: normalizeCompanyJobBillingAmount(row.appliedEstimateCredit),
+    balance: normalizeCompanyJobBillingAmount(row.balance),
+    paymentStatus: normalizeCompanyJobPaymentStatus(row.paymentStatus),
   };
 }
 
@@ -639,7 +654,25 @@ async function patchJobSyncCompanyJobStatus<T extends JobSyncFieldStatus | "canc
   return { success: true as const, status: input.status };
 }
 
-export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number, input: { method: "email" | "sms"; resend?: boolean }) {
+export type JobSyncCompanyJobInvoiceAcknowledgment = {
+  success: true;
+  publicUrl: string;
+  /** Effective truthful state; email's compatibility sent alias is never delivery truth. */
+  status: string | null;
+  communicationState: string | null;
+  channel: "email" | "sms";
+  isDelivered: boolean;
+};
+
+// Backend 16a57f2e companyCommunicationService canonical ledger enum.
+const INVOICE_COMMUNICATION_STATES = new Set(["queued", "sending", "provider_accepted", "delivered", "failed", "bounced", "complained", "suppressed", "cancelled"]);
+
+function invoiceCommunicationState(value: unknown): string | null {
+  const state = firstString(value);
+  return state && INVOICE_COMMUNICATION_STATES.has(state) ? state : null;
+}
+
+export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number, input: { method: "email" | "sms"; resend?: boolean }): Promise<JobSyncCompanyJobInvoiceAcknowledgment> {
   validCompanyJobId(jobId);
   if (!token.trim() || !["email", "sms"].includes(input.method)) throw new Error("A valid invoice delivery method and Company session are required.");
   const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice`, {
@@ -647,8 +680,16 @@ export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number,
     body: JSON.stringify({ method: input.method, ...(input.resend !== undefined ? { resend: input.resend } : {}) }),
   }));
   const publicUrl = firstString(result?.publicUrl);
-  if (result?.success !== true || !publicUrl) throw new JobSyncApiError("The backend did not confirm invoice delivery.", null, "INVALID_RESPONSE");
-  return { ...result, success: true as const, publicUrl, status: firstString(result.status) };
+  if (result?.success !== true || !publicUrl) throw new JobSyncApiError("The backend did not confirm the invoice request.", null, "INVALID_RESPONSE");
+  const communicationState = invoiceCommunicationState(result.communicationState);
+  const compatibilityState = firstString(result.status);
+  // Present but malformed ledger state cannot fall back to a success alias.
+  // Email without a ledger may retain non-delivery states, never sent/delivered.
+  const status = result.communicationState !== undefined ? communicationState
+    : input.method === "sms" && compatibilityState === "sent" ? "sent"
+    : input.method === "email" && compatibilityState === "delivered" ? null
+    : invoiceCommunicationState(compatibilityState);
+  return { success: true, publicUrl, status, communicationState, channel: input.method, isDelivered: status === "delivered" };
 }
 
 /** Persists a Company Job's authoritative start/end instants. */

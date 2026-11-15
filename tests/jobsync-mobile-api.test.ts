@@ -592,4 +592,130 @@ describe("JobSync mobile API contract", () => {
       expect(mock).toHaveBeenCalledTimes(1);
     } finally { vi.unstubAllGlobals(); }
   });
+
+  it.each([
+    { name: "paid", paidTotal: 200.75, refundTotal: 0, appliedEstimateCredit: 0, balance: 0, paymentStatus: "paid" },
+    { name: "partial", paidTotal: 50.25, refundTotal: 0, appliedEstimateCredit: 0, balance: 150.5, paymentStatus: "partial" },
+    { name: "refund reopened", paidTotal: 150.75, refundTotal: 50, appliedEstimateCredit: 0, balance: 50, paymentStatus: "partial" },
+    { name: "fully refunded", paidTotal: 0, refundTotal: 200.75, appliedEstimateCredit: 0, balance: 200.75, paymentStatus: "unpaid" },
+    { name: "estimate-credit partial", paidTotal: 75.5, refundTotal: 0, appliedEstimateCredit: 75.5, balance: 125.25, paymentStatus: "partial" },
+    { name: "estimate-credit settled", paidTotal: 200.75, refundTotal: 0, appliedEstimateCredit: 200.75, balance: 0, paymentStatus: "paid" },
+  ])("preserves canonical $name finance in actual list and detail adapters, without fabricated payments", async ({ name: _name, ...finance }) => {
+    const row = { id: 47, companyId: 9, customerId: 17, amount: 200.75, status: "completed", photos: [], ...finance };
+    const mock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ jobs: [row] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ job: row }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      const [listJob] = await getJobSyncCompanyJobs("mock-company-token");
+      const detail = await getJobSyncCompanyJobDetail("mock-company-token", 47, 9);
+      for (const job of [listJob, detail]) {
+        expect(job).toMatchObject({ amount: 200.75, ...finance });
+        for (const field of ["payment", "method", "paidAt", "receipt", "tip"]) expect(job).not.toHaveProperty(field);
+      }
+      expect(mock).toHaveBeenCalledTimes(2);
+      expect(mock.mock.calls.every(([, init]) => init.method === "GET" && init.cache === "no-store")).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("preserves valid numeric-dollar strings through list and detail without recalculating credit/refunds", async () => {
+    const row = { id: 47, companyId: 9, amount: 200.75, paidTotal: "75.50", refundTotal: "10.25", appliedEstimateCredit: "25.00", balance: "125.25", paymentStatus: "partial", photos: [] };
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: [row] }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      const [listJob] = await getJobSyncCompanyJobs("mock-token");
+      const detail = normalizeJobSyncCompanyJobDetail({ job: row }, 47, 9);
+      for (const job of [listJob, detail]) expect(job).toMatchObject({ paidTotal: 75.5, refundTotal: 10.25, appliedEstimateCredit: 25, balance: 125.25, paymentStatus: "partial" });
+      expect(row.balance).toBe("125.25");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([undefined, null, "", " ", "malformed", "0x10", "1e2", true, false, {}, [], [0], NaN, Infinity, -Infinity, -1, "-0.01"])("keeps invalid/missing financial DTO money null rather than zero: %s", async (value) => {
+    const row = { id: 47, companyId: 9, photos: [], paidTotal: value, refundTotal: value, appliedEstimateCredit: value, balance: value };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: [row] }) }));
+    try {
+      const [listJob] = await getJobSyncCompanyJobs("mock-token");
+      const detail = normalizeJobSyncCompanyJobDetail({ job: row }, 47, 9);
+      for (const job of [listJob, detail]) expect(job).toMatchObject({ paidTotal: null, refundTotal: null, appliedEstimateCredit: null, balance: null, paymentStatus: null });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([null, "", "unknown", "refunded", "failed", "PAID", {}, 0, true])("keeps malformed/unsupported paymentStatus unknown in both adapters: %s", async (paymentStatus) => {
+    const row = { id: 47, companyId: 9, photos: [], balance: 0, paidTotal: 200, refundTotal: 0, appliedEstimateCredit: 0, paymentStatus };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ jobs: [row] }) }));
+    try {
+      const [listJob] = await getJobSyncCompanyJobs("mock-token");
+      expect(listJob.paymentStatus).toBeNull();
+      expect(normalizeJobSyncCompanyJobDetail({ job: row }, 47, 9)?.paymentStatus).toBeNull();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("prefers email provider acceptance over the sent compatibility alias and returns only bounded fields", async () => {
+    vi.stubEnv("EXPO_PUBLIC_JOBSYNC_API_BASE_URL", "https://jobwash-veysiubh.manus.space");
+    const publicUrl = "https://www.homeserviceconnected.com/invoice/opaque-token?signature=AbC%2B123";
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, status: "sent", communicationState: "provider_accepted", channel: "email", publicUrl, deliveryId: 17, communicationId: 23, providerMessageId: "sensitive-provider-id", sentTo: "private@example.test", invented: "ignored" }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      const invoice = await sendJobSyncCompanyJobInvoice("mock-owner-token", 47, { method: "email" });
+      expect(invoice).toEqual({ success: true, publicUrl, status: "provider_accepted", communicationState: "provider_accepted", channel: "email", isDelivered: false });
+      expect(invoice.status).not.toBe("sent");
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(mock).toHaveBeenCalledWith("https://jobwash-veysiubh.manus.space/api/mobile/v1/jobs/47/invoice", expect.objectContaining({ method: "POST", cache: "no-store", headers: expect.objectContaining({ Authorization: "Bearer mock-owner-token" }), body: JSON.stringify({ method: "email" }) }));
+    } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+  });
+
+  it.each(["queued", "sending", "provider_accepted", "delivered", "failed", "bounced", "complained", "suppressed", "cancelled"])("preserves canonical communication state %s and marks only actual delivered as delivered", async (communicationState) => {
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status: "sent", communicationState }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      for (const method of ["email", "sms"] as const) {
+        const invoice = await sendJobSyncCompanyJobInvoice("mock-token", 47, { method });
+        expect(invoice.status).toBe(communicationState);
+        expect(invoice.communicationState).toBe(communicationState);
+        expect(invoice.isDelivered).toBe(communicationState === "delivered");
+      }
+      expect(mock).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([null, "", "invented_delivery", "sent", {}, [], true, 1])("does not fall back to sent/delivered aliases when canonical ledger state is malformed: %s", async (communicationState) => {
+    const mock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status: "delivered", communicationState }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      for (const method of ["email", "sms"] as const) expect(await sendJobSyncCompanyJobInvoice("mock-token", 47, { method })).toMatchObject({ status: null, communicationState: null, isDelivered: false });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(["sent", "delivered", "invented_delivery", null, undefined, {}])("does not claim email delivery from a compatibility-only status: %s", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status }) }));
+    try {
+      expect(await sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "email" })).toMatchObject({ status: null, communicationState: null, channel: "email", isDelivered: false });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(["queued", "sending", "provider_accepted", "sent", "delivered", "suppressed", "failed", "unknown", null])("preserves honest SMS status without treating acknowledgment as delivery: %s", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status, channel: "sms" }) }));
+    try {
+      expect(await sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "sms" })).toEqual({ success: true, publicUrl: "https://unit.test/invoice", status: status === "unknown" ? null : status, communicationState: null, channel: "sms", isDelivered: status === "delivered" });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([[403, "FORBIDDEN"], [409, "CONFLICT"]] as const)("preserves invoice backend error %s and never retries or falls back", async (status, code) => {
+    const mock = vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: { code, message: "Safe invoice denial" } }) });
+    vi.stubGlobal("fetch", mock);
+    try {
+      await expect(sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "email" })).rejects.toMatchObject({ name: "JobSyncApiError", status, code });
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(mock.mock.calls[0][0]).toMatch(/\/api\/mobile\/v1\/jobs\/47\/invoice$/);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("does not retry or fall back after an uncertain invoice timeout", async () => {
+    const mock = vi.fn().mockRejectedValue(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    vi.stubGlobal("fetch", mock);
+    try {
+      await expect(sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "sms" })).rejects.toMatchObject({ status: null, code: "TIMEOUT" });
+      expect(mock).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
 });

@@ -120,6 +120,7 @@ const detail = (
     companyId: 9,
     assignedUserId: 42,
     photos,
+    persistedPhotoIds: photos.map((item) => item.id),
     status: "scheduled",
     enRouteAt: null,
     onSiteAt: null,
