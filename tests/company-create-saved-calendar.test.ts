@@ -24,6 +24,7 @@ function harness(actor?: JobSyncNativeSession) {
     customer: vi.fn(async () => ({ id: 7, companyId: 9 })),
     create: vi.fn<CompanyCreateJobTransport["create"]>(async (_token, companyId, input) => {
       if (input.customerId === undefined) throw new Error("Existing-only fixture requires its canonical customer ID");
+      if (input.priceBookServiceId === undefined) throw new Error("Legacy-only fixture requires its service ID");
       ack = { id: 84, companyId, customerId: input.customerId, priceBookServiceId: input.priceBookServiceId, assignedUserId: input.assignedUserId ?? null,
         scheduledStartAt: input.scheduledStartAt, scheduledEndAt: input.scheduledEndAt ?? null, amount: 125, status: "scheduled", title: "Canonical Service", serviceName: "Canonical Service", customerName: "Customer", assignedName: "Technician", addressLine1: input.addressLine1 ?? null, city: null, updatedAt: null };
       return ack;

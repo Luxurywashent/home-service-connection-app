@@ -77,6 +77,7 @@ async function harness(options: { actor?: JobSyncNativeSession; store?: ReturnTy
     customer: vi.fn<CompanyCreateJobTransport["customer"]>(async () => ({ id: 7, companyId: signed.company!.id })),
     create: vi.fn<CompanyCreateJobTransport["create"]>(async (_token, _company, request) => {
       lastDetail = detail(signed, request);
+      if (request.priceBookServiceId === undefined) throw new Error("Legacy-only fixture requires its service ID");
       return { ...lastDetail, companyId: signed.company!.id, priceBookServiceId: request.priceBookServiceId,
         operation: { key: request.operationKey!, state: "saved", replayed: false } };
     }),

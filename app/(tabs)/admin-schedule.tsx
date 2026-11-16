@@ -3675,7 +3675,9 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Line Items Card ── */}
                 {(() => {
-                  if (companyJobMode) return <CompanyJobLineItems amount={selectedJob.price} balance={selectedJob.balance} paymentStatus={selectedJob.paymentStatus} paidTotal={selectedJob.paidTotal} refundTotal={selectedJob.refundTotal} appliedEstimateCredit={selectedJob.appliedEstimateCredit} />;
+                  if (companyJobMode) return <CompanyJobLineItems amount={selectedJob.price} balance={selectedJob.balance} paymentStatus={selectedJob.paymentStatus} paidTotal={selectedJob.paidTotal} refundTotal={selectedJob.refundTotal} appliedEstimateCredit={selectedJob.appliedEstimateCredit}
+                    pricing={!companyJob.loading && !companyJob.pending && !companyJob.error && companyJob.detail?.id === companyPhotoJobId && companyJob.detail?.companyId === jobSyncSession?.company?.id ? companyJob.detail?.pricing : null}
+                    pricingLoading={companyJob.loading || companyJob.pending} pricingError={companyJob.error ? "Saved service pricing could not be loaded. Refresh this Job." : null} />;
                   const subtotal = selectedJob.price;
                   const upsells = selectedJob.upsellTotal ?? 0;
                   const discount = selectedJob.discountAmount ?? 0;

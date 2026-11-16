@@ -1,5 +1,19 @@
 import { z } from "zod";
 import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
+import {
+  normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, normalizeCompanyJobQuoteInput,
+  normalizeCompanyJobQuote, normalizeCompanyJobPricing, companyJobPricingMatchesInput,
+  type JobSyncCompanyJobLineInput, type JobSyncCompanyJobDiscountInput,
+  type JobSyncCompanyJobQuoteInput, type JobSyncCompanyJobQuote, type JobSyncCompanyJobPricing,
+} from "./company-job-pricing";
+export {
+  normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, normalizeCompanyJobQuoteInput,
+  normalizeCompanyJobQuote, normalizeCompanyJobPricing, companyJobPricingMatchesInput,
+} from "./company-job-pricing";
+export type {
+  JobSyncCompanyJobLineInput, JobSyncCompanyJobDiscountInput, JobSyncCompanyJobQuoteInput,
+  JobSyncCompanyJobQuote, JobSyncCompanyJobPricing,
+} from "./company-job-pricing";
 export { getCompanyJobBillingState } from "./company-job-billing";
 export type JobSyncAccountType = "company" | "platform_admin";
 export type JobSyncPortalKind = "company" | "platform";
@@ -473,7 +487,9 @@ export function normalizeCompanyJobNewCustomer(value: unknown): JobSyncCompanyNe
 }
 
 export type JobSyncCompanyJobCreateInput = JobSyncCompanyJobCustomerSelector & {
-  priceBookServiceId: number;
+  priceBookServiceId?: number;
+  lineItems?: JobSyncCompanyJobLineInput[];
+  discount?: JobSyncCompanyJobDiscountInput;
   vehiclePriceKey?: string | null;
   assignedUserId?: number | null;
   scheduledStartAt: string;
@@ -492,6 +508,8 @@ export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & {
   companyId: number;
   /** Saved replays carry no service ID; never synthesize one from the request. */
   priceBookServiceId: number | null;
+  /** Optional canonical persisted pricing; absent legacy pricing stays absent. */
+  pricing?: JobSyncCompanyJobPricing;
   operation?: { key: string; state: "saved"; replayed: boolean };
 };
 
@@ -564,13 +582,34 @@ export async function getJobSyncCompanyJobCreationOperation(
   };
 }
 
+/** Read-only pricing POST. Capture nested intent before I/O and never enable unsupported saving. */
+export async function quoteJobSyncCompanyJob(
+  token: string, companyId: number, input: JobSyncCompanyJobQuoteInput,
+): Promise<JobSyncCompanyJobQuote> {
+  requireJobSyncMutationToken(token);
+  if (typeof companyId !== "number" || !Number.isSafeInteger(companyId) || companyId <= 0) throw new Error("A current Company session is required.");
+  const body = normalizeCompanyJobQuoteInput(input);
+  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}/quote`, {
+    method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body),
+  }, 200));
+  const quote = payload && hasOnlyCompanyOperationFields(payload, ["quote"])
+    ? normalizeCompanyJobQuote(payload.quote, body) : null;
+  if (!quote) throw new JobSyncApiError("Could not verify authoritative Company Job pricing and tax persistence. Refresh before saving.", null, "INVALID_QUOTE_RESPONSE");
+  return quote;
+}
+
 export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
   if (!input || typeof input !== "object" || Object.hasOwn(input, "customerId") === Object.hasOwn(input, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
   const selector: JobSyncCompanyJobCustomerSelector = Object.hasOwn(input, "newCustomer")
     ? { newCustomer: normalizeCompanyJobNewCustomer(input.newCustomer) } : { customerId: input.customerId! };
-  if (selector.newCustomer && Reflect.ownKeys(input).some((key) => typeof key !== "string"
-    || !["newCustomer", "priceBookServiceId", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey"].includes(key))) throw new Error("New customer Job fields could not be verified.");
-  if ((!selector.newCustomer && (typeof selector.customerId !== "number" || positiveJobSyncId(selector.customerId) !== selector.customerId)) || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId) {
+  const newPricingFlow = input.lineItems !== undefined || input.discount !== undefined;
+  if ((selector.newCustomer || newPricingFlow) && Reflect.ownKeys(input).some((key) => typeof key !== "string"
+    || !["customerId", "newCustomer", "priceBookServiceId", "lineItems", "discount", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey"].includes(key))) throw new Error("Company Job fields could not be verified.");
+  const lineItems = input.lineItems !== undefined ? normalizeCompanyJobLineItems(input.lineItems) : undefined;
+  const discount = input.discount !== undefined ? normalizeCompanyJobDiscount(input.discount) : undefined;
+  if ((!selector.newCustomer && (typeof selector.customerId !== "number" || positiveJobSyncId(selector.customerId) !== selector.customerId))
+    || (input.priceBookServiceId === undefined ? !lineItems : typeof input.priceBookServiceId !== "number" || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId)
+    || (lineItems && input.priceBookServiceId !== undefined && input.priceBookServiceId !== lineItems[0].priceBookItemId)) {
     throw new Error("Choose an existing Company customer and an active Price Book service.");
   }
   if (selector.newCustomer && input.operationKey === undefined) throw new Error("A new customer requires a secure Job creation operation key.");
@@ -580,7 +619,10 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
     throw new Error("Choose a valid Company calendar start and end time.");
   }
   if (input.assignedUserId !== undefined && input.assignedUserId !== null && positiveJobSyncId(input.assignedUserId) !== input.assignedUserId) throw new Error("Choose an eligible Company technician.");
-  const result: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: input.priceBookServiceId, scheduledStartAt: input.scheduledStartAt };
+  const result: JobSyncCompanyJobCreateInput = { ...selector, scheduledStartAt: input.scheduledStartAt };
+  if (input.priceBookServiceId !== undefined) result.priceBookServiceId = input.priceBookServiceId;
+  if (lineItems) result.lineItems = lineItems;
+  if (discount) result.discount = discount;
   if (input.operationKey !== undefined) result.operationKey = companyJobCreationOperationKey(input.operationKey);
   if (input.scheduledEndAt !== undefined) result.scheduledEndAt = input.scheduledEndAt;
   if (input.assignedUserId !== undefined) result.assignedUserId = input.assignedUserId;
@@ -603,24 +645,34 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   requireJobSyncMutationToken(token);
   if (typeof companyId !== "number" || !Number.isSafeInteger(companyId) || companyId <= 0) throw new Error("A current Company session is required.");
   const body = createJobSyncCompanyJobPayload(input);
+  const firstServiceId = body.lineItems?.[0].priceBookItemId ?? body.priceBookServiceId!;
+  const newPricingFlow = body.lineItems !== undefined || body.discount !== undefined;
   const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) }, [200, 201]));
   const row = asRecord(payload?.job);
   const job = normalizeJobSyncMobileJob(row);
+  const pricing = row ? normalizeCompanyJobPricing(row) : null;
   const operation = asRecord(payload?.operation);
   const customerMatches = Boolean(row && typeof row.customerId === "number" && positiveJobSyncId(row.customerId) === row.customerId
-    && (body.newCustomer ? row.companyId === companyId : row.customerId === body.customerId));
+    && (body.newCustomer ? positiveJobSyncId(row.companyId ?? row.company_id) === companyId : row.customerId === body.customerId));
   if ((body.operationKey !== undefined && (!payload || !hasOnlyCompanyOperationFields(payload, ["job", "operation"])
     || !operation || operation.key !== body.operationKey || operation.state !== "saved"
     || typeof operation.replayed !== "boolean" || !hasOnlyCompanyOperationFields(operation, ["key", "state", "replayed"])
     || !row || typeof row.id !== "number" || !Number.isSafeInteger(row.id) || row.id <= 0
     || !customerMatches
-    || (row.priceBookServiceId !== null && row.priceBookServiceId !== body.priceBookServiceId)
+    || (row.priceBookServiceId !== null && row.priceBookServiceId !== firstServiceId)
     || row.assignedUserId !== (body.assignedUserId ?? null)
     || typeof row.amount !== "number" || !Number.isFinite(row.amount) || row.amount < 0))
     || !row || !job || !customerMatches
+    || pricing === null
+    || (newPricingFlow && (!companyJobPricingMatchesInput(pricing ?? undefined, {
+      lineItems: body.lineItems ?? [{ priceBookItemId: firstServiceId, quantity: 1, vehiclePriceKey: body.vehiclePriceKey }],
+      ...(body.discount ? { discount: body.discount } : {}),
+    }) || row.priceBookServiceId !== firstServiceId || typeof row.id !== "number" || !Number.isSafeInteger(row.id)
+      || row.assignedUserId !== (body.assignedUserId ?? null)
+      || !Object.hasOwn(row, "discountKind") || !Object.hasOwn(row, "discountCode")))
     || (row.priceBookServiceId === null
       ? body.operationKey === undefined || operation?.replayed !== true
-      : positiveJobSyncId(row.priceBookServiceId) !== body.priceBookServiceId)
+      : positiveJobSyncId(row.priceBookServiceId) !== firstServiceId)
     || (row.companyId !== undefined && positiveJobSyncId(row.companyId) !== companyId)
     || (row.company_id !== undefined && positiveJobSyncId(row.company_id) !== companyId)
     || Date.parse(job.scheduledStartAt ?? "") !== Date.parse(body.scheduledStartAt)
@@ -630,6 +682,7 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   }
   return {
     ...job, companyId, priceBookServiceId: row.priceBookServiceId === null ? null : positiveJobSyncId(row.priceBookServiceId)!,
+    ...(pricing ? { pricing } : {}),
     ...(body.operationKey !== undefined ? { operation: { key: body.operationKey, state: "saved" as const, replayed: operation!.replayed as boolean } } : {}),
   };
 }
@@ -681,6 +734,8 @@ export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
   photos: JobSyncJobPhoto[];
   /** Complete IDs from the verified wire gallery, including photos whose URL cannot render. */
   persistedPhotoIds?: number[];
+  /** Root persisted service lines/totals; unavailable legacy tax stays null. */
+  pricing?: JobSyncCompanyJobPricing;
 };
 
 function serverInstant(value: unknown): string | null {
@@ -727,9 +782,10 @@ export function normalizeJobSyncPhotoUrl(value: unknown): string | null {
 export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
   const row = asRecord(asRecord(payload)?.job);
   const job = normalizeJobSyncMobileJob(row);
+  const pricing = row ? normalizeCompanyJobPricing(row) : null;
   const returnedCompanyId = positiveJobSyncId(row?.companyId ?? row?.company_id);
   const rawCompanyId = row?.companyId ?? row?.company_id;
-  if (!positiveJobSyncId(companyId) || !row || !job || job.id !== jobId || (rawCompanyId !== undefined && returnedCompanyId !== companyId)) return null;
+  if (!positiveJobSyncId(companyId) || !row || !job || pricing === null || job.id !== jobId || (rawCompanyId !== undefined && returnedCompanyId !== companyId)) return null;
   // Missing/malformed wire galleries cannot establish absence of a persisted photo.
   if (!Array.isArray(row.photos)) return null;
   const persistedPhotoIds: number[] = [];
@@ -744,6 +800,7 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
   return {
     ...job,
     companyId,
+    ...(pricing ? { pricing } : {}),
     enRouteAt: serverInstant(row.enRouteAt),
     onSiteAt: serverInstant(row.onSiteAt),
     completedAt: serverInstant(row.completedAt),

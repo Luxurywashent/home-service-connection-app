@@ -2,7 +2,11 @@ import {
   createJobSyncCompanyJob, getJobSyncCompanyJobDetail, getJobSyncCompanyJobs,
   getJobSyncCompanyCustomer, getJobSyncCompanySettings, getJobSyncMobileSession,
   getHomeServiceConnectedPriceBook, getJobSyncCompanyJobCreationOperation,
-  normalizeCompanyJobNewCustomer, type JobSyncCompanyJobCustomerSelector, type JobSyncCompanyCustomer,
+  normalizeCompanyJobNewCustomer, normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, quoteJobSyncCompanyJob,
+  normalizeCompanyJobQuote,
+  type JobSyncCompanyJobLineInput, type JobSyncCompanyJobDiscountInput, type JobSyncCompanyJobQuoteInput,
+  type JobSyncCompanyJobQuote, type JobSyncCompanyJobPricing,
+  type JobSyncCompanyJobCustomerSelector, type JobSyncCompanyCustomer,
   type HomeServiceConnectedPriceBookService, type JobSyncCompanyJobCreateInput,
   type JobSyncCompanyJobCreateResult, type JobSyncCompanyJobDetail,
   type JobSyncCompanySettings, type JobSyncNativeSession,
@@ -14,7 +18,9 @@ import {
 } from "./company-job-creation-storage";
 
 export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
-  serviceId: string;
+  serviceId?: string;
+  lineItems?: JobSyncCompanyJobLineInput[];
+  discount?: JobSyncCompanyJobDiscountInput;
   assignedEmployeeId?: string;
   vehiclePriceKey?: string;
   date: string;
@@ -45,12 +51,14 @@ export type CompanyCreateJobTransport = {
   jobs: typeof getJobSyncCompanyJobs;
   /** Optional only for older injected transports; absence never authorizes a resend. */
   operation?: typeof getJobSyncCompanyJobCreationOperation;
+  /** Required for lines/discount intent. Legacy single-service transports remain compatible. */
+  quote?: typeof quoteJobSyncCompanyJob;
 };
 const transport: CompanyCreateJobTransport = {
   session: getJobSyncMobileSession, settings: (token) => getJobSyncCompanySettings(token, { requireTimezone: true }),
   priceBook: getHomeServiceConnectedPriceBook, customer: getJobSyncCompanyCustomer,
   create: createJobSyncCompanyJob, detail: getJobSyncCompanyJobDetail, jobs: getJobSyncCompanyJobs,
-  operation: getJobSyncCompanyJobCreationOperation,
+  operation: getJobSyncCompanyJobCreationOperation, quote: quoteJobSyncCompanyJob,
 };
 const ready = (): CompanyCreateJobState => ({ phase: "ready", message: null, jobId: null });
 const restoring = (): CompanyCreateJobState => ({ phase: "restoring", message: "Restoring this Company's previous Job request…", jobId: null });
@@ -116,10 +124,53 @@ function instantEqual(a: string | null | undefined, b: string | null | undefined
   return Boolean(a && b && Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b));
 }
 function immutable(record: CompanyCreationRecord): CompanyCreationRecord {
-  const payload: JobSyncCompanyJobCreateInput = record.payload.newCustomer
-    ? { ...record.payload, newCustomer: Object.freeze({ ...record.payload.newCustomer }) }
-    : { ...record.payload };
+  const payload: JobSyncCompanyJobCreateInput = { ...record.payload };
+  if (payload.newCustomer) payload.newCustomer = Object.freeze({ ...payload.newCustomer });
+  if (payload.lineItems) payload.lineItems = frozenLines(payload.lineItems);
+  if (payload.discount) payload.discount = Object.freeze({ ...payload.discount });
   return Object.freeze({ ...record, payload: Object.freeze(payload) });
+}
+function frozenLines(lines: JobSyncCompanyJobLineInput[]): JobSyncCompanyJobLineInput[] {
+  return Object.freeze(lines.map((line) => Object.freeze({ ...line }))) as JobSyncCompanyJobLineInput[];
+}
+function exactNested(source: unknown, canonical: unknown): boolean {
+  if (!canonical || typeof canonical !== "object") return source === canonical;
+  if (!source || typeof source !== "object" || Array.isArray(source) !== Array.isArray(canonical)
+    || ![Object.prototype, Array.prototype, null].includes(Object.getPrototypeOf(source))) return false;
+  const original = source as Record<string, unknown>, normalized = canonical as Record<string, unknown>;
+  return Reflect.ownKeys(original).length === Reflect.ownKeys(normalized).length
+    && Reflect.ownKeys(original).every((field) => typeof field === "string" && Object.hasOwn(normalized, field)
+      && exactNested(original[field], normalized[field]));
+}
+const money = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+const rateBps = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 10_000;
+function denseArray(value: unknown): value is unknown[] {
+  return Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype
+    && Reflect.ownKeys(value).length === value.length + 1
+    && Array.from({ length: value.length }, (_, index) => Object.hasOwn(value, index)).every(Boolean);
+}
+function verifyQuote(quote: JobSyncCompanyJobQuote, request: JobSyncCompanyJobQuoteInput) {
+  // Repeat response binding for injected transports too. No client pricing,
+  // discount, tax or duration formulas, and no downgrade to a legacy save.
+  if (!normalizeCompanyJobQuote(quote, request) || quote.lines.some((line) => !line.name.trim())) throw new Error("A current, bound Company quote with stored tax could not be verified. Nothing was submitted.");
+}
+function verifyPricing(pricing: JobSyncCompanyJobPricing | undefined, payload: JobSyncCompanyJobCreateInput, amount: number) {
+  const lines = payload.lineItems ?? (payload.discount && positive(payload.priceBookServiceId)
+    ? [{ priceBookItemId: payload.priceBookServiceId, quantity: 1 }] : undefined);
+  if (!lines) return; // v1 legacy missing pricing remains backward compatible.
+  if (!pricing || !denseArray(pricing.lineItems) || pricing.lineItems.length !== lines.length
+    || ![pricing.subtotalAmount, pricing.discountAmount, pricing.taxAmount, pricing.totalAmount].every(money)
+    || !rateBps(pricing.taxRateBps) || pricing.totalAmount !== amount
+    || pricing.discountAmount > pricing.subtotalAmount || (!payload.discount && pricing.discountAmount !== 0)
+    || pricing.discountKind !== (payload.discount?.kind ?? null) || pricing.discountCode !== (payload.discount?.code?.trim() || null)
+    || new Set(pricing.lineItems.map((line) => line?.id)).size !== lines.length
+    || pricing.lineItems.some((line, index) => !line || !positive(line.id) || line.priceBookItemId !== lines[index].priceBookItemId
+      || line.quantity !== lines[index].quantity || !Number.isSafeInteger(line.sortOrder) || line.sortOrder < 0
+      || typeof line.name !== "string" || !line.name.trim()
+      || !money(line.unitPrice) || !money(line.lineTotal))) throw new Error("Saved Job services or authoritative pricing did not match the original request. Recovery remains locked.");
+  // Persisted rates/taxability/per-line durations do not exist on this backend.
+  // The immutable operation key protects their original intent. Server amounts
+  // may legitimately differ from the earlier quote; there is no quote-lock token.
 }
 function recordState(record: CompanyCreationRecord): CompanyCreateJobState {
   if (record.jobId) return { phase: "saved", jobId: record.jobId, message: savedMessage };
@@ -185,6 +236,15 @@ export function createCompanyJobController(input: {
       const normalized = normalizeCompanyJobNewCustomer(record.payload.newCustomer);
       if (Object.keys(normalized).length !== Object.keys(record.payload.newCustomer!).length
         || Object.keys(normalized).some((field) => normalized[field as keyof typeof normalized] !== record.payload.newCustomer![field as keyof typeof normalized])) throw new Error(persistenceMessage);
+    }
+    if (Object.hasOwn(record.payload, "lineItems")) {
+      const lines = normalizeCompanyJobLineItems(record.payload.lineItems);
+      if (!exactNested(record.payload.lineItems, lines)
+        || (record.payload.priceBookServiceId !== undefined && record.payload.priceBookServiceId !== lines[0].priceBookItemId)) throw new Error(persistenceMessage);
+    }
+    if (Object.hasOwn(record.payload, "discount")) {
+      const discount = normalizeCompanyJobDiscount(record.payload.discount);
+      if (!discount || !exactNested(record.payload.discount, discount)) throw new Error(persistenceMessage);
     }
     return immutable(record);
   };
@@ -261,6 +321,10 @@ export function createCompanyJobController(input: {
       || (payload.scheduledEndAt && !instantEqual(detail.scheduledEndAt, payload.scheduledEndAt))
       || (!payload.scheduledEndAt && attempt.ack?.scheduledEndAt && !instantEqual(detail.scheduledEndAt, attempt.ack.scheduledEndAt))
       || !Number.isFinite(detail.amount) || detail.amount < 0) throw new Error("Saved Job detail did not match its Company acknowledgment or original request.");
+    verifyPricing(detail.pricing, payload, detail.amount);
+    if ((payload.lineItems || payload.discount) && (!detail.scheduledEndAt
+      || !Number.isFinite(Date.parse(detail.scheduledEndAt))
+      || Date.parse(detail.scheduledEndAt) <= Date.parse(detail.scheduledStartAt!))) throw new Error("Saved Job appointment duration could not be verified.");
     if (payload.newCustomer) {
       if (!await fresh() || !current()) return false;
       // The same-Company canonical Job has authoritatively resolved this ID.
@@ -385,10 +449,12 @@ export function createCompanyJobController(input: {
       if (!draft || typeof draft !== "object" || Object.hasOwn(draft, "customerId") === Object.hasOwn(draft, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
       if (Object.hasOwn(draft, "customerId") && !positive(draft.customerId)) throw new Error("Choose an existing Company customer.");
       if (Object.hasOwn(draft, "newCustomer") && Reflect.ownKeys(draft).some((field) => typeof field !== "string"
-        || !["newCustomer", "serviceId", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes"].includes(field))) throw new Error("New customer Job fields could not be verified.");
-      captured = Object.hasOwn(draft, "newCustomer")
-        ? Object.freeze({ ...draft, newCustomer: normalizeCompanyJobNewCustomer(draft.newCustomer) }) as CompanyCreateJobDraft
-        : Object.freeze({ ...draft });
+        || !["newCustomer", "serviceId", "lineItems", "discount", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes"].includes(field))) throw new Error("New customer Job fields could not be verified.");
+      const snapshot = { ...draft };
+      if (Object.hasOwn(draft, "newCustomer")) snapshot.newCustomer = normalizeCompanyJobNewCustomer(draft.newCustomer);
+      if (Object.hasOwn(draft, "lineItems")) snapshot.lineItems = frozenLines(normalizeCompanyJobLineItems(draft.lineItems));
+      if (draft.discount !== undefined) snapshot.discount = Object.freeze({ ...normalizeCompanyJobDiscount(draft.discount)! });
+      captured = Object.freeze(snapshot) as CompanyCreateJobDraft;
     } catch (error) {
       if (!runtime.attempt) { localState = { phase: "error", jobId: null, message: error instanceof Error ? error.message : "New customer fields could not be verified." }; publish(); }
       return false;
@@ -405,12 +471,27 @@ export function createCompanyJobController(input: {
     notify(key);
     let reservationStarted = false;
     try {
-      if ((captured.customerId !== undefined && !positive(captured.customerId)) || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))) throw new Error("Choose a Company customer and active Price Book service.");
+      const quotedFlow = captured.lineItems !== undefined || captured.discount !== undefined;
+      if ((captured.customerId !== undefined && !positive(captured.customerId))
+        || (!captured.lineItems && (typeof captured.serviceId !== "string" || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))))) throw new Error("Choose a Company customer and active Price Book service.");
+      if (captured.lineItems && captured.serviceId !== undefined && (typeof captured.serviceId !== "string"
+        || !/^\d+$/.test(captured.serviceId) || Number(captured.serviceId) !== captured.lineItems[0].priceBookItemId)) throw new Error("The original service must match the first selected service.");
+      const lines = captured.lineItems ?? (quotedFlow ? frozenLines(normalizeCompanyJobLineItems([
+        { priceBookItemId: Number(captured.serviceId), quantity: 1, ...(captured.vehiclePriceKey ? { vehiclePriceKey: captured.vehiclePriceKey } : {}) },
+      ])) : undefined);
+      if (lines && captured.vehiclePriceKey !== undefined && captured.vehiclePriceKey !== (lines[0].vehiclePriceKey ?? undefined)) throw new Error("The original service rate must match the first selected service.");
+      if (quotedFlow && !api.quote) throw new Error("A current Company quote is unavailable. Nothing was submitted.");
       if (!await fresh() || !current()) return false;
       const services = await api.priceBook(origin.token);
       if (!current()) return false;
-      const service = services.find((candidate) => candidate.serviceId === captured.serviceId);
-      if (!service) throw new Error("This service is no longer in the active Company Price Book. Refresh and select again.");
+      const selections = lines ?? [{ priceBookItemId: Number(captured.serviceId), quantity: 1, vehiclePriceKey: captured.vehiclePriceKey }];
+      for (const line of selections) {
+        const matches = services.filter((candidate) => candidate.serviceId === String(line.priceBookItemId));
+        if (matches.length !== 1) throw new Error("This service is no longer uniquely verified in the active Company Price Book. Refresh and select again.");
+        const service = matches[0], rates = companyCreateJobRateKeys(service);
+        if (line.vehiclePriceKey && !rates.includes(line.vehiclePriceKey)) throw new Error("This service rate is no longer available. Refresh and select again.");
+        if (service.basePrice === 0 && rates.length && !line.vehiclePriceKey) throw new Error("Choose a returned Price Book service rate.");
+      }
       if (captured.customerId !== undefined) {
         const customer = await api.customer(origin.token, captured.customerId, origin.company!.id);
         if (!current()) return false;
@@ -422,9 +503,6 @@ export function createCompanyJobController(input: {
       const scheduledStartAt = companyCreateJobInstant(captured.date, captured.startHour, settings.timezone);
       const scheduledEndAt = captured.endHour === undefined ? undefined : companyCreateJobInstant(captured.date, captured.endHour, settings.timezone);
       if (captured.startHour === 24 || (scheduledEndAt && Date.parse(scheduledEndAt) <= Date.parse(scheduledStartAt))) throw new Error("The scheduled end must be after the start time.");
-      const rates = companyCreateJobRateKeys(service);
-      if (captured.vehiclePriceKey && !rates.includes(captured.vehiclePriceKey)) throw new Error("This service rate is no longer available. Refresh and select again.");
-      if ((service as HomeServiceConnectedPriceBookService & { basePrice?: number }).basePrice === 0 && rates.length && !captured.vehiclePriceKey) throw new Error("Choose a returned Price Book service rate.");
       let assignedUserId: number | undefined;
       if (captured.assignedEmployeeId) {
         if (!/^jobsync-[1-9]\d*$/.test(captured.assignedEmployeeId) || !positive(Number(captured.assignedEmployeeId.slice(8)))) throw new Error("Choose a verified Company assignment candidate.");
@@ -434,10 +512,12 @@ export function createCompanyJobController(input: {
         assignedUserId = Number(captured.assignedEmployeeId.slice(8));
       }
       const selector: JobSyncCompanyJobCustomerSelector = captured.newCustomer ? { newCustomer: captured.newCustomer } : { customerId: captured.customerId! };
-      const payload: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: Number(captured.serviceId), scheduledStartAt };
+      const payload: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: lines?.[0].priceBookItemId ?? Number(captured.serviceId), scheduledStartAt };
+      if (lines) payload.lineItems = lines;
+      if (captured.discount !== undefined) payload.discount = captured.discount;
       if (scheduledEndAt) payload.scheduledEndAt = scheduledEndAt;
       if (assignedUserId !== undefined) payload.assignedUserId = assignedUserId;
-      if (captured.vehiclePriceKey) payload.vehiclePriceKey = captured.vehiclePriceKey;
+      if (!lines && captured.vehiclePriceKey) payload.vehiclePriceKey = captured.vehiclePriceKey;
       const limits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
       for (const field of Object.keys(limits) as (keyof typeof limits)[]) {
         const value = captured[field];
@@ -446,6 +526,13 @@ export function createCompanyJobController(input: {
         if (value.trim()) payload[field] = value.trim();
       }
       if (!await fresh() || !current()) return false;
+      if (lines) {
+        const quoteRequest = Object.freeze({ lineItems: lines, ...(payload.discount ? { discount: payload.discount } : {}) });
+        const quote = await api.quote!(origin.token, origin.company!.id, quoteRequest);
+        if (!current()) return false;
+        verifyQuote(quote, quoteRequest);
+        if (!await fresh() || !current()) return false;
+      }
       const operationKey = newKey();
       if (typeof operationKey !== "string" || operationKey !== operationKey.trim() || operationKey.length < 8 || operationKey.length > 128 || /[\u0000-\u001f\u007f]/.test(operationKey)
         || operationKey === previous?.record?.operationKey) throw new Error("A new secure Job creation key could not be generated. Saving is locked.");
@@ -485,6 +572,10 @@ export function createCompanyJobController(input: {
         || !Number.isFinite(ack.amount) || ack.amount < 0
         || (payload.newCustomer && (!ack.operation || typeof ack.operation.replayed !== "boolean"))
         || (ack.operation && (ack.operation.key !== operationKey || ack.operation.state !== "saved"))) throw new Error("The save response could not be verified. The original request remains locked.");
+      verifyPricing(ack.pricing, payload, ack.amount);
+      if (lines && (!ack.operation || typeof ack.operation.replayed !== "boolean" || ack.priceBookServiceId !== lines[0].priceBookItemId
+        || !ack.scheduledEndAt || !Number.isFinite(Date.parse(ack.scheduledEndAt))
+        || Date.parse(ack.scheduledEndAt) <= Date.parse(ack.scheduledStartAt!))) throw new Error("The multi-service save acknowledgment could not be verified. The original request remains locked.");
       attempt.ack = ack;
       patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
       await settleRecord(attempt, { phase: "saved", jobId: ack.id, ...(payload.newCustomer ? { resolvedCustomerId: ack.customerId } : {}) });

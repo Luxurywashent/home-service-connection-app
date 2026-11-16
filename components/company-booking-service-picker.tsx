@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import type { HomeServiceConnectedPriceBookService } from "@/lib/jobsync-mobile-api";
@@ -12,8 +12,8 @@ export function companyBookingDuration(service: HomeServiceConnectedPriceBookSer
   const minutes = service.defaultDurationMinutes;
   return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 ? `${minutes} min` : "Duration confirmed on save";
 }
-export function CompanyBookingServiceCard({ service, selected, rateKey, onPress, disabled = false, showDescription = false }: {
-  service: HomeServiceConnectedPriceBookService; selected: boolean; rateKey?: string; onPress: () => void; disabled?: boolean; showDescription?: boolean;
+export function CompanyBookingServiceCard({ service, selected, rateKey, onPress, disabled = false, showDescription = false, catalogLabel = false }: {
+  service: HomeServiceConnectedPriceBookService; selected: boolean; rateKey?: string; onPress: () => void; disabled?: boolean; showDescription?: boolean; catalogLabel?: boolean;
 }) {
   const colors = useJobSheetColors();
   const amount = companyBookingPrice(service, rateKey);
@@ -25,7 +25,7 @@ export function CompanyBookingServiceCard({ service, selected, rateKey, onPress,
       {showDescription && Boolean(service.description) && <Text style={[styles.detail, { color: colors.muted }]}>{service.description}</Text>}
       <Text style={[styles.detail, { color: colors.muted }]}>{companyBookingDuration(service)}</Text>
     </View>
-    <Text style={[styles.price, { color: colors.primary }]}>{amount === undefined ? hasRates ? "Select rate" : "Price on save" : `$${amount.toFixed(2)}`}</Text>
+    <Text style={[styles.price, { color: colors.primary }]}>{catalogLabel ? "Catalog unit rate\n" : ""}{amount === undefined ? hasRates ? "Select rate" : "Price on save" : `$${amount.toFixed(2)}`}</Text>
   </TouchableOpacity>;
 }
 
@@ -40,25 +40,29 @@ export function CompanyBookingServicePicker({ services, selectedId, loading, has
   const normalized = query.trim().toLowerCase();
   const matches = services.filter((service) => !normalized || [service.name, service.description, ...service.features].some((value) => value.toLowerCase().includes(normalized)));
   const ready = !disabled && !loading && hasLoaded && !error && services.some((service) => service.serviceId === choice);
-  const close = () => { if (isCurrent()) onClose(); };
+  const live = useRef({ mounted: false, isCurrent, choice, ready });
+  useLayoutEffect(() => { live.current.isCurrent = isCurrent; live.current.choice = choice; live.current.ready = ready; }, [isCurrent, choice, ready]);
+  useLayoutEffect(() => { const binding = live.current; binding.mounted = true; return () => { binding.mounted = false; }; }, []);
+  const current = () => live.current.mounted && live.current.isCurrent();
+  const close = () => { if (current()) { live.current.mounted = false; onClose(); } };
   return <View accessibilityViewIsModal testID="company-booking-pricebook-overlay" style={[styles.overlay, { backgroundColor: colors.surface }]}>
     <View style={styles.header}>
       <View style={styles.serviceCopy}><Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>Choose Service</Text><Text style={[styles.detail, { color: colors.primary }]}>Company Price Book</Text></View>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close service picker" onPress={close} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity>
     </View>
     <TextInput accessibilityLabel="Search Price Book services" placeholder="Search Price Book services…" placeholderTextColor={colors.muted} value={query}
-      onChangeText={(next) => { if (isCurrent() && !disabled) setQuery(next); }} editable={!disabled} autoCapitalize="none" returnKeyType="search"
+      onChangeText={(next) => { if (current() && !disabled) setQuery(next); }} editable={!disabled} autoCapitalize="none" returnKeyType="search"
       style={[styles.search, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]} />
     {loading && <ActivityIndicator accessibilityLabel="Loading Company Price Book" color={colors.primary} />}
     {error && <Text accessibilityRole="alert" style={[styles.detail, { color: colors.error }]}>{error}</Text>}
     <FlatList testID="company-booking-pricebook-list" style={styles.list} contentContainerStyle={styles.listContent} data={matches} keyExtractor={(service) => service.serviceId}
       keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => <CompanyBookingServiceCard service={item} selected={choice === item.serviceId} disabled={disabled || loading || !hasLoaded || Boolean(error)} showDescription
-        onPress={() => { if (isCurrent() && !disabled && !loading && hasLoaded && !error) setChoice(item.serviceId); }} />}
+        onPress={() => { if (current() && !disabled && !loading && hasLoaded && !error) setChoice(item.serviceId); }} />}
       ListEmptyComponent={hasLoaded && !loading && !error ? <Text style={[styles.detail, { color: colors.muted }]}>{services.length ? "No matching services. Try another search." : "No active services in this Company Price Book."}</Text> : null} />
-    {error && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reload Services" disabled={disabled || loading} onPress={() => { if (isCurrent() && !disabled && !loading) onRefresh(); }} style={[styles.button, { borderColor: colors.border }]}><Text style={[styles.buttonText, { color: colors.foreground }]}>Reload Services</Text></TouchableOpacity>}
+    {error && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reload Services" disabled={disabled || loading} onPress={() => { if (current() && !disabled && !loading) onRefresh(); }} style={[styles.button, { borderColor: colors.border }]}><Text style={[styles.buttonText, { color: colors.foreground }]}>Reload Services</Text></TouchableOpacity>}
     <View style={styles.footer}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel service selection" onPress={close} style={[styles.button, styles.flex, { borderColor: colors.border }]}><Text style={[styles.buttonText, { color: colors.foreground }]}>Cancel</Text></TouchableOpacity>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add selected service" accessibilityState={{ disabled: !ready }} disabled={!ready} onPress={() => { if (isCurrent() && ready) onConfirm(choice); }} style={[styles.button, styles.flex, { borderColor: colors.primary, backgroundColor: colors.primary, opacity: ready ? 1 : 0.45 }]}><Text style={[styles.buttonText, styles.white]}>Add Service</Text></TouchableOpacity>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add selected service" accessibilityState={{ disabled: !ready }} disabled={!ready} onPress={() => { if (current() && ready && live.current.ready && live.current.choice === choice) { live.current.mounted = false; onConfirm(choice); } }} style={[styles.button, styles.flex, { borderColor: colors.primary, backgroundColor: colors.primary, opacity: ready ? 1 : 0.45 }]}><Text style={[styles.buttonText, styles.white]}>Add Service</Text></TouchableOpacity>
     </View>
   </View>;
 }

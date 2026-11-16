@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useIsFocused } from "expo-router";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
-import { CompanyBookingServiceCard, CompanyBookingServicePicker, companyBookingPrice, companyBookingDuration } from "./company-booking-service-picker";
+import { CompanyBookingServiceCard, CompanyBookingServicePicker } from "./company-booking-service-picker";
 import { CompanyBookingTimeField } from "./company-booking-time-field";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
+import { useCompanyJobQuote } from "@/hooks/use-company-job-quote";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { getJobSyncCompanyCustomers, getJobSyncCompanySettings, getJobSyncMobileSession,
-  normalizeCompanyJobNewCustomer, type JobSyncCompanyNewCustomer,
+  normalizeCompanyJobNewCustomer, normalizeCompanyJobDiscount, type JobSyncCompanyNewCustomer,
+  type JobSyncCompanyJobLineInput, type JobSyncCompanyJobDiscountInput,
   type JobSyncCompanyCustomer, type JobSyncCompanyJobDetail, type JobSyncNativeSession } from "@/lib/jobsync-mobile-api";
 import { companyCreateJobAllowed, companyCreateJobRateKeys, companyCreateJobScope, createCompanyJobController,
   type CompanyCreateJobState } from "@/lib/company-create-job";
@@ -47,6 +49,12 @@ function parseTime(value: string) {
   if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) return NaN;
   return hour + minute / 60;
 }
+function CompanyJobPricingOption({ name, selected, action, current, locked, colors }: {
+  name: string; selected: boolean; action: () => void; current: () => boolean;
+  locked: boolean; colors: ReturnType<typeof useJobSheetColors>;
+}) {
+  return <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked) action(); }} style={[styles.option, { borderColor: selected ? colors.primary : colors.border, backgroundColor: colors.surface }]}><Text style={[styles.optionText, { color: selected ? colors.primary : colors.foreground }]}>{name}</Text></TouchableOpacity>;
+}
 function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: JobSyncNativeSession }) {
   const colors = useJobSheetColors();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -77,8 +85,11 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const prefillCustomerId = props.customerPrefill?.customerId;
   const prefillCompanyId = props.customerPrefill?.companyId;
   const [query, setQuery] = useState("");
-  const [serviceId, setServiceId] = useState("");
-  const [rateKey, setRateKey] = useState("");
+  const [draftLines, setDraftLines] = useState<{ serviceId: string; quantity: string; rateKey: string }[]>([]);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [discountKind, setDiscountKind] = useState<"none" | "flat" | "percent">("none");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountCode, setDiscountCode] = useState("");
   const [assignee, setAssignee] = useState<string | undefined>();
   const [date, setDate] = useState(props.initialDate);
   const [start, setStart] = useState(timeText(props.initialStartHour ?? 9));
@@ -177,13 +188,40 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     })();
     return () => { alive = false; };
   }, [refreshKey, props.session, prefillCustomerId, prefillCompanyId, refreshPriceBook, current, selectCustomer]);
-  const service = priceBook.services.find((row) => row.serviceId === serviceId);
-  const rates = service ? companyCreateJobRateKeys(service) : [];
   const customerId = selectedCustomer?.id ?? null;
   const busy = state.phase === "restoring" || state.phase === "validating" || state.phase === "submitting" || Boolean(state.reconciling);
   const locked = busy || ["uncertain", "pending", "conflict", "saved", "succeeded"].includes(state.phase);
-  const serviceBase = (service as (typeof service & { basePrice?: number }))?.basePrice;
-  const requireRate = serviceBase !== undefined && serviceBase <= 0 && rates.length > 0;
+  const linesReady = draftLines.length > 0 && draftLines.length <= 50 && draftLines.every((line) => {
+    const service = priceBook.services.find((row) => row.serviceId === line.serviceId);
+    const rates = service ? companyCreateJobRateKeys(service) : [];
+    const requireRate = service?.basePrice !== undefined && service.basePrice <= 0 && rates.length > 0;
+    return Boolean(service && Number.isSafeInteger(Number(line.serviceId)) && Number(line.serviceId) > 0
+      && /^\d+$/.test(line.quantity) && Number(line.quantity) >= 1 && Number(line.quantity) <= 100
+      && (!requireRate || line.rateKey) && (!line.rateKey || rates.includes(line.rateKey)));
+  }) && new Set(draftLines.map((line) => line.serviceId)).size === draftLines.length;
+  let discount: JobSyncCompanyJobDiscountInput | undefined;
+  let discountError: string | null = null;
+  if (discountKind !== "none") {
+    try {
+      if (!/^\d+(\.\d+)?$/.test(discountValue.trim())) throw new Error("Enter a nonnegative discount value.");
+      discount = normalizeCompanyJobDiscount({ kind: discountKind, value: Number(discountValue), ...(discountCode.trim() ? { code: discountCode } : {}) });
+    } catch (error) { discountError = error instanceof Error ? error.message : "Review the discount."; }
+  }
+  const lineItems: JobSyncCompanyJobLineInput[] = draftLines.map((line) => ({ priceBookItemId: Number(line.serviceId), quantity: Number(line.quantity), ...(line.rateKey ? { vehiclePriceKey: line.rateKey } : {}) }));
+  const quoteEnabled = !locked && linesReady && !discountError && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error;
+  const rawPricingKey = JSON.stringify([draftLines, discountKind, discountValue, discountCode]);
+  // A fast save may skip a committed busy render. Terminal preflight/rejection
+  // outcomes still need a fresh preview; uncertain/pending/saved stay disabled.
+  const quoteRevision = useMemo(() => ({ services: priceBook.services, rawPricingKey, phase: state.phase }), [priceBook.services, rawPricingKey, state.phase]);
+  const jobQuote = useCompanyJobQuote({ session: props.session, input: quoteEnabled ? { lineItems, ...(discount ? { discount } : {}) } : null,
+    enabled: quoteEnabled, isCurrent: current, revision: quoteRevision });
+  const { getBoundQuote, invalidate } = jobQuote;
+  const pricingBinding = useRef(getBoundQuote);
+  useLayoutEffect(() => { pricingBinding.current = getBoundQuote; }, [getBoundQuote]);
+  const editPricing = useCallback((action: () => void) => {
+    if (!current() || locked || pricingBinding.current !== getBoundQuote) return;
+    invalidate(); action();
+  }, [current, locked, getBoundQuote, invalidate]);
   const newCustomerFields = { firstName, lastName, email, phone, addressLine1: address, city, region, postalCode };
   const newCustomerErrors: Partial<Record<keyof JobSyncCompanyNewCustomer, string>> = {};
   if (customerMode === "new") for (const name of Object.keys(newCustomerFields) as (keyof JobSyncCompanyNewCustomer)[]) {
@@ -191,11 +229,14 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     catch (error) { newCustomerErrors[name] = error instanceof Error ? error.message : "Check this customer field."; }
   }
   const customerReady = customerMode === "existing" ? !customerListError && !customerLoading && !customerError && Boolean(selectedCustomer) : !Object.keys(newCustomerErrors).length;
-  const canSave = !locked && !loading && !loadError && customerReady && Boolean(timezone && service)
-    && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && (!requireRate || Boolean(rateKey))
+  const canSave = !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
+    && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && !discountError
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));
-  const close = () => { if (current()) { live.current.closing = true; invalidateCustomerRequest(); live.current.props.onClose(); } };
+  const draftBinding = useMemo(() => ({ customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, canSave }), [customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, canSave]);
+  const committedDraft = useRef<object | null>(null);
+  useLayoutEffect(() => { committedDraft.current = draftBinding; return () => { committedDraft.current = null; }; }, [draftBinding]);
+  const close = () => { if (current()) { jobQuote.invalidate(); live.current.closing = true; invalidateCustomerRequest(); live.current.props.onClose(); } };
   const changeCustomerMode = (mode: "existing" | "new") => {
     if (!current() || locked || mode === customerMode) return;
     customerModeRef.current = mode; invalidateCustomerRequest(); customerChoiceTouched.current = true;
@@ -205,12 +246,16 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     setAddress(""); setCity(""); setRegion(""); setPostalCode("");
   };
   const save = () => {
-    if (!canSave || !current() || customerModeRef.current !== customerMode || (customerMode === "existing" && !customerId)) return;
+    if (!canSave || !current() || !jobQuote.getBoundQuote() || pricingBinding.current !== jobQuote.getBoundQuote
+      || committedDraft.current !== draftBinding || customerModeRef.current !== customerMode || (customerMode === "existing" && !customerId)) return;
     const controller = controllerRef.current;
     if (!controller) return;
     const selector = customerMode === "new" ? { newCustomer: normalizeCompanyJobNewCustomer(newCustomerFields) } : { customerId: customerId! };
-    void controller.submit({ ...selector, serviceId, assignedEmployeeId: assignee,
-      vehiclePriceKey: rateKey || undefined, date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
+    // React may batch validating -> error; retire the preview at dispatch, not
+    // only when a locked phase happens to render. The controller quotes afresh.
+    jobQuote.invalidate();
+    void controller.submit({ ...selector, lineItems, ...(discount ? { discount } : {}), assignedEmployeeId: assignee,
+      date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
       addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes }).then(async (saved) => {
       // One authenticated GET-only check after an ambiguous response; never
       // resend, re-key, or drive a retained controller after close/scope change.
@@ -218,7 +263,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
         && ["uncertain", "pending", "conflict"].includes(controller.getState().phase)) await controller.reconcile();
     });
   };
-  const retryReads = () => { if (current() && !locked) { setRefreshKey((value) => value + 1); void priceBook.refresh(); } };
+  const retryReads = () => { if (current() && !locked) { jobQuote.invalidate(); setRefreshKey((value) => value + 1); void priceBook.refresh(); void jobQuote.refresh(); } };
   const inputStyle = [styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }];
   const label = (text: string) => <Text style={[styles.label, { color: colors.muted }]}>{text}</Text>;
   const field = (name: string, value: string, setValue: (value: string) => void, options: { paired?: boolean; readonly?: boolean; multiline?: boolean; keyboard?: "phone-pad" | "email-address"; feedback?: keyof JobSyncCompanyNewCustomer; displayLabel?: string } = {}) => <View style={[styles.field, options.paired && styles.pairedField]}>
@@ -228,6 +273,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     {options.feedback && customerMode === "new" && newCustomerErrors[options.feedback] && Boolean(value.trim()) && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{newCustomerErrors[options.feedback]}</Text>}
   </View>;
   const option = (name: string, selected: boolean, action: () => void) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked) action(); }} style={[styles.option, { borderColor: selected ? colors.primary : colors.border, backgroundColor: colors.surface }]}><Text style={[styles.optionText, { color: selected ? colors.primary : colors.foreground }]}>{name}</Text></TouchableOpacity>;
+  const pricingOptionProps = { current, locked, colors };
   const normalizedQuery = query.trim().toLowerCase();
   const matches = normalizedQuery.length < 2 ? [] : customers.filter((row) => [row.name, row.email, row.phone, row.addressLine1, row.city].some((value) => value?.toLowerCase().includes(normalizedQuery))).slice(0, 10);
   const clearCustomer = (next = "") => {
@@ -235,8 +281,10 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     customerChoiceTouched.current = true; invalidateCustomerRequest(); setQuery(next); setSelectedCustomer(null); setCustomerLoading(false); setCustomerError(null);
     setFirstName(""); setLastName(""); setPhone(""); setEmail(""); setAddress(""); setCity(""); setRegion(""); setPostalCode("");
   };
-  const openServicePicker = () => { if (current() && !locked) setServicePickerOpen(true); };
-  const selectedAmount = service ? companyBookingPrice(service, rateKey) : undefined;
+  const openServicePicker = useCallback((id: string | null = null) => {
+    if (current() && !locked && pricingBinding.current === getBoundQuote && (id !== null || draftLines.length < 50)) { setEditingServiceId(id); setServicePickerOpen(true); }
+  }, [current, locked, getBoundQuote, draftLines.length]);
+  const pickerServices = priceBook.services.filter((row) => row.serviceId === editingServiceId || !draftLines.some((line) => line.serviceId === row.serviceId));
   const pickerValue = () => {
     const [year, month, day] = date.split("-").map(Number);
     const wallHour = picker === "end" ? parseTime(end) : parseTime(start);
@@ -293,8 +341,47 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {priceBook.isLoading && <ActivityIndicator accessibilityLabel="Loading Company Price Book" color={colors.primary} />}
           {priceBook.error && <Text accessibilityRole="alert" style={{ color: colors.error }}>{priceBook.error}</Text>}
           {priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && priceBook.services.length === 0 && <Text style={{ color: colors.muted }}>No active services in this Company Price Book.</Text>}
-          {service ? <CompanyBookingServiceCard service={service} selected rateKey={rateKey} disabled={locked} onPress={openServicePicker} /> : option("Choose Service", false, () => setServicePickerOpen(true))}
-          {requireRate && <View style={styles.field}>{label("Service rate (required)")}<FlatList style={styles.rateResults} nestedScrollEnabled data={rates} keyExtractor={(key) => key} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item, index }) => option(`Service rate ${index + 1} · $${service!.vehiclePrices[item].toFixed(2)}`, rateKey === item, () => setRateKey(item))} /></View>}
+          {locked && draftLines.length > 0 && <Text style={[styles.note, { color: colors.muted }]}>Draft selections below are not saved or recovered Job pricing.</Text>}
+          {draftLines.map((line, index) => {
+            const service = priceBook.services.find((row) => row.serviceId === line.serviceId);
+            const rates = service ? companyCreateJobRateKeys(service) : [];
+            const requireRate = service?.basePrice !== undefined && service.basePrice <= 0 && rates.length > 0;
+            const changeLine = (patch: Partial<typeof line>) => {
+              if (Object.entries(patch).every(([key, value]) => line[key as keyof typeof line] === value)) return;
+              editPricing(() => setDraftLines((rows) => rows.map((row) => row.serviceId === line.serviceId ? { ...row, ...patch } : row)));
+            };
+            const quantityValid = /^\d+$/.test(line.quantity) && Number(line.quantity) >= 1 && Number(line.quantity) <= 100;
+            return <View key={line.serviceId} testID={`company-job-draft-line-${line.serviceId}`} style={styles.field}>
+              {service ? <CompanyBookingServiceCard service={service} selected rateKey={line.rateKey} catalogLabel disabled={locked} onPress={() => openServicePicker(line.serviceId)} /> : <Text accessibilityRole="alert" style={{ color: colors.error }}>Selected service is unavailable. Remove or refresh it.</Text>}
+              <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label("Quantity (1–100)")}<TextInput accessibilityLabel={`Service ${index + 1} quantity`} value={line.quantity} editable={!locked} keyboardType="number-pad" onChangeText={(next) => changeLine({ quantity: next })} style={inputStyle} /></View>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove service ${index + 1}`} disabled={locked} onPress={() => editPricing(() => setDraftLines((rows) => rows.filter((row) => row.serviceId !== line.serviceId)))} style={[styles.option, { borderColor: colors.border }]}><Text style={[styles.optionText, { color: colors.foreground }]}>Remove</Text></TouchableOpacity></View>
+              {!quantityValid && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>Quantity must be a whole number from 1 to 100.</Text>}
+              {rates.length > 0 && <View style={styles.field}>{label(requireRate ? "Service rate (required)" : "Service rate")}
+                {!requireRate && <CompanyJobPricingOption {...pricingOptionProps} name={`Service ${index + 1} base rate`} selected={!line.rateKey} action={() => changeLine({ rateKey: "" })} />}
+                <FlatList style={styles.rateResults} nestedScrollEnabled data={rates} keyExtractor={(key) => key} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item, index: tierIndex }) => <CompanyJobPricingOption {...pricingOptionProps} name={`Service ${index + 1} rate ${tierIndex + 1} · $${service!.vehiclePrices[item].toFixed(2)} catalog unit`} selected={line.rateKey === item} action={() => changeLine({ rateKey: item })} />} />
+              </View>}
+            </View>;
+          })}
+          {draftLines.length === 0 ? <CompanyJobPricingOption {...pricingOptionProps} name="Choose Service" selected={false} action={() => openServicePicker()} /> : draftLines.length < 50 && priceBook.services.some((row) => !draftLines.some((line) => line.serviceId === row.serviceId)) && <CompanyJobPricingOption {...pricingOptionProps} name="Add Another Service" selected={false} action={() => openServicePicker()} />}
+          {draftLines.length === 50 && <Text style={[styles.note, { color: colors.muted }]}>Maximum 50 services. Use quantity for repetition.</Text>}
+          {draftLines.length > 0 && <>
+            {label("DISCOUNT (OPTIONAL)")}<View style={styles.timeRow}><CompanyJobPricingOption {...pricingOptionProps} name="No discount" selected={discountKind === "none"} action={() => { if (discountKind !== "none") editPricing(() => setDiscountKind("none")); }} /><CompanyJobPricingOption {...pricingOptionProps} name="Flat discount" selected={discountKind === "flat"} action={() => { if (discountKind !== "flat") editPricing(() => setDiscountKind("flat")); }} /><CompanyJobPricingOption {...pricingOptionProps} name="Percent discount" selected={discountKind === "percent"} action={() => { if (discountKind !== "percent") editPricing(() => setDiscountKind("percent")); }} /></View>
+            {discountKind !== "none" && <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label(discountKind === "percent" ? "Discount percent" : "Discount amount")}<TextInput accessibilityLabel="Discount value" value={discountValue} editable={!locked} keyboardType="decimal-pad" onChangeText={(next) => { if (next !== discountValue) editPricing(() => setDiscountValue(next)); }} style={inputStyle} /></View><View style={[styles.field, styles.flex]}>{label("Discount code (optional)")}<TextInput accessibilityLabel="Discount code (optional)" value={discountCode} editable={!locked} autoCapitalize="none" onChangeText={(next) => { if (next !== discountCode) editPricing(() => setDiscountCode(next)); }} style={inputStyle} /></View></View>}
+            {discountError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{discountError}</Text>}
+            {jobQuote.loading && <ActivityIndicator accessibilityLabel="Loading server Job quote" color={colors.primary} />}
+            {jobQuote.error && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{jobQuote.error}</Text>}
+            {!locked && linesReady && !discountError && option("Refresh server pricing", false, () => { void jobQuote.refresh(); })}
+            {jobQuote.quote && <View testID="company-job-server-quote" style={styles.field}>
+              {label("SERVER QUOTE · NOT YET SAVED")}
+              {jobQuote.quote.lines.map((line) => <View key={line.priceBookItemId}><Text style={[styles.selected, { color: colors.foreground }]}>{line.name}</Text><Text style={[styles.note, { color: colors.muted }]}>Unit ${line.unitPrice.toFixed(2)} · Qty {line.quantity} · Line ${line.lineTotal.toFixed(2)} · {line.durationMinutes} min</Text></View>)}
+              <Text style={[styles.note, { color: colors.foreground }]}>Subtotal ${jobQuote.quote.subtotal.toFixed(2)}</Text>
+              <Text style={[styles.note, { color: colors.foreground }]}>Discount ${jobQuote.quote.discount.toFixed(2)}{jobQuote.quote.discountKind ? ` (${jobQuote.quote.discountKind})` : ""}{jobQuote.quote.discountCode ? ` · ${jobQuote.quote.discountCode}` : ""}</Text>
+              <Text style={[styles.note, { color: colors.foreground }]}>Tax ${jobQuote.quote.tax.toFixed(2)} · Taxable subtotal ${jobQuote.quote.taxableSubtotal.toFixed(2)} · Rate {jobQuote.quote.taxRateBps} bps</Text>
+              <Text style={[styles.selected, { color: colors.foreground }]}>Final quote total ${jobQuote.quote.total.toFixed(2)}</Text>
+              <Text style={[styles.note, { color: colors.muted }]}>Combined service duration {jobQuote.quote.totalDurationMinutes} min</Text>
+              <Text style={[styles.note, { color: colors.muted }]}>Pricing may change before save. The saved Job response is authoritative.</Text>
+            </View>}
+          </>}
           {label("ASSIGN TECHNICIAN")}
           {candidates.loading && <ActivityIndicator accessibilityLabel="Loading assignment candidates" color={colors.primary} />}
           {candidates.error && <Text style={{ color: colors.error }}>{candidates.error}</Text>}
@@ -318,15 +405,22 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {["uncertain", "pending", "conflict", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh calendar" : "Check saved status"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={styles.refresh}><Text style={[styles.note, { color: colors.primary }]}>Refresh form</Text></TouchableOpacity>}
         </ScrollView>
         <View style={[styles.footer, { borderColor: colors.border }]}>
-          {service && <View style={styles.total}><Text style={[styles.selected, { color: colors.foreground }]}>Service price {selectedAmount === undefined ? "confirmed on save" : `$${selectedAmount.toFixed(2)}`}</Text><Text style={[styles.note, { color: colors.muted }]}>{companyBookingDuration(service)}</Text></View>}
+          {jobQuote.quote && <View style={styles.total}><Text style={[styles.selected, { color: colors.foreground }]}>Server quote ${jobQuote.quote.total.toFixed(2)}</Text><Text style={[styles.note, { color: colors.muted }]}>{jobQuote.quote.totalDurationMinutes} min</Text></View>}
           <View style={styles.pair}>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel Add Job" onPress={close} style={[styles.cancel, { borderColor: colors.border }]}><Text style={[styles.footerText, { color: colors.foreground }]}>Cancel</Text></TouchableOpacity>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.phase === "restoring" ? "Checking…" : state.reconciling ? "Refreshing…" : busy ? "Saving…" : state.phase === "rejected" ? "Save corrected Job" : "Save Job"}</Text></TouchableOpacity>
           </View>
         </View>
         </View>
-        {servicePickerOpen && <CompanyBookingServicePicker services={priceBook.services} selectedId={serviceId} loading={priceBook.isLoading} hasLoaded={priceBook.hasLoaded} error={priceBook.error} disabled={locked} isCurrent={current}
-          onClose={() => { if (current()) setServicePickerOpen(false); }} onRefresh={retryReads} onConfirm={(id) => { if (current() && !locked && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && priceBook.services.some((row) => row.serviceId === id)) { if (id !== serviceId) { setServiceId(id); setRateKey(""); } setServicePickerOpen(false); } }} />}
+        {servicePickerOpen && <CompanyBookingServicePicker key={editingServiceId || "add"} services={pickerServices} selectedId={editingServiceId || ""} loading={priceBook.isLoading} hasLoaded={priceBook.hasLoaded} error={priceBook.error} disabled={locked} isCurrent={current}
+          onClose={() => { if (current()) setServicePickerOpen(false); }} onRefresh={retryReads} onConfirm={(id) => { if (current() && !locked && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && pickerServices.some((row) => row.serviceId === id)) {
+            if (id === editingServiceId) { setServicePickerOpen(false); return; }
+            editPricing(() => setDraftLines((rows) => {
+              if (rows.some((row) => row.serviceId === id && row.serviceId !== editingServiceId)) return rows;
+              if (editingServiceId) return rows.map((row) => row.serviceId === editingServiceId ? { ...row, serviceId: id, rateKey: row.serviceId === id ? row.rateKey : "" } : row);
+              return rows.length < 50 ? [...rows, { serviceId: id, quantity: "1", rateKey: "" }] : rows;
+            })); setServicePickerOpen(false);
+          } }} />}
       </View>
     </KeyboardAvoidingView>
   </Modal>;

@@ -1,7 +1,8 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { normalizeCompanyJobNewCustomer, type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCustomerSelector } from "./jobsync-mobile-api";
+import { normalizeCompanyJobNewCustomer, normalizeCompanyJobLineItems, normalizeCompanyJobDiscount,
+  type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCustomerSelector } from "./jobsync-mobile-api";
 
 export type CompanyCreationRecord = {
   version: 1;
@@ -77,11 +78,13 @@ export function newCompanyCreationOperationKey(): string { return `hsc-job-${uui
 
 const textLimits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
 function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
-  shape(value, ["priceBookServiceId", "scheduledStartAt"],
-    ["customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", ...Object.keys(textLimits)]);
+  shape(value, ["scheduledStartAt"],
+    ["priceBookServiceId", "lineItems", "discount", "customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", ...Object.keys(textLimits)]);
   if (Object.hasOwn(value, "customerId") === Object.hasOwn(value, "newCustomer")
     || (Object.hasOwn(value, "customerId") && !positive(value.customerId))
-    || !positive(value.priceBookServiceId) || !instant(value.scheduledStartAt)) throw corrupt();
+    || (Object.hasOwn(value, "priceBookServiceId") && !positive(value.priceBookServiceId))
+    || (!Object.hasOwn(value, "priceBookServiceId") && !Object.hasOwn(value, "lineItems"))
+    || !instant(value.scheduledStartAt)) throw corrupt();
   let selector: JobSyncCompanyJobCustomerSelector;
   if (Object.hasOwn(value, "newCustomer")) {
     try {
@@ -94,8 +97,24 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
     } catch { throw corrupt(); }
   } else selector = { customerId: value.customerId as number };
   const result: JobSyncCompanyJobCreateInput = {
-    ...selector, priceBookServiceId: value.priceBookServiceId, scheduledStartAt: value.scheduledStartAt,
+    ...selector, scheduledStartAt: value.scheduledStartAt,
   };
+  if (Object.hasOwn(value, "priceBookServiceId")) result.priceBookServiceId = value.priceBookServiceId as number;
+  try {
+    if (Object.hasOwn(value, "lineItems")) {
+      const lines = normalizeCompanyJobLineItems(value.lineItems);
+      // Normalizers can trim user input. A protected recovery record must already
+      // be canonical: never repair nested intent or collapse absent/null fields.
+      if (!Array.isArray(value.lineItems) || !canonicalNested(value.lineItems, lines)
+        || (result.priceBookServiceId !== undefined && result.priceBookServiceId !== lines[0].priceBookItemId)) throw corrupt();
+      result.lineItems = Object.freeze(lines.map((line) => Object.freeze({ ...line }))) as typeof lines;
+    }
+    if (Object.hasOwn(value, "discount")) {
+      const discount = normalizeCompanyJobDiscount(value.discount);
+      if (!discount || !canonicalNested(value.discount, discount)) throw corrupt();
+      result.discount = Object.freeze({ ...discount });
+    }
+  } catch { throw corrupt(); }
   if (value.scheduledEndAt !== undefined) {
     if (!instant(value.scheduledEndAt) || Date.parse(value.scheduledEndAt) <= Date.parse(value.scheduledStartAt)) throw corrupt();
     result.scheduledEndAt = value.scheduledEndAt;
@@ -116,6 +135,17 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
     result[key] = field; // Preserve the exact submitted text; never normalize on recovery.
   }
   return Object.freeze(result);
+}
+function canonicalNested(source: unknown, canonical: unknown): boolean {
+  if (Array.isArray(canonical)) {
+    return Array.isArray(source) && Object.getPrototypeOf(source) === Array.prototype
+      && source.length === canonical.length && Reflect.ownKeys(source).length === canonical.length + 1
+      && canonical.every((item, index) => Object.hasOwn(source, index) && canonicalNested(source[index], item));
+  }
+  if (!object(canonical)) return source === canonical;
+  return object(source) && Reflect.ownKeys(source).length === Reflect.ownKeys(canonical).length
+    && Reflect.ownKeys(source).every((key) => typeof key === "string" && Object.hasOwn(canonical, key)
+      && canonicalNested(source[key], canonical[key]));
 }
 function recordCopy(value: unknown, companyId?: number, userId?: number): CompanyCreationRecord {
   shape(value, ["version", "companyId", "userId", "operationKey", "payload", "timezone", "phase", "jobId", "createdAt", "updatedAt"],
