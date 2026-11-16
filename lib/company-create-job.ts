@@ -27,6 +27,9 @@ export type CompanyCreateJobState = {
   phase: "ready" | "validating" | "submitting" | "uncertain" | "saved" | "succeeded" | "error";
   message: string | null;
   jobId: number | null;
+  reconciling?: boolean;
+  /** Read/refresh diagnostic, separate from the known save outcome. */
+  detailError?: string | null;
 };
 export type CompanyCreateJobTransport = {
   session: (token: string) => Promise<JobSyncNativeSession>;
@@ -97,7 +100,7 @@ type Attempt = {
 const attempts = new Map<string, Attempt>();
 const listeners = new Map<string, Set<() => void>>();
 const actorKey = (session: JobSyncNativeSession) => `${session.company!.id}:${session.user.id}`;
-const savedMessage = "Job saved, but calendar readback could not be confirmed. Refresh the calendar; do not create this Job again.";
+const savedMessage = "Job saved — calendar refresh failed.";
 const uncertainMessage = "This request may have created a Job. Check the Company calendar before creating another. Do not resend this request.";
 function notify(key: string) { listeners.get(key)?.forEach((listener) => listener()); }
 function definitiveRejection(error: unknown) {
@@ -120,7 +123,7 @@ export function createCompanyJobController(input: {
   isCurrent: () => boolean;
   verifyAssignment: (employeeId: string) => Promise<boolean>;
   onState: (state: CompanyCreateJobState) => void;
-  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string) => void;
+  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string) => boolean | void | Promise<boolean | void>;
   transport?: CompanyCreateJobTransport;
 }) {
   const api = input.transport ?? transport;
@@ -150,16 +153,24 @@ export function createCompanyJobController(input: {
     if (!current()) return false;
     if (detail.id !== ack.id || detail.companyId !== origin.company!.id || detail.customerId !== ack.customerId
       || detail.assignedUserId !== ack.assignedUserId || !instantEqual(detail.scheduledStartAt, ack.scheduledStartAt)
-      || !instantEqual(detail.scheduledEndAt, ack.scheduledEndAt) || detail.amount !== ack.amount) throw new Error(savedMessage);
-    const succeeded: CompanyCreateJobState = { phase: "succeeded", jobId: ack.id, message: "Job saved. Refreshing the Company calendar." };
-    patch(attempt, succeeded);
+      || !instantEqual(detail.scheduledEndAt, ack.scheduledEndAt) || detail.amount !== ack.amount) throw new Error("Saved Job detail did not match its Company acknowledgment.");
+    patch(attempt, { phase: "saved", jobId: ack.id, message: "Job saved. Refreshing the Company calendar…", reconciling: true });
+    if (!current()) return false;
+    // A detail GET is not a calendar refresh. Keep the actor-wide lock and ack
+    // through the actual parent list/settings loader; false is a failed refresh.
+    const refreshed = await input.onCreated(detail, attempt.timezone);
     if (!current()) {
       patch(attempt, { phase: "saved", jobId: ack.id, message: savedMessage });
       return false;
     }
-    localState = succeeded;
-    input.onCreated(detail, attempt.timezone);
-    attempts.delete(key);
+    if (refreshed === false) {
+      patch(attempt, { phase: "saved", jobId: ack.id, message: savedMessage });
+      return false;
+    }
+    localState = { phase: "succeeded", jobId: ack.id, message: "Job saved. Company calendar refreshed." };
+    // Settle before publishing success: a sheet may close synchronously in
+    // onState, but only AFTER the awaited refresh and current-scope checks.
+    if (attempts.get(key) === attempt) attempts.delete(key);
     notify(key);
     return true;
   };
@@ -190,8 +201,9 @@ export function createCompanyJobController(input: {
       let assignedUserId: number | undefined;
       if (captured.assignedEmployeeId) {
         if (!/^jobsync-[1-9]\d*$/.test(captured.assignedEmployeeId) || !positive(Number(captured.assignedEmployeeId.slice(8)))) throw new Error("Choose a verified Company assignment candidate.");
-        if (!await input.verifyAssignment(captured.assignedEmployeeId)) throw new Error("This member is not a currently verified assignment candidate. Refresh and select again.");
+        const verified = await input.verifyAssignment(captured.assignedEmployeeId);
         if (!current()) return false;
+        if (!verified) throw new Error("This member is not a currently verified assignment candidate. Refresh and select again.");
         assignedUserId = Number(captured.assignedEmployeeId.slice(8));
       }
       const payload: JobSyncCompanyJobCreateInput = { customerId: captured.customerId, priceBookServiceId: Number(captured.serviceId), scheduledStartAt };
@@ -213,7 +225,6 @@ export function createCompanyJobController(input: {
       const ack = await api.create(origin.token, origin.company!.id, payload);
       // Settling the originating attempt is mandatory even after its sheet closes.
       attempt.ack = ack;
-      patch(attempt, { phase: "saved", message: savedMessage, jobId: positive(ack.id) ? ack.id : null });
       if (!positive(ack.id) || ack.companyId !== origin.company!.id || ack.customerId !== payload.customerId
         || ack.priceBookServiceId !== payload.priceBookServiceId || ack.assignedUserId !== (payload.assignedUserId ?? null)
         || !instantEqual(ack.scheduledStartAt, payload.scheduledStartAt)
@@ -223,6 +234,7 @@ export function createCompanyJobController(input: {
         patch(attempt, { phase: "uncertain", message: uncertainMessage, jobId: null });
         return false;
       }
+      patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
       if (!current()) return false;
       return await recoverDetail(attempt);
     } catch (error) {
@@ -231,11 +243,13 @@ export function createCompanyJobController(input: {
         localState = { phase: "error", jobId: null, message: error instanceof Error ? error.message : "Could not verify this Company Job." };
         notify(key);
       } else {
-        patch(attempt, { phase: attempt.ack ? "saved" : "uncertain", message: attempt.ack ? savedMessage : uncertainMessage, jobId: attempt.ack?.id ?? null });
+        patch(attempt, { phase: attempt.ack ? "saved" : "uncertain", message: attempt.ack ? savedMessage : uncertainMessage, jobId: attempt.ack?.id ?? null,
+          detailError: attempt.ack && error instanceof Error ? error.message : null });
       }
       return false;
     } finally {
       attempt.busy = false;
+      if (attempts.get(key) === attempt && attempt.state.reconciling) attempt.state = { ...attempt.state, reconciling: false };
       if (!attempt.sent && attempts.get(key) === attempt) attempts.delete(key);
       notify(key);
     }
@@ -244,6 +258,7 @@ export function createCompanyJobController(input: {
     const attempt = attempts.get(key);
     if (!current() || !attempt || attempt.busy) return false;
     attempt.busy = true;
+    patch(attempt, { ...attempt.state, reconciling: true });
     try {
       if (attempt.ack) return await recoverDetail(attempt);
       if (!await fresh() || !current()) return false;
@@ -251,10 +266,15 @@ export function createCompanyJobController(input: {
       if (!current()) return false;
       patch(attempt, { ...attempt.state, message: `${uncertainMessage} Calendar records refreshed; absence from this list is not proof that the Job was not saved.` });
       return false;
-    } catch {
-      patch(attempt, { ...attempt.state, message: attempt.ack ? savedMessage : uncertainMessage });
+    } catch (error) {
+      patch(attempt, { ...attempt.state, message: attempt.ack ? savedMessage : uncertainMessage,
+        detailError: error instanceof Error ? error.message : null });
       return false;
-    } finally { attempt.busy = false; notify(key); }
+    } finally {
+      attempt.busy = false;
+      if (attempts.get(key) === attempt) attempt.state = { ...attempt.state, reconciling: false };
+      notify(key);
+    }
   };
   return { submit, reconcile, getState, isBusy: () => Boolean(attempts.get(key)?.busy), detach: () => { detached = true; set?.delete(publish); if (!set?.size) listeners.delete(key); } };
 }

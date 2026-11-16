@@ -20,9 +20,12 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { AddJobModal } from "@/components/add-job-modal";
+import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
+import { companyCreateJobAllowed, companyCreateJobScope } from "@/lib/company-create-job";
+import { companyCalendarSlot } from "@/lib/company-calendar";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
 import { useCompanyJob } from "@/hooks/use-company-job";
-import { getJobSyncCompanyCustomers, getJobSyncCompanyJobs, getJobSyncMobileSession, positiveJobSyncId, type JobSyncCompanyCustomer, type JobSyncMobileJob } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyCustomer, getJobSyncCompanyCustomers, getJobSyncCompanyJobs, getJobSyncCompanySettings, getJobSyncMobileSession, positiveJobSyncId, type JobSyncCompanyCustomer, type JobSyncCompanyJobDetail, type JobSyncMobileJob } from "@/lib/jobsync-mobile-api";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { getSessionToken } from "@/lib/_core/auth";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
@@ -78,6 +81,7 @@ export default function AdminCustomerProfileScreen() {
     phone?: string;
     email?: string;
     customerId?: string;
+    companyId?: string; // Lookup provenance only; never authorization.
     address?: string;
     city?: string;
     lifetimeValue?: string;
@@ -87,17 +91,18 @@ export default function AdminCustomerProfileScreen() {
   }>();
 
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
-  const [showAddJobModal, setShowAddJobModal] = useState(false);
+  const [showAddJobModal, updateShowAddJobModal] = useState(false);
   const [selectedJob, updateSelectedJob] = useState<any | null>(null);
   const { session: jobSyncSession, isLoading: jobSyncLoading } = useJobSyncAuth();
   const { employee, loading: employeeLoading } = useEmployeeAuth();
   const focused = useIsFocused();
   // Retain Company provenance for this mounted profile, including a signed-session logout.
   const companyProvenance = useRef(false);
-  if (jobSyncSession || employee?.sessionSource === "jobsync" || employee?.companyId != null || selectedJob?.companyId !== undefined) companyProvenance.current = true;
+  if (jobSyncSession || employee?.sessionSource === "jobsync" || employee?.companyId != null || selectedJob?.companyId !== undefined || params.companyId !== undefined) companyProvenance.current = true;
   const companyJobMode = jobSyncLoading || employeeLoading || companyProvenance.current;
   const legacyAllowed = !companyJobMode && focused && !!employee;
-  const profileKey = JSON.stringify([companyJobMode, focused, params.customerId, params.fullName, params.phone, params.email,
+  const profileKey = JSON.stringify([companyJobMode, jobSyncLoading, employeeLoading, focused, params.customerId, params.companyId,
+    ...(companyJobMode ? [] : [params.fullName, params.phone, params.email]),
     employee?.employeeId, employee?.role, employee?.sessionSource, employee?.companyId,
     jobSyncSession?.portal, jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id,
     jobSyncSession?.user.role, jobSyncSession?.user.calendarEligible]);
@@ -897,15 +902,137 @@ export default function AdminCustomerProfileScreen() {
   const closeJob = () => { if (currentScope(actionScope)) setSelectedJob(null); };
   const rebookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (rebookTimer.current) clearTimeout(rebookTimer.current); }, [profileKey]);
+  type CreateBinding = {
+    scope: Scope; epoch: number; session: NonNullable<typeof jobSyncSession>;
+    customerPrefill: { customerId: number; companyId: number };
+    initialDate: string; initialStartHour: number; initialEndHour?: number;
+  };
+  const [createBinding, setCreateBinding] = useState<CreateBinding | null>(null);
+  const createLive = useRef({ key: profileKey, selectionEpoch: selectedSheetEpoch, epoch: 0, locked: false, visible: false, refreshing: false });
+  const confirmedCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (confirmedCloseTimer.current) clearTimeout(confirmedCloseTimer.current); }, [profileKey]);
+  if (createLive.current.key !== profileKey || createLive.current.selectionEpoch !== selectedSheetEpoch) {
+    // Invalidate before effects/render: a scope switch or blur cannot reuse an old opener/callback.
+    Object.assign(createLive.current, { key: profileKey, selectionEpoch: selectedSheetEpoch, epoch: createLive.current.epoch + 1, locked: false, visible: false, refreshing: false });
+  }
+  useEffect(() => { updateShowAddJobModal(false); setCreateBinding(null); }, [profileKey]);
+  const createEntryScope = captureScope();
+  const currentCreate = (scope: Scope, epoch: number) => currentScope(scope) && createLive.current.key === scope.key
+    && createLive.current.epoch === epoch && createLive.current.locked;
+  const closeCreate = (scope: Scope, epoch: number) => {
+    if (!currentCreate(scope, epoch)) return;
+    Object.assign(createLive.current, { epoch: epoch + 1, locked: false, visible: false, refreshing: false });
+    updateShowAddJobModal(false); setCreateBinding(null);
+  };
+  const openCreateJob = async (rebookJob?: any) => {
+    if (!currentScope(createEntryScope) || createLive.current.locked) return;
+    if (companyJobMode) {
+      if (jobSyncLoading || employeeLoading || !focused || !companyCreateJobAllowed(jobSyncSession)) return;
+      if (rebookJob && (!verifiedHistory?.jobs.includes(rebookJob.canonicalJob) || rebookJob.companyId !== jobSyncSession.company!.id)) return;
+    } else if (!legacyReady || !currentScope(createEntryScope, true)) return;
+    // One synchronous lock covers all header/button/Rebook paths, including asynchronous lookup.
+    const epoch = ++createLive.current.epoch;
+    createLive.current.locked = true;
+    if (rebookJob) setSelectedJob(null);
+    createLive.current.selectionEpoch = live.current.selectionEpoch;
+    const scope = captureScope();
+    const current = () => currentCreate(scope, epoch);
+    try {
+      if (!companyJobMode) {
+        if (!await currentLegacy(scope) || !current()) { if (current()) closeCreate(scope, epoch); return; }
+        const openLegacy = async () => {
+          if (!current() || !await currentLegacy(scope) || !current()) { if (current()) closeCreate(scope, epoch); return; }
+          createLive.current.visible = true; updateShowAddJobModal(true);
+        };
+        if (rebookJob) {
+          rebookTimer.current = setTimeout(() => { rebookTimer.current = null; void openLegacy(); }, 300);
+        } else await openLegacy();
+        return;
+      }
+      const session = jobSyncSession!;
+      const signed = await getJobSyncMobileSession(session.token);
+      if (!current()) return;
+      if (!companyCreateJobAllowed(signed) || companyCreateJobScope(signed) !== companyCreateJobScope(session)) throw new Error("Your Company sign-in changed. Reopen this profile.");
+      const companyId = session.company!.id;
+      if (params.companyId !== undefined && (typeof params.companyId !== "string" || !/^[1-9]\d*$/.test(params.companyId) || positiveJobSyncId(Number(params.companyId)) !== companyId)) throw new Error("This profile does not belong to the current Company.");
+      const customerId = verifiedHistory?.customer.id ?? (typeof params.customerId === "string" && /^[1-9]\d*$/.test(params.customerId) ? positiveJobSyncId(Number(params.customerId)) : null);
+      if (!customerId) throw new Error("This profile's canonical Company customer ID could not be verified.");
+      // Verified current history is evidence; otherwise authenticate an exact ID lookup, never contacts.
+      const customer = verifiedHistory?.customer ?? await getJobSyncCompanyCustomer(session.token, customerId);
+      if (!current()) return;
+      if (typeof customer.id !== "number" || customer.id !== customerId || ((customer as { companyId?: number }).companyId !== undefined && (customer as { companyId?: number }).companyId !== companyId)) throw new Error("The current Company customer could not be verified.");
+      const settings = await getJobSyncCompanySettings(session.token, { requireTimezone: true });
+      if (!current()) return;
+      if (settings.id !== companyId || !settings.timezone.trim()) throw new Error("Company calendar settings are unavailable.");
+      new Intl.DateTimeFormat("en-US", { timeZone: settings.timezone }).format();
+      const previous = rebookJob?.canonicalJob as JobSyncMobileJob | undefined;
+      const slot = companyCalendarSlot(previous?.scheduledStartAt ?? new Date().toISOString(), previous?.scheduledEndAt, settings.timezone);
+      if (!slot) throw new Error("The Company schedule date could not be verified.");
+      const binding: CreateBinding = { scope, epoch, session, customerPrefill: { customerId, companyId }, initialDate: slot.date,
+        initialStartHour: previous ? slot.startHour : 9, initialEndHour: previous?.scheduledEndAt ? slot.endHour : undefined };
+      createLive.current.visible = true; setCreateBinding(binding); updateShowAddJobModal(true);
+    } catch (error) {
+      if (current()) {
+        closeCreate(scope, epoch);
+        Alert.alert("New Job unavailable", error instanceof Error ? error.message : "Could not verify the current Company customer. Reopen this profile to retry.");
+      }
+    }
+  };
+  const handleOpenCreateJob = () => {
+    if ((Platform.OS as string) !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void openCreateJob();
+  };
+  const refreshCreatedCompanyJob = async (binding: CreateBinding, detail: JobSyncCompanyJobDetail, timezone: string): Promise<boolean> => {
+    const current = () => currentCreate(binding.scope, binding.epoch) && createLive.current.visible
+      && companyCreateJobScope(binding.session) === companyCreateJobScope(jobSyncSession);
+    if (!current() || createLive.current.refreshing || typeof detail.id !== "number" || !positiveJobSyncId(detail.id)
+      || typeof detail.customerId !== "number" || !positiveJobSyncId(detail.customerId) || detail.companyId !== binding.customerPrefill.companyId) return false;
+    createLive.current.refreshing = true;
+    try {
+      const signed = await getJobSyncMobileSession(binding.session.token);
+      if (!current() || companyCreateJobScope(signed) !== companyCreateJobScope(binding.session)) return false;
+      if (!timezone.trim()) return false;
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+      const jobs = await getJobSyncCompanyJobs(binding.session.token); // GET only; no synthetic calendar rows.
+      if (!current()) return false;
+      const actor = await getJobSyncMobileSession(binding.session.token);
+      if (!current() || companyCreateJobScope(actor) !== companyCreateJobScope(binding.session)) return false;
+      const saved = jobs.find((job) => typeof job.id === "number" && job.id === detail.id && typeof job.customerId === "number" && job.customerId === detail.customerId);
+      // Jobs DTOs are bearer-Company scoped and omit companyId; reject an explicit mismatch if supplied.
+      if (!saved || ((saved as { companyId?: number }).companyId !== undefined && (saved as { companyId?: number }).companyId !== detail.companyId)) return false;
+      const slot = companyCalendarSlot(saved.scheduledStartAt, saved.scheduledEndAt, timezone);
+      if (!slot || !current()) return false;
+      if (verifiedHistory?.customer.id === saved.customerId) {
+        historyRequest.current++; // Prevent an earlier initial-history GET from replacing this confirmed refresh.
+        setCompanyHistory({ key: binding.scope.key, epoch: binding.scope.epoch, customer: verifiedHistory.customer,
+          jobs: jobs.filter((job) => typeof job.id === "number" && positiveJobSyncId(job.id) !== null && job.customerId === saved.customerId) });
+        setCompanyHistoryError(null); setActiveTab("jobs");
+      }
+      // Let the awaiting shared controller settle/delete its known-saved attempt before closing.
+      // Closing synchronously here would make its post-callback current check fail and retain the lock.
+      confirmedCloseTimer.current = setTimeout(() => {
+        confirmedCloseTimer.current = null;
+        if (!current()) return;
+        if (verifiedHistory?.customer.id !== saved.customerId) {
+          // Deliberate customer change stays deliberate; navigate by canonical ID, not contacts.
+          router.push({ pathname: "/(tabs)/admin-schedule", params: { highlightBookingId: String(saved.id) } });
+        }
+        closeCreate(binding.scope, binding.epoch);
+      }, 0);
+      return true;
+    } catch {
+      return false; // Shared controller retains the known ID and offers read-only calendar retry.
+    } finally {
+      if (createLive.current.epoch === binding.epoch) createLive.current.refreshing = false;
+    }
+  };
+  const createSheetEpoch = createLive.current.epoch;
+  const closeLegacyCreate = async () => {
+    if (await currentLegacy(createEntryScope) && currentCreate(createEntryScope, createSheetEpoch)) closeCreate(createEntryScope, createSheetEpoch);
+  };
   const handleRebook = () => {
     if (!selectedJob || !currentScope(actionScope)) return;
-    setSelectedJob(null);
-    const scope = captureScope();
-    if (rebookTimer.current) clearTimeout(rebookTimer.current);
-    rebookTimer.current = setTimeout(() => {
-      if (currentScope(scope)) setShowAddJobModal(true);
-      rebookTimer.current = null;
-    }, 300);
+    void openCreateJob(selectedJob);
   };
 
   return (
@@ -928,10 +1055,8 @@ export default function AdminCustomerProfileScreen() {
         </View>
         {/* Create Job shortcut — top-right corner */}
         <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setShowAddJobModal(true);
-          }}
+          accessibilityLabel="New Job for customer"
+          onPress={handleOpenCreateJob}
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", shadowColor: colors.primary, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 }}
           activeOpacity={0.8}
         >
@@ -1230,10 +1355,8 @@ export default function AdminCustomerProfileScreen() {
 
               {/* Create Job shortcut */}
               <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowAddJobModal(true);
-                }}
+                accessibilityLabel="Create Job for customer"
+                onPress={handleOpenCreateJob}
                 style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.primary + "18", borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: colors.primary + "44" }}
                 activeOpacity={0.75}
               >
@@ -1585,10 +1708,24 @@ export default function AdminCustomerProfileScreen() {
       </ScrollView>
 
       {/* ── Add Job Modal ── */}
-      <AddJobModal
+      {companyJobMode && showAddJobModal && createBinding && <CompanyCreateJobSheet
+        key={createBinding.epoch}
         visible={showAddJobModal}
-        onClose={() => setShowAddJobModal(false)}
-        onSaved={() => setShowAddJobModal(false)}
+        session={createBinding.session}
+        initialDate={createBinding.initialDate}
+        initialStartHour={createBinding.initialStartHour}
+        initialEndHour={createBinding.initialEndHour}
+        customerPrefill={createBinding.customerPrefill}
+        closeOnSuccess={false}
+        isCurrent={() => currentCreate(createBinding.scope, createBinding.epoch) && createLive.current.visible}
+        onClose={() => closeCreate(createBinding.scope, createBinding.epoch)}
+        onCreated={(detail, timezone) => refreshCreatedCompanyJob(createBinding, detail, timezone)}
+      />}
+      {legacyReady && <AddJobModal
+        key={createSheetEpoch}
+        visible={showAddJobModal && !companyJobMode && createLive.current.visible}
+        onClose={() => { void closeLegacyCreate(); }}
+        onSaved={() => { void closeLegacyCreate(); }}
         prefill={{
           firstName: (params.fullName ?? "").trim().split(" ")[0] ?? "",
           lastName: (params.fullName ?? "").trim().split(" ").slice(1).join(" "),
@@ -1596,7 +1733,7 @@ export default function AdminCustomerProfileScreen() {
           email: params.email ?? "",
           address: params.address ?? "",
         }}
-      />
+      />}
 
       {/* ── Do Not Service Modal ── */}
       <Modal

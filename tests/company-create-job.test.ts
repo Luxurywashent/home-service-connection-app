@@ -145,13 +145,13 @@ describe("Company create controller with actual orchestration and mocked reads/w
     expect(h.api.create).not.toHaveBeenCalled(); expect(h.onCreated).not.toHaveBeenCalled(); h.controller.detach();
     const reopened = harness(h.actor); expect(await reopened.controller.submit(draft())).toBe(true); reopened.controller.detach();
   });
-  it("a synchronous success-state callback invalidation retains saved acknowledgment and suppresses onCreated", async () => {
+  it("a synchronous final success close happens after onCreated and releases the confirmed attempt", async () => {
     const h = harness();
-    h.onState.mockImplementation((state) => { if (state.phase === "succeeded") h.stale(); });
-    await h.controller.submit(draft());
-    expect(h.api.create).toHaveBeenCalledTimes(1); expect(h.api.detail).toHaveBeenCalledTimes(1); expect(h.onCreated).not.toHaveBeenCalled();
-    expect(h.controller.getState()).toMatchObject({ phase: "saved", jobId: 84 }); h.controller.detach();
-    const reopened = harness(h.actor); await reopened.controller.submit(draft()); expect(reopened.api.create).not.toHaveBeenCalled(); reopened.controller.detach();
+    h.onState.mockImplementation((state) => { if (state.phase === "succeeded") { expect(h.onCreated).toHaveBeenCalledTimes(1); h.stale(); } });
+    expect(await h.controller.submit(draft())).toBe(true);
+    expect(h.api.create).toHaveBeenCalledTimes(1); expect(h.api.detail).toHaveBeenCalledTimes(1);
+    expect(h.controller.getState()).toMatchObject({ phase: "succeeded", jobId: 84 }); h.controller.detach();
+    const reopened = harness(h.actor); expect(reopened.controller.getState().phase).toBe("ready"); reopened.controller.detach();
   });
   it("a verified tier-required rejection releases for a corrected manual selection, never an automatic fallback", async () => {
     const h = harness(); h.api.create.mockRejectedValueOnce(new JobSyncApiError("A vehicle pricing tier is required for this Price Book service.", 400, "BAD_REQUEST"));

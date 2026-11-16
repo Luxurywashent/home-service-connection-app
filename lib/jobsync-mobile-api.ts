@@ -313,6 +313,12 @@ export type JobSyncCompanyCustomer = {
   phone: string | null;
   addressLine1: string | null;
   city: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+  vehicleType?: string | null;
+  updatedAt?: string | null;
+  /** Optional wire provenance, not a client-supplied authorization scope. */
+  companyId?: number;
 };
 
 function normalizeJobSyncMobileJob(value: unknown): JobSyncMobileJob | null {
@@ -363,9 +369,9 @@ export function normalizeJobSyncCompanyCustomers(payload: unknown): JobSyncCompa
   const root = asRecord(payload);
   const data = firstRecord(root?.data, root) ?? {};
   const customers = Array.isArray(data.customers) ? data.customers : [];
-  return customers.map((value) => {
+  return customers.map((value): JobSyncCompanyCustomer | null => {
     const customer = asRecord(value) ?? {};
-    const id = firstNumber(customer.id, customer.customerId, customer.customer_id);
+    const id = positiveJobSyncId(customer.id ?? customer.customerId ?? customer.customer_id);
     const firstName = firstString(customer.firstName, customer.first_name) ?? "";
     const lastName = firstString(customer.lastName, customer.last_name) ?? "";
     const name = firstString(customer.name, customer.fullName, `${firstName} ${lastName}`.trim());
@@ -379,6 +385,12 @@ export function normalizeJobSyncCompanyCustomers(payload: unknown): JobSyncCompa
       phone: firstString(customer.phone, customer.phoneNumber),
       addressLine1: firstString(customer.addressLine1, customer.address_line1, customer.address),
       city: firstString(customer.city),
+      region: firstString(customer.region, customer.state),
+      postalCode: firstString(customer.postalCode, customer.postal_code, customer.zipCode),
+      vehicleType: firstString(customer.vehicleType, customer.vehicle_type),
+      updatedAt: firstString(customer.updatedAt, customer.updated_at),
+      ...(positiveJobSyncId(customer.companyId ?? customer.company_id)
+        ? { companyId: positiveJobSyncId(customer.companyId ?? customer.company_id)! } : {}),
     };
   }).filter((customer): customer is JobSyncCompanyCustomer => Boolean(customer));
 }

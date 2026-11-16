@@ -62,6 +62,8 @@ import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calen
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
 import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
+import { companyCreateJobAllowed, companyCreateJobScope } from "@/lib/company-create-job";
+import { parseCompanyJobCustomerPrefill, type CompanyJobCustomerPrefill } from "@/lib/company-job-customer-prefill";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
@@ -1393,8 +1395,10 @@ export default function AdminScheduleScreen() {
   const isJobSyncCompany = jobSyncSession?.portal === "company";
   const hasJobSyncEmployee = currentEmployee?.sessionSource === "jobsync";
   const companyPriceBook = useCompanyPriceBook();
-  const { highlightBookingId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
+  const { highlightBookingId, prefillCustomerId, prefillCompanyId, prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress } = useLocalSearchParams<{
     highlightBookingId?: string;
+    prefillCustomerId?: string | string[];
+    prefillCompanyId?: string | string[];
     prefillFirst?: string;
     prefillLast?: string;
     prefillPhone?: string;
@@ -1714,6 +1718,13 @@ export default function AdminScheduleScreen() {
     setAddSheetEpoch(addSheetEpochRef.current);
     setShowAddModalState(visible);
   };
+  const [customerPrefill, setCustomerPrefill] = useState<CompanyJobCustomerPrefill | null>(null);
+  const addCompanyScope = companyCreateJobScope(jobSyncSession);
+  const renderedAddCalendarGeneration = calendarScopeRef.current.generation;
+  const isCurrentCompanyAdd = () => addSheetEpochRef.current === addSheetEpoch && showAddModal
+    && !jobSyncLoading && companyCreateJobAllowed(jobSyncSession)
+    && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode
+    && calendarScopeRef.current.key === calendarScopeKey && calendarScopeRef.current.generation === renderedAddCalendarGeneration;
   const [addFirstName, setAddFirstName] = useState("");
   const [addLastName, setAddLastName] = useState("");
   const [addPhone, setAddPhone] = useState("");
@@ -1971,25 +1982,26 @@ export default function AdminScheduleScreen() {
 
   // Company sessions render the shared Company Job records only. Times are converted
   // from the API instants using the Company's configured timezone, never the device timezone.
-  useEffect(() => {
-    if (jobSyncLoading) return;
-    if (isJobSyncCompany) {
+  const companyCalendarReadEpochRef = useRef(0);
+  const syncCompanyJobs = async (originCurrent: () => boolean = () => true, acceptedJobId?: number): Promise<boolean> => {
       const token = jobSyncSession?.token;
-      if (!token) {
-        void Promise.resolve().then(() => setJobs([]));
-        return;
-      }
-      let cancelled = false;
-      const syncCompanyJobs = async () => {
+      const generation = calendarScopeRef.current.generation;
+      const readEpoch = ++companyCalendarReadEpochRef.current;
+      const isCurrent = () => originCurrent() && !jobSyncLoading && isJobSyncCompany && !!token
+        && managementActionRef.current.mounted && managementActionRef.current.focused
+        && calendarScopeRef.current.key === calendarScopeKey && calendarScopeRef.current.generation === generation
+        && companyCalendarReadEpochRef.current === readEpoch;
+      if (!isCurrent()) return false;
         setIsSyncing(true);
         setCompanyCalendarError(null);
-        setJobs([]);
+        if (acceptedJobId === undefined) setJobs([]);
         try {
           const [serverJobs, companySettings] = await Promise.all([
-            getJobSyncCompanyJobs(token),
-            getJobSyncCompanySettings(token),
+            getJobSyncCompanyJobs(token!),
+            getJobSyncCompanySettings(token!, { requireTimezone: true }),
           ]);
-          if (cancelled || !managementActionRef.current.mounted || !managementActionRef.current.focused || calendarScopeRef.current.key !== calendarScopeKey) return;
+          if (!isCurrent()) return false;
+          if (companySettings.id !== jobSyncSession?.company?.id) throw new Error("Company calendar settings could not be verified.");
           const companyTimezone = companySettings.timezone;
           setCompanyTimezone(companyTimezone);
           const mappedJobs = serverJobs.flatMap((job) => {
@@ -2007,7 +2019,7 @@ export default function AdminScheduleScreen() {
                   : "scheduled";
             return [{
               id: String(job.id),
-              companyId: jobSyncSession.company?.id,
+              companyId: jobSyncSession?.company?.id,
               assignedUserId: job.assignedUserId,
               updatedAt: job.updatedAt,
               paidTotal: job.paidTotal, refundTotal: job.refundTotal, appliedEstimateCredit: job.appliedEstimateCredit,
@@ -2045,18 +2057,26 @@ export default function AdminScheduleScreen() {
               additionalVehicles: [],
             } as Job];
           });
-          if (!cancelled) { canonicalCalendarScopeRef.current = canonicalCalendarKey; setJobs(mappedJobs); }
-        } catch {
+          if (!isCurrent()) return false;
+          canonicalCalendarScopeRef.current = canonicalCalendarKey; setJobs(mappedJobs);
+          return acceptedJobId === undefined || mappedJobs.some((job) => job.id === String(acceptedJobId) && job.companyId === jobSyncSession?.company?.id);
+        } catch (error) {
           // Do not present a cached legacy schedule as current Company data.
-          if (!cancelled && managementActionRef.current.mounted && managementActionRef.current.focused && calendarScopeRef.current.key === calendarScopeKey) {
-            setJobs([]);
+          if (isCurrent()) {
+            if (acceptedJobId === undefined) setJobs([]);
             setCompanyCalendarError("Could not refresh the Company calendar. Check your connection and tap Refresh.");
           }
+          if (acceptedJobId !== undefined && isCurrent()) throw error;
+          return false;
         } finally {
-          if (!cancelled && managementActionRef.current.mounted && managementActionRef.current.focused && calendarScopeRef.current.key === calendarScopeKey) setIsSyncing(false);
+          if (isCurrent()) setIsSyncing(false);
         }
-      };
-      void syncCompanyJobs();
+  };
+  useEffect(() => {
+    if (jobSyncLoading) return;
+    if (isJobSyncCompany) {
+      let cancelled = false;
+      void syncCompanyJobs(() => !cancelled);
       return () => { cancelled = true; };
     }
 
@@ -2213,8 +2233,26 @@ export default function AdminScheduleScreen() {
     return () => clearInterval(refreshInterval);
   }, [forceSync, isJobSyncCompany, jobSyncSession?.token]);
 
-  // Auto-open add-job modal with prefilled customer data when navigated from customer profile
+  // Canonical route IDs are candidates only; the sheet verifies membership and
+  // hydrates returned customer data. Legacy display strings cannot select identity.
   useEffect(() => {
+    if (!companyJobMode || jobSyncLoading || !isFocused || !companyCreateJobAllowed(jobSyncSession)) return;
+    const candidate = parseCompanyJobCustomerPrefill(prefillCustomerId, prefillCompanyId);
+    if (!candidate || candidate.companyId !== jobSyncSession.company!.id) return;
+    const key = JSON.stringify([addCompanyScope, candidate.customerId, candidate.companyId]);
+    if (prefillHandledRef.current === key) return;
+    prefillHandledRef.current = key;
+    setCustomerPrefill(candidate);
+    setAddJobDate(companyCalendarDateAtPosition(weekOffset, selectedDay, new Date(), companyTimezone) ?? "");
+    setAddStartHour(8); setAddEndHour(10);
+    setShowAddDatePicker(false);
+    setShowAddModal(true);
+  }, [companyJobMode, jobSyncLoading, isFocused, jobSyncSession, addCompanyScope, prefillCustomerId, prefillCompanyId,
+    weekOffset, selectedDay, companyTimezone]);
+
+  // Genuine legacy navigation only; never a Company name/contact fallback.
+  useEffect(() => {
+    if (companyJobMode || jobSyncLoading || employeeLoading || !isFocused || !currentEmployee || jobSyncSession || hasJobSyncEmployee) return;
     if (!prefillFirst && !prefillLast && !prefillPhone && !prefillEmail && !prefillAddress) return;
     const key = [prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress].join("|");
     if (prefillHandledRef.current === key) return;
@@ -2227,7 +2265,8 @@ export default function AdminScheduleScreen() {
     setAddJobDate(localDateStr(getWeekDates(weekOffset)[selectedDay]));
     setShowAddDatePicker(false);
     setShowAddModal(true);
-  }, [prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress]);
+  }, [companyJobMode, jobSyncLoading, employeeLoading, isFocused, currentEmployee, jobSyncSession, hasJobSyncEmployee,
+    prefillFirst, prefillLast, prefillPhone, prefillEmail, prefillAddress]);
 
   // When navigated from AI Receptionist call log with a bookingId, find and open that job
   const highlightHandledRef = useRef<string | null>(null);
@@ -2338,7 +2377,10 @@ export default function AdminScheduleScreen() {
 
   const openAdd = () => {
     if (companyJobMode) {
-      if (!isJobSyncCompany || jobSyncLoading || !isFocused || !jobSyncSession?.company?.id || !["owner", "dispatcher"].includes(jobSyncSession.user.role)) return;
+      if (jobSyncLoading || !isFocused || !companyCreateJobAllowed(jobSyncSession)) return;
+      if (!managementActionRef.current.mounted || !managementActionRef.current.focused || !managementActionRef.current.companyMode
+        || calendarScopeRef.current.key !== calendarScopeKey || calendarScopeRef.current.generation !== renderedAddCalendarGeneration) return;
+      setCustomerPrefill(null);
       setAddJobDate(companyCalendarDateAtPosition(weekOffset, selectedDay, new Date(), companyTimezone) ?? "");
       setAddStartHour(8); setAddEndHour(10);
       setShowAddModal(true);
@@ -5505,16 +5547,18 @@ export default function AdminScheduleScreen() {
         initialDate={addJobDate}
         initialStartHour={addStartHour}
         initialEndHour={addEndHour}
-        isCurrent={() => addSheetEpochRef.current === addSheetEpoch && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode && calendarScopeRef.current.key === calendarScopeKey}
-        onClose={() => { if (addSheetEpochRef.current === addSheetEpoch) setShowAddModal(false); }}
-        onCreated={(detail, timezone) => {
-          if (addSheetEpochRef.current !== addSheetEpoch || !(managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode && calendarScopeRef.current.key === calendarScopeKey) || detail.companyId !== jobSyncSession?.company?.id) return;
+        customerPrefill={customerPrefill}
+        isCurrent={isCurrentCompanyAdd}
+        onClose={() => { if (isCurrentCompanyAdd()) setShowAddModal(false); }}
+        onCreated={async (detail, timezone) => {
+          if (!isCurrentCompanyAdd() || detail.companyId !== jobSyncSession?.company?.id) return false;
           const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
-          if (!slot) return;
+          if (!slot) return false;
+          const refreshed = await syncCompanyJobs(isCurrentCompanyAdd, detail.id);
+          if (!isCurrentCompanyAdd() || !refreshed) return false;
           const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
-              setCompanyTimezone(timezone);
-              setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);
-              setShowAddModal(false); forceSync();
+          setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);
+          return true;
         }}
       />}
       <Modal visible={showAddModal && !companyJobMode} animationType="slide" transparent onRequestClose={() => { prefillHandledRef.current = null; setShowAddModal(false); }}>

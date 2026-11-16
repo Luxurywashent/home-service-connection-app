@@ -11,8 +11,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyCustomers, type JobSyncCompanyCustomer } from "@/lib/jobsync-mobile-api";
+import { useCompanyCustomers } from "@/hooks/use-company-customers";
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
@@ -86,11 +85,14 @@ export default function AdminCustomersScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const router = useRouter();
-  const { session: jobSyncSession } = useJobSyncAuth();
-  const isJobSyncCompany = jobSyncSession?.portal === "company";
-  const [companyCustomers, setCompanyCustomers] = useState<JobSyncCompanyCustomer[]>([]);
-  const [companyLoading, setCompanyLoading] = useState(false);
-  const [companyError, setCompanyError] = useState<string | null>(null);
+  const company = useCompanyCustomers();
+  const isJobSyncCompany = company.isCompanyMode;
+  const companyCustomers = company.customers;
+  const companyLoading = company.isLoading;
+  const companyError = company.error;
+  const refreshCompanyCustomers = company.refresh;
+  const customerScopeCurrent = company.isCurrent;
+  const customerCompanyId = company.companyId;
 
   // Debounce search input so we don't fire a request on every keystroke
   useEffect(() => {
@@ -109,26 +111,6 @@ export default function AdminCustomersScreen() {
       placeholderData: debouncedSearch ? undefined : (prev: any) => prev,
     }
   );
-
-  const refreshCompanyCustomers = useCallback(async () => {
-    const token = jobSyncSession?.token;
-    if (!isJobSyncCompany || !token) return;
-    setCompanyLoading(true);
-    setCompanyError(null);
-    try {
-      setCompanyCustomers(await getJobSyncCompanyCustomers(token));
-    } catch {
-      setCompanyCustomers([]);
-      setCompanyError("Could not load this Company’s customers. Check your connection and pull to refresh.");
-    } finally {
-      setCompanyLoading(false);
-    }
-  }, [isJobSyncCompany, jobSyncSession?.token]);
-
-  useEffect(() => {
-    if (!isJobSyncCompany) return;
-    void Promise.resolve().then(refreshCompanyCustomers);
-  }, [isJobSyncCompany, refreshCompanyCustomers]);
 
   const customers = useMemo<Customer[]>(() => {
     if (isJobSyncCompany) {
@@ -154,7 +136,12 @@ export default function AdminCustomersScreen() {
 
   const isLoading = isJobSyncCompany ? companyLoading : legacyCustomersQuery.isLoading;
   const isRefetching = isJobSyncCompany ? companyLoading : legacyCustomersQuery.isRefetching;
-  const refreshCustomers = isJobSyncCompany ? refreshCompanyCustomers : legacyCustomersQuery.refetch;
+  const refreshLegacyCustomers = legacyCustomersQuery.refetch;
+  const refreshCustomers = useCallback(() => {
+    if (!customerScopeCurrent()) return;
+    if (isJobSyncCompany) return refreshCompanyCustomers();
+    return refreshLegacyCustomers();
+  }, [customerScopeCurrent, isJobSyncCompany, refreshCompanyCustomers, refreshLegacyCustomers]);
 
   // ── Filtered list (sorted A–Z by name) ──
   // Server already filters by search; sort client-side for display
@@ -176,10 +163,14 @@ export default function AdminCustomersScreen() {
   );
 
   const openDetail = useCallback((customer: Customer) => {
+    // Retained row closures must not navigate a previous Company (or legacy) record.
+    if (!customerScopeCurrent() || (isJobSyncCompany && (!customer.isCompanyRecord
+      || !companyCustomers.some((row) => String(row.id) === customer.customerId)))) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({
       pathname: "/(tabs)/admin-customer-profile" as any,
       params: {
+        ...(customer.isCompanyRecord && customerCompanyId ? { companyId: String(customerCompanyId) } : {}),
         fullName: customer.fullName,
         phone: customer.phone ?? "",
         email: customer.email ?? "",
@@ -192,7 +183,7 @@ export default function AdminCustomersScreen() {
         firstServiceDate: customer.firstServiceDate ?? "",
       },
     });
-  }, [router]);
+  }, [router, customerScopeCurrent, customerCompanyId, isJobSyncCompany, companyCustomers]);
 
   // ── Render customer row ──
   const renderCustomer = useCallback(
