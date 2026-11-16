@@ -34,6 +34,9 @@ vi.mock("react-native", async () => {
 });
 const { createRoot } = createRequire(import.meta.url)("react-dom/client") as { createRoot: (container: unknown) => { render: (node: React.ReactNode) => void; unmount: () => void } };
 type NativeNode = PhotoTestNode & { nativeProps: Record<string, any> };
+const nativeRequire = createRequire(import.meta.url);
+const safeAreaPath = nativeRequire.resolve("react-native-safe-area-context");
+const originalSafeArea = nativeRequire.cache[safeAreaPath];
 let id = 8000;
 function actor(): JobSyncNativeSession { return { token: `booking-fixture-${++id}`, portal: "company", user: { id, name: "Owner", email: null, role: "owner" }, company: { id: 9, name: "Company", slug: "company", logoUrl: null, primaryColor: null, accentColor: null } }; }
 const profile = (patch: Record<string, unknown> = {}) => ({ id: 7, name: "Actual Customer", firstName: "Actual", lastName: "Customer", phone: "5551234567", email: "customer@example.invalid", addressLine1: "Canonical Address", city: "Company City", region: "FL", postalCode: "32501", ...patch });
@@ -82,6 +85,9 @@ function fixtureSavedJob(companyId: number, input: JobSyncCompanyJobCreateInput)
 }
 beforeEach(() => {
   vi.resetAllMocks(); mocks.focused = true; mocks.platform = "web"; mocks.hasLoaded = true; mocks.loading = false; mocks.error = null; mocks.background = "#07111F"; ack = null;
+  nativeRequire.cache[safeAreaPath] = { id: safeAreaPath, filename: safeAreaPath, loaded: true, exports: {
+    SafeAreaView: (safeProps: Record<string, any>) => React.createElement("native-safe-area", { ref: (host: PhotoTestNode | null) => { if (host) (host as NativeNode).nativeProps = safeProps; } }, safeProps.children),
+  } } as NodeModule;
   mocks.operation.mockImplementation(async (_token, _companyId, key) => ({ key, state: ack ? "saved" : "unknown", jobId: ack?.id ?? null, rejectionCode: null, rejectionMessage: null, createdAt: null, updatedAt: null }));
   mocks.catalog = [
     { serviceId: "31", name: "Actual Service", vehiclePrices: {}, basePrice: 125, defaultDurationMinutes: 45, features: [], description: "Returned catalog description", sortOrder: 0, imageUrl: null, serviceTypeId: null, emoji: "" },
@@ -98,7 +104,10 @@ beforeEach(() => {
   mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [] }));
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Live transport forbidden")));
 });
-afterEach(async () => { await act(async () => root.unmount()); expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
+afterEach(async () => {
+  await act(async () => root.unmount()); expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
+  if (originalSafeArea) nativeRequire.cache[safeAreaPath] = originalSafeArea; else delete nativeRequire.cache[safeAreaPath];
+});
 
 describe("approved compact booking layout — actual React/controller lifecycle, mocked native hosts and I/O", () => {
   it("mounts no reads for hidden, unfocused, unauthorized, or stale sheets", async () => {
@@ -223,7 +232,7 @@ describe("approved compact booking layout — actual React/controller lifecycle,
     await input("Service address", "Corrected address"); expect(node("Save Company Job").nativeProps.disabled).toBe(false); await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.create.mock.calls[1][2].operationKey).not.toBe(originalKey); expect(mocks.create.mock.calls[1][2].addressLine1).toBe("Corrected address");
   });
   it("renders compact native pickers with iOS/Android keyboard avoidance and tappable scroll handling", async () => {
-    for (const [platform, behavior] of [["ios", "padding"], ["android", "height"]]) {
+    for (const [platform, behavior] of [["ios", "padding"], ["android", undefined]] as const) {
       mocks.platform = platform; await render(); expect(all().find((item) => item.nodeName === "NATIVE-KEYBOARD")!.nativeProps.behavior).toBe(behavior);
       expect(byId("company-booking-main-scroll").nativeProps).toMatchObject({ keyboardShouldPersistTaps: "handled", keyboardDismissMode: "on-drag" });
       await press("Start time"); const picker = all().find((item) => item.nodeName === "NATIVE-PICKER")!; expect(picker.nativeProps.mode).toBe("time");

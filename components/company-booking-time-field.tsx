@@ -21,7 +21,7 @@ export function CompanyBookingTimeField({ label, accessibilityLabel, value, type
   </View>;
 }
 const styles = StyleSheet.create({
-  field: { flex: 1, minWidth: 100, gap: 4 }, dateField: { flex: 1.4, minWidth: 136 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  field: { flex: 1, minWidth: 100, maxWidth: "100%", gap: 4 }, dateField: { flex: 1.4, minWidth: 136 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
   button: { minHeight: 44, paddingHorizontal: 8, paddingVertical: 10, borderRadius: 10, borderWidth: 1, justifyContent: "center" },
   value: { fontSize: 14, lineHeight: 20, fontWeight: "600" },
 });

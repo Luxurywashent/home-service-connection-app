@@ -846,9 +846,10 @@ export function validateCompanyCheckoutUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 8192 || /[\u0000-\u0020\u007f\\]/.test(value)
     || /%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
   // Inspect the raw authority too: URL parsing otherwise hides an explicit :443 port.
-  // Stripe's official Checkout URL includes an opaque #fidkdWx... provider fragment.
+  // Preserve proven provider forms: opaque %2F... c/pay suffix, or live g/pay Session /c/ with no query.
   const match = value.match(/^https:\/\/checkout\.stripe\.com(\/[^?#]*)(?:\?[^#]*)?(?:#[A-Za-z0-9_%+=/.-]+)?$/i);
-  if (!match || !/^\/c\/pay\/cs_[A-Za-z0-9_]+$/.test(match[1])) return null;
+  if (!match || (!/^\/c\/pay\/cs_[A-Za-z0-9_]+(?:%2[fF](?:[A-Za-z0-9_+=-]|%2[fFbB]|%3[dD])+)?$/.test(match[1])
+    && !(/^\/g\/pay\/cs_live_[A-Za-z0-9_]+\/c\/$/.test(match[1]) && !value.includes("?")))) return null;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && url.hostname === "checkout.stripe.com"
@@ -1955,4 +1956,126 @@ export function startHomeServiceConnectedBreak(token: string) {
 
 export function endHomeServiceConnectedBreak(token: string) {
   return performHomeServiceConnectedTimeAction(token, TIME_BREAK_END_PATH);
+}
+
+// Native management adapters for the existing canonical jobs.* schedule-block authority.
+// These routes require the coordinated unpublished backend repair; never fall back to legacy tRPC.
+export type JobSyncCompanyScheduleBlockType = "sick_day" | "day_off" | "training" | "unavailable" | "other";
+export type JobSyncCompanyScheduleBlock = {
+  id: number;
+  employeeUserId: number;
+  employeeLabel: string;
+  date: string;
+  blockType: JobSyncCompanyScheduleBlockType;
+  title: string;
+  notes: string | null;
+  startHour: number;
+  endHour: number;
+};
+export type JobSyncCompanyScheduleBlockInput = {
+  startDate: string;
+  endDate: string;
+  employeeId: string;
+  employeeName: string;
+  startHour: number;
+  endHour: number;
+  blockType: JobSyncCompanyScheduleBlockType;
+  title: string;
+  notes?: string;
+};
+
+function validCompanyScheduleBlockDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function validCompanyScheduleBlockHours(startHour: unknown, endHour: unknown): boolean {
+  return typeof startHour === "number" && typeof endHour === "number"
+    && Number.isFinite(startHour) && Number.isFinite(endHour)
+    && startHour >= 0 && endHour <= 24 && startHour < endHour;
+}
+function validCompanyScheduleBlockType(value: unknown): value is JobSyncCompanyScheduleBlockType {
+  return value === "sick_day" || value === "day_off" || value === "training"
+    || value === "unavailable" || value === "other";
+}
+function requireCompanyScheduleBlockScope(token: string, companyId: number) {
+  if (typeof token !== "string" || !token.trim() || !Number.isSafeInteger(companyId) || companyId <= 0) {
+    throw new JobSyncApiError("A current Company management session is required.", null, "INVALID_INPUT");
+  }
+}
+function companyScheduleBlockInvalidAck(): never {
+  throw new JobSyncApiError("The schedule-block response could not be verified. Refresh the Company calendar before trying again.", null, "INVALID_RESPONSE");
+}
+
+export function normalizeJobSyncCompanyScheduleBlocks(payload: unknown, companyId: number, date: string): JobSyncCompanyScheduleBlock[] | null {
+  const root = asRecord(payload);
+  if (!Number.isSafeInteger(companyId) || companyId <= 0 || !validCompanyScheduleBlockDate(date)
+    || !root || root.companyId !== companyId || !Array.isArray(root.blocks)) return null;
+  const seen = new Set<number>();
+  const result: JobSyncCompanyScheduleBlock[] = [];
+  for (const raw of root.blocks) {
+    const row = asRecord(raw);
+    if (!row || typeof row.id !== "number" || !Number.isSafeInteger(row.id) || row.id <= 0 || seen.has(row.id)
+      || typeof row.employeeUserId !== "number" || !Number.isSafeInteger(row.employeeUserId) || row.employeeUserId <= 0
+      || typeof row.employeeLabel !== "string" || !row.employeeLabel.trim() || row.employeeLabel.length > 255
+      || row.date !== date || !validCompanyScheduleBlockType(row.blockType)
+      || typeof row.title !== "string" || !row.title.trim() || row.title.length > 255
+      || (row.notes !== null && (typeof row.notes !== "string" || row.notes.length > 4000))
+      || !validCompanyScheduleBlockHours(row.startHour, row.endHour)
+      || (row.companyId !== undefined && row.companyId !== companyId)
+      || (row.company_id !== undefined && row.company_id !== companyId)) return null;
+    seen.add(row.id);
+    result.push({ id: row.id, employeeUserId: row.employeeUserId, employeeLabel: row.employeeLabel,
+      date, blockType: row.blockType, title: row.title, notes: row.notes as string | null,
+      startHour: row.startHour as number, endHour: row.endHour as number });
+  }
+  return result;
+}
+
+export async function getJobSyncCompanyScheduleBlocks(token: string, companyId: number, date: string): Promise<JobSyncCompanyScheduleBlock[]> {
+  requireCompanyScheduleBlockScope(token, companyId);
+  if (!validCompanyScheduleBlockDate(date)) throw new JobSyncApiError("Choose a valid Company calendar date.", null, "INVALID_INPUT");
+  const payload = await requestJson(`/api/mobile/v1/company/schedule-blocks?date=${encodeURIComponent(date)}`, {
+    method: "GET", headers: { Authorization: `Bearer ${token}` },
+  }, 200);
+  const rows = normalizeJobSyncCompanyScheduleBlocks(payload, companyId, date);
+  if (rows === null) return companyScheduleBlockInvalidAck();
+  return rows;
+}
+
+export async function createJobSyncCompanyScheduleBlock(token: string, companyId: number, input: JobSyncCompanyScheduleBlockInput): Promise<{ companyId: number; count: number }> {
+  requireCompanyScheduleBlockScope(token, companyId);
+  if (!input || !validCompanyScheduleBlockDate(input.startDate) || !validCompanyScheduleBlockDate(input.endDate)
+    || !validCompanyScheduleBlockHours(input.startHour, input.endHour) || !validCompanyScheduleBlockType(input.blockType)
+    || typeof input.employeeId !== "string" || !/^\d+$/.test(input.employeeId) || !positiveJobSyncId(input.employeeId)
+    || typeof input.employeeName !== "string" || !input.employeeName.trim() || input.employeeName.trim().length > 255
+    || typeof input.title !== "string" || !input.title.trim() || input.title.trim().length > 255
+    || (input.notes !== undefined && (typeof input.notes !== "string" || input.notes.trim().length > 4000))) {
+    throw new JobSyncApiError("Choose an active Team Member, valid dates and hours, and a reason for this schedule block.", null, "INVALID_INPUT");
+  }
+  const expectedCount = (Date.parse(`${input.endDate}T00:00:00.000Z`) - Date.parse(`${input.startDate}T00:00:00.000Z`)) / 86_400_000 + 1;
+  if (!Number.isInteger(expectedCount) || expectedCount < 1 || expectedCount > 366) {
+    throw new JobSyncApiError("Choose a schedule-block range of 1 to 366 days.", null, "INVALID_INPUT");
+  }
+  const body: JobSyncCompanyScheduleBlockInput = {
+    startDate: input.startDate, endDate: input.endDate, employeeId: input.employeeId,
+    employeeName: input.employeeName.trim(), startHour: input.startHour, endHour: input.endHour,
+    blockType: input.blockType, title: input.title.trim(),
+    ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
+  };
+  const root = asRecord(await requestJson("/api/mobile/v1/company/schedule-blocks", {
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body),
+  }, 201));
+  if (!root || root.companyId !== companyId || root.count !== expectedCount) return companyScheduleBlockInvalidAck();
+  return { companyId, count: expectedCount };
+}
+
+export async function deleteJobSyncCompanyScheduleBlock(token: string, companyId: number, blockId: number): Promise<{ companyId: number; success: true }> {
+  requireCompanyScheduleBlockScope(token, companyId);
+  if (!Number.isSafeInteger(blockId) || blockId <= 0) throw new JobSyncApiError("Choose a valid saved schedule block.", null, "INVALID_INPUT");
+  const root = asRecord(await requestJson(`/api/mobile/v1/company/schedule-blocks/${blockId}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  }, 200));
+  if (!root || root.companyId !== companyId || root.success !== true) return companyScheduleBlockInvalidAck();
+  return { companyId, success: true };
 }

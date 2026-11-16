@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import type { HomeServiceConnectedPriceBookService } from "@/lib/jobsync-mobile-api";
 
@@ -45,6 +45,8 @@ export function CompanyBookingServicePicker({ services, selectedId, loading, has
   useLayoutEffect(() => { const binding = live.current; binding.mounted = true; return () => { binding.mounted = false; }; }, []);
   const current = () => live.current.mounted && live.current.isCurrent();
   const close = () => { if (current()) { live.current.mounted = false; onClose(); } };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native module is intentionally not evaluated by web hosts.
+  const SafeArea = Platform.OS === "web" ? View : require("react-native-safe-area-context").SafeAreaView;
   return <View accessibilityViewIsModal testID="company-booking-pricebook-overlay" style={[styles.overlay, { backgroundColor: colors.surface }]}>
     <View style={styles.header}>
       <View style={styles.serviceCopy}><Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>Choose Service</Text><Text style={[styles.detail, { color: colors.primary }]}>Company Price Book</Text></View>
@@ -60,21 +62,21 @@ export function CompanyBookingServicePicker({ services, selectedId, loading, has
         onPress={() => { if (current() && !disabled && !loading && hasLoaded && !error) setChoice(item.serviceId); }} />}
       ListEmptyComponent={hasLoaded && !loading && !error ? <Text style={[styles.detail, { color: colors.muted }]}>{services.length ? "No matching services. Try another search." : "No active services in this Company Price Book."}</Text> : null} />
     {error && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reload Services" disabled={disabled || loading} onPress={() => { if (current() && !disabled && !loading) onRefresh(); }} style={[styles.button, { borderColor: colors.border }]}><Text style={[styles.buttonText, { color: colors.foreground }]}>Reload Services</Text></TouchableOpacity>}
-    <View style={styles.footer}>
+    <SafeArea testID="company-booking-pricebook-footer" edges={{ bottom: "maximum" }} style={styles.footer}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel service selection" onPress={close} style={[styles.button, styles.flex, { borderColor: colors.border }]}><Text style={[styles.buttonText, { color: colors.foreground }]}>Cancel</Text></TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Add selected service" accessibilityState={{ disabled: !ready }} disabled={!ready} onPress={() => { if (current() && ready && live.current.ready && live.current.choice === choice) { live.current.mounted = false; onConfirm(choice); } }} style={[styles.button, styles.flex, { borderColor: colors.primary, backgroundColor: colors.primary, opacity: ready ? 1 : 0.45 }]}><Text style={[styles.buttonText, styles.white]}>Add Service</Text></TouchableOpacity>
-    </View>
+    </SafeArea>
   </View>;
 }
 const styles = StyleSheet.create({
-  overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12, zIndex: 2 },
-  header: { flexDirection: "row", alignItems: "center", gap: 8 }, title: { fontSize: 22, lineHeight: 29, fontWeight: "800" },
+  overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, minHeight: 0, minWidth: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 0, gap: 12, zIndex: 2 },
+  header: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 8 }, title: { fontSize: 22, lineHeight: 29, fontWeight: "800" },
   close: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }, closeText: { fontSize: 30, lineHeight: 36 },
-  search: { minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, lineHeight: 21 },
-  list: { flex: 1, minHeight: 0 }, listContent: { gap: 10, paddingBottom: 8 },
+  search: { flexShrink: 0, minWidth: 0, minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, lineHeight: 21 },
+  list: { flex: 1, minHeight: 0, minWidth: 0 }, listContent: { gap: 10, paddingBottom: 8 },
   serviceCard: { minHeight: 64, borderRadius: 12, borderWidth: 1, padding: 12, flexDirection: "row", alignItems: "center", gap: 12 },
   serviceCopy: { flex: 1, minWidth: 0, gap: 3 }, serviceName: { fontSize: 16, lineHeight: 22, fontWeight: "700" }, detail: { fontSize: 13, lineHeight: 19 },
-  price: { fontSize: 15, lineHeight: 21, fontWeight: "700", flexShrink: 1, textAlign: "right" },
-  footer: { flexDirection: "row", gap: 10 }, button: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  price: { minWidth: 0, fontSize: 15, lineHeight: 21, fontWeight: "700", flexShrink: 1, textAlign: "right" },
+  footer: { flexShrink: 0, flexDirection: "row", gap: 10, paddingBottom: 20 }, button: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   buttonText: { fontSize: 16, lineHeight: 22, fontWeight: "600" }, flex: { flex: 1 }, white: { color: "#fff" },
 });

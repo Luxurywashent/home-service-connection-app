@@ -13,6 +13,8 @@ import {
 const ORIGIN = "https://www.homeserviceconnected.com";
 const TOKEN = "mock-company-token";
 const CHECKOUT_URL = "https://checkout.stripe.com/c/pay/cs_test_Synthetic123";
+// Public documentation example only; never fetched or opened. Its opaque token is in the PATH.
+const OFFICIAL_ENCODED_URL = "https://checkout.stripe.com/c/pay/cs_test_a11YYufWQzNY63zpQ6QSNRQhkUpVph4WRmzW0zWJO2znZKdVujZ0N0S22u%2FM2F8bUA2SDRySkFdUV81T1BSV0YxcWJcTUJcYW5rSzN3dzBLPUE0TzRKTTxzNFBjPWZEX1NKSkxpNTVjRjN8VHE0YicpJ2N3amhWYHdzYHcnP3F3cGApJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl";
 const CHECKOUT: JobSyncCompanyJobCheckout = {
   url: CHECKOUT_URL, amountCents: 12525, attemptId: 7,
   attemptStatus: "pending", checkoutState: "open", reused: false,
@@ -180,13 +182,32 @@ describe("hosted checkout URL defenses", () => {
     expect(validateCompanyCheckoutUrl(queryUrl)).toBe(queryUrl);
   });
 
-  it("preserves Stripe's documented opaque provider fragment through the canonical adapter", async () => {
-    // https://docs.stripe.com/api/checkout/sessions/create returns this #fidkdWx... form.
+  it("retains the already-supported opaque provider fragment through the canonical adapter", async () => {
+    // Fragment-only support predates the encoded-path repair; it is not the reproduced defect.
     const url = `${CHECKOUT_URL}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDd%2FM2F8bUA2SDRySkFdUV81T1BSV0YxcWJc`;
     expect(validateCompanyCheckoutUrl(url)).toBe(url);
     const fetchSpy = stubResponse({ checkout: { ...CHECKOUT, url } });
     expect((await createJobSyncCompanyJobCheckout(TOKEN, 47)).url).toBe(url);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    OFFICIAL_ENCODED_URL,
+    `${OFFICIAL_ENCODED_URL}#fidkdWx%2FProviderToken%2Btail%3D`,
+    `${OFFICIAL_ENCODED_URL}?locale=en#fidkdWxProviderToken`,
+    OFFICIAL_ENCODED_URL.replaceAll("%2F", "%2f"),
+    `${CHECKOUT_URL}%2FOpaque_Token-123+tail=%2Bencoded%3D%2fLast`,
+    `${CHECKOUT_URL}%2fOpaque%2bplus%3dequal`,
+    "https://checkout.stripe.com/c/pay/cs_live_SyntheticOnly%2FToken%2FTail",
+    "https://checkout.stripe.com/c/pay/cs_test_a%2funsafe",
+    "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/#fidkdWx%2FToken%2Btail%3D",
+    "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/",
+  ])("preserves a bounded proven provider path byte-for-byte with a $1/100-cent acknowledgment: %s", async (url) => {
+    expect(validateCompanyCheckoutUrl(url)).toBe(url);
+    const fetchSpy = stubResponse({ checkout: { ...CHECKOUT, url, amountCents: 100 } });
+    await expect(createJobSyncCompanyJobCheckout(TOKEN, 47)).resolves.toEqual({ ...CHECKOUT, url, amountCents: 100 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][1].body).toBe("{}");
   });
 
   it.each([
@@ -203,13 +224,44 @@ describe("hosted checkout URL defenses", () => {
     "https://checkout.stripe.com/pay/cs_test_a", "https://checkout.stripe.com/c/pay/cs_test_a/extra",
     "https://checkout.stripe.com/c/pay/cs_test_a#", "https://checkout.stripe.com/c/pay/cs_test_a#fidkdWx%0AInjected",
     "https://checkout.stripe.com/c/pay/cs_test_a/../cs_test_b", "https://checkout.stripe.com/c/pay/%2e%2e/cs_test_b",
-    "https://checkout.stripe.com/c/pay/%252e%252e", "https://checkout.stripe.com/c/pay/cs_test_a%2funsafe",
+    "https://checkout.stripe.com/c/pay/%252e%252e", "https://checkout.stripe.com/c/pay/cs_test_a%2funsafe/../cs_test_b",
     "https://checkout.stripe.com/c/pay/cs_test_a%5cunsafe", "https://checkout.stripe.com\\@evil.test/c/pay/cs_test_a",
     "https://checkout.stripe.com//c/pay/cs_test_a", "https:///checkout.stripe.com/c/pay/cs_test_a",
     " https://checkout.stripe.com/c/pay/cs_test_a", "https://checkout.stripe.com/c/pay/cs_test_a\n",
     "https://checkout.stripe.com/c/pay/cs_test_a?x=\r\nInjected", "https://checkout.stripe.com/c/pay/cs_test_a?x=%0AInjected",
     "https://checkout.stripe.com/c/pay/cs_test_a?x=%7f", "https://checkout.stripe.com/c/pay/cs_test_a?x=%GG",
     "https://%63heckout.stripe.com/c/pay/cs_test_a", "https://checkout．stripe.com/c/pay/cs_test_a",
+    ...[
+      "%2F", "%2f", "%2FOpaque/raw", "%2FOpaque\\raw", "%2F..", "%2F.%2e", "%2F%2E%2e",
+      "%252FOpaque", "%2F%252FOpaque", "%2F%5COpaque", "%2F%5cOpaque", "%2F%00", "%2F%1F",
+      "%2F%7F", "%2F%20", "%2F%GG", "%2F%2", "%2F%", "%2F%3A", "%2F%3fredirect",
+      "%2F%23fragment", "%2F@evil.test", "%2F%40evil", "%2F:443", "%2F💳",
+      "%2FOpaque#", "%2FOpaque#fidkdWx%0aInjected", "%2FOpaque#fidkdWx%GG", "%2FOpaque#bad@fragment",
+      "%2FOpaque?x=%0a", "%2FOpaque?x=%00", "%2FOpaque?x=%", "%2FOpaque\n", "%2FOpaque\t",
+      `%2F${"A".repeat(8192)}`,
+    ].map((suffix) => `${CHECKOUT_URL}${suffix}`),
+    ...[
+      "http://checkout.stripe.com", "https://checkout.stripe.com.evil.test", "https://sub.checkout.stripe.com",
+      "https://checkout.stripe.com.", "https://user:pass@checkout.stripe.com", "https://checkout.stripe.com:443",
+      "https://checkout.stripe.com:8443", "https://%63heckout.stripe.com", "https://checkout．stripe.com",
+    ].map((authority) => `${authority}/c/pay/cs_test_A%2FOpaque%2FTail`),
+    ...[
+      "/g/pay/cs_live_Synthetic/c", "/g/pay/cs_live_Synthetic/c//", "/g/pay/cs_live_Synthetic//c/",
+      "/g//pay/cs_live_Synthetic/c/", "/g/pay//cs_live_Synthetic/c/", "/g/pay/cs_live_Synthetic/c/extra",
+      "/g/pay/cs_live_Synthetic/c/../c/", "/g/pay/cs_live_Synthetic/./c/", "/g/pay/cs_live_Synthetic/%2e/c/",
+      "/g/pay/cs_live_Synthetic%2FOpaque/c/", "/g/pay/cs_live_Synthetic%252FOpaque/c/",
+      "/g/pay/cs_live_Synthetic/%63/", "/g/pay/cs_live_Synthetic%5cToken/c/", "/g/pay/cs_live_Synthetic\\c/",
+      "/g/pay/cs_live_/c/", "/g/pay/cs_liveSynthetic/c/", "/g/pay/cs_Synthetic/c/",
+      "/g/pay/cs_test_Synthetic/c/", "/g/pay/not_a_session/c/", "/g/pay/cs_live_Synthetic-/c/",
+      "/g/pay/cs_live_Synthetic/c/?", "/g/pay/cs_live_Synthetic/c/?locale=en#fidkdWxToken",
+      "/g/pay/cs_live_Synthetic/c/#", "/g/pay/cs_live_Synthetic/c/#fidkdWx%00Token",
+      "/g/pay/cs_live_Synthetic/c/#fidkdWx%GG", "/g/pay/cs_live_Synthetic/c/#bad@fragment",
+      "/g/pay/cs_live_Synthetic/c/#fidkdWx\nToken", `/g/pay/cs_live_Synthetic/c/#${"A".repeat(8192)}`,
+    ].map((path) => `https://checkout.stripe.com${path}`),
+    ...[
+      "http://checkout.stripe.com", "https://checkout.stripe.com.evil.test", "https://checkout.stripe.com:443",
+      "https://user:pass@checkout.stripe.com", "https://sub.checkout.stripe.com",
+    ].map((authority) => `${authority}/g/pay/cs_live_Synthetic/c/#fidkdWxToken`),
   ])("rejects deceptive/unsafe provider URL and acknowledgment: %j", async (url) => {
     expect(validateCompanyCheckoutUrl(url)).toBeNull();
     const fetchSpy = stubResponse({ checkout: { ...CHECKOUT, url } });

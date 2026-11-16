@@ -265,6 +265,9 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   };
   const retryReads = () => { if (current() && !locked) { jobQuote.invalidate(); setRefreshKey((value) => value + 1); void priceBook.refresh(); void jobQuote.refresh(); } };
   const inputStyle = [styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }];
+  // Native-only loading keeps web date/time rendering independent of native modules.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native module is intentionally not evaluated by web hosts.
+  const SafeArea = Platform.OS === "web" ? View : require("react-native-safe-area-context").SafeAreaView;
   const label = (text: string) => <Text style={[styles.label, { color: colors.muted }]}>{text}</Text>;
   const field = (name: string, value: string, setValue: (value: string) => void, options: { paired?: boolean; readonly?: boolean; multiline?: boolean; keyboard?: "phone-pad" | "email-address"; feedback?: keyof JobSyncCompanyNewCustomer; displayLabel?: string } = {}) => <View style={[styles.field, options.paired && styles.pairedField]}>
     {label(options.displayLabel || name)}<TextInput accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked && !options.readonly) setValue(next); }} editable={!locked && !options.readonly}
@@ -291,11 +294,13 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     return new Date(Number.isFinite(year) ? year : 2026, (month || 1) - 1, day || 1, Number.isFinite(wallHour) ? Math.floor(wallHour) : 9, Number.isFinite(wallHour) ? Math.round((wallHour % 1) * 60) : 0);
   };
   return <Modal visible transparent animationType="slide" onRequestClose={() => { if (servicePickerOpen && current()) setServicePickerOpen(false); else close(); }}>
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined} style={styles.backdrop}>
+    {/* Android's native Modal resizes for the IME; a second height avoidance would shrink it twice. */}
+    <KeyboardAvoidingView enabled={Platform.OS === "ios"} behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.backdrop}>
+      <SafeArea testID="company-booking-viewport" edges={["top", "left", "right"]} style={styles.viewport}>
       <View testID="company-booking-sheet" style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View accessibilityElementsHidden={servicePickerOpen} importantForAccessibility={servicePickerOpen ? "no-hide-descendants" : "auto"} style={styles.main}>
         <View style={styles.header}><Text style={[styles.title, { color: colors.foreground }]}>New Job</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close Add Job" onPress={close} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity></View>
-        <ScrollView testID="company-booking-main-scroll" style={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
+        <ScrollView testID="company-booking-main-scroll" style={styles.scroll} horizontal={false} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
           <View testID="company-booking-time-row" style={styles.timeRow}>
             <CompanyBookingTimeField label="Date" accessibilityLabel="Company date" type="date" value={date} disabled={locked} isCurrent={current} onChange={setDate} onPick={() => setPicker("date")} />
             <CompanyBookingTimeField label="Start" accessibilityLabel="Start time" type="time" value={start} disabled={locked} isCurrent={current} onChange={setStart} onPick={() => setPicker("start")} />
@@ -404,13 +409,13 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {busy && <ActivityIndicator accessibilityLabel={state.phase === "restoring" ? "Checking previous creation request" : state.reconciling ? "Checking original Job status and calendar" : "Saving Company Job"} color={colors.primary} />}
           {["uncertain", "pending", "conflict", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh calendar" : "Check saved status"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={styles.refresh}><Text style={[styles.note, { color: colors.primary }]}>Refresh form</Text></TouchableOpacity>}
         </ScrollView>
-        <View style={[styles.footer, { borderColor: colors.border }]}>
+        <SafeArea testID="company-booking-footer" edges={{ bottom: "maximum" }} style={[styles.footer, { borderColor: colors.border }]}>
           {jobQuote.quote && <View style={styles.total}><Text style={[styles.selected, { color: colors.foreground }]}>Server quote ${jobQuote.quote.total.toFixed(2)}</Text><Text style={[styles.note, { color: colors.muted }]}>{jobQuote.quote.totalDurationMinutes} min</Text></View>}
           <View style={styles.pair}>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel Add Job" onPress={close} style={[styles.cancel, { borderColor: colors.border }]}><Text style={[styles.footerText, { color: colors.foreground }]}>Cancel</Text></TouchableOpacity>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.phase === "restoring" ? "Checking…" : state.reconciling ? "Refreshing…" : busy ? "Saving…" : state.phase === "rejected" ? "Save corrected Job" : "Save Job"}</Text></TouchableOpacity>
           </View>
-        </View>
+        </SafeArea>
         </View>
         {servicePickerOpen && <CompanyBookingServicePicker key={editingServiceId || "add"} services={pickerServices} selectedId={editingServiceId || ""} loading={priceBook.isLoading} hasLoaded={priceBook.hasLoaded} error={priceBook.error} disabled={locked} isCurrent={current}
           onClose={() => { if (current()) setServicePickerOpen(false); }} onRefresh={retryReads} onConfirm={(id) => { if (current() && !locked && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && pickerServices.some((row) => row.serviceId === id)) {
@@ -422,24 +427,26 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             })); setServicePickerOpen(false);
           } }} />}
       </View>
+      </SafeArea>
     </KeyboardAvoidingView>
   </Modal>;
 }
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  card: { borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "92%", maxHeight: "92%", width: "100%", maxWidth: 640, alignSelf: "center", overflow: "hidden" },
-  main: { flex: 1, minHeight: 0, paddingHorizontal: 18 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 6 },
+  viewport: { flex: 1, minHeight: 0, minWidth: 0, justifyContent: "flex-end" },
+  card: { borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "92%", maxHeight: "100%", flexShrink: 1, minHeight: 0, width: "100%", maxWidth: 640, alignSelf: "center", overflow: "hidden" },
+  main: { flex: 1, minHeight: 0, minWidth: 0, paddingHorizontal: 18 }, header: { flexShrink: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 6 },
   title: { fontSize: 22, lineHeight: 28, fontWeight: "800" }, close: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }, closeText: { fontSize: 27, lineHeight: 34 },
-  scroll: { flex: 1, minHeight: 0 }, content: { gap: 10, paddingBottom: 10 }, field: { minWidth: 0, flexShrink: 0, gap: 4 }, pairedField: { flex: 1 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
-  input: { minHeight: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 10, fontSize: 15, lineHeight: 21 }, multiline: { minHeight: 72, textAlignVertical: "top" },
-  option: { minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, justifyContent: "center" }, optionText: { fontSize: 14, lineHeight: 20, fontWeight: "600" }, note: { fontSize: 13, lineHeight: 19 },
+  scroll: { flex: 1, minHeight: 0, minWidth: 0 }, content: { gap: 10, paddingBottom: 10 }, field: { minWidth: 0, flexShrink: 0, gap: 4 }, pairedField: { flex: 1 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  input: { minWidth: 0, minHeight: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 10, fontSize: 15, lineHeight: 21 }, multiline: { minHeight: 72, textAlignVertical: "top" },
+  option: { maxWidth: "100%", flexShrink: 1, minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, justifyContent: "center" }, optionText: { fontSize: 14, lineHeight: 20, fontWeight: "600" }, note: { fontSize: 13, lineHeight: 19 },
   timeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   selected: { fontSize: 15, lineHeight: 21, fontWeight: "600" }, pair: { flexDirection: "row", gap: 10 }, flex: { flex: 1, minWidth: 0 }, searchRow: { flexDirection: "row", alignItems: "center" },
   customerResults: { maxHeight: 220, borderWidth: 1, borderRadius: 10 }, customerResult: { minHeight: 60, gap: 3, padding: 12, borderBottomWidth: 1 }, rateResults: { maxHeight: 160 }, chips: { gap: 8, paddingBottom: 2 },
   disclosure: { minHeight: 44, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, paddingVertical: 10 }, details: { gap: 10 },
   toggleRow: { minHeight: 58, borderTopWidth: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 8 }, toggleTarget: { minWidth: 54, minHeight: 44, justifyContent: "center" },
   toggleTrack: { width: 50, height: 30, borderRadius: 20, padding: 3 }, toggleThumb: { width: 24, height: 24, borderRadius: 14, backgroundColor: "#fff" }, existingAction: { minHeight: 44, justifyContent: "center" },
-  refresh: { minHeight: 44, justifyContent: "center", alignItems: "center" }, footer: { paddingTop: 10, paddingBottom: 28, gap: 10, borderTopWidth: 1 }, total: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  refresh: { minHeight: 44, justifyContent: "center", alignItems: "center" }, footer: { flexShrink: 0, paddingTop: 10, paddingBottom: 28, gap: 10, borderTopWidth: 1 }, total: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   cancel: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, padding: 12, justifyContent: "center", alignItems: "center" }, footerText: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
   primary: { flex: 1, minHeight: 48, borderRadius: 12, padding: 12, justifyContent: "center", alignItems: "center" }, primaryText: { color: "#fff", fontSize: 16, lineHeight: 22, fontWeight: "700", textAlign: "center" },
 });

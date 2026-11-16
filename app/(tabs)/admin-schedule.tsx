@@ -5,7 +5,7 @@
  * - Empty Companies receive an explicit empty-team state instead of placeholder lanes
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from "expo-router";
 import {
   View,
@@ -64,6 +64,8 @@ import { CompanyJobCheckout } from "@/components/company-job-checkout";
 import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
 import { companyCreateJobAllowed, companyCreateJobScope } from "@/lib/company-create-job";
 import { parseCompanyJobCustomerPrefill, type CompanyJobCustomerPrefill } from "@/lib/company-job-customer-prefill";
+import { useCompanyScheduleBlocks } from "@/hooks/use-company-schedule-blocks";
+import { companyScheduleBlockDay, isCompanyScheduleBlockAllDay } from "@/lib/company-schedule-blocks";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
 import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
@@ -73,6 +75,8 @@ import { formatJobMapAddress } from "@/lib/job-street-view";
 import { CustomerContactActions } from "@/components/customer-contact-actions";
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
+// Called only from the existing legacy blocker Save event, never during render.
+const legacyBlockerRequestId = () => Date.now().toString();
 
 // ─── Types (shared with schedule.tsx) ─────────────────────────────────────────
 
@@ -1436,15 +1440,34 @@ export default function AdminScheduleScreen() {
   const blockerCreateMutation = trpc.scheduleBlockers.create.useMutation();
   const blockerDeleteMutation = trpc.scheduleBlockers.delete.useMutation();
   const [blockers, setBlockers] = useState<Array<{ id: string; detailerName: string; city: string; date: string; startHour: number; endHour: number; allDay: number; reason: string }>>([]);
-  const [showBlockerModal, setShowBlockerModal] = useState(false);
-  const [blockerDetailer, setBlockerDetailer] = useState("");
-  const [blockerDate, setBlockerDate] = useState("");
+  const [showBlockerModal, setShowBlockerModalState] = useState(false);
+  const [blockerModalEpoch, setBlockerModalEpoch] = useState(0);
+  const blockerModalEpochRef = useRef(0);
+  const setShowBlockerModal = (visible: boolean) => {
+    blockerModalEpochRef.current++;
+    setBlockerModalEpoch(blockerModalEpochRef.current);
+    setShowBlockerModalState(visible);
+  };
+  const blockerLegacyLockRef = useRef(false);
+  const [blockerLegacyError, setBlockerLegacyError] = useState<string | null>(null);
+  const [blockerLegacyPending, setBlockerLegacyPending] = useState(false);
+  const [blockerLegacyDataScope, setBlockerLegacyDataScope] = useState<string | null>(null);
+  const blockerLegacyReadEpochRef = useRef(0);
+  const [blockerDetailer, setBlockerDetailerState] = useState("");
+  const [blockerDate, setBlockerDateState] = useState("");
   const [blockerAllDay, setBlockerAllDay] = useState(true);
   const [blockerStartHour, setBlockerStartHour] = useState(8);
   const [blockerEndHour, setBlockerEndHour] = useState(17);
   const [blockerReason, setBlockerReason] = useState("Day Off");
   const [showBlockerDatePicker, setShowBlockerDatePicker] = useState(false);
-  const [selectedBlocker, setSelectedBlocker] = useState<string | null>(null);
+  const [selectedBlocker, setSelectedBlockerState] = useState<string | number | null>(null);
+  const [blockerRemoveEpoch, setBlockerRemoveEpoch] = useState(0);
+  const blockerRemoveEpochRef = useRef(0);
+  const setSelectedBlocker = (id: string | number | null) => {
+    blockerRemoveEpochRef.current++;
+    setBlockerRemoveEpoch(blockerRemoveEpochRef.current);
+    setSelectedBlockerState(id);
+  };
   // Build all packages from price book for the New Job form (falls back to hardcoded PACKAGES if empty)
   // Preferred display order for non-RV packages: Luxury → Full → Basic → Interior → Exterior
   const PREFERRED_ORDER = ["luxury", "full", "basic", "interior", "exterior"];
@@ -1899,21 +1922,133 @@ export default function AdminScheduleScreen() {
     }
   }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
 
-  // Fetch blockers for the current week whenever city or week changes
+  // Blockers retain the existing modal/cards, but Company records never enter
+  // the legacy city/name transport. DATE and decimal hours are wall-clock data.
+  const selectedCompanyBlockerDay = companyScheduleBlockDay(weekOffset, selectedDay, companyTimezone);
+  const blockerBoundary = JSON.stringify([calendarScopeKey, jobSyncLoading, weekOffset, selectedDay, selectedCity, selectedCompanyBlockerDay]);
+  const [blockerControl, setBlockerControl] = useState({ key: blockerBoundary });
+  const blockerScopeRef = useRef(blockerControl);
+  useLayoutEffect(() => { blockerScopeRef.current = blockerControl; }, [blockerControl]);
+  const blockerCurrent = () => managementActionRef.current.mounted && managementActionRef.current.focused
+    && blockerScopeRef.current === blockerControl;
+  const companyBlocks = useCompanyScheduleBlocks({ session: jobSyncSession, focused: isFocused,
+    enabled: !jobSyncLoading && isJobSyncCompany, date: selectedCompanyBlockerDay, boundary: blockerBoundary }, syncKey);
+  const [blockerSelectionScope, setBlockerSelectionScope] = useState<string | null>(null);
+  const blockerFormIdentity = JSON.stringify([blockerDetailer, blockerDate]);
+  const blockerFormRef = useRef<string | null>(blockerFormIdentity);
+  const setBlockerDetailer = (value: string) => { if (value !== blockerDetailer) blockerFormRef.current = null; setBlockerDetailerState(value); };
+  const setBlockerDate = (value: string) => { if (value !== blockerDate) blockerFormRef.current = null; setBlockerDateState(value); };
+  const blockerSelectedRef = useRef(selectedBlocker);
+  useLayoutEffect(() => {
+    blockerFormRef.current = blockerFormIdentity;
+    blockerSelectedRef.current = selectedBlocker;
+  });
+  const blockerFormCurrent = () => blockerCurrent() && blockerSelectionScope === blockerBoundary && showBlockerModal
+    && blockerModalEpochRef.current === blockerModalEpoch && blockerFormRef.current === blockerFormIdentity;
+  const blockerRemoveCurrent = () => blockerCurrent() && blockerSelectionScope === blockerBoundary
+    && blockerRemoveEpochRef.current === blockerRemoveEpoch && blockerSelectedRef.current === selectedBlocker && selectedBlocker !== null;
+  const blockerCandidates = isJobSyncCompany ? companyCalendarLanes : companyJobMode ? []
+    : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []);
+  const blockerPending = isJobSyncCompany ? companyBlocks.pending : blockerLegacyPending;
+  const blockerError = isJobSyncCompany ? companyBlocks.error : !companyJobMode ? blockerLegacyError : null;
+  const blockerCanOpen = blockerCandidates.length > 0 && !blockerPending && (isJobSyncCompany
+    ? companyBlocks.readVerified && !companyBlocks.createHeld && !companyBlocks.loading && !companyFieldworkCalendar.loading
+    : !companyJobMode && isFocused && !!currentEmployee && !employeeLoading && legacyTokenReady);
+  const blockerCards: { id: string | number; detailerName: string; date: string; startHour: number; endHour: number; allDay: boolean; reason: string }[] = isJobSyncCompany
+    ? companyBlocks.rows.map((row) => ({ id: row.id, detailerName: row.employeeLabel, date: row.date,
+      startHour: row.startHour, endHour: row.endHour, allDay: isCompanyScheduleBlockAllDay(row), reason: row.title }))
+    : !companyJobMode && isFocused && blockerLegacyDataScope === blockerBoundary ? blockers.filter((row) => row.date.slice(0, 10) === localDateStr(getWeekDates(weekOffset)[selectedDay])
+      && (row.city === selectedCity || row.city === (CITY_LIST.find((city) => city.slug === selectedCity)?.label ?? selectedCity)
+        || row.city.toLowerCase() === selectedCity.toLowerCase())).map((row) => ({ ...row, allDay: Boolean(row.allDay) })) : [];
+  const selectedBlockerCard = selectedBlocker !== null && isFocused && blockerSelectionScope === blockerBoundary
+    ? blockerCards.find((row) => row.id === selectedBlocker) : undefined;
+
+  // Reset only when the immutable scope changes; no effect/render reset loop.
+  if (blockerControl.key !== blockerBoundary) {
+    setBlockerControl({ key: blockerBoundary });
+    setBlockers([]); setSelectedBlockerState(null); setShowBlockerModalState(false);
+    setShowBlockerDatePicker(false); setBlockerDetailerState(""); setBlockerDateState("");
+    setBlockerSelectionScope(null); setBlockerLegacyError(null); setBlockerLegacyPending(false);
+    setBlockerLegacyDataScope(null);
+  }
+
+  const refreshLegacyBlockers = async (originCurrent: () => boolean): Promise<boolean> => {
+    if (!originCurrent() || !await renderedLegacyReadAction.verify() || !originCurrent()) return false;
+    const epoch = ++blockerLegacyReadEpochRef.current;
+    const dates = getWeekDates(weekOffset);
+    const rows = await utils.scheduleBlockers.list.fetch({ city: selectedCity,
+      startDate: localDateStr(dates[0]), endDate: localDateStr(dates[6]) });
+    if (!originCurrent() || !await renderedLegacyReadAction.verify() || !originCurrent() || epoch !== blockerLegacyReadEpochRef.current) return false;
+    setBlockers(rows.map((row) => ({ ...row, startHour: parseFloat(String(row.startHour)),
+      endHour: parseFloat(String(row.endHour)), allDay: Number(row.allDay) })));
+    setBlockerLegacyDataScope(blockerBoundary);
+    return true;
+  };
+  const blockerLegacyEventsRef = useRef({ blockerCurrent, renderedLegacyReadAction, refreshLegacyBlockers });
+  useLayoutEffect(() => { blockerLegacyEventsRef.current = { blockerCurrent, renderedLegacyReadAction, refreshLegacyBlockers }; });
   useEffect(() => {
-    const fetchBlockers = async () => {
-      const wDates = getWeekDates(weekOffset);
-      const fromDate = wDates[0];
-      const toDate = wDates[6];
-      const startDate = localDateStr(fromDate);
-      const endDate = localDateStr(toDate);
-      try {
-        const data = await utils.scheduleBlockers.list.fetch({ city: selectedCity, startDate, endDate });
-        setBlockers(data.map((b) => ({ ...b, startHour: parseFloat(String(b.startHour)), endHour: parseFloat(String(b.endHour)), allDay: Number(b.allDay) })));
-      } catch (_) {}
-    };
-    fetchBlockers();
-  }, [selectedCity, syncKey, weekOffset]);
+    const { blockerCurrent, renderedLegacyReadAction, refreshLegacyBlockers } = blockerLegacyEventsRef.current;
+    let alive = true;
+    const current = () => alive && blockerCurrent() && renderedLegacyReadAction();
+    if (companyJobMode || !current()) return;
+    void refreshLegacyBlockers(current).catch((error) => {
+      if (current()) { setBlockers([]); setBlockerLegacyError(error instanceof Error ? error.message : "Could not refresh schedule blocks."); }
+    });
+    return () => { alive = false; };
+  }, [blockerBoundary, syncKey, companyJobMode]);
+
+  const handleSaveBlocker = async (legacyRequestId?: string) => {
+    if (!blockerFormCurrent()) return;
+    if (isJobSyncCompany) {
+      const saved = await companyBlocks.create({ employeeId: String(companyUserId(blockerDetailer) ?? ""), date: blockerDate,
+        allDay: blockerAllDay, startHour: blockerStartHour, endHour: blockerEndHour, title: blockerReason }, blockerFormCurrent);
+      if (saved && blockerFormCurrent()) {
+        setShowBlockerModal(false);
+        if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+      return; // A failing Company call must never enter generic tRPC.
+    }
+    if (companyJobMode || !renderedLegacyReadAction() || blockerLegacyLockRef.current) return;
+    if (!legacyRequestId) return;
+    if (!blockerDetailer || !blockerDate) { setBlockerLegacyError("Select a team member and date."); return; }
+    blockerLegacyLockRef.current = true; setBlockerLegacyPending(true); setBlockerLegacyError(null);
+    try {
+      if (!await renderedLegacyReadAction.verify() || !blockerFormCurrent()) return;
+      await blockerCreateMutation.mutateAsync({ id: legacyRequestId, detailerName: blockerDetailer, city: selectedCity,
+        date: blockerDate, startHour: blockerAllDay ? 0 : blockerStartHour, endHour: blockerAllDay ? 24 : blockerEndHour,
+        allDay: blockerAllDay, reason: blockerReason || "Day Off", createdBy: currentEmployee?.employeeId || undefined });
+      if (await refreshLegacyBlockers(blockerFormCurrent) && blockerFormCurrent()) {
+        setShowBlockerModal(false);
+        if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+    } catch (error) {
+      if (blockerFormCurrent()) { setBlockers([]); setBlockerLegacyError(error instanceof Error ? error.message : "Could not save schedule block."); }
+    } finally { blockerLegacyLockRef.current = false; if (blockerCurrent()) setBlockerLegacyPending(false); }
+  };
+  const handleRemoveBlocker = async () => {
+    if (!blockerRemoveCurrent()) return;
+    if (isJobSyncCompany) {
+      if (typeof selectedBlocker !== "number") return;
+      const removed = await companyBlocks.remove(selectedBlocker, blockerRemoveCurrent);
+      if (removed && blockerRemoveCurrent()) {
+        setSelectedBlocker(null);
+        if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+      return;
+    }
+    if (companyJobMode || typeof selectedBlocker !== "string" || !renderedLegacyReadAction() || blockerLegacyLockRef.current) return;
+    blockerLegacyLockRef.current = true; setBlockerLegacyPending(true); setBlockerLegacyError(null);
+    try {
+      if (!await renderedLegacyReadAction.verify() || !blockerRemoveCurrent()) return;
+      await blockerDeleteMutation.mutateAsync({ id: selectedBlocker });
+      if (await refreshLegacyBlockers(blockerRemoveCurrent) && blockerRemoveCurrent()) {
+        setSelectedBlocker(null);
+        if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+    } catch (error) {
+      if (blockerRemoveCurrent()) { setBlockers([]); setBlockerLegacyError(error instanceof Error ? error.message : "Could not remove schedule block."); }
+    } finally { blockerLegacyLockRef.current = false; if (blockerCurrent()) setBlockerLegacyPending(false); }
+  };
 
   // Live-refresh photo URLs from the server whenever a job detail panel is opened
   useEffect(() => {
@@ -3012,10 +3147,13 @@ export default function AdminScheduleScreen() {
 
           {/* Add Blocker Button */}
           <TouchableOpacity
-            disabled={cityConfig.detailers.length === 0}
+            disabled={!blockerCanOpen}
             onPress={() => {
-              setBlockerDate(localDateStr(getWeekDates(weekOffset)[selectedDay]));
-              setBlockerDetailer(cityConfig.detailers[0]?.name ?? "");
+              if (!blockerCanOpen || !blockerCurrent()) return;
+              setBlockerSelectionScope(blockerBoundary);
+              setBlockerLegacyError(null);
+              setBlockerDate(isJobSyncCompany ? selectedCompanyBlockerDay! : localDateStr(getWeekDates(weekOffset)[selectedDay]));
+              setBlockerDetailer(isJobSyncCompany ? blockerCandidates[0]?.employeeId ?? "" : blockerCandidates[0]?.name ?? "");
               setBlockerAllDay(true);
               setBlockerStartHour(8);
               setBlockerEndHour(17);
@@ -3023,7 +3161,7 @@ export default function AdminScheduleScreen() {
               setShowBlockerDatePicker(false);
               setShowBlockerModal(true);
             }}
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#ef4444", justifyContent: "center", alignItems: "center", opacity: cityConfig.detailers.length === 0 ? 0.35 : 1 }}
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "#ef4444", justifyContent: "center", alignItems: "center", opacity: blockerCanOpen ? 1 : 0.35 }}
           >
             <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>🚫</Text>
           </TouchableOpacity>
@@ -3122,24 +3260,19 @@ export default function AdminScheduleScreen() {
       )}
 
       {/* Day Blockers — shown above timeline */}
+      {blockerError ? <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}><Text style={{ color: colors.error, fontSize: 13 }}>{blockerError}</Text></View> : null}
+      {isJobSyncCompany && companyBlocks.createHeld ? <TouchableOpacity disabled={blockerPending || companyBlocks.loading} onPress={() => { if (companyBlocks.current()) void companyBlocks.refresh(); }} style={{ paddingHorizontal: 16, paddingVertical: 8 }}><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>Refresh original block request — no new save</Text></TouchableOpacity> : null}
+      {isJobSyncCompany && companyBlocks.loading ? <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}><Text style={{ color: colors.muted, fontSize: 13 }}>Refreshing Company schedule blocks…</Text></View> : null}
       {(() => {
-        const dayStr = localDateStr(selectedDate);
-        const currentCityLabel = currentScheduleLabel;
-        const dayBlockers = blockers.filter((b) => {
-          // Normalize date: strip time component in case DB returns a datetime string
-          const bDate = b.date ? b.date.slice(0, 10) : "";
-          // Normalize city: compare both slug and full label (blockers may be stored either way)
-          const bCity = b.city ?? "";
-          const cityMatch = bCity === selectedCity || bCity === currentCityLabel || bCity.toLowerCase() === selectedCity.toLowerCase();
-          return bDate === dayStr && cityMatch;
-        });
+        const dayBlockers = blockerCards;
         if (dayBlockers.length === 0) return null;
         return (
           <View style={{ paddingHorizontal: 16, paddingVertical: 6, gap: 6 }}>
             {dayBlockers.map((b) => (
               <TouchableOpacity
                 key={b.id}
-                onPress={() => setSelectedBlocker(b.id)}
+                disabled={blockerPending}
+                onPress={() => { if (blockerCurrent()) { setBlockerSelectionScope(blockerBoundary); setSelectedBlocker(b.id); } }}
                 style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#ef444420", borderRadius: 10, borderWidth: 1, borderColor: "#ef4444", paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}
                 activeOpacity={0.7}
               >
@@ -5993,14 +6126,14 @@ export default function AdminScheduleScreen() {
       </Modal>
 
       {/* ─── Add Blocker Modal ─────────────────────────────────────────────── */}
-      <Modal visible={showBlockerModal} transparent animationType="slide" onRequestClose={() => setShowBlockerModal(false)}>
+      <Modal visible={showBlockerModal && blockerSelectionScope === blockerBoundary && isFocused} transparent animationType="slide" onRequestClose={() => { if (blockerFormCurrent()) setShowBlockerModal(false); }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
             <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32 }}>
               {/* Header */}
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground }}>🚫 Block Schedule</Text>
-                <TouchableOpacity onPress={() => setShowBlockerModal(false)}>
+                <TouchableOpacity onPress={() => { if (blockerFormCurrent()) setShowBlockerModal(false); }}>
                   <Text style={{ fontSize: 24, color: colors.muted, lineHeight: 28 }}>×</Text>
                 </TouchableOpacity>
               </View>
@@ -6010,12 +6143,14 @@ export default function AdminScheduleScreen() {
                 <View>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Team Member</Text>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                    {cityConfig.detailers.map((det) => {
-                      const sel = blockerDetailer === det.name;
+                    {blockerCandidates.map((det) => {
+                      const value = isJobSyncCompany ? det.employeeId : det.name;
+                      const sel = blockerDetailer === value;
                       return (
                         <TouchableOpacity
-                          key={det.name}
-                          onPress={() => setBlockerDetailer(det.name)}
+                          key={det.employeeId}
+                          disabled={blockerPending}
+                          onPress={() => { if (blockerFormCurrent()) setBlockerDetailer(value); }}
                           style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: sel ? 2 : 1, borderColor: sel ? det.color : colors.border, backgroundColor: sel ? det.color + "18" : colors.surface }}
                           activeOpacity={0.75}
                         >
@@ -6030,7 +6165,8 @@ export default function AdminScheduleScreen() {
                 <View>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Date</Text>
                   <TouchableOpacity
-                    onPress={() => setShowBlockerDatePicker((v) => !v)}
+                    disabled={blockerPending}
+                    onPress={() => { if (blockerFormCurrent()) setShowBlockerDatePicker((v) => !v); }}
                     style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
                     activeOpacity={0.75}
                   >
@@ -6041,7 +6177,7 @@ export default function AdminScheduleScreen() {
                     <View style={{ marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
                       <CalendarPicker
                         selectedDate={blockerDate}
-                        onSelectDate={(d) => { setBlockerDate(d); setShowBlockerDatePicker(false); }}
+                        onSelectDate={(d) => { if (blockerFormCurrent() && !blockerPending) { setBlockerDate(d); setShowBlockerDatePicker(false); setSelectedBlocker(null); } }}
                       />
                     </View>
                   )}
@@ -6055,7 +6191,8 @@ export default function AdminScheduleScreen() {
                   </View>
                   <Switch
                     value={blockerAllDay}
-                    onValueChange={(v) => setBlockerAllDay(v)}
+                    disabled={blockerPending}
+                    onValueChange={(v) => { if (blockerFormCurrent()) setBlockerAllDay(v); }}
                     trackColor={{ false: colors.border, true: colors.primary }}
                     thumbColor="#fff"
                   />
@@ -6067,8 +6204,8 @@ export default function AdminScheduleScreen() {
                     colors={colors}
                     startHour={blockerStartHour}
                     endHour={blockerEndHour}
-                    onStartChange={(h) => setBlockerStartHour(h)}
-                    onEndChange={(h) => setBlockerEndHour(h)}
+                    onStartChange={(h) => { if (blockerFormCurrent() && !blockerPending) setBlockerStartHour(h); }}
+                    onEndChange={(h) => { if (blockerFormCurrent() && !blockerPending) setBlockerEndHour(h); }}
                     formatHour={formatHour}
                   />
                 )}
@@ -6082,7 +6219,8 @@ export default function AdminScheduleScreen() {
                       return (
                         <TouchableOpacity
                           key={r}
-                          onPress={() => setBlockerReason(r)}
+                          disabled={blockerPending}
+                          onPress={() => { if (blockerFormCurrent()) setBlockerReason(r); }}
                           style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: sel ? 2 : 1, borderColor: sel ? "#ef4444" : colors.border, backgroundColor: sel ? "#ef444418" : colors.surface }}
                           activeOpacity={0.75}
                         >
@@ -6093,7 +6231,8 @@ export default function AdminScheduleScreen() {
                   </View>
                   <TextInput
                     value={blockerReason}
-                    onChangeText={setBlockerReason}
+                    editable={!blockerPending}
+                    onChangeText={(value) => { if (blockerFormCurrent()) setBlockerReason(value); }}
                     placeholder="Custom reason…"
                     placeholderTextColor={colors.muted}
                     style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.foreground, fontSize: 14 }}
@@ -6102,32 +6241,23 @@ export default function AdminScheduleScreen() {
                 </View>
 
                 {/* Save / Cancel */}
+                {blockerError ? <Text style={{ color: colors.error, fontSize: 13 }}>{blockerError}</Text> : null}
+                {isJobSyncCompany && companyBlocks.createHeld ? <TouchableOpacity disabled={blockerPending} onPress={() => { if (blockerFormCurrent()) void companyBlocks.refresh(); }}><Text style={{ color: colors.primary, fontWeight: "600" }}>Refresh original block request (no new save)</Text></TouchableOpacity> : null}
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
                   <TouchableOpacity
-                    onPress={() => setShowBlockerModal(false)}
+                    onPress={() => { if (blockerFormCurrent()) setShowBlockerModal(false); }}
                     style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
                     activeOpacity={0.75}
                   >
                     <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 15 }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => {
-                      if (!blockerDetailer) { Alert.alert("Select a team member"); return; }
-                      if (!blockerDate) { Alert.alert("Select a date"); return; }
-                      const id = Date.now().toString();
-                      blockerCreateMutation.mutate(
-                        { id, detailerName: blockerDetailer, city: selectedCity, date: blockerDate, startHour: blockerAllDay ? 0 : blockerStartHour, endHour: blockerAllDay ? 24 : blockerEndHour, allDay: blockerAllDay, reason: blockerReason || "Day Off", createdBy: currentEmployee?.employeeId || undefined },
-                        {
-                          onSuccess: () => { setShowBlockerModal(false); forceSync(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); },
-                          onError: (e) => Alert.alert("Error", e.message),
-                        }
-                      );
-                    }}
-                    disabled={blockerCreateMutation.isPending}
-                    style={{ flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: "#ef4444", alignItems: "center", opacity: blockerCreateMutation.isPending ? 0.6 : 1 }}
+                    onPress={() => { if (blockerFormCurrent()) void handleSaveBlocker(isJobSyncCompany ? undefined : legacyBlockerRequestId()); }}
+                    disabled={blockerPending || (isJobSyncCompany && (companyBlocks.createHeld || !companyBlocks.readVerified || companyBlocks.loading))}
+                    style={{ flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: "#ef4444", alignItems: "center", opacity: blockerPending || (isJobSyncCompany && (companyBlocks.createHeld || !companyBlocks.readVerified || companyBlocks.loading)) ? 0.6 : 1 }}
                     activeOpacity={0.8}
                   >
-                    <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 15 }}>{blockerCreateMutation.isPending ? "Saving…" : "🚫 Block Schedule"}</Text>
+                    <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 15 }}>{blockerPending ? "Saving…" : "🚫 Block Schedule"}</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -6137,49 +6267,38 @@ export default function AdminScheduleScreen() {
       </Modal>
 
       {/* ─── Delete Blocker Confirmation ─────────────────────────────────────── */}
-      {selectedBlocker !== null && (() => {
-        const b = blockers.find((x) => x.id === selectedBlocker);
-        if (!b) return null;
-        return (
-          <Modal visible={true} transparent animationType="fade" onRequestClose={() => setSelectedBlocker(null)}>
+      {selectedBlockerCard ? (
+          <Modal visible={true} transparent animationType="fade" onRequestClose={() => { if (blockerRemoveCurrent()) setSelectedBlocker(null); }}>
             <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}>
               <View style={{ backgroundColor: colors.background, borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, gap: 16 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: colors.foreground, textAlign: "center" }}>Remove Schedule Block?</Text>
                 <View style={{ backgroundColor: "#ef444418", borderRadius: 10, borderWidth: 1, borderColor: "#ef4444", padding: 14, gap: 4 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#ef4444" }}>{b.detailerName} — {b.reason}</Text>
-                  <Text style={{ fontSize: 12, color: "#ef4444", opacity: 0.8 }}>{b.date} · {b.allDay ? "All Day" : `${formatHour(b.startHour)} – ${formatHour(b.endHour)}`}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#ef4444" }}>{selectedBlockerCard.detailerName} — {selectedBlockerCard.reason}</Text>
+                  <Text style={{ fontSize: 12, color: "#ef4444", opacity: 0.8 }}>{selectedBlockerCard.date} · {selectedBlockerCard.allDay ? "All Day" : `${formatHour(selectedBlockerCard.startHour)} – ${formatHour(selectedBlockerCard.endHour)}`}</Text>
                 </View>
                 <Text style={{ fontSize: 14, color: colors.muted, textAlign: "center" }}>This will remove the schedule block. Any existing jobs are not affected.</Text>
+                {blockerError ? <Text style={{ color: colors.error, fontSize: 13 }}>{blockerError}</Text> : null}
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <TouchableOpacity
-                    onPress={() => setSelectedBlocker(null)}
+                    onPress={() => { if (blockerRemoveCurrent()) setSelectedBlocker(null); }}
                     style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
                     activeOpacity={0.75}
                   >
                     <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => {
-                      blockerDeleteMutation.mutate(
-                        { id: selectedBlocker },
-                        {
-                          onSuccess: () => { setSelectedBlocker(null); forceSync(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); },
-                          onError: (e) => Alert.alert("Error", e.message),
-                        }
-                      );
-                    }}
-                    disabled={blockerDeleteMutation.isPending}
-                    style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: "#ef4444", alignItems: "center", opacity: blockerDeleteMutation.isPending ? 0.6 : 1 }}
+                    onPress={handleRemoveBlocker}
+                    disabled={blockerPending}
+                    style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: "#ef4444", alignItems: "center", opacity: blockerPending ? 0.6 : 1 }}
                     activeOpacity={0.8}
                   >
-                    <Text style={{ color: "#FFF", fontWeight: "700" }}>{blockerDeleteMutation.isPending ? "Removing…" : "Remove"}</Text>
+                    <Text style={{ color: "#FFF", fontWeight: "700" }}>{blockerPending ? "Removing…" : "Remove"}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Modal>
-        );
-      })()}
+      ) : null}
 
       {/* ─── Charge Card on File Modal ────────────────────────────────────────────────────────────────────────────────── */}
       <Modal
