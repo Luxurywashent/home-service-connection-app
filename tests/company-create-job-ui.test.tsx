@@ -8,9 +8,9 @@ vi.mock("../lib/company-job-creation-storage", async () => {
 import { installPhotoTestDOM, PhotoTestNode } from "./helpers/company-photo-test-dom";
 import { CompanyCreateJobSheet, type CompanyCreateJobSheetProps } from "../components/company-create-job-sheet";
 import { JobSyncApiError, type JobSyncNativeSession } from "../lib/jobsync-mobile-api";
-const mocks = vi.hoisted(() => ({ focused: true, signed: vi.fn(), customers: vi.fn(), customer: vi.fn(), settings: vi.fn(), create: vi.fn(), detail: vi.fn(), jobs: vi.fn(), operation: vi.fn(), priceBook: vi.fn(), refresh: vi.fn(), verify: vi.fn(), catalog: [] as any[], hasLoaded: true, loading: false, error: null as string | null }));
+const mocks = vi.hoisted(() => ({ focused: true, platform: "web", background: "#ffffff", signed: vi.fn(), customers: vi.fn(), customer: vi.fn(), settings: vi.fn(), create: vi.fn(), detail: vi.fn(), jobs: vi.fn(), operation: vi.fn(), priceBook: vi.fn(), refresh: vi.fn(), verify: vi.fn(), catalog: [] as any[], hasLoaded: true, loading: false, error: null as string | null }));
 vi.mock("expo-router", () => ({ useIsFocused: () => mocks.focused }));
-vi.mock("@/hooks/use-colors", () => ({ useColors: () => ({ foreground: "#111111", background: "#ffffff", surface: "#eeeeee", border: "#dddddd", primary: "#0077cc", muted: "#555555", error: "#bb0000" }) }));
+vi.mock("@/hooks/use-colors", () => ({ useColors: () => ({ foreground: "#111111", background: mocks.background, surface: "#eeeeee", border: "#dddddd", primary: "#0077cc", muted: "#555555", error: "#bb0000" }) }));
 vi.mock("@/hooks/use-company-price-book", () => ({ useCompanyPriceBook: () => ({ services: mocks.catalog, isLoading: mocks.loading, error: mocks.error, hasLoaded: mocks.hasLoaded, refresh: mocks.refresh }) }));
 vi.mock("@/hooks/use-company-fieldwork-calendar", () => ({ useCompanyFieldworkCalendar: () => ({ members: [{ id: 50, name: "Actual Technician", employeeId: "jobsync-50" }], loading: false, error: null, verifyAssignment: mocks.verify }) }));
 vi.mock("../lib/jobsync-mobile-api", async (original) => ({ ...await original<typeof import("../lib/jobsync-mobile-api")>(),
@@ -19,14 +19,17 @@ vi.mock("../lib/jobsync-mobile-api", async (original) => ({ ...await original<ty
   createJobSyncCompanyJob: mocks.create, getJobSyncCompanyJobDetail: mocks.detail, getJobSyncCompanyJobs: mocks.jobs,
   getJobSyncCompanyJobCreationOperation: mocks.operation,
 }));
-vi.mock("@react-native-community/datetimepicker", () => ({ default: () => null }));
+vi.mock("@react-native-community/datetimepicker", async () => {
+  const R = await import("react");
+  return { default: (props: Record<string, any>) => R.createElement("native-picker", { ref: (node: PhotoTestNode | null) => { if (node) (node as NativeNode).nativeProps = props; } }) };
+});
 vi.mock("react-native", async () => {
   const R = await import("react");
   const host = (name: string) => (props: Record<string, any>) => R.createElement(name, { ref: (node: PhotoTestNode | null) => { if (node) (node as NativeNode).nativeProps = props; } }, props.children);
   return { Modal: host("native-modal"), View: host("native-view"), Text: host("native-text"), TextInput: host("native-input"),
     TouchableOpacity: host("native-touch"), ActivityIndicator: host("activity-indicator"), ScrollView: host("native-scroll"), KeyboardAvoidingView: host("native-keyboard"),
-    FlatList: (props: any) => R.createElement("native-list", null, props.data.map((item: any, index: number) => R.createElement(R.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item, index })))),
-    Platform: { OS: "web" }, StyleSheet: { create: (value: any) => value } };
+    FlatList: (props: any) => R.createElement("native-list", { ref: (node: PhotoTestNode | null) => { if (node) (node as NativeNode).nativeProps = props; } }, props.data.length ? props.data.map((item: any, index: number) => R.createElement(R.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item, index }))) : props.ListEmptyComponent),
+    Platform: { get OS() { return mocks.platform; } }, StyleSheet: { create: (value: any) => value } };
 });
 const { createRoot } = createRequire(import.meta.url)("react-dom/client") as { createRoot: (container: unknown) => { render: (node: React.ReactNode) => void; unmount: () => void } };
 type NativeNode = PhotoTestNode & { nativeProps: Record<string, any> };
@@ -36,13 +39,26 @@ let root: ReturnType<typeof createRoot>; let container: PhotoTestNode; let props
 function all(node = container): NativeNode[] { return [node as NativeNode, ...node.childNodes.flatMap((child) => all(child))]; }
 function button(label: string) { const node = all().find((node) => node.nodeName === "NATIVE-TOUCH" && node.nativeProps.accessibilityLabel === label); if (!node) throw new Error(`Missing button ${label}; ${container.textContent}`); return node; }
 function field(label: string) { const node = all().find((node) => node.nodeName === "NATIVE-INPUT" && node.nativeProps.accessibilityLabel === label); if (!node) throw new Error(`Missing field ${label}`); return node; }
+function webField(label: string) {
+  const node = all().find((node) => node.nodeName === "INPUT" && node.attributes["aria-label"] === label);
+  if (!node) throw new Error(`Missing web field ${label}`);
+  const key = Object.keys(node).find((name) => name.startsWith("__reactProps$"));
+  if (!key) throw new Error(`Missing committed React props for ${label}`);
+  return { node, react: (node as any)[key] };
+}
 async function render(patch: Partial<CompanyCreateJobSheetProps> = {}) { props = { ...props, ...patch }; await act(async () => { root.render(<CompanyCreateJobSheet {...props} />); }); }
 async function press(label: string) { await act(async () => { button(label).nativeProps.onPress(); }); }
-async function input(label: string, value: string) { await act(async () => field(label).nativeProps.onChangeText(value)); }
-async function choose() { await input("Find Company customer", "Actual"); await press("Actual Customer · 5551234567"); await press("Actual Service"); }
+async function input(label: string, value: string) {
+  await act(async () => {
+    if (["Company date", "Start time", "End time (optional)"].includes(label)) webField(label).react.onChange({ target: { value } });
+    else field(label).nativeProps.onChangeText(value);
+  });
+}
+async function chooseService() { await press("Choose Service"); await press("Actual Service"); await press("Add selected service"); }
+async function choose() { await input("Find Company customer", "Actual"); await press("Actual Customer · 5551234567"); await chooseService(); }
 function waiting<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
 beforeEach(() => {
-  vi.resetAllMocks(); mocks.focused = true; mocks.hasLoaded = true; mocks.loading = false; mocks.error = null;
+  vi.resetAllMocks(); mocks.focused = true; mocks.platform = "web"; mocks.background = "#ffffff"; mocks.hasLoaded = true; mocks.loading = false; mocks.error = null;
   ack = null;
   mocks.operation.mockImplementation(async (_token, _companyId, key) => ({ key, state: ack ? "saved" : "unknown", jobId: ack?.id ?? null, rejectionCode: null, rejectionMessage: null, createdAt: null, updatedAt: null }));
   mocks.catalog = [{ serviceId: "31", name: "Actual Service", vehiclePrices: {}, basePrice: 125, features: [], description: "", sortOrder: 0, imageUrl: null, serviceTypeId: null, emoji: "" }];
@@ -71,11 +87,14 @@ describe("Company create sheet: real React lifecycle + controller, mocked native
   it("uses theme tokens, reads on open and does not create until actual ID selection + manual Save", async () => {
     await render(); expect(container.textContent).toContain("New Job"); expect(mocks.refresh).toHaveBeenCalledTimes(1); expect(mocks.create).not.toHaveBeenCalled();
     expect(button("Save Company Job").nativeProps.disabled).toBe(true);
-    expect(field("Company date").nativeProps.style[1]).toMatchObject({ backgroundColor: "#ffffff", color: "#111111" });
+    expect(webField("Company date").react).toMatchObject({ type: "date", value: "2026-12-01", style: { backgroundColor: "#ffffff", color: "#111111" } });
+    expect(field("Service address").nativeProps.style[1]).toMatchObject({ backgroundColor: "#ffffff", color: "#111111" });
     await choose(); expect(field("Service address").nativeProps.value).toBe("Canonical Address"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
+    expect(container.textContent).toContain("Service price $125.00"); expect(container.textContent).not.toContain("Total ");
     await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.create.mock.calls[0][2]).toMatchObject({ customerId: 7, priceBookServiceId: 31, scheduledStartAt: "2026-12-01T15:00:00.000Z" });
     expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 125, photos: [] }), "America/Chicago");
-    expect(container.textContent).toContain("Company server policy");
+    expect(button("Notify customer unavailable").nativeProps).toMatchObject({ disabled: true, accessibilityRole: "switch", accessibilityState: { checked: false, disabled: true } });
+    expect(container.textContent).not.toContain("Company server policy");
     for (const forbidden of ["notifyCustomer", "amount", "newCustomer", "recurrence", "lineItems"]) expect(mocks.create.mock.calls[0][2]).not.toHaveProperty(forbidden);
   });
   it("free services remain selectable and only verified empty catalogs show empty state", async () => {
@@ -86,8 +105,8 @@ describe("Company create sheet: real React lifecycle + controller, mocked native
   it("a base-zero service offers only returned rate keys and requires manual selection", async () => {
     mocks.catalog[0].basePrice = 0; mocks.catalog[0].vehiclePrices = { truck: 150 };
     await render(); await choose(); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
-    expect(container.textContent).toContain("Choose service rate (required)");
-    await press("truck · $150.00"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
+    expect(container.textContent).toContain("Service rate (required)"); expect(container.textContent).not.toContain("truck");
+    await press("Service rate 1 · $150.00"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
     await press("Save Company Job"); expect(mocks.create.mock.calls[0][2].vehiclePriceKey).toBe("truck");
   });
   it("unverified catalog state blocks Save even when a retained service row is rendered", async () => {
@@ -95,7 +114,7 @@ describe("Company create sheet: real React lifecycle + controller, mocked native
     expect(button("Save Company Job").nativeProps.disabled).toBe(true); expect(container.textContent).not.toContain("No active services");
   });
   it("typing a customer name is never selection, editing query clears canonical ID", async () => {
-    await render(); await input("Find Company customer", "Actual"); await press("Actual Service"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    await render(); await input("Find Company customer", "Actual"); await chooseService(); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
     await press("Actual Customer · 5551234567"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
     await input("Find Company customer", "Other name"); expect(button("Save Company Job").nativeProps.disabled).toBe(true); expect(mocks.create).not.toHaveBeenCalled();
   });
@@ -135,14 +154,15 @@ describe("Phase 1 canonical customer preselection and saved calendar feedback", 
     mocks.customer.mockResolvedValue(profile());
     await render({ customerPrefill: { customerId: 7, companyId: 9 } });
     expect(mocks.customer).toHaveBeenCalledWith(props.session!.token, 7);
-    expect(container.textContent).toContain("Selected customer: Actual Customer");
-    expect(container.textContent).toContain("customer@example.invalid");
+    expect(field("Find Company customer").nativeProps.value).toBe("Actual Customer");
+    expect(field("Email (optional)").nativeProps).toMatchObject({ value: "customer@example.invalid", editable: false });
     expect(field("Service address").nativeProps.value).toBe("Verified Profile Address");
+    await press("More Details");
     expect(field("City").nativeProps.value).toBe("Verified City");
     expect(field("Region / state").nativeProps.value).toBe("FL");
     expect(field("Postal code").nativeProps.value).toBe("32501");
-    expect(field("Company date").nativeProps.value).toBe("2026-12-01");
-    await press("Actual Service"); await input("Start time", "10:30"); await input("End time (optional)", "11:30");
+    expect(webField("Company date").react.value).toBe("2026-12-01");
+    await chooseService(); await input("Start time", "10:30"); await input("End time (optional)", "11:30");
     await input("Service notes", "Operator service note"); await input("Private notes", "Operator private note");
     await press("Save Company Job");
     expect(mocks.create).toHaveBeenCalledTimes(1);
@@ -150,47 +170,47 @@ describe("Phase 1 canonical customer preselection and saved calendar feedback", 
   });
   it("rejects other-Company provenance without looking up or selecting that customer", async () => {
     await render({ customerPrefill: { customerId: 7, companyId: 99 } });
-    expect(mocks.customer).not.toHaveBeenCalled(); expect(container.textContent).not.toContain("Selected customer:");
+    expect(mocks.customer).not.toHaveBeenCalled(); expect(field("Find Company customer").nativeProps.value).toBe(""); expect(field("First name").nativeProps.value).toBe("");
     expect(container.textContent).toContain("does not belong to the current Company");
     expect(button("Save Company Job").nativeProps.disabled).toBe(true);
   });
   it("rejects explicit mismatched Company in an exact-ID response", async () => {
     mocks.customer.mockResolvedValue(profile({ companyId: 99 }));
     await render({ customerPrefill: { customerId: 7, companyId: 9 } });
-    expect(container.textContent).toContain("could not be verified"); expect(container.textContent).not.toContain("Selected customer:");
+    expect(container.textContent).toContain("could not be verified"); expect(field("Find Company customer").nativeProps.value).toBe(""); expect(field("First name").nativeProps.value).toBe("");
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("rejects a changed canonical ID rather than trusting identical names or phone numbers", async () => {
     mocks.customer.mockResolvedValue(profile({ id: 8 }));
     await render({ customerPrefill: { customerId: 7, companyId: 9 } });
-    expect(container.textContent).toContain("could not be verified"); expect(container.textContent).not.toContain("Selected customer:");
+    expect(container.textContent).toContain("could not be verified"); expect(field("Find Company customer").nativeProps.value).toBe(""); expect(field("First name").nativeProps.value).toBe("");
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("lets an operator replace the preselected customer deliberately and verifies the replacement", async () => {
     mocks.customers.mockResolvedValue([profile(), profile({ id: 8, name: "Different Customer", phone: "5550000000" })]);
     mocks.customer.mockImplementation(async (_token, customerId) => customerId === 8 ? profile({ id: 8, name: "Different Customer", addressLine1: "Second Profile Address" }) : profile());
     await render({ customerPrefill: { customerId: 7, companyId: 9 } });
-    await input("Find Company customer", "Different"); expect(container.textContent).not.toContain("Selected customer:");
+    await input("Find Company customer", "Different"); expect(field("First name").nativeProps.value).toBe(""); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
     await press("Different Customer · 5550000000");
     expect(mocks.customer).toHaveBeenLastCalledWith(props.session!.token, 8);
-    expect(container.textContent).toContain("Selected customer: Different Customer");
+    expect(field("Find Company customer").nativeProps.value).toBe("Different Customer");
     expect(field("Service address").nativeProps.value).toBe("Second Profile Address");
   });
   it("does not overwrite deliberate address edits or resurrect a prefill on form refresh", async () => {
     mocks.customer.mockResolvedValue(profile()); await render({ customerPrefill: { customerId: 7, companyId: 9 } });
-    await input("Service address", "Operator Job Address"); await input("Postal code", "99999");
+    await press("More Details"); await input("Service address", "Operator Job Address"); await input("Postal code", "99999");
     await press("Refresh Company form");
     expect(field("Service address").nativeProps.value).toBe("Operator Job Address"); expect(field("Postal code").nativeProps.value).toBe("99999");
     expect(mocks.customer).toHaveBeenCalledTimes(1);
     await input("Find Company customer", "Changed search"); await press("Refresh Company form");
-    expect(container.textContent).not.toContain("Selected customer:"); expect(mocks.customer).toHaveBeenCalledTimes(1);
+    expect(field("Find Company customer").nativeProps.value).toBe("Changed search"); expect(field("First name").nativeProps.value).toBe(""); expect(mocks.customer).toHaveBeenCalledTimes(1);
   });
   it("ignores a late prefill after deliberate search changes", async () => {
     const deferred = waiting<any>(); mocks.customer.mockReturnValueOnce(deferred.promise);
     await render({ customerPrefill: { customerId: 7, companyId: 9 } });
     await input("Find Company customer", "Other customer");
     deferred.resolve(profile()); await act(async () => {});
-    expect(container.textContent).not.toContain("Selected customer:"); expect(field("Service address").nativeProps.value).toBe("");
+    expect(field("First name").nativeProps.value).toBe(""); expect(field("Service address").nativeProps.value).toBe("");
     expect(field("Find Company customer").nativeProps.value).toBe("Other customer");
   });
   it("a late Company A detail cannot overwrite Company B after identity changes", async () => {
@@ -201,17 +221,17 @@ describe("Phase 1 canonical customer preselection and saved calendar feedback", 
     mocks.customer.mockResolvedValue(profile({ name: "Company B Customer", addressLine1: "B Address", companyId: 10 }));
     await render({ session: second, customerPrefill: { customerId: 7, companyId: 10 } });
     deferred.resolve(profile({ name: "Company A Customer", companyId: 9 })); await act(async () => {});
-    expect(container.textContent).toContain("Selected customer: Company B Customer");
-    expect(container.textContent).not.toContain("Selected customer: Company A Customer"); expect(field("Service address").nativeProps.value).toBe("B Address");
+    expect(field("Find Company customer").nativeProps.value).toBe("Company B Customer");
+    expect(field("Find Company customer").nativeProps.value).not.toBe("Company A Customer"); expect(field("Service address").nativeProps.value).toBe("B Address");
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("retains the canonical saved ID and offers read-only refresh after calendar failure", async () => {
     props.onCreated = vi.fn().mockResolvedValue(false);
     await render(); await choose(); await press("Save Company Job");
-    expect(container.textContent).toContain("Job saved — calendar refresh failed."); expect(container.textContent).toContain("Job #84");
+    expect(container.textContent).toContain("Job saved — calendar refresh failed."); expect(props.onCreated).toHaveBeenLastCalledWith(expect.objectContaining({ id: 84, customerId: 7, priceBookServiceId: 31, amount: 125 }), "America/Chicago");
     expect(button("Save Company Job").nativeProps.disabled).toBe(true); expect(props.onClose).not.toHaveBeenCalled();
     await render({ visible: false }); await render({ visible: true });
-    expect(container.textContent).toContain("Job #84"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    expect(mocks.detail).toHaveBeenLastCalledWith(props.session!.token, 84, 9); expect(props.onCreated).toHaveBeenLastCalledWith(expect.objectContaining({ id: 84, amount: 125 }), "America/Chicago"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
     (props.onCreated as ReturnType<typeof vi.fn>).mockResolvedValue(true);
     await press("Refresh saved Job without resending");
     expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.detail).toHaveBeenCalledTimes(3); expect(props.onCreated).toHaveBeenCalledTimes(3);
@@ -234,7 +254,7 @@ describe("Phase 1 shared sheet success settlement", () => {
     props.onCreated = vi.fn().mockResolvedValue(false);
     await render(); await choose(); await press("Save Company Job"); await press("Refresh saved Job without resending");
     expect(props.onClose).not.toHaveBeenCalled(); expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("Job saved — calendar refresh failed."); expect(container.textContent).toContain("Job #84");
+    expect(container.textContent).toContain("Job saved — calendar refresh failed."); expect(mocks.detail).toHaveBeenLastCalledWith(props.session!.token, 84, 9); expect(props.onCreated).toHaveBeenLastCalledWith(expect.objectContaining({ id: 84, amount: 125 }), "America/Chicago");
   });
   it("lets a profile own its deferred guarded navigation without double-closing", async () => {
     await render({ closeOnSuccess: false }); await choose(); await press("Save Company Job");
@@ -290,6 +310,6 @@ describe("Phase 2 shared form durable recovery", () => {
     const replacement = actor(); replacement.company!.id = 10; await render({ session: replacement });
     lookup.resolve(op(oldKey, "saved")); await act(async () => {});
     expect(props.onCreated).not.toHaveBeenCalled(); expect(props.onClose).not.toHaveBeenCalled(); expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(container.textContent).not.toContain("Job #84"); expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.detail).not.toHaveBeenCalled(); expect(container.textContent).not.toContain("Job saved"); expect(fetch).not.toHaveBeenCalled();
   });
 });

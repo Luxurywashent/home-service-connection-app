@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useIsFocused } from "expo-router";
-import { useColors } from "@/hooks/use-colors";
+import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { CompanyBookingServiceCard, CompanyBookingServicePicker, companyBookingPrice, companyBookingDuration } from "./company-booking-service-picker";
+import { CompanyBookingTimeField } from "./company-booking-time-field";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { getJobSyncCompanyCustomers, getJobSyncCompanySettings, getJobSyncMobileSession,
@@ -46,13 +48,13 @@ function parseTime(value: string) {
   return hour + minute / 60;
 }
 function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: JobSyncNativeSession }) {
-  const colors = useColors();
+  const colors = useJobSheetColors();
   const [refreshKey, setRefreshKey] = useState(0);
   const priceBook = useCompanyPriceBook();
   const candidates = useCompanyFieldworkCalendar(props.session, refreshKey);
-  const live = useRef({ props, candidates, mounted: false });
+  const live = useRef({ props, candidates, mounted: false, closing: false });
   useLayoutEffect(() => { live.current.props = props; live.current.candidates = candidates; }, [props, candidates]);
-  const current = useCallback(() => live.current.mounted && live.current.props.visible && live.current.props.isCurrent(), []);
+  const current = useCallback(() => live.current.mounted && !live.current.closing && live.current.props.visible && live.current.props.isCurrent(), []);
   const refreshPriceBook = priceBook.refresh;
   const [state, setState] = useState<CompanyCreateJobState>({ phase: "restoring", jobId: null, message: "Checking saved creation attempts…" });
   const [customers, setCustomers] = useState<JobSyncCompanyCustomer[]>([]);
@@ -88,6 +90,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const [notes, setNotes] = useState("");
   const [privateNotes, setPrivateNotes] = useState("");
   const [picker, setPicker] = useState<"date" | "start" | "end" | null>(null);
+  const [moreDetails, setMoreDetails] = useState(false);
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
   const invalidateCustomerRequest = useCallback(() => { customerRequest.current++; }, []);
   const controllerRef = useRef<ReturnType<typeof createCompanyJobController> | null>(null);
   useLayoutEffect(() => {
@@ -121,6 +125,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
       if (!customer || !allowed()) return;
       prefillResolved.current = true;
       setSelectedCustomer(customer); setQuery("");
+      setFirstName(customer.firstName || ""); setLastName(customer.lastName || "");
+      setEmail(customer.email || ""); setPhone(customer.phone || "");
       setAddress(customer.addressLine1 || ""); setCity(customer.city || "");
       const detail = customer as JobSyncCompanyCustomer & { region?: string | null; postalCode?: string | null };
       setRegion(detail.region || ""); setPostalCode(detail.postalCode || "");
@@ -189,7 +195,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && (!requireRate || Boolean(rateKey))
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));
-  const close = () => { if (current()) live.current.props.onClose(); };
+  const close = () => { if (current()) { live.current.closing = true; invalidateCustomerRequest(); live.current.props.onClose(); } };
   const changeCustomerMode = (mode: "existing" | "new") => {
     if (!current() || locked || mode === customerMode) return;
     customerModeRef.current = mode; invalidateCustomerRequest(); customerChoiceTouched.current = true;
@@ -215,93 +221,131 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const retryReads = () => { if (current() && !locked) { setRefreshKey((value) => value + 1); void priceBook.refresh(); } };
   const inputStyle = [styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }];
   const label = (text: string) => <Text style={[styles.label, { color: colors.muted }]}>{text}</Text>;
-  const field = (name: string, value: string, setValue: (value: string) => void, placeholder?: string, multiline = false) => <View style={styles.field}>{label(name)}<TextInput accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked) setValue(next); }} editable={!locked} placeholder={placeholder} placeholderTextColor={colors.muted} style={inputStyle} multiline={multiline} autoCapitalize="none" /></View>;
-  const customerFeedback = (name: keyof JobSyncCompanyNewCustomer) => newCustomerErrors[name] ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{newCustomerErrors[name]}</Text> : null;
-  const option = (name: string, selected: boolean, action: () => void) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked) action(); }} style={[styles.option, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.background : colors.surface }]}><Text style={{ color: selected ? colors.primary : colors.foreground }}>{name}</Text></TouchableOpacity>;
+  const field = (name: string, value: string, setValue: (value: string) => void, options: { paired?: boolean; readonly?: boolean; multiline?: boolean; keyboard?: "phone-pad" | "email-address"; feedback?: keyof JobSyncCompanyNewCustomer; displayLabel?: string } = {}) => <View style={[styles.field, options.paired && styles.pairedField]}>
+    {label(options.displayLabel || name)}<TextInput accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked && !options.readonly) setValue(next); }} editable={!locked && !options.readonly}
+      placeholder={options.readonly ? "—" : undefined} placeholderTextColor={colors.muted} style={[...inputStyle, options.multiline && styles.multiline]} multiline={options.multiline} keyboardType={options.keyboard}
+      autoCapitalize={options.keyboard === "email-address" ? "none" : "sentences"} returnKeyType="done" />
+    {options.feedback && customerMode === "new" && newCustomerErrors[options.feedback] && Boolean(value.trim()) && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{newCustomerErrors[options.feedback]}</Text>}
+  </View>;
+  const option = (name: string, selected: boolean, action: () => void) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked) action(); }} style={[styles.option, { borderColor: selected ? colors.primary : colors.border, backgroundColor: colors.surface }]}><Text style={[styles.optionText, { color: selected ? colors.primary : colors.foreground }]}>{name}</Text></TouchableOpacity>;
   const normalizedQuery = query.trim().toLowerCase();
   const matches = normalizedQuery.length < 2 ? [] : customers.filter((row) => [row.name, row.email, row.phone, row.addressLine1, row.city].some((value) => value?.toLowerCase().includes(normalizedQuery))).slice(0, 10);
+  const clearCustomer = (next = "") => {
+    if (!current() || locked) return;
+    customerChoiceTouched.current = true; invalidateCustomerRequest(); setQuery(next); setSelectedCustomer(null); setCustomerLoading(false); setCustomerError(null);
+    setFirstName(""); setLastName(""); setPhone(""); setEmail(""); setAddress(""); setCity(""); setRegion(""); setPostalCode("");
+  };
+  const openServicePicker = () => { if (current() && !locked) setServicePickerOpen(true); };
+  const selectedAmount = service ? companyBookingPrice(service, rateKey) : undefined;
   const pickerValue = () => {
     const [year, month, day] = date.split("-").map(Number);
     const wallHour = picker === "end" ? parseTime(end) : parseTime(start);
     return new Date(Number.isFinite(year) ? year : 2026, (month || 1) - 1, day || 1, Number.isFinite(wallHour) ? Math.floor(wallHour) : 9, Number.isFinite(wallHour) ? Math.round((wallHour % 1) * 60) : 0);
   };
-  return <Modal visible transparent animationType="slide" onRequestClose={close}>
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.backdrop}>
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+  return <Modal visible transparent animationType="slide" onRequestClose={() => { if (servicePickerOpen && current()) setServicePickerOpen(false); else close(); }}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined} style={styles.backdrop}>
+      <View testID="company-booking-sheet" style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View accessibilityElementsHidden={servicePickerOpen} importantForAccessibility={servicePickerOpen ? "no-hide-descendants" : "auto"} style={styles.main}>
         <View style={styles.header}><Text style={[styles.title, { color: colors.foreground }]}>New Job</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close Add Job" onPress={close} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity></View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          <Text style={[styles.note, { color: colors.muted }]}>Create one service for an existing or new Company customer. Prices come from your Company Price Book.</Text>
+        <ScrollView testID="company-booking-main-scroll" style={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
+          <View testID="company-booking-time-row" style={styles.timeRow}>
+            <CompanyBookingTimeField label="Date" accessibilityLabel="Company date" type="date" value={date} disabled={locked} isCurrent={current} onChange={setDate} onPick={() => setPicker("date")} />
+            <CompanyBookingTimeField label="Start" accessibilityLabel="Start time" type="time" value={start} disabled={locked} isCurrent={current} onChange={setStart} onPick={() => setPicker("start")} />
+            <CompanyBookingTimeField label="End (optional)" accessibilityLabel="End time (optional)" type="time" value={end} placeholder="Auto" disabled={locked} isCurrent={current} onChange={setEnd} onPick={() => setPicker("end")} />
+          </View>
+          <Text style={[styles.note, { color: colors.muted }]}>{timezone || "Verifying timezone…"}</Text>
+          {picker && Platform.OS !== "web" && <View>
+            <DateTimePicker value={pickerValue()} mode={picker === "date" ? "date" : "time"} is24Hour onChange={(_event, value) => {
+              const target = picker; setPicker(null); if (_event.type === "dismissed" || !value || !current() || locked) return;
+              if (target === "date") setDate(`${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`);
+              else (target === "start" ? setStart : setEnd)(timeText(value.getHours() + value.getMinutes() / 60));
+            }} />
+            {picker === "end" && option("Use service duration", false, () => { setEnd(""); setPicker(null); })}
+          </View>}
           {loading && <ActivityIndicator accessibilityLabel="Loading Company form" color={colors.primary} />}
           {loadError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{loadError}</Text>}
-          <View style={styles.row}>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Existing Customer" accessibilityState={{ selected: customerMode === "existing", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode("existing")} style={[styles.option, { borderColor: customerMode === "existing" ? colors.primary : colors.border }]}><Text style={{ color: customerMode === "existing" ? colors.primary : colors.foreground }}>Existing Customer</Text></TouchableOpacity>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="New Customer" accessibilityState={{ selected: customerMode === "new", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode("new")} style={[styles.option, { borderColor: customerMode === "new" ? colors.primary : colors.border }]}><Text style={{ color: customerMode === "new" ? colors.primary : colors.foreground }}>New Customer</Text></TouchableOpacity>
-          </View>
-          {customerMode === "existing" ? <>
+          {label("CUSTOMER")}
+          {customerMode === "existing" && <>
           {customerListError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{customerListError}</Text>}
-          <View style={styles.field}>{label("Find Company customer")}<TextInput accessibilityLabel="Find Company customer" value={query} onChangeText={(next) => {
-            if (!current() || locked) return;
-            customerChoiceTouched.current = true; invalidateCustomerRequest();
-            setQuery(next); setSelectedCustomer(null); setCustomerLoading(false); setCustomerError(null);
-          }} editable={!locked} placeholder="Name, email, phone or address" placeholderTextColor={colors.muted} style={inputStyle} autoCapitalize="none" /></View>
-          <FlatList scrollEnabled={false} data={matches} keyExtractor={(row) => String(row.id)} renderItem={({ item }) => option(`${item.name} · ${item.phone || item.email || item.addressLine1 || `Customer ${item.id}`}`, customerId === item.id, () => {
-            void selectCustomer({ customerId: item.id, companyId: props.session.company!.id }, true);
-          })} />
-          {selectedCustomer && <Text style={[styles.selected, { color: colors.primary }]}>Selected customer: {selectedCustomer.name}</Text>}
-          {selectedCustomer && <Text style={[styles.note, { color: colors.muted }]}>{[selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(" · ") || "No contact information on this customer profile."}</Text>}
+          <View style={styles.searchRow}><TextInput accessibilityLabel="Find Company customer" value={selectedCustomer ? selectedCustomer.name : query} onChangeText={clearCustomer} editable={!locked} placeholder="Search name, phone, email or address…" placeholderTextColor={colors.muted} style={[...inputStyle, styles.flex]} autoCapitalize="none" returnKeyType="search" />
+            {(query || selectedCustomer) && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Clear customer selection" disabled={locked} onPress={() => clearCustomer()} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity>}
+          </View>
+          {matches.length > 0 && !selectedCustomer && <FlatList testID="company-booking-customer-results" nestedScrollEnabled style={[styles.customerResults, { borderColor: colors.border, backgroundColor: colors.surface }]} data={matches} keyExtractor={(row) => String(row.id)} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={[item.name, item.phone || item.email || item.addressLine1].filter(Boolean).join(" · ")} disabled={locked} onPress={() => { if (current() && !locked) void selectCustomer({ customerId: item.id, companyId: props.session.company!.id }, true); }} style={[styles.customerResult, { borderColor: colors.border }]}>
+            <Text style={[styles.selected, { color: colors.foreground }]}>{item.name}</Text>
+            {Boolean(item.phone || item.email) && <Text style={[styles.note, { color: colors.muted }]}>{[item.phone, item.email].filter(Boolean).join(" · ")}</Text>}
+            {Boolean(item.addressLine1) && <Text style={[styles.note, { color: colors.muted }]}>{[item.addressLine1, item.city].filter(Boolean).join(", ")}</Text>}
+          </TouchableOpacity>} />}
           {customerLoading && <ActivityIndicator accessibilityLabel="Verifying Company customer" color={colors.primary} />}
           {customerError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{customerError}</Text>}
-          {!selectedCustomer && !loading && !customerListError && normalizedQuery.length >= 2 && !matches.length && <Text style={{ color: colors.muted }}>No matching customer in the loaded Company list. Select an existing customer or choose New Customer.</Text>}
-          </> : <>
-            {field("First name (required)", firstName, setFirstName)}{customerFeedback("firstName")}
-            {field("Last name (required)", lastName, setLastName)}{customerFeedback("lastName")}
-            {field("Email (optional)", email, setEmail)}{customerFeedback("email")}
-            {field("Phone (optional)", phone, setPhone)}{customerFeedback("phone")}
-            <Text style={[styles.note, { color: colors.muted }]}>The service address below also becomes the new customer&apos;s address. Customer and Job save together in one request.</Text>
+          {!selectedCustomer && !loading && !customerListError && normalizedQuery.length >= 2 && !matches.length && <Text style={[styles.note, { color: colors.muted }]}>No matching customer. Try another search or turn on New Customer.</Text>}
           </>}
-          {label("Price Book service")}
+          <View testID="company-booking-name-pair" style={styles.pair}>
+            {field(customerMode === "new" ? "First name (required)" : "First name", firstName, setFirstName, { paired: true, readonly: customerMode === "existing", feedback: "firstName", displayLabel: customerMode === "new" ? "First name *" : "First name" })}
+            {field(customerMode === "new" ? "Last name (required)" : "Last name", lastName, setLastName, { paired: true, readonly: customerMode === "existing", feedback: "lastName", displayLabel: customerMode === "new" ? "Last name *" : "Last name" })}
+          </View>
+          {customerMode === "new" && (!firstName.trim() || !lastName.trim()) && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{[!firstName.trim() && newCustomerErrors.firstName, !lastName.trim() && newCustomerErrors.lastName].filter(Boolean).join(" ")}</Text>}
+          <View testID="company-booking-contact-pair" style={styles.pair}>
+            {field("Phone (optional)", phone, setPhone, { paired: true, readonly: customerMode === "existing", keyboard: "phone-pad", feedback: "phone" })}
+            {field("Email (optional)", email, setEmail, { paired: true, readonly: customerMode === "existing", keyboard: "email-address", feedback: "email" })}
+          </View>
+          {field("Service address", address, setAddress, { feedback: "addressLine1" })}
+          {label("SERVICES")}
           {priceBook.isLoading && <ActivityIndicator accessibilityLabel="Loading Company Price Book" color={colors.primary} />}
           {priceBook.error && <Text accessibilityRole="alert" style={{ color: colors.error }}>{priceBook.error}</Text>}
           {priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && priceBook.services.length === 0 && <Text style={{ color: colors.muted }}>No active services in this Company Price Book.</Text>}
-          <FlatList scrollEnabled={false} data={priceBook.services} keyExtractor={(row) => row.serviceId} renderItem={({ item }) => option(item.name, item.serviceId === serviceId, () => { setServiceId(item.serviceId); setRateKey(""); })} />
-          {service && <Text style={[styles.note, { color: colors.muted }]}>{serviceBase !== undefined ? `Saved base price: $${serviceBase.toFixed(2)}. ` : ""}Final price is confirmed by the server.{serviceBase === 0 && !rates.length ? " A service requiring an undisclosed custom rate cannot be created until that rate is available in mobile." : ""}</Text>}
-          {requireRate && <View style={styles.field}>{label("Choose service rate (required)")}<FlatList scrollEnabled={false} data={rates} keyExtractor={(key) => key} renderItem={({ item }) => option(`${item.replace(/_/g, " ")} · $${service!.vehiclePrices[item].toFixed(2)}`, rateKey === item, () => setRateKey(item))} /></View>}
-          {label("Assign Team Member")}
-          {option("Unassigned", !assignee, () => setAssignee(undefined))}
+          {service ? <CompanyBookingServiceCard service={service} selected rateKey={rateKey} disabled={locked} onPress={openServicePicker} /> : option("Choose Service", false, () => setServicePickerOpen(true))}
+          {requireRate && <View style={styles.field}>{label("Service rate (required)")}<FlatList style={styles.rateResults} nestedScrollEnabled data={rates} keyExtractor={(key) => key} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item, index }) => option(`Service rate ${index + 1} · $${service!.vehiclePrices[item].toFixed(2)}`, rateKey === item, () => setRateKey(item))} /></View>}
+          {label("ASSIGN TECHNICIAN")}
           {candidates.loading && <ActivityIndicator accessibilityLabel="Loading assignment candidates" color={colors.primary} />}
           {candidates.error && <Text style={{ color: colors.error }}>{candidates.error}</Text>}
-          <FlatList scrollEnabled={false} data={candidates.members} keyExtractor={(row) => row.employeeId} renderItem={({ item }) => option(item.name, assignee === item.employeeId, () => setAssignee(item.employeeId))} />
-          <Text style={[styles.note, { color: colors.muted }]}>Company timezone: {timezone || "verifying…"}. Times below use this timezone, not your device timezone.</Text>
-          {field("Company date", date, setDate, "YYYY-MM-DD")}
-          {field("Start time", start, setStart, "HH:MM (24-hour)")}
-          {field("End time (optional)", end, setEnd, "HH:MM; blank uses service duration")}
-          {Platform.OS !== "web" && !locked && <View style={styles.row}>{option("Pick date", false, () => setPicker("date"))}{option("Pick start", false, () => setPicker("start"))}{option("Pick end", false, () => setPicker("end"))}</View>}
-          {picker && Platform.OS !== "web" && <DateTimePicker value={pickerValue()} mode={picker === "date" ? "date" : "time"} is24Hour onChange={(_event, value) => {
-            const target = picker; setPicker(null); if (!value || !current() || locked) return;
-            if (target === "date") setDate(`${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`);
-            else (target === "start" ? setStart : setEnd)(timeText(value.getHours() + value.getMinutes() / 60));
-          }} />}
-          {field("Service address", address, setAddress)}{customerFeedback("addressLine1")}{field("City", city, setCity)}{customerFeedback("city")}{field("Region / state", region, setRegion)}{customerFeedback("region")}{field("Postal code", postalCode, setPostalCode)}{customerFeedback("postalCode")}
-          {field("Service notes", notes, setNotes, undefined, true)}{field("Private notes", privateNotes, setPrivateNotes, undefined, true)}
-          <Text style={[styles.note, { color: colors.muted }]}>Customer confirmations follow Company server policy. Recurrence, custom prices, discounts, extra services and notification choices are not available in this form.</Text>
-          {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}{state.jobId ? ` Job #${state.jobId}.` : ""}</Text>}
-          {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>The original request was rejected. Review and correct the form, then deliberately save a new Job request.</Text>}
+          <FlatList horizontal data={[...candidates.members, { employeeId: "", name: "Unassigned" }]} keyExtractor={(row) => row.employeeId || "unassigned"} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.chips} renderItem={({ item }) => option(item.name, item.employeeId ? assignee === item.employeeId : !assignee, () => setAssignee(item.employeeId || undefined))} />
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="More Details" accessibilityState={{ expanded: moreDetails }} onPress={() => { if (current()) setMoreDetails((value) => !value); }} style={[styles.disclosure, { borderColor: colors.border }]}><Text style={[styles.selected, { color: colors.foreground }]}>More Details</Text><Text style={{ color: colors.muted }}>{moreDetails ? "−" : "+"}</Text></TouchableOpacity>
+          {moreDetails && <View style={styles.details}>
+            <View style={styles.pair}>{field("City", city, setCity, { paired: true, feedback: "city" })}{field("Region / state", region, setRegion, { paired: true, feedback: "region" })}</View>
+            {field("Postal code", postalCode, setPostalCode, { feedback: "postalCode" })}
+            {field("Service notes", notes, setNotes, { multiline: true })}{field("Private notes", privateNotes, setPrivateNotes, { multiline: true })}
+          </View>}
+          <View style={[styles.toggleRow, { borderColor: colors.border }]}>
+            <View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>New Customer</Text><Text style={[styles.note, { color: colors.muted }]}>Turn on for first-time customers</Text></View>
+            <TouchableOpacity accessibilityRole="switch" accessibilityLabel="New Customer" accessibilityState={{ checked: customerMode === "new", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode(customerMode === "new" ? "existing" : "new")} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: customerMode === "new" ? colors.primary : colors.border, alignItems: customerMode === "new" ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity>
+            {customerMode === "new" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Existing Customer" disabled={locked} onPress={() => changeCustomerMode("existing")} style={styles.existingAction}><Text style={[styles.note, { color: colors.primary }]}>Find existing</Text></TouchableOpacity>}
+          </View>
+          <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>Unavailable in this form</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer unavailable" accessibilityState={{ checked: false, disabled: true }} disabled style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: colors.border }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
+          {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}</Text>}
+          {state.detailError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{state.detailError}</Text>}
+          {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>Review and correct the form, then save a new request.</Text>}
           {busy && <ActivityIndicator accessibilityLabel={state.phase === "restoring" ? "Checking previous creation request" : state.reconciling ? "Checking original Job status and calendar" : "Saving Company Job"} color={colors.primary} />}
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.phase === "restoring" ? "Checking…" : state.reconciling ? "Refreshing…" : busy ? "Saving…" : state.phase === "rejected" ? "Save corrected Job" : "Save Job"}</Text></TouchableOpacity>
-          {["uncertain", "pending", "conflict", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh Company calendar" : "Check original request status (read only)"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>Refresh Company form</Text></TouchableOpacity>}
+          {["uncertain", "pending", "conflict", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh calendar" : "Check saved status"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={styles.refresh}><Text style={[styles.note, { color: colors.primary }]}>Refresh form</Text></TouchableOpacity>}
         </ScrollView>
+        <View style={[styles.footer, { borderColor: colors.border }]}>
+          {service && <View style={styles.total}><Text style={[styles.selected, { color: colors.foreground }]}>Service price {selectedAmount === undefined ? "confirmed on save" : `$${selectedAmount.toFixed(2)}`}</Text><Text style={[styles.note, { color: colors.muted }]}>{companyBookingDuration(service)}</Text></View>}
+          <View style={styles.pair}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cancel Add Job" onPress={close} style={[styles.cancel, { borderColor: colors.border }]}><Text style={[styles.footerText, { color: colors.foreground }]}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.phase === "restoring" ? "Checking…" : state.reconciling ? "Refreshing…" : busy ? "Saving…" : state.phase === "rejected" ? "Save corrected Job" : "Save Job"}</Text></TouchableOpacity>
+          </View>
+        </View>
+        </View>
+        {servicePickerOpen && <CompanyBookingServicePicker services={priceBook.services} selectedId={serviceId} loading={priceBook.isLoading} hasLoaded={priceBook.hasLoaded} error={priceBook.error} disabled={locked} isCurrent={current}
+          onClose={() => { if (current()) setServicePickerOpen(false); }} onRefresh={retryReads} onConfirm={(id) => { if (current() && !locked && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && priceBook.services.some((row) => row.serviceId === id)) { if (id !== serviceId) { setServiceId(id); setRateKey(""); } setServicePickerOpen(false); } }} />}
       </View>
     </KeyboardAvoidingView>
   </Modal>;
 }
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  card: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%", width: "100%", alignSelf: "center" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: "800" }, close: { padding: 8 }, closeText: { fontSize: 27, lineHeight: 30 },
-  content: { gap: 12, paddingBottom: 12 }, field: { gap: 6 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
-  input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15, lineHeight: 21 },
-  option: { borderWidth: 1, borderRadius: 10, padding: 12, marginVertical: 3 }, note: { fontSize: 13, lineHeight: 19 },
-  selected: { fontSize: 14, lineHeight: 20, fontWeight: "600" }, row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  primary: { borderRadius: 12, paddingVertical: 15, alignItems: "center" }, primaryText: { color: "#fff", fontSize: 16, lineHeight: 22, fontWeight: "700" },
+  card: { borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "92%", maxHeight: "92%", width: "100%", maxWidth: 640, alignSelf: "center", overflow: "hidden" },
+  main: { flex: 1, minHeight: 0, paddingHorizontal: 18 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 6 },
+  title: { fontSize: 22, lineHeight: 28, fontWeight: "800" }, close: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }, closeText: { fontSize: 27, lineHeight: 34 },
+  scroll: { flex: 1, minHeight: 0 }, content: { gap: 10, paddingBottom: 10 }, field: { minWidth: 0, flexShrink: 0, gap: 4 }, pairedField: { flex: 1 }, label: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  input: { minHeight: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 10, fontSize: 15, lineHeight: 21 }, multiline: { minHeight: 72, textAlignVertical: "top" },
+  option: { minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, justifyContent: "center" }, optionText: { fontSize: 14, lineHeight: 20, fontWeight: "600" }, note: { fontSize: 13, lineHeight: 19 },
+  timeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  selected: { fontSize: 15, lineHeight: 21, fontWeight: "600" }, pair: { flexDirection: "row", gap: 10 }, flex: { flex: 1, minWidth: 0 }, searchRow: { flexDirection: "row", alignItems: "center" },
+  customerResults: { maxHeight: 220, borderWidth: 1, borderRadius: 10 }, customerResult: { minHeight: 60, gap: 3, padding: 12, borderBottomWidth: 1 }, rateResults: { maxHeight: 160 }, chips: { gap: 8, paddingBottom: 2 },
+  disclosure: { minHeight: 44, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, paddingVertical: 10 }, details: { gap: 10 },
+  toggleRow: { minHeight: 58, borderTopWidth: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 8 }, toggleTarget: { minWidth: 54, minHeight: 44, justifyContent: "center" },
+  toggleTrack: { width: 50, height: 30, borderRadius: 20, padding: 3 }, toggleThumb: { width: 24, height: 24, borderRadius: 14, backgroundColor: "#fff" }, existingAction: { minHeight: 44, justifyContent: "center" },
+  refresh: { minHeight: 44, justifyContent: "center", alignItems: "center" }, footer: { paddingTop: 10, paddingBottom: 28, gap: 10, borderTopWidth: 1 }, total: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  cancel: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, padding: 12, justifyContent: "center", alignItems: "center" }, footerText: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+  primary: { flex: 1, minHeight: 48, borderRadius: 12, padding: 12, justifyContent: "center", alignItems: "center" }, primaryText: { color: "#fff", fontSize: 16, lineHeight: 22, fontWeight: "700", textAlign: "center" },
 });
