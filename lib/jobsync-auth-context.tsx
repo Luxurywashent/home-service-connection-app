@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
+import { useCompanyCreationRecovery } from "@/hooks/use-company-creation-recovery";
 
 import {
   getJobSyncMobileSession,
@@ -56,6 +57,7 @@ const JobSyncAuthContext = createContext<JobSyncAuthContextValue>({
 export function JobSyncAuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<JobSyncNativeSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  useCompanyCreationRecovery(session, isLoading);
   const current = useRef<JobSyncNativeSession | null>(null);
   const generation = useRef(0);
   const mounted = useRef(true);

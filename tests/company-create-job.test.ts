@@ -1,6 +1,11 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+vi.mock("../lib/company-job-creation-storage", async () => {
+  const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
+  return memoryCreationStorageModule();
+});
 import { companyCreateJobAllowed, companyCreateJobInstant, createCompanyJobController, type CompanyCreateJobDraft } from "../lib/company-create-job";
-import { JobSyncApiError, type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCreateResult, type JobSyncCompanyJobDetail, type JobSyncNativeSession } from "../lib/jobsync-mobile-api";
+import { companyCreationStore } from "../lib/company-job-creation-storage";
+import { JobSyncApiError, type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCreateResult, type JobSyncCompanyJobCreationOperation, type JobSyncCompanyJobDetail, type JobSyncNativeSession } from "../lib/jobsync-mobile-api";
 let nextId = 1000;
 function session(id = ++nextId): JobSyncNativeSession {
   return { token: `unit-only-${id}`, portal: "company", user: { id, role: "owner", name: "Unit Owner", email: null },
@@ -9,7 +14,7 @@ function session(id = ++nextId): JobSyncNativeSession {
 const draft = (): CompanyCreateJobDraft => ({ customerId: 7, serviceId: "31", date: "2026-12-01", startHour: 9, endHour: 10, addressLine1: " Test address " });
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (value: unknown) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { resolve, reject, promise }; }
-async function settle() { for (let i = 0; i < 16; i++) await Promise.resolve(); }
+async function settle() { for (let i = 0; i < 120; i++) await Promise.resolve(); }
 function harness(actor = session()) {
   let active = true;
   let acknowledgment: JobSyncCompanyJobCreateResult;
@@ -27,6 +32,11 @@ function harness(actor = session()) {
     }),
     detail: vi.fn(async (): Promise<JobSyncCompanyJobDetail> => ({ ...acknowledgment, photos: [], persistedPhotoIds: [], enRouteAt: null, onSiteAt: null, completedAt: null })),
     jobs: vi.fn(async () => []),
+    operation: vi.fn(async (_token: string, companyId: number, operationKey: string): Promise<JobSyncCompanyJobCreationOperation> => {
+      const record = await companyCreationStore.read(companyId, actor.user.id);
+      return { key: operationKey, state: record?.jobId ? "saved" : "unknown", jobId: record?.jobId ?? null,
+        rejectionCode: null, rejectionMessage: null, createdAt: null, updatedAt: null };
+    }),
   };
   const onState = vi.fn(); const onCreated = vi.fn(); const verifyAssignment = vi.fn(async () => true);
   const controller = createCompanyJobController({ session: actor, isCurrent: () => active, verifyAssignment, transport: api, onState, onCreated });
@@ -58,8 +68,10 @@ describe("Company create controller with actual orchestration and mocked reads/w
     expect(h.api.create).toHaveBeenCalledTimes(1);
     expect(h.api.create).toHaveBeenCalledWith(h.actor.token, 9, {
       customerId: 7, priceBookServiceId: 31, scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", addressLine1: "Test address",
+      operationKey: expect.stringMatching(/^hsc-job-test-key-\d+$/),
     });
-    expect(h.api.session).toHaveBeenCalledTimes(3);
+    expect(h.api.session).toHaveBeenCalledWith(h.actor.token);
+    expect(h.api.session.mock.calls.length).toBeGreaterThan(3);
     expect(h.api.customer).toHaveBeenCalledWith(h.actor.token, 7, 9);
     expect(h.api.detail).toHaveBeenCalledWith(h.actor.token, 84, 9);
     expect(h.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 125, photos: [] }), "America/Chicago");
@@ -83,13 +95,19 @@ describe("Company create controller with actual orchestration and mocked reads/w
     if (kind === "company") changed.company!.id = 10;
     if (kind === "user") changed.user.id++;
     h.api.session.mockResolvedValue(changed); await h.controller.submit(draft());
-    expect(h.api.create).not.toHaveBeenCalled(); expect(h.controller.getState().phase).toBe("error"); h.controller.detach();
+    expect(h.api.create).not.toHaveBeenCalled(); expect(h.controller.getState()).toMatchObject({ phase: "uncertain", jobId: null });
+    expect(h.controller.getState().detailError).toContain("sign-in changed");
+    expect(await companyCreationStore.read(9, h.actor.user.id)).toBeNull();
+    h.api.session.mockResolvedValue(h.actor); expect(await h.controller.restore()).toBe(true);
+    expect(h.controller.getState().phase).toBe("ready"); h.controller.detach();
   });
-  it.each(["customer", "retired-service", "timezone", "assignment", "end-time", "invalid-id", "rate"]) ("rejects failed preflight without POST: %s", async (kind) => {
+  it.each(["customer", "customer-company", "retired-service", "timezone", "settings-company", "assignment", "end-time", "invalid-id", "rate"]) ("rejects failed preflight without POST: %s", async (kind) => {
     const h = harness(); const input = draft();
     if (kind === "customer") h.api.customer.mockResolvedValue({ id: 8, companyId: 9 });
+    if (kind === "customer-company") h.api.customer.mockResolvedValue({ id: 7, companyId: 10 });
     if (kind === "retired-service") h.api.priceBook.mockResolvedValue([]);
     if (kind === "timezone") h.api.settings.mockResolvedValue({ id: 9, name: "Company", timezone: "Wrong/Zone" });
+    if (kind === "settings-company") h.api.settings.mockResolvedValue({ id: 10, name: "Company", timezone: "America/Chicago" });
     if (kind === "assignment") { input.assignedEmployeeId = "jobsync-50"; h.verifyAssignment.mockResolvedValue(false); }
     if (kind === "end-time") input.endHour = 8;
     if (kind === "invalid-id") input.serviceId = "basic";
@@ -106,17 +124,28 @@ describe("Company create controller with actual orchestration and mocked reads/w
     const reopened = harness(h.actor); expect(await reopened.controller.submit(draft())).toBe(true); reopened.controller.detach();
   });
   it("shared synchronous locks exclude rapid presses and a second mounted screen", async () => {
-    const h = harness(); const waiting = deferred<JobSyncNativeSession>(); h.api.session.mockReturnValueOnce(waiting.promise);
-    const first = h.controller.submit(draft()); await h.controller.submit(draft()); const other = harness(h.actor); await other.controller.submit(draft());
-    expect(h.api.session).toHaveBeenCalledTimes(1); expect(other.api.create).not.toHaveBeenCalled();
-    waiting.resolve(h.actor); await first; expect(h.api.create).toHaveBeenCalledTimes(1); h.controller.detach(); other.controller.detach();
+    const h = harness(); const waiting = deferred<void>(); const create = h.api.create.getMockImplementation()!;
+    h.api.create.mockImplementationOnce(async (...args) => { const ack = await create(...args); await waiting.promise; return ack; });
+    const first = h.controller.submit(draft()); const duplicate = h.controller.submit(draft()); await settle();
+    expect(await duplicate).toBe(false); expect(h.api.create).toHaveBeenCalledTimes(1);
+    const other = harness(h.actor); expect(await other.controller.submit(draft())).toBe(false);
+    expect(other.api.create).not.toHaveBeenCalled();
+    waiting.resolve(); expect(await first).toBe(true);
+    expect(h.api.create).toHaveBeenCalledTimes(1); expect(other.api.create).not.toHaveBeenCalled(); h.controller.detach(); other.controller.detach();
   });
-  it.each(["timeout", "network", "5xx", "unknown400"]) ("uncertain %s never blindly resends even after close/reopen and empty reconciliation", async (kind) => {
-    const h = harness(); const error = kind === "network" ? new Error("Network failed") : new JobSyncApiError("Uncertain outcome", kind === "timeout" ? null : kind === "5xx" ? 503 : 400, kind === "timeout" ? "TIMEOUT" : "BAD_REQUEST");
+  it.each(["timeout", "network", "5xx", "unknown400", "familiar400", "401", "403"]) ("uncertain %s never blindly resends after close/reopen and authoritative unknown lookup", async (kind) => {
+    const h = harness(); const error = kind === "network" ? new Error("Network failed") : new JobSyncApiError(
+      kind === "familiar400" ? "A vehicle pricing tier is required for this Price Book service." : "Uncertain outcome",
+      kind === "timeout" ? null : kind === "5xx" ? 503 : kind === "401" ? 401 : kind === "403" ? 403 : 400,
+      kind === "timeout" ? "TIMEOUT" : kind === "401" ? "UNAUTHORIZED" : kind === "403" ? "FORBIDDEN" : "BAD_REQUEST");
     h.api.create.mockRejectedValue(error); await h.controller.submit(draft()); expect(h.controller.getState().phase).toBe("uncertain");
     h.controller.detach(); const reopened = harness(h.actor);
-    expect(reopened.controller.getState().phase).toBe("uncertain"); await reopened.controller.submit(draft()); await reopened.controller.reconcile();
-    expect(reopened.api.create).not.toHaveBeenCalled(); expect(reopened.controller.getState().phase).toBe("uncertain"); expect(reopened.controller.getState().message).toContain("not proof"); reopened.controller.detach();
+    expect(reopened.controller.getState()).toMatchObject({ phase: "restoring", jobId: null });
+    expect(await reopened.controller.restore()).toBe(false); await reopened.controller.submit(draft()); await reopened.controller.reconcile();
+    expect(h.api.create).toHaveBeenCalledTimes(1); expect(reopened.api.create).not.toHaveBeenCalled();
+    expect(reopened.api.operation).toHaveBeenCalledWith(h.actor.token, 9, h.api.create.mock.calls[0][2].operationKey);
+    expect(reopened.api.jobs).not.toHaveBeenCalled(); expect(reopened.controller.getState().phase).toBe("uncertain");
+    expect(reopened.controller.getState().message).toContain("Do not resend"); reopened.controller.detach();
   });
   it("201 followed by failed or wrong canonical detail remains saved and permits GET-only recovery", async () => {
     const h = harness(); h.api.detail.mockRejectedValueOnce(new JobSyncApiError("Read auth failed", 401, "UNAUTHORIZED"));
@@ -134,16 +163,27 @@ describe("Company create controller with actual orchestration and mocked reads/w
     const saving = h.controller.submit(draft()); await settle(); expect(h.api.create).toHaveBeenCalledTimes(1); h.controller.detach();
     const reopened = harness(h.actor); await reopened.controller.submit(draft()); expect(reopened.api.create).not.toHaveBeenCalled();
     waiting.resolve({} as any); await saving;
-    expect(h.onCreated).not.toHaveBeenCalled(); expect(reopened.controller.getState()).toMatchObject({ phase: "saved", jobId: 84 });
+    expect(h.onCreated).not.toHaveBeenCalled(); expect(reopened.controller.getState()).toMatchObject({ phase: "restoring", jobId: null });
     reopened.api.detail.mockResolvedValue({ id: 84, companyId: 9, customerId: 7, assignedUserId: null, scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", amount: 125, photos: [], persistedPhotoIds: [] } as any);
-    await reopened.controller.reconcile(); expect(reopened.api.create).not.toHaveBeenCalled(); expect(reopened.onCreated).toHaveBeenCalledTimes(1); reopened.controller.detach();
+    reopened.onCreated.mockResolvedValue(false); expect(await reopened.controller.restore()).toBe(false);
+    expect(reopened.controller.getState()).toMatchObject({ phase: "saved", jobId: 84 });
+    expect(await companyCreationStore.read(9, h.actor.user.id)).toMatchObject({ phase: "saved", jobId: 84 });
+    reopened.onCreated.mockResolvedValue(true); expect(await reopened.controller.reconcile()).toBe(true);
+    expect(h.api.create).toHaveBeenCalledTimes(1); expect(reopened.api.create).not.toHaveBeenCalled();
+    expect(reopened.onCreated).toHaveBeenCalledTimes(2); reopened.controller.detach();
   });
-  it("a synchronous submitting-state callback invalidation stops before POST dispatch", async () => {
+  it("submitting-state invalidation after durable reserve stops POST but keeps the origin request locked", async () => {
     const h = harness();
     h.onState.mockImplementation((state) => { if (state.phase === "submitting") h.stale(); });
     await h.controller.submit(draft());
     expect(h.api.create).not.toHaveBeenCalled(); expect(h.onCreated).not.toHaveBeenCalled(); h.controller.detach();
-    const reopened = harness(h.actor); expect(await reopened.controller.submit(draft())).toBe(true); reopened.controller.detach();
+    const record = await companyCreationStore.read(9, h.actor.user.id);
+    expect(record).toMatchObject({ phase: "prepared", jobId: null, payload: { customerId: 7, priceBookServiceId: 31 } });
+    const reopened = harness(h.actor); expect(reopened.controller.getState().phase).toBe("restoring");
+    expect(await reopened.controller.restore()).toBe(false); expect(reopened.controller.getState().phase).toBe("uncertain");
+    expect(await reopened.controller.submit(draft())).toBe(false); await reopened.controller.reconcile();
+    expect(reopened.api.create).not.toHaveBeenCalled(); expect(reopened.onCreated).not.toHaveBeenCalled();
+    expect((await companyCreationStore.read(9, h.actor.user.id))?.operationKey).toBe(record!.operationKey); reopened.controller.detach();
   });
   it("a synchronous final success close happens after onCreated and releases the confirmed attempt", async () => {
     const h = harness();
@@ -151,12 +191,26 @@ describe("Company create controller with actual orchestration and mocked reads/w
     expect(await h.controller.submit(draft())).toBe(true);
     expect(h.api.create).toHaveBeenCalledTimes(1); expect(h.api.detail).toHaveBeenCalledTimes(1);
     expect(h.controller.getState()).toMatchObject({ phase: "succeeded", jobId: 84 }); h.controller.detach();
-    const reopened = harness(h.actor); expect(reopened.controller.getState().phase).toBe("ready"); reopened.controller.detach();
+    expect(await companyCreationStore.read(9, h.actor.user.id)).toBeNull();
+    const reopened = harness(h.actor); expect(reopened.controller.getState()).toMatchObject({ phase: "restoring", jobId: null });
+    expect(await reopened.controller.restore()).toBe(true); expect(reopened.controller.getState().phase).toBe("ready");
+    expect(reopened.api.create).not.toHaveBeenCalled(); reopened.controller.detach();
   });
-  it("a verified tier-required rejection releases for a corrected manual selection, never an automatic fallback", async () => {
+  it("only authoritative rejected status releases a familiar 400 for a deliberately corrected selection/new key", async () => {
     const h = harness(); h.api.create.mockRejectedValueOnce(new JobSyncApiError("A vehicle pricing tier is required for this Price Book service.", 400, "BAD_REQUEST"));
-    await h.controller.submit(draft()); expect(h.controller.getState().phase).toBe("error"); expect(h.api.create).toHaveBeenCalledTimes(1);
-    await h.controller.submit(draft()); expect(h.api.create).toHaveBeenCalledTimes(2); h.controller.detach();
+    expect(await h.controller.submit(draft())).toBe(false); expect(h.controller.getState().phase).toBe("uncertain");
+    const original = h.api.create.mock.calls[0][2];
+    expect(await h.controller.submit(draft())).toBe(false); expect(h.api.create).toHaveBeenCalledTimes(1);
+    h.api.operation.mockResolvedValueOnce({ key: original.operationKey!, state: "rejected", jobId: null, rejectionCode: "BAD_REQUEST",
+      rejectionMessage: "A vehicle pricing tier is required for this Price Book service.", createdAt: null, updatedAt: null });
+    expect(await h.controller.reconcile()).toBe(false); expect(h.controller.getState().phase).toBe("rejected");
+    expect(await companyCreationStore.read(9, h.actor.user.id)).toMatchObject({ phase: "rejected", operationKey: original.operationKey });
+    expect(h.api.create).toHaveBeenCalledTimes(1); expect(h.onCreated).not.toHaveBeenCalled();
+    const service = (await h.api.priceBook())[0]; h.api.priceBook.mockResolvedValue([{ ...service, basePrice: 0, vehiclePrices: { sedan: 125 } }]);
+    expect(await h.controller.submit({ ...draft(), vehiclePriceKey: "sedan" })).toBe(true);
+    expect(h.api.create).toHaveBeenCalledTimes(2); expect(h.api.create.mock.calls[1][2]).toMatchObject({ vehiclePriceKey: "sedan" });
+    expect(h.api.create.mock.calls[1][2].operationKey).not.toBe(original.operationKey);
+    expect(original).not.toHaveProperty("vehiclePriceKey"); h.controller.detach();
   });
   it("malformed acknowledged Company/price/ID is uncertain and never passes a canonical callback", async () => {
     const h = harness(); h.api.create.mockResolvedValue({ id: 84, companyId: 10, amount: -1 } as any);

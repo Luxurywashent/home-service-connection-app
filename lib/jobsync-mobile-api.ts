@@ -446,10 +446,81 @@ export type JobSyncCompanyJobCreateInput = {
   postalCode?: string;
   serviceNotes?: string;
   privateNotes?: string;
+  operationKey?: string;
 };
 
 /** CREATE is the canonical list-shaped DTO, not the detail/photo-gallery DTO. */
-export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & { companyId: number; priceBookServiceId: number };
+export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & {
+  companyId: number;
+  /** Saved replays carry no service ID; never synthesize one from the request. */
+  priceBookServiceId: number | null;
+  operation?: { key: string; state: "saved"; replayed: boolean };
+};
+
+export type JobSyncCompanyJobCreationOperation = {
+  key: string;
+  state: "saved" | "pending" | "rejected" | "unknown";
+  jobId: number | null;
+  rejectionCode: string | null;
+  rejectionMessage: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+function companyJobCreationOperationKey(value: unknown): string {
+  if (typeof value !== "string") throw new Error("A valid Job creation operation key is required.");
+  const key = value.trim();
+  if (key.length < 8 || key.length > 128 || /[\u0000-\u001f\u007f]/.test(key)) {
+    throw new Error("A valid Job creation operation key is required.");
+  }
+  // Encoding is necessary for opaque keys containing URL punctuation. Reject
+  // unpaired surrogates rather than throwing later while constructing the GET.
+  try { encodeURIComponent(key); } catch { throw new Error("A valid Job creation operation key is required."); }
+  return key;
+}
+
+function hasOnlyCompanyOperationFields(row: Record<string, unknown>, fields: readonly string[]) {
+  return Object.keys(row).every((key) => fields.includes(key));
+}
+
+function validCompanyOperationTimestamp(value: unknown) {
+  return value === undefined || value === null || (typeof value === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19));
+}
+
+/** One bearer-scoped GET only; unknown is not proof that creation was rejected. */
+export async function getJobSyncCompanyJobCreationOperation(
+  token: string, companyId: number, operationKey: string,
+): Promise<JobSyncCompanyJobCreationOperation> {
+  requireJobSyncMutationToken(token);
+  if (typeof companyId !== "number" || !Number.isSafeInteger(companyId) || companyId <= 0) throw new Error("A current Company session is required.");
+  const key = companyJobCreationOperationKey(operationKey);
+  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}/operations/${encodeURIComponent(key)}`, {
+    method: "GET", headers: createJobSyncBearerHeaders(token),
+  }, 200));
+  const operation = asRecord(payload?.operation);
+  const invalid = () => new JobSyncApiError("Could not verify this Company's Job creation operation. Refresh before trying again.", null, "INVALID_RESPONSE");
+  if (!payload || !hasOnlyCompanyOperationFields(payload, ["operation"]) || !operation
+    || !hasOnlyCompanyOperationFields(operation, ["key", "state", "jobId", "rejectionCode", "rejectionMessage", "createdAt", "updatedAt"])
+    || operation.key !== key || !["saved", "pending", "rejected", "unknown"].includes(operation.state as string)
+    || (operation.state === "saved"
+      ? typeof operation.jobId !== "number" || !Number.isSafeInteger(operation.jobId) || operation.jobId <= 0
+      : operation.jobId !== null)
+    || !validCompanyOperationTimestamp(operation.createdAt) || !validCompanyOperationTimestamp(operation.updatedAt)) throw invalid();
+  if (operation.state === "rejected") {
+    if (!["BAD_REQUEST", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED"].includes(operation.rejectionCode as string)
+      || typeof operation.rejectionMessage !== "string" || !operation.rejectionMessage.trim()) throw invalid();
+  } else if ((operation.rejectionCode !== undefined && operation.rejectionCode !== null)
+    || (operation.rejectionMessage !== undefined && operation.rejectionMessage !== null)) throw invalid();
+  return {
+    key, state: operation.state as JobSyncCompanyJobCreationOperation["state"], jobId: operation.jobId as number | null,
+    rejectionCode: operation.rejectionCode as string | null | undefined ?? null,
+    rejectionMessage: operation.rejectionMessage as string | null | undefined ?? null,
+    createdAt: operation.createdAt as string | null | undefined ?? null,
+    updatedAt: operation.updatedAt as string | null | undefined ?? null,
+  };
+}
 
 export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
   if (positiveJobSyncId(input.customerId) !== input.customerId || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId) {
@@ -462,6 +533,7 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
   }
   if (input.assignedUserId !== undefined && input.assignedUserId !== null && positiveJobSyncId(input.assignedUserId) !== input.assignedUserId) throw new Error("Choose an eligible Company technician.");
   const result: JobSyncCompanyJobCreateInput = { customerId: input.customerId, priceBookServiceId: input.priceBookServiceId, scheduledStartAt: input.scheduledStartAt };
+  if (input.operationKey !== undefined) result.operationKey = companyJobCreationOperationKey(input.operationKey);
   if (input.scheduledEndAt !== undefined) result.scheduledEndAt = input.scheduledEndAt;
   if (input.assignedUserId !== undefined) result.assignedUserId = input.assignedUserId;
   if (input.vehiclePriceKey !== undefined) {
@@ -480,19 +552,36 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
 
 /** One POST only. Never retry an ambiguous creation failure or use legacy upsert. */
 export async function createJobSyncCompanyJob(token: string, companyId: number, input: JobSyncCompanyJobCreateInput): Promise<JobSyncCompanyJobCreateResult> {
-  if (!token.trim() || !positiveJobSyncId(companyId)) throw new Error("A current Company session is required.");
+  requireJobSyncMutationToken(token);
+  if (typeof companyId !== "number" || !Number.isSafeInteger(companyId) || companyId <= 0) throw new Error("A current Company session is required.");
   const body = createJobSyncCompanyJobPayload(input);
-  const payload = await requestJson(COMPANY_JOBS_PATH, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) });
-  const row = asRecord(asRecord(payload)?.job);
+  const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) }, [200, 201]));
+  const row = asRecord(payload?.job);
   const job = normalizeJobSyncMobileJob(row);
-  if (!row || !job || job.customerId !== body.customerId || positiveJobSyncId(row.priceBookServiceId) !== body.priceBookServiceId
-    || ((row.companyId ?? row.company_id) !== undefined && positiveJobSyncId(row.companyId ?? row.company_id) !== companyId)
+  const operation = asRecord(payload?.operation);
+  if ((body.operationKey !== undefined && (!payload || !hasOnlyCompanyOperationFields(payload, ["job", "operation"])
+    || !operation || operation.key !== body.operationKey || operation.state !== "saved"
+    || typeof operation.replayed !== "boolean" || !hasOnlyCompanyOperationFields(operation, ["key", "state", "replayed"])
+    || !row || typeof row.id !== "number" || !Number.isSafeInteger(row.id) || row.id <= 0
+    || row.customerId !== body.customerId
+    || (row.priceBookServiceId !== null && row.priceBookServiceId !== body.priceBookServiceId)
+    || row.assignedUserId !== (body.assignedUserId ?? null)
+    || typeof row.amount !== "number" || !Number.isFinite(row.amount) || row.amount < 0))
+    || !row || !job || job.customerId !== body.customerId
+    || (row.priceBookServiceId === null
+      ? body.operationKey === undefined || operation?.replayed !== true
+      : positiveJobSyncId(row.priceBookServiceId) !== body.priceBookServiceId)
+    || (row.companyId !== undefined && positiveJobSyncId(row.companyId) !== companyId)
+    || (row.company_id !== undefined && positiveJobSyncId(row.company_id) !== companyId)
     || Date.parse(job.scheduledStartAt ?? "") !== Date.parse(body.scheduledStartAt)
     || (body.scheduledEndAt !== undefined && Date.parse(job.scheduledEndAt ?? "") !== Date.parse(body.scheduledEndAt))
     || (body.assignedUserId !== undefined && job.assignedUserId !== body.assignedUserId)) {
     throw new JobSyncApiError("The save response could not be verified. Refresh the Company calendar before creating this Job again.", null, "INVALID_CREATE_RESPONSE");
   }
-  return { ...job, companyId, priceBookServiceId: body.priceBookServiceId };
+  return {
+    ...job, companyId, priceBookServiceId: row.priceBookServiceId === null ? null : positiveJobSyncId(row.priceBookServiceId)!,
+    ...(body.operationKey !== undefined ? { operation: { key: body.operationKey, state: "saved" as const, replayed: operation!.replayed as boolean } } : {}),
+  };
 }
 
 export type JobSyncCompanyJobScheduleInput = {

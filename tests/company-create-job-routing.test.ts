@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("../lib/company-job-creation-storage", async () => {
+  const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
+  return memoryCreationStorageModule();
+});
 import { companyCalendarDateAtPosition, companyCalendarSlot, companyCalendarWeekPosition } from "../lib/company-calendar";
 import { companyCreateJobAllowed } from "../lib/company-create-job";
 import type { JobSyncNativeSession } from "../lib/jobsync-mobile-api";

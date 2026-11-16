@@ -1,10 +1,14 @@
 import React, { act } from "react";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../lib/company-job-creation-storage", async () => {
+  const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
+  return memoryCreationStorageModule();
+});
 import { installPhotoTestDOM, PhotoTestNode } from "./helpers/company-photo-test-dom";
 import { CompanyCreateJobSheet, type CompanyCreateJobSheetProps } from "../components/company-create-job-sheet";
 import { JobSyncApiError, type JobSyncNativeSession } from "../lib/jobsync-mobile-api";
-const mocks = vi.hoisted(() => ({ focused: true, signed: vi.fn(), customers: vi.fn(), customer: vi.fn(), settings: vi.fn(), create: vi.fn(), detail: vi.fn(), jobs: vi.fn(), priceBook: vi.fn(), refresh: vi.fn(), verify: vi.fn(), catalog: [] as any[], hasLoaded: true, loading: false, error: null as string | null }));
+const mocks = vi.hoisted(() => ({ focused: true, signed: vi.fn(), customers: vi.fn(), customer: vi.fn(), settings: vi.fn(), create: vi.fn(), detail: vi.fn(), jobs: vi.fn(), operation: vi.fn(), priceBook: vi.fn(), refresh: vi.fn(), verify: vi.fn(), catalog: [] as any[], hasLoaded: true, loading: false, error: null as string | null }));
 vi.mock("expo-router", () => ({ useIsFocused: () => mocks.focused }));
 vi.mock("@/hooks/use-colors", () => ({ useColors: () => ({ foreground: "#111111", background: "#ffffff", surface: "#eeeeee", border: "#dddddd", primary: "#0077cc", muted: "#555555", error: "#bb0000" }) }));
 vi.mock("@/hooks/use-company-price-book", () => ({ useCompanyPriceBook: () => ({ services: mocks.catalog, isLoading: mocks.loading, error: mocks.error, hasLoaded: mocks.hasLoaded, refresh: mocks.refresh }) }));
@@ -13,6 +17,7 @@ vi.mock("../lib/jobsync-mobile-api", async (original) => ({ ...await original<ty
   getJobSyncMobileSession: mocks.signed, getJobSyncCompanyCustomers: mocks.customers, getJobSyncCompanyCustomer: mocks.customer,
   getJobSyncCompanySettings: mocks.settings, getHomeServiceConnectedPriceBook: mocks.priceBook,
   createJobSyncCompanyJob: mocks.create, getJobSyncCompanyJobDetail: mocks.detail, getJobSyncCompanyJobs: mocks.jobs,
+  getJobSyncCompanyJobCreationOperation: mocks.operation,
 }));
 vi.mock("@react-native-community/datetimepicker", () => ({ default: () => null }));
 vi.mock("react-native", async () => {
@@ -38,6 +43,8 @@ async function choose() { await input("Find Company customer", "Actual"); await 
 function waiting<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; }
 beforeEach(() => {
   vi.resetAllMocks(); mocks.focused = true; mocks.hasLoaded = true; mocks.loading = false; mocks.error = null;
+  ack = null;
+  mocks.operation.mockImplementation(async (_token, _companyId, key) => ({ key, state: ack ? "saved" : "unknown", jobId: ack?.id ?? null, rejectionCode: null, rejectionMessage: null, createdAt: null, updatedAt: null }));
   mocks.catalog = [{ serviceId: "31", name: "Actual Service", vehiclePrices: {}, basePrice: 125, features: [], description: "", sortOrder: 0, imageUrl: null, serviceTypeId: null, emoji: "" }];
   const document = installPhotoTestDOM(); container = document.createElement("main"); document.body.appendChild(container); root = createRoot(container);
   props = { visible: true, session: actor(), initialDate: "2026-12-01", initialStartHour: 9, initialEndHour: 10, isCurrent: () => true, onClose: vi.fn(), onCreated: vi.fn() };
@@ -107,7 +114,8 @@ describe("Company create sheet: real React lifecycle + controller, mocked native
   it("timeout stays locked and offers read-only reconciliation, not a blind retry", async () => {
     await render(); await choose(); mocks.create.mockRejectedValue(new JobSyncApiError("Timed out", null, "TIMEOUT")); await press("Save Company Job");
     expect(container.textContent).toContain("may have created"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
-    await press("Refresh saved Job without resending"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.jobs).toHaveBeenCalledTimes(1); expect(props.onCreated).not.toHaveBeenCalled();
+    expect(mocks.operation).toHaveBeenCalledTimes(1);
+    await press("Refresh saved Job without resending"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.operation).toHaveBeenCalledTimes(2); expect(mocks.jobs).not.toHaveBeenCalled(); expect(props.onCreated).not.toHaveBeenCalled();
   });
   it("known saved readback failure supports GET-only retry and canonical callback", async () => {
     await render(); await choose(); mocks.detail.mockRejectedValueOnce(new Error("Readback offline")); await press("Save Company Job");
@@ -206,7 +214,8 @@ describe("Phase 1 canonical customer preselection and saved calendar feedback", 
     expect(container.textContent).toContain("Job #84"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
     (props.onCreated as ReturnType<typeof vi.fn>).mockResolvedValue(true);
     await press("Refresh saved Job without resending");
-    expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.detail).toHaveBeenCalledTimes(2); expect(props.onCreated).toHaveBeenCalledTimes(2);
+    expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.detail).toHaveBeenCalledTimes(3); expect(props.onCreated).toHaveBeenCalledTimes(3);
+    expect(mocks.operation).toHaveBeenCalledTimes(2); expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -231,5 +240,56 @@ describe("Phase 1 shared sheet success settlement", () => {
     await render({ closeOnSuccess: false }); await choose(); await press("Save Company Job");
     expect(props.onCreated).toHaveBeenCalledTimes(1); expect(props.onClose).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Company calendar refreshed"); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("Phase 2 shared form durable recovery", () => {
+  const op = (key: string, state: "unknown" | "pending" | "saved" | "rejected", reason?: string) => ({ key, state, jobId: state === "saved" ? 84 : null, rejectionCode: state === "rejected" ? "BAD_REQUEST" : null, rejectionMessage: reason ?? null, createdAt: null, updatedAt: null });
+  it("automatically recovers a committed response loss through one status GET and canonical calendar callback, never a secondPOST", async () => {
+    await render(); await choose();
+    mocks.create.mockImplementationOnce(async (_token, companyId, request) => {
+      ack = { id: 84, companyId, priceBookServiceId: 31, customerId: 7, assignedUserId: null, scheduledStartAt: request.scheduledStartAt, scheduledEndAt: request.scheduledEndAt, amount: 125 };
+      throw new Error("Response lost after isolated simulated commit");
+    });
+    await press("Save Company Job");
+    expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.operation).toHaveBeenCalledTimes(1);
+    expect(mocks.operation).toHaveBeenCalledWith(props.session!.token, 9, mocks.create.mock.calls[0][2].operationKey);
+    expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 125 }), "America/Chicago");
+    expect(props.onClose).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["unknown", "pending"] as const)("shows %s status and preserves the same creation key across close/reopen and repeated taps", async (state) => {
+    await render(); await choose(); mocks.create.mockRejectedValue(new Error("Lost response"));
+    mocks.operation.mockImplementation(async (_token, _companyId, key) => op(key, state));
+    await press("Save Company Job"); const key = mocks.create.mock.calls[0][2].operationKey;
+    expect(container.textContent).toContain(state); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    await press("Save Company Job"); await render({ visible: false }); await render({ visible: true });
+    expect(container.textContent).toContain(state); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    await press("Refresh saved Job without resending"); expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.operation.mock.calls.every((call) => call[2] === key)).toBe(true); expect(props.onCreated).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("shows the actual authoritative rejection reason and allows only a deliberate corrected save with a new key", async () => {
+    await render(); await choose(); mocks.create.mockRejectedValueOnce(new JobSyncApiError("Validation failed", 400, "BAD_REQUEST"));
+    mocks.operation.mockImplementation(async (_token, _companyId, key) => op(key, "rejected", "Choose an available service rate."));
+    await press("Save Company Job"); const originalKey = mocks.create.mock.calls[0][2].operationKey;
+    expect(container.textContent).toContain("Choose an available service rate."); expect(container.textContent).toContain("Save corrected Job"); expect(mocks.create).toHaveBeenCalledTimes(1);
+    await input("Service address", "Corrected operator address"); await press("Save Company Job");
+    expect(mocks.create).toHaveBeenCalledTimes(2); expect(mocks.create.mock.calls[1][2].operationKey).not.toBe(originalKey);
+    expect(mocks.create.mock.calls[1][2].addressLine1).toBe("Corrected operator address"); expect(props.onCreated).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("preserves a payload conflict and cannot use a rejection status to overwrite or resubmit the immutable attempt", async () => {
+    await render(); await choose(); mocks.create.mockRejectedValue(new JobSyncApiError("This Job creation operation key was already used with a different payload.", 409, "CONFLICT"));
+    mocks.operation.mockImplementation(async (_token, _companyId, key) => op(key, "rejected", "Original payload validation failed."));
+    await press("Save Company Job"); expect(container.textContent).toContain("payload conflict"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    await input("Service address", "Forbidden replacement"); await press("Save Company Job"); await press("Refresh saved Job without resending");
+    expect(mocks.create).toHaveBeenCalledTimes(1); expect(field("Service address").nativeProps.value).toBe("Canonical Address"); expect(props.onCreated).not.toHaveBeenCalled();
+  });
+  it("a retained automatic status callback cannot read or close a replaced Company sheet", async () => {
+    await render(); await choose(); const lookup = waiting<any>(); mocks.create.mockRejectedValue(new Error("Lost response")); mocks.operation.mockReturnValueOnce(lookup.promise);
+    await press("Save Company Job"); const oldKey = mocks.create.mock.calls[0][2].operationKey;
+    const replacement = actor(); replacement.company!.id = 10; await render({ session: replacement });
+    lookup.resolve(op(oldKey, "saved")); await act(async () => {});
+    expect(props.onCreated).not.toHaveBeenCalled(); expect(props.onClose).not.toHaveBeenCalled(); expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("Job #84"); expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+vi.mock("../lib/company-job-creation-storage", async () => {
+  const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
+  return memoryCreationStorageModule();
+});
 import { parseCompanyJobCustomerPrefill, verifyCompanyJobCustomerPrefill } from "../lib/company-job-customer-prefill";
 import type { CompanyJobPrefillTransport } from "../lib/company-job-customer-prefill";
 import type { JobSyncNativeSession } from "../lib/jobsync-mobile-api";

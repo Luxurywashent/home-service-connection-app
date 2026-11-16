@@ -1,12 +1,16 @@
 import {
   createJobSyncCompanyJob, getJobSyncCompanyJobDetail, getJobSyncCompanyJobs,
   getJobSyncCompanyCustomer, getJobSyncCompanySettings, getJobSyncMobileSession,
-  getHomeServiceConnectedPriceBook, JobSyncApiError,
+  getHomeServiceConnectedPriceBook, getJobSyncCompanyJobCreationOperation,
   type HomeServiceConnectedPriceBookService, type JobSyncCompanyJobCreateInput,
   type JobSyncCompanyJobCreateResult, type JobSyncCompanyJobDetail,
   type JobSyncCompanySettings, type JobSyncNativeSession,
 } from "./jobsync-mobile-api";
 import { companyCalendarInstant } from "./company-calendar";
+import {
+  companyCreationStore, newCompanyCreationOperationKey,
+  type CompanyCreationRecord, type CompanyCreationStore,
+} from "./company-job-creation-storage";
 
 export type CompanyCreateJobDraft = {
   customerId: number;
@@ -24,11 +28,11 @@ export type CompanyCreateJobDraft = {
   privateNotes?: string;
 };
 export type CompanyCreateJobState = {
-  phase: "ready" | "validating" | "submitting" | "uncertain" | "saved" | "succeeded" | "error";
+  phase: "ready" | "restoring" | "validating" | "submitting" | "uncertain" | "pending" | "conflict" | "rejected" | "saved" | "succeeded" | "error";
   message: string | null;
   jobId: number | null;
   reconciling?: boolean;
-  /** Read/refresh diagnostic, separate from the known save outcome. */
+  /** Read/refresh/persistence diagnostic, separate from the known save outcome. */
   detailError?: string | null;
 };
 export type CompanyCreateJobTransport = {
@@ -39,13 +43,17 @@ export type CompanyCreateJobTransport = {
   create: (token: string, companyId: number, input: JobSyncCompanyJobCreateInput) => Promise<JobSyncCompanyJobCreateResult>;
   detail: typeof getJobSyncCompanyJobDetail;
   jobs: typeof getJobSyncCompanyJobs;
+  /** Optional only for older injected transports; absence never authorizes a resend. */
+  operation?: typeof getJobSyncCompanyJobCreationOperation;
 };
 const transport: CompanyCreateJobTransport = {
   session: getJobSyncMobileSession, settings: (token) => getJobSyncCompanySettings(token, { requireTimezone: true }),
   priceBook: getHomeServiceConnectedPriceBook, customer: getJobSyncCompanyCustomer,
   create: createJobSyncCompanyJob, detail: getJobSyncCompanyJobDetail, jobs: getJobSyncCompanyJobs,
+  operation: getJobSyncCompanyJobCreationOperation,
 };
 const ready = (): CompanyCreateJobState => ({ phase: "ready", message: null, jobId: null });
+const restoring = (): CompanyCreateJobState => ({ phase: "restoring", message: "Restoring this Company's previous Job request…", jobId: null });
 const positive = (id: unknown): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0;
 export function companyCreateJobAllowed(session: JobSyncNativeSession | null | undefined): session is JobSyncNativeSession {
   return Boolean(session?.portal === "company" && session.token?.trim() && positive(session.company?.id)
@@ -79,8 +87,6 @@ export function companyCreateJobInstant(date: string, hour: number, timezone: st
   };
   const iso = companyCalendarInstant(expectedDate, minutes / 60, timezone);
   if (!iso || !matches(Date.parse(iso))) throw new Error("That Company time does not exist because of a clock change. Choose another time.");
-  // Sample neighboring instants for a second representation of the same wall time,
-  // including half-hour DST transitions (e.g. Lord Howe).
   for (let offset = -180; offset <= 180; offset += 15) {
     if (offset && matches(Date.parse(iso) + offset * 60_000)) throw new Error("That Company time repeats during a clock change. Choose an unambiguous time.");
   }
@@ -89,33 +95,34 @@ export function companyCreateJobInstant(date: string, hour: number, timezone: st
 
 type Attempt = {
   state: CompanyCreateJobState;
-  busy: boolean;
-  sent: boolean;
-  payload?: JobSyncCompanyJobCreateInput;
-  timezone?: string;
+  record?: CompanyCreationRecord;
   ack?: JobSyncCompanyJobCreateResult;
+  /** A write may have completed even when its promise rejected. Never infer absence. */
+  reserved: boolean;
+  dirty: boolean;
 };
-// Actor-wide memory-only locks span both calendar screens and sheet close/reopen.
-// No token/customer PII is persisted. App restart is not an exactly-once guarantee.
-const attempts = new Map<string, Attempt>();
+type Actor = { hydrated: boolean; hydration?: Promise<boolean>; busy: boolean; attempt?: Attempt };
+// Memory only coordinates work. It is never the production persistence mechanism,
+// and detach/new controllers must not reset an actor's locks or hydration.
+const actors = new Map<string, Actor>();
 const listeners = new Map<string, Set<() => void>>();
 const actorKey = (session: JobSyncNativeSession) => `${session.company!.id}:${session.user.id}`;
 const savedMessage = "Job saved — calendar refresh failed.";
-const uncertainMessage = "This request may have created a Job. Check the Company calendar before creating another. Do not resend this request.";
+const uncertainMessage = "Creation status is unknown. This request may have created a Job. Check its creation status before creating another. Do not resend this request.";
+const conflictMessage = "This creation key has a payload conflict. The original request is locked; do not resend it or create a replacement.";
+const persistenceMessage = "The Job creation record could not be secured. Saving is locked; restore the request before continuing.";
 function notify(key: string) { listeners.get(key)?.forEach((listener) => listener()); }
-function definitiveRejection(error: unknown) {
-  // Unknown BAD_REQUEST may originate after commit. Do not unlock on status alone.
-  if (!(error instanceof JobSyncApiError)) return false;
-  if ([401, 403].includes(error.status ?? 0)) return true;
-  return ["Customer not found in this Company.", "Active Price Book service not found in this Company.",
-    "A vehicle pricing tier is required for this Price Book service.", "Scheduled end time must be after the start time.",
-    "That Price Book rate selection is invalid.", "That vehicle pricing key is not recognized.",
-    "That Price Book rate selection is not defined on this service.", "This Price Book item does not have a valid base price.",
-    "Choose a Team Member whose position is enabled for the calendar.",
-    "This Team Member has approved time off on the scheduled date."].includes(error.message);
-}
 function instantEqual(a: string | null | undefined, b: string | null | undefined) {
   return Boolean(a && b && Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b));
+}
+function immutable(record: CompanyCreationRecord): CompanyCreationRecord {
+  return Object.freeze({ ...record, payload: Object.freeze({ ...record.payload }) });
+}
+function recordState(record: CompanyCreationRecord): CompanyCreateJobState {
+  if (record.jobId) return { phase: "saved", jobId: record.jobId, message: savedMessage };
+  if (record.phase === "rejected") return { phase: "rejected", jobId: null, message: record.rejectionMessage || "The original Job request was rejected. Correct it and deliberately save a new request." };
+  if (record.phase === "conflict") return { phase: "conflict", jobId: null, message: conflictMessage };
+  return { phase: "uncertain", jobId: null, message: uncertainMessage };
 }
 
 export function createCompanyJobController(input: {
@@ -125,59 +132,229 @@ export function createCompanyJobController(input: {
   onState: (state: CompanyCreateJobState) => void;
   onCreated: (detail: JobSyncCompanyJobDetail, timezone: string) => boolean | void | Promise<boolean | void>;
   transport?: CompanyCreateJobTransport;
+  store?: CompanyCreationStore;
+  newOperationKey?: () => string;
 }) {
   const api = input.transport ?? transport;
+  // Even injected transports use secure production storage unless explicitly replaced.
+  const store = input.store ?? companyCreationStore;
+  const newKey = input.newOperationKey ?? newCompanyCreationOperationKey;
   const origin = structuredSession(input.session);
   const scope = companyCreateJobScope(origin);
   const key = companyCreateJobAllowed(origin) ? actorKey(origin) : "denied";
+  let actor = actors.get(key);
+  if (!actor) { actor = { hydrated: false, busy: false }; actors.set(key, actor); }
+  const runtime = actor;
   let detached = false;
-  let localState = ready();
+  let authenticated = false;
+  let localState = scope ? restoring() : ready();
+  let restorePromise: Promise<boolean> | undefined;
   const current = () => !detached && Boolean(scope) && input.isCurrent() && companyCreateJobScope(input.session) === scope;
-  const getState = () => attempts.get(key)?.state ?? localState;
+  const getState = () => authenticated && runtime.hydrated ? runtime.attempt?.state ?? localState : localState;
   const publish = () => { if (current()) input.onState(getState()); };
   let set = listeners.get(key);
   if (!set) listeners.set(key, set = new Set());
   set.add(publish);
   const patch = (attempt: Attempt, state: CompanyCreateJobState) => { attempt.state = state; notify(key); };
+  const diagnostic = (attempt: Attempt, error: unknown) => {
+    const state = attempt.state;
+    patch(attempt, { ...state, phase: attempt.record?.jobId ? "saved" : state.phase === "rejected" && attempt.dirty ? "uncertain" : state.phase,
+      jobId: attempt.record?.jobId ?? state.jobId, message: attempt.record?.jobId ? savedMessage : state.message,
+      detailError: error instanceof Error ? error.message : persistenceMessage });
+  };
   const fresh = async () => {
+    authenticated = false;
     if (!current()) return false;
-    const actor = await api.session(origin.token);
+    const signed = await api.session(origin.token);
     if (!current()) return false;
-    if (!companyCreateJobAllowed(actor) || companyCreateJobScope(actor) !== scope) throw new Error("Your Company sign-in changed. Reopen Add Job before saving.");
+    if (!companyCreateJobAllowed(signed) || companyCreateJobScope(signed) !== scope) throw new Error("Your Company sign-in changed. Reopen Add Job before saving.");
+    authenticated = true;
     return true;
+  };
+  const checkRecord = (record: CompanyCreationRecord) => {
+    if (record.companyId !== origin.company!.id || record.userId !== origin.user.id
+      || (record.payload.operationKey !== undefined && record.payload.operationKey !== record.operationKey)) throw new Error("The stored Job request does not match this Company account. Saving remains locked.");
+    return immutable(record);
+  };
+  const hydrate = async () => {
+    try {
+      // Every controller authenticates independently, including when another
+      // token/controller has already hydrated the same Company/user actor.
+      if (!await fresh()) return false;
+      if (!runtime.hydrated) {
+        if (!runtime.hydration) {
+          runtime.hydration = (async () => {
+            const record = await store.read(origin.company!.id, origin.user.id);
+            if (record && !runtime.attempt) {
+              const checked = checkRecord(record);
+              runtime.attempt = { record: checked, state: recordState(checked), reserved: true, dirty: false };
+            }
+            runtime.hydrated = true;
+            return true;
+          })().finally(() => { runtime.hydration = undefined; });
+        }
+        await runtime.hydration;
+      }
+      if (!await fresh() || !current()) return false;
+      if (localState.phase === "restoring" || localState.phase === "uncertain" || localState.phase === "error") localState = ready();
+      publish();
+      return true;
+    } catch (error) {
+      // No stored metadata is exposed under a revoked/mismatched signed session.
+      localState = { phase: "uncertain", jobId: null, message: persistenceMessage,
+        detailError: error instanceof Error ? error.message : persistenceMessage };
+      publish();
+      return false;
+    }
+  };
+  const update = async (attempt: Attempt, next: CompanyCreationRecord) => {
+    attempt.record = immutable(next);
+    attempt.dirty = true;
+    if (!await store.update(attempt.record)) throw new Error(persistenceMessage);
+    attempt.dirty = false;
+  };
+  const settleRecord = async (attempt: Attempt, changes: Partial<CompanyCreationRecord>) => {
+    if (!attempt.record) throw new Error(persistenceMessage);
+    await update(attempt, { ...attempt.record, ...changes, updatedAt: new Date().toISOString() });
+  };
+  const ensureRecorded = async (attempt: Attempt) => {
+    if (!attempt.record) throw new Error(persistenceMessage);
+    if (!attempt.reserved) {
+      const stored = await store.read(origin.company!.id, origin.user.id);
+      if (stored) {
+        const checked = checkRecord(stored);
+        if (checked.operationKey !== attempt.record.operationKey) {
+          // A failed reservation must adopt the already durable intent, never POST.
+          attempt.ack = undefined;
+        }
+        attempt.record = checked; attempt.dirty = false;
+        patch(attempt, recordState(checked));
+      } else if (!await store.reserve(attempt.record)) throw new Error(persistenceMessage);
+      attempt.reserved = true;
+    }
+    if (attempt.dirty) await update(attempt, attempt.record);
   };
   const recoverDetail = async (attempt: Attempt) => {
-    if (!attempt.ack || !attempt.timezone || !await fresh() || !current()) return false;
-    const ack = attempt.ack;
-    const detail = await api.detail(origin.token, ack.id, origin.company!.id);
+    const record = attempt.record;
+    if (!record?.jobId || !await fresh() || !current()) return false;
+    const detail = await api.detail(origin.token, record.jobId, origin.company!.id);
     if (!current()) return false;
-    if (detail.id !== ack.id || detail.companyId !== origin.company!.id || detail.customerId !== ack.customerId
-      || detail.assignedUserId !== ack.assignedUserId || !instantEqual(detail.scheduledStartAt, ack.scheduledStartAt)
-      || !instantEqual(detail.scheduledEndAt, ack.scheduledEndAt) || detail.amount !== ack.amount) throw new Error("Saved Job detail did not match its Company acknowledgment.");
-    patch(attempt, { phase: "saved", jobId: ack.id, message: "Job saved. Refreshing the Company calendar…", reconciling: true });
+    const payload = record.payload;
+    // Operation status returns only an ID. Never invent a create acknowledgment
+    // (in particular a missing priceBookServiceId) from that ID or from detail.
+    if (detail.id !== record.jobId || detail.companyId !== origin.company!.id || detail.customerId !== payload.customerId
+      || detail.assignedUserId !== (payload.assignedUserId ?? null) || !instantEqual(detail.scheduledStartAt, payload.scheduledStartAt)
+      || (payload.scheduledEndAt && !instantEqual(detail.scheduledEndAt, payload.scheduledEndAt))
+      || (!payload.scheduledEndAt && attempt.ack?.scheduledEndAt && !instantEqual(detail.scheduledEndAt, attempt.ack.scheduledEndAt))
+      || !Number.isFinite(detail.amount) || detail.amount < 0) throw new Error("Saved Job detail did not match its Company acknowledgment or original request.");
+    const settings = await api.settings(origin.token);
     if (!current()) return false;
-    // A detail GET is not a calendar refresh. Keep the actor-wide lock and ack
-    // through the actual parent list/settings loader; false is a failed refresh.
-    const refreshed = await input.onCreated(detail, attempt.timezone);
-    if (!current()) {
-      patch(attempt, { phase: "saved", jobId: ack.id, message: savedMessage });
+    if (settings.id !== origin.company!.id || !settings.timezone?.trim()) throw new Error("The current Company schedule settings could not be verified.");
+    try { new Intl.DateTimeFormat("en-US", { timeZone: settings.timezone }).format(new Date()); }
+    catch { throw new Error("The current Company timezone could not be verified."); }
+    // Re-authenticate after the reads and before invoking the real calendar loader.
+    if (!await fresh() || !current()) return false;
+    await ensureRecorded(attempt);
+    if (!current()) return false;
+    patch(attempt, { phase: "saved", jobId: record.jobId, message: "Job saved. Refreshing the Company calendar…", reconciling: true });
+    if (!current()) return false;
+    const refreshed = await input.onCreated(detail, settings.timezone);
+    if (!current() || refreshed === false) {
+      patch(attempt, { phase: "saved", jobId: record.jobId, message: savedMessage });
       return false;
     }
-    if (refreshed === false) {
-      patch(attempt, { phase: "saved", jobId: ack.id, message: savedMessage });
-      return false;
-    }
-    localState = { phase: "succeeded", jobId: ack.id, message: "Job saved. Company calendar refreshed." };
-    // Settle before publishing success: a sheet may close synchronously in
-    // onState, but only AFTER the awaited refresh and current-scope checks.
-    if (attempts.get(key) === attempt) attempts.delete(key);
+    // Only a real awaited calendar callback success authorizes removal. A
+    // bootstrap callback returning false cannot erase a known saved operation.
+    if (!await store.remove(origin.company!.id, origin.user.id, record.operationKey)) throw new Error(persistenceMessage);
+    if (runtime.attempt === attempt) runtime.attempt = undefined;
+    const succeeded = current();
+    if (succeeded) localState = { phase: "succeeded", jobId: record.jobId, message: "Job saved. Company calendar refreshed." };
     notify(key);
-    return true;
+    // A synchronous close from the confirmed-success onState notification must
+    // not retroactively turn that completed calendar/removal into a failure.
+    return succeeded;
+  };
+  const lookup = async (attempt: Attempt) => {
+    if (!await fresh() || !current()) return false;
+    await ensureRecorded(attempt);
+    const record = attempt.record!;
+    if (!current()) return false;
+    if (!api.operation) {
+      if (record.jobId) return recoverDetail(attempt);
+      // Backward injected transport is GET-only as well; empty lists are never
+      // negative proof. Production always has the operation endpoint.
+      await api.jobs(origin.token);
+      patch(attempt, { ...attempt.state, message: `${uncertainMessage} Calendar records refreshed; absence from this list is not proof that the Job was not saved.` });
+      return false;
+    }
+    const operation = await api.operation(origin.token, origin.company!.id, record.operationKey);
+    if (operation.key !== record.operationKey || !["unknown", "pending", "saved", "rejected"].includes(operation.state)
+      || (operation.state === "saved" ? !positive(operation.jobId) : operation.jobId !== null)) throw new Error("The Company creation status could not be verified. The original request remains locked.");
+    // A delayed status GET may outlive bearer revocation. Keep settlement to the
+    // origin mandatory, but suppress metadata publication until a new signed
+    // check below; callbacks always perform their own fresh authentication.
+    authenticated = false;
+    // Settlement is durable to the origin even if this GET's view detached.
+    if (operation.state === "saved") {
+      if (record.jobId && record.jobId !== operation.jobId) throw new Error("Saved operation returned a different Job ID. The original request remains locked.");
+      patch(attempt, { phase: "saved", jobId: operation.jobId, message: savedMessage, reconciling: true });
+      await settleRecord(attempt, { phase: "saved", jobId: operation.jobId });
+      if (!current()) return false;
+      return recoverDetail(attempt);
+    }
+    // A known saved result and a conflict must never be downgraded/unlocked by
+    // later missing/pending/rejected status (or by a mismatched detail/calendar).
+    if (record.jobId) return current() ? recoverDetail(attempt) : false;
+    if (record.phase === "conflict") {
+      if (await fresh()) publish();
+      return false;
+    }
+    if (operation.state === "rejected") {
+      if (!["BAD_REQUEST", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED"].includes(operation.rejectionCode ?? "")
+        || !operation.rejectionMessage?.trim()) throw new Error("The rejected creation status could not be verified.");
+      await settleRecord(attempt, { phase: "rejected", jobId: null, rejectionCode: operation.rejectionCode, rejectionMessage: operation.rejectionMessage });
+      patch(attempt, recordState(attempt.record!));
+      if (await fresh()) publish();
+      return false;
+    }
+    await settleRecord(attempt, { phase: "uncertain", jobId: null });
+    patch(attempt, { phase: operation.state === "pending" ? "pending" : "uncertain", jobId: null,
+      message: operation.state === "pending" ? "The original Job request is still pending. Do not resend it or use a new key." : uncertainMessage });
+    if (await fresh()) publish();
+    return false;
+  };
+  const restore = () => {
+    if (restorePromise) return restorePromise;
+    restorePromise = (async () => {
+      if (!await hydrate() || !current()) return false;
+      const attempt = runtime.attempt;
+      if (!attempt) return true;
+      if (runtime.busy) return false;
+      runtime.busy = true;
+      patch(attempt, { ...attempt.state, reconciling: true });
+      try { return await lookup(attempt); }
+      catch (error) { diagnostic(attempt, error); return false; }
+      finally {
+        runtime.busy = false;
+        if (runtime.attempt === attempt) attempt.state = { ...attempt.state, reconciling: false };
+        notify(key);
+      }
+    })().finally(() => { restorePromise = undefined; });
+    return restorePromise;
   };
   const submit = async (draft: CompanyCreateJobDraft) => {
-    if (!current() || attempts.has(key) || localState.phase === "succeeded") return false;
-    const attempt: Attempt = { state: { phase: "validating", jobId: null, message: "Verifying Company customer, service and schedule…" }, busy: true, sent: false };
-    attempts.set(key, attempt); notify(key);
+    if (!current() || runtime.busy || localState.phase === "succeeded") return false;
+    if (!await hydrate() || !current() || runtime.busy) return false;
+    const previous = runtime.attempt;
+    if (previous && (previous.record?.phase !== "rejected" || previous.dirty || !previous.reserved || previous.state.phase !== "rejected")) return false;
+    runtime.busy = true;
+    // A rejected intent remains durable during validation, so preflight errors
+    // cannot discard the rejection or the user's original immutable request.
+    const attempt: Attempt = { state: { phase: "validating", jobId: null, message: "Verifying Company customer, service and schedule…" }, reserved: false, dirty: false };
+    if (!previous) runtime.attempt = attempt;
+    else patch(previous, { ...previous.state, reconciling: true });
+    notify(key);
+    let reservationStarted = false;
     try {
       const captured = { ...draft };
       if (!positive(captured.customerId) || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))) throw new Error("Choose an existing Company customer and active Price Book service.");
@@ -218,65 +395,82 @@ export function createCompanyJobController(input: {
         if (value.trim()) payload[field] = value.trim();
       }
       if (!await fresh() || !current()) return false;
-      attempt.payload = payload; attempt.timezone = settings.timezone;
+      const operationKey = newKey();
+      if (typeof operationKey !== "string" || operationKey !== operationKey.trim() || operationKey.length < 8 || operationKey.length > 128 || /[\u0000-\u001f\u007f]/.test(operationKey)
+        || operationKey === previous?.record?.operationKey) throw new Error("A new secure Job creation key could not be generated. Saving is locked.");
+      // Secure storage keeps the opaque key alongside the exact allowlisted
+      // request fields. Reconstruct only that one key, without renormalization.
+      const now = new Date().toISOString();
+      attempt.record = immutable({ version: 1, companyId: origin.company!.id, userId: origin.user.id, operationKey,
+        payload, timezone: settings.timezone, phase: "prepared", jobId: null, createdAt: now, updatedAt: now });
+      if (previous) {
+        previous.dirty = true;
+        if (!await store.remove(origin.company!.id, origin.user.id, previous.record!.operationKey)) throw new Error(persistenceMessage);
+        previous.dirty = false;
+        runtime.attempt = attempt;
+      }
+      reservationStarted = true;
+      // Fail closed on a failed/ambiguous reservation. It may already have written.
+      if (!await store.reserve(attempt.record)) throw new Error(persistenceMessage);
+      attempt.reserved = true;
       patch(attempt, { phase: "submitting", message: "Saving Job… Do not submit again.", jobId: null });
-      if (!current()) return false;
-      attempt.sent = true;
-      const ack = await api.create(origin.token, origin.company!.id, payload);
-      // Settling the originating attempt is mandatory even after its sheet closes.
-      attempt.ack = ack;
-      if (!positive(ack.id) || ack.companyId !== origin.company!.id || ack.customerId !== payload.customerId
-        || ack.priceBookServiceId !== payload.priceBookServiceId || ack.assignedUserId !== (payload.assignedUserId ?? null)
-        || !instantEqual(ack.scheduledStartAt, payload.scheduledStartAt)
-        || (payload.scheduledEndAt && !instantEqual(ack.scheduledEndAt, payload.scheduledEndAt))
-        || !Number.isFinite(ack.amount) || ack.amount < 0) {
-        attempt.ack = undefined;
+      if (!current()) {
         patch(attempt, { phase: "uncertain", message: uncertainMessage, jobId: null });
         return false;
       }
+      // Fresh authentication after the durable write closes the delayed-storage
+      // window. Once dispatch begins, origin settlement is independent of current().
+      if (!await fresh() || !current()) {
+        patch(attempt, { phase: "uncertain", message: uncertainMessage, jobId: null });
+        return false;
+      }
+      const request = Object.freeze({ ...attempt.record.payload, operationKey: attempt.record.operationKey });
+      const ack = await api.create(origin.token, origin.company!.id, request);
+      if (!positive(ack.id) || ack.companyId !== origin.company!.id || ack.customerId !== payload.customerId
+        || (ack.priceBookServiceId !== payload.priceBookServiceId && !(ack.priceBookServiceId === null && ack.operation?.replayed === true))
+        || ack.assignedUserId !== (payload.assignedUserId ?? null) || !instantEqual(ack.scheduledStartAt, payload.scheduledStartAt)
+        || (payload.scheduledEndAt && !instantEqual(ack.scheduledEndAt, payload.scheduledEndAt))
+        || !Number.isFinite(ack.amount) || ack.amount < 0
+        || (ack.operation && (ack.operation.key !== operationKey || ack.operation.state !== "saved"))) throw new Error("The save response could not be verified. The original request remains locked.");
+      attempt.ack = ack;
       patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
+      await settleRecord(attempt, { phase: "saved", jobId: ack.id });
       if (!current()) return false;
       return await recoverDetail(attempt);
     } catch (error) {
-      if (!attempt.sent || (!attempt.ack && definitiveRejection(error))) {
-        attempts.delete(key);
+      if (!reservationStarted) {
+        if (runtime.attempt === attempt) runtime.attempt = undefined;
         localState = { phase: "error", jobId: null, message: error instanceof Error ? error.message : "Could not verify this Company Job." };
-        notify(key);
+        if (previous) diagnostic(previous, error);
+        else notify(key);
       } else {
-        patch(attempt, { phase: attempt.ack ? "saved" : "uncertain", message: attempt.ack ? savedMessage : uncertainMessage, jobId: attempt.ack?.id ?? null,
-          detailError: attempt.ack && error instanceof Error ? error.message : null });
+        // Neither auth status nor a familiar validation error proves rollback.
+        // Only subsequent authoritative GET rejected + durable update can unlock.
+        if (!attempt.record?.jobId) {
+          const conflict = Boolean(error && typeof error === "object"
+            && ((error as { status?: unknown }).status === 409 || (error as { code?: unknown }).code === "CONFLICT")
+            && error instanceof Error && error.message === "This Job creation operation key was already used with a different payload.");
+          patch(attempt, { phase: conflict ? "conflict" : "uncertain", jobId: null, message: conflict ? conflictMessage : uncertainMessage,
+            detailError: error instanceof Error ? error.message : null });
+          if (attempt.reserved) {
+            try { await settleRecord(attempt, { phase: conflict ? "conflict" : "uncertain" }); }
+            catch (storageError) { diagnostic(attempt, storageError); }
+          }
+        } else diagnostic(attempt, error);
       }
       return false;
     } finally {
-      attempt.busy = false;
-      if (attempts.get(key) === attempt && attempt.state.reconciling) attempt.state = { ...attempt.state, reconciling: false };
-      if (!attempt.sent && attempts.get(key) === attempt) attempts.delete(key);
+      runtime.busy = false;
+      if (!reservationStarted && runtime.attempt === attempt) runtime.attempt = undefined;
+      if (runtime.attempt) runtime.attempt.state = { ...runtime.attempt.state, reconciling: false };
       notify(key);
     }
   };
-  const reconcile = async () => {
-    const attempt = attempts.get(key);
-    if (!current() || !attempt || attempt.busy) return false;
-    attempt.busy = true;
-    patch(attempt, { ...attempt.state, reconciling: true });
-    try {
-      if (attempt.ack) return await recoverDetail(attempt);
-      if (!await fresh() || !current()) return false;
-      await api.jobs(origin.token);
-      if (!current()) return false;
-      patch(attempt, { ...attempt.state, message: `${uncertainMessage} Calendar records refreshed; absence from this list is not proof that the Job was not saved.` });
-      return false;
-    } catch (error) {
-      patch(attempt, { ...attempt.state, message: attempt.ack ? savedMessage : uncertainMessage,
-        detailError: error instanceof Error ? error.message : null });
-      return false;
-    } finally {
-      attempt.busy = false;
-      if (attempts.get(key) === attempt) attempt.state = { ...attempt.state, reconciling: false };
-      notify(key);
-    }
+  return {
+    submit, restore, reconcile: () => runtime.busy || restorePromise ? Promise.resolve(false) : restore(), getState,
+    isBusy: () => !runtime.hydrated || Boolean(runtime.hydration) || runtime.busy,
+    detach: () => { detached = true; set?.delete(publish); if (!set?.size) listeners.delete(key); },
   };
-  return { submit, reconcile, getState, isBusy: () => Boolean(attempts.get(key)?.busy), detach: () => { detached = true; set?.delete(publish); if (!set?.size) listeners.delete(key); } };
 }
 function structuredSession(session: JobSyncNativeSession): JobSyncNativeSession {
   return { ...session, user: { ...session.user }, ...(session.company ? { company: { ...session.company } } : {}) };

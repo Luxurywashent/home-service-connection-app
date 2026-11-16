@@ -53,7 +53,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   useLayoutEffect(() => { live.current.props = props; live.current.candidates = candidates; }, [props, candidates]);
   const current = useCallback(() => live.current.mounted && live.current.props.visible && live.current.props.isCurrent(), []);
   const refreshPriceBook = priceBook.refresh;
-  const [state, setState] = useState<CompanyCreateJobState>({ phase: "ready", jobId: null, message: null });
+  const [state, setState] = useState<CompanyCreateJobState>({ phase: "restoring", jobId: null, message: "Checking saved creation attempts…" });
   const [customers, setCustomers] = useState<JobSyncCompanyCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -99,6 +99,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
       onCreated: (detail, zone) => current() ? live.current.props.onCreated(detail, zone) : false,
     });
     controllerRef.current = controller; setState(controller.getState());
+    void controller.restore();
     return () => { committedLive.mounted = false; invalidateCustomerRequest(); controller.detach(); controllerRef.current = null; };
   }, [props.session, current, invalidateCustomerRequest]);
   const selectCustomer = useCallback(async (candidate: CompanyJobCustomerPrefill, manual: boolean, originCurrent: () => boolean = () => true) => {
@@ -153,8 +154,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const service = priceBook.services.find((row) => row.serviceId === serviceId);
   const rates = service ? companyCreateJobRateKeys(service) : [];
   const customerId = selectedCustomer?.id ?? null;
-  const busy = state.phase === "validating" || state.phase === "submitting" || Boolean(state.reconciling);
-  const locked = busy || ["uncertain", "saved", "succeeded"].includes(state.phase);
+  const busy = state.phase === "restoring" || state.phase === "validating" || state.phase === "submitting" || Boolean(state.reconciling);
+  const locked = busy || ["uncertain", "pending", "conflict", "saved", "succeeded"].includes(state.phase);
   const serviceBase = (service as (typeof service & { basePrice?: number }))?.basePrice;
   const requireRate = serviceBase !== undefined && serviceBase <= 0 && rates.length > 0;
   const canSave = !locked && !loading && !loadError && !customerLoading && !customerError && Boolean(timezone && selectedCustomer && service)
@@ -164,9 +165,16 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const close = () => { if (current()) live.current.props.onClose(); };
   const save = () => {
     if (!canSave || !current() || !customerId) return;
-    void controllerRef.current?.submit({ customerId, serviceId, assignedEmployeeId: assignee,
+    const controller = controllerRef.current;
+    if (!controller) return;
+    void controller.submit({ customerId, serviceId, assignedEmployeeId: assignee,
       vehiclePriceKey: rateKey || undefined, date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
-      addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes });
+      addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes }).then(async (saved) => {
+      // One authenticated GET-only check after an ambiguous response; never
+      // resend, re-key, or drive a retained controller after close/scope change.
+      if (!saved && current() && controllerRef.current === controller
+        && ["uncertain", "pending", "conflict"].includes(controller.getState().phase)) await controller.reconcile();
+    });
   };
   const retryReads = () => { if (current() && !locked) { setRefreshKey((value) => value + 1); void priceBook.refresh(); } };
   const inputStyle = [styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }];
@@ -226,10 +234,11 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {field("Service address", address, setAddress)}{field("City", city, setCity)}{field("Region / state", region, setRegion)}{field("Postal code", postalCode, setPostalCode)}
           {field("Service notes", notes, setNotes, undefined, true)}{field("Private notes", privateNotes, setPrivateNotes, undefined, true)}
           <Text style={[styles.note, { color: colors.muted }]}>Customer confirmations follow Company server policy. Recurrence, custom prices, discounts, extra services and notification choices are not available in this form.</Text>
-          {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: state.phase === "error" || state.phase === "uncertain" ? colors.error : colors.muted }]}>{state.message}{state.jobId ? ` Job #${state.jobId}.` : ""}</Text>}
-          {busy && <ActivityIndicator accessibilityLabel={state.reconciling ? "Refreshing Company calendar" : "Saving Company Job"} color={colors.primary} />}
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.reconciling ? "Refreshing…" : busy ? "Saving…" : "Save Job"}</Text></TouchableOpacity>
-          {["uncertain", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh Company calendar" : "Check Company calendar records (read only)"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>Refresh Company form</Text></TouchableOpacity>}
+          {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}{state.jobId ? ` Job #${state.jobId}.` : ""}</Text>}
+          {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>The original request was rejected. Review and correct the form, then deliberately save a new Job request.</Text>}
+          {busy && <ActivityIndicator accessibilityLabel={state.phase === "restoring" ? "Checking previous creation request" : state.reconciling ? "Checking original Job status and calendar" : "Saving Company Job"} color={colors.primary} />}
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Save Company Job" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.primary, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.45 }]}><Text style={styles.primaryText}>{state.phase === "restoring" ? "Checking…" : state.reconciling ? "Refreshing…" : busy ? "Saving…" : state.phase === "rejected" ? "Save corrected Job" : "Save Job"}</Text></TouchableOpacity>
+          {["uncertain", "pending", "conflict", "saved"].includes(state.phase) ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh saved Job without resending" disabled={busy} onPress={() => { if (current()) void controllerRef.current?.reconcile(); }} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>{state.phase === "saved" ? "Refresh Company calendar" : "Check original request status (read only)"}</Text></TouchableOpacity> : !locked && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh Company form" onPress={retryReads} style={[styles.option, { borderColor: colors.border }]}><Text style={{ color: colors.foreground }}>Refresh Company form</Text></TouchableOpacity>}
         </ScrollView>
       </View>
     </KeyboardAvoidingView>

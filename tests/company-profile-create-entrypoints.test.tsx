@@ -3,6 +3,10 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../lib/company-job-creation-storage", async () => {
+  const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
+  return memoryCreationStorageModule();
+});
 import { installPhotoTestDOM } from "./helpers/company-photo-test-dom";
 import { createCompanyJobController } from "../lib/company-create-job";
 import { JobSyncApiError } from "../lib/jobsync-mobile-api";
