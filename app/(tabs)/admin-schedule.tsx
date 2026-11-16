@@ -61,9 +61,10 @@ import { useCompanyJob } from "@/hooks/use-company-job";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
+import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
-import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
+import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
@@ -1705,7 +1706,14 @@ export default function AdminScheduleScreen() {
   const [screenWidth, setScreenWidth] = useState(375);
 
   // Add Job state
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddModal, setShowAddModalState] = useState(false);
+  const [addSheetEpoch, setAddSheetEpoch] = useState(0);
+  const addSheetEpochRef = useRef(0);
+  const setShowAddModal = (visible: boolean) => {
+    addSheetEpochRef.current++;
+    setAddSheetEpoch(addSheetEpochRef.current);
+    setShowAddModalState(visible);
+  };
   const [addFirstName, setAddFirstName] = useState("");
   const [addLastName, setAddLastName] = useState("");
   const [addPhone, setAddPhone] = useState("");
@@ -2329,6 +2337,13 @@ export default function AdminScheduleScreen() {
   }, []);
 
   const openAdd = () => {
+    if (companyJobMode) {
+      if (!isJobSyncCompany || jobSyncLoading || !isFocused || !jobSyncSession?.company?.id || !["owner", "dispatcher"].includes(jobSyncSession.user.role)) return;
+      setAddJobDate(companyCalendarDateAtPosition(weekOffset, selectedDay, new Date(), companyTimezone) ?? "");
+      setAddStartHour(8); setAddEndHour(10);
+      setShowAddModal(true);
+      return;
+    }
     const cityDets = isJobSyncCompany ? companyCalendarLanes : (dynamicDetailers[selectedCity] ?? FALLBACK_DETAILERS[selectedCity] ?? []);
     const dow = selectedDate.getDay();
     // Find the soonest available slot across all on-shift detailers
@@ -2373,6 +2388,7 @@ export default function AdminScheduleScreen() {
   const jobCreateRecurringMutation = trpc.jobs.createRecurring.useMutation();
 
   const saveAdminJob = () => {
+    if (companyJobMode || !renderedLegacyReadAction()) return;
     if (!addFirstName.trim() || !addLastName.trim() || !addAddress.trim()) return;
     const incompleteServices = addExtraVehicles.filter((service) => !service.packageId);
     if (incompleteServices.length > 0) {
@@ -5482,7 +5498,26 @@ export default function AdminScheduleScreen() {
       </Modal>
 
       {/* Add Job Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => { prefillHandledRef.current = null; setShowAddModal(false); }}>
+      {companyJobMode && showAddModal && <CompanyCreateJobSheet
+        key={addSheetEpoch}
+        visible={showAddModal}
+        session={jobSyncSession}
+        initialDate={addJobDate}
+        initialStartHour={addStartHour}
+        initialEndHour={addEndHour}
+        isCurrent={() => addSheetEpochRef.current === addSheetEpoch && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode && calendarScopeRef.current.key === calendarScopeKey}
+        onClose={() => { if (addSheetEpochRef.current === addSheetEpoch) setShowAddModal(false); }}
+        onCreated={(detail, timezone) => {
+          if (addSheetEpochRef.current !== addSheetEpoch || !(managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode && calendarScopeRef.current.key === calendarScopeKey) || detail.companyId !== jobSyncSession?.company?.id) return;
+          const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
+          if (!slot) return;
+          const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
+              setCompanyTimezone(timezone);
+              setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);
+              setShowAddModal(false); forceSync();
+        }}
+      />}
+      <Modal visible={showAddModal && !companyJobMode} animationType="slide" transparent onRequestClose={() => { prefillHandledRef.current = null; setShowAddModal(false); }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
             <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: "90%" }}>

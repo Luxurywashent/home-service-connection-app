@@ -401,13 +401,86 @@ export async function getJobSyncCompanyJobs(token: string, range?: { start?: str
   const search = new URLSearchParams();
   if (range?.start) search.set("start", range.start);
   if (range?.end) search.set("end", range.end);
-  const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, {
-    method: "GET",
-    headers: createJobSyncBearerHeaders(token),
-  })) ?? {};
-  return (Array.isArray(payload.jobs) ? payload.jobs : [])
-    .map(normalizeJobSyncMobileJob)
-    .filter((job): job is JobSyncMobileJob => Boolean(job));
+  const jobs = new Map<number, JobSyncMobileJob>();
+  const seenCursors = new Set<string>();
+  for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
+    const payload = asRecord(await requestJson(`${COMPANY_JOBS_PATH}${search.size ? `?${search.toString()}` : ""}`, {
+      method: "GET", headers: createJobSyncBearerHeaders(token),
+    })) ?? {};
+    if (!Array.isArray(payload.jobs)) throw new JobSyncApiError("Could not verify the Company calendar response. Refresh to try again.", null, "INVALID_RESPONSE");
+    for (const row of payload.jobs) {
+      const job = normalizeJobSyncMobileJob(row);
+      if (job && positiveJobSyncId(job.id)) jobs.set(job.id, job);
+    }
+    const next = asRecord(payload.page)?.nextCursor;
+    if (next === null || next === undefined) return [...jobs.values()];
+    if (typeof next !== "string" || !next || next.length > 4096 || seenCursors.has(next)) throw new JobSyncApiError("The Company calendar pagination could not be verified. Refresh to try again.", null, "INVALID_PAGINATION");
+    seenCursors.add(next);
+    search.set("cursor", next);
+  }
+  throw new JobSyncApiError("The Company calendar exceeds this refresh limit. No partial schedule was accepted.", null, "CALENDAR_REFRESH_LIMIT");
+}
+
+export type JobSyncCompanyJobCreateInput = {
+  customerId: number;
+  priceBookServiceId: number;
+  vehiclePriceKey?: string | null;
+  assignedUserId?: number | null;
+  scheduledStartAt: string;
+  scheduledEndAt?: string;
+  addressLine1?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+  serviceNotes?: string;
+  privateNotes?: string;
+};
+
+/** CREATE is the canonical list-shaped DTO, not the detail/photo-gallery DTO. */
+export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & { companyId: number; priceBookServiceId: number };
+
+export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
+  if (positiveJobSyncId(input.customerId) !== input.customerId || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId) {
+    throw new Error("Choose an existing Company customer and an active Price Book service.");
+  }
+  const instant = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19);
+  if (!instant(input.scheduledStartAt) || (input.scheduledEndAt !== undefined && (!instant(input.scheduledEndAt) || Date.parse(input.scheduledEndAt) <= Date.parse(input.scheduledStartAt)))) {
+    throw new Error("Choose a valid Company calendar start and end time.");
+  }
+  if (input.assignedUserId !== undefined && input.assignedUserId !== null && positiveJobSyncId(input.assignedUserId) !== input.assignedUserId) throw new Error("Choose an eligible Company technician.");
+  const result: JobSyncCompanyJobCreateInput = { customerId: input.customerId, priceBookServiceId: input.priceBookServiceId, scheduledStartAt: input.scheduledStartAt };
+  if (input.scheduledEndAt !== undefined) result.scheduledEndAt = input.scheduledEndAt;
+  if (input.assignedUserId !== undefined) result.assignedUserId = input.assignedUserId;
+  if (input.vehiclePriceKey !== undefined) {
+    if (input.vehiclePriceKey !== null && (typeof input.vehiclePriceKey !== "string" || !input.vehiclePriceKey.trim() || input.vehiclePriceKey.trim().length > 64)) throw new Error("Choose a valid Price Book service rate.");
+    result.vehiclePriceKey = input.vehiclePriceKey === null ? null : input.vehiclePriceKey.trim();
+  }
+  const limits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
+  for (const key of Object.keys(limits) as (keyof typeof limits)[]) {
+    const value = input[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || value.trim().length > limits[key]) throw new Error("A Job address or note exceeds the supported limit.");
+    result[key] = value.trim();
+  }
+  return result;
+}
+
+/** One POST only. Never retry an ambiguous creation failure or use legacy upsert. */
+export async function createJobSyncCompanyJob(token: string, companyId: number, input: JobSyncCompanyJobCreateInput): Promise<JobSyncCompanyJobCreateResult> {
+  if (!token.trim() || !positiveJobSyncId(companyId)) throw new Error("A current Company session is required.");
+  const body = createJobSyncCompanyJobPayload(input);
+  const payload = await requestJson(COMPANY_JOBS_PATH, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) });
+  const row = asRecord(asRecord(payload)?.job);
+  const job = normalizeJobSyncMobileJob(row);
+  if (!row || !job || job.customerId !== body.customerId || positiveJobSyncId(row.priceBookServiceId) !== body.priceBookServiceId
+    || ((row.companyId ?? row.company_id) !== undefined && positiveJobSyncId(row.companyId ?? row.company_id) !== companyId)
+    || Date.parse(job.scheduledStartAt ?? "") !== Date.parse(body.scheduledStartAt)
+    || (body.scheduledEndAt !== undefined && Date.parse(job.scheduledEndAt ?? "") !== Date.parse(body.scheduledEndAt))
+    || (body.assignedUserId !== undefined && job.assignedUserId !== body.assignedUserId)) {
+    throw new JobSyncApiError("The save response could not be verified. Refresh the Company calendar before creating this Job again.", null, "INVALID_CREATE_RESPONSE");
+  }
+  return { ...job, companyId, priceBookServiceId: body.priceBookServiceId };
 }
 
 export type JobSyncCompanyJobScheduleInput = {
@@ -788,20 +861,53 @@ export async function updateJobSyncCompanyJobAssignment(
   });
 }
 
-export async function getJobSyncCompanySettings(token: string): Promise<JobSyncCompanySettings> {
-  const settings = normalizeJobSyncCompanySettings(await requestJson(COMPANY_SETTINGS_PATH, {
+export async function getJobSyncCompanySettings(token: string, options?: { requireTimezone: boolean }): Promise<JobSyncCompanySettings> {
+  const payload = await requestJson(COMPANY_SETTINGS_PATH, {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
-  }));
+  });
+  if (options?.requireTimezone) {
+    const root = asRecord(payload);
+    const data = firstRecord(root?.data, root) ?? {};
+    const company = firstRecord(data.company, root?.company) ?? {};
+    const timezone = firstString(company.timezone, company.timeZone);
+    if (!timezone) throw new JobSyncApiError("The Company timezone is missing. Refresh Company settings before creating this Job.", null, "MISSING_COMPANY_TIMEZONE");
+    try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(); }
+    catch { throw new JobSyncApiError("The Company timezone is invalid. Refresh Company settings before creating this Job.", null, "INVALID_COMPANY_TIMEZONE"); }
+  }
+  const settings = normalizeJobSyncCompanySettings(payload);
   if (!settings) throw new Error("Home Service Connected returned invalid Company settings.");
   return settings;
 }
 
 export async function getJobSyncCompanyCustomers(token: string): Promise<JobSyncCompanyCustomer[]> {
-  return normalizeJobSyncCompanyCustomers(await requestJson(COMPANY_CUSTOMERS_PATH, {
-    method: "GET",
-    headers: createJobSyncBearerHeaders(token),
+  const customers = new Map<number, JobSyncCompanyCustomer>();
+  const search = new URLSearchParams();
+  const cursors = new Set<string>();
+  for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
+    const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}${search.size ? `?${search.toString()}` : ""}`, {
+      method: "GET", headers: createJobSyncBearerHeaders(token),
+    })) ?? {};
+    if (!Array.isArray(payload.customers)) throw new JobSyncApiError("Could not verify the Company customer list. Refresh to try again.", null, "INVALID_RESPONSE");
+    for (const customer of normalizeJobSyncCompanyCustomers(payload)) customers.set(customer.id, customer);
+    const next = asRecord(payload.page)?.nextCursor;
+    if (next === null || next === undefined) return [...customers.values()];
+    if (typeof next !== "string" || !next || next.length > 4096 || cursors.has(next)) throw new JobSyncApiError("The Company customer pagination could not be verified. Refresh to try again.", null, "INVALID_PAGINATION");
+    cursors.add(next);
+    search.set("cursor", next);
+  }
+  throw new JobSyncApiError("The Company customer list exceeds this refresh limit. No partial customer list was accepted.", null, "CUSTOMER_REFRESH_LIMIT");
+}
+
+export async function getJobSyncCompanyCustomer(token: string, customerId: number): Promise<JobSyncCompanyCustomer & { region: string | null; postalCode: string | null }> {
+  if (!token.trim() || !positiveJobSyncId(customerId)) throw new Error("Choose an existing Company customer.");
+  const payload = asRecord(await requestJson(`${COMPANY_CUSTOMERS_PATH}/${customerId}`, {
+    method: "GET", headers: createJobSyncBearerHeaders(token),
   }));
+  const row = asRecord(payload?.customer);
+  const customer = normalizeJobSyncCompanyCustomers({ customers: row ? [row] : [] })[0];
+  if (!customer || customer.id !== customerId) throw new JobSyncApiError("The selected Company customer could not be verified. Choose the customer again.", null, "INVALID_RESPONSE");
+  return { ...customer, region: firstString(row?.region), postalCode: firstString(row?.postalCode) };
 }
 
 export function createJobSyncCompanyMemberUpdatePayload(input: JobSyncCompanyMemberUpdateInput) {
@@ -1176,6 +1282,10 @@ export type HomeServiceConnectedPriceBookService = {
   imageUrl: string | null;
   sortOrder: number;
   serviceTypeId: number | null;
+  basePrice?: number;
+  defaultDurationMinutes?: number | null;
+  defaultAssignedUserId?: number | null;
+  pricingUnit?: string | null;
 };
 
 export type HomeServiceConnectedChatGroup = {
@@ -1294,8 +1404,12 @@ function normalizeHomeServiceConnectedPriceBookService(value: unknown): HomeServ
     features: priceBookFeatures(service.features),
     vehiclePrices: priceMap(service.vehiclePrices ?? service.vehicle_prices ?? service.prices),
     imageUrl: firstString(service.imageUrl, service.image_url, service.image_url_pb),
-    sortOrder: nullableNumber(service.sortOrder, service.sort_order, service.sort_order_pb) ?? 0,
+    sortOrder: nullableNumber(service.sortOrder, service.orderIndex, service.sort_order, service.sort_order_pb) ?? 0,
     serviceTypeId: nullableNumber(service.serviceTypeId, service.service_type_id),
+    ...(normalizeCompanyJobBillingAmount(service.basePrice) !== null ? { basePrice: normalizeCompanyJobBillingAmount(service.basePrice)! } : {}),
+    ...(service.defaultDurationMinutes !== undefined ? { defaultDurationMinutes: nullableNumber(service.defaultDurationMinutes) } : {}),
+    ...(service.defaultAssignedUserId !== undefined ? { defaultAssignedUserId: positiveJobSyncId(service.defaultAssignedUserId) } : {}),
+    ...(service.pricingUnit !== undefined ? { pricingUnit: firstString(service.pricingUnit) } : {}),
   };
 }
 
@@ -1322,6 +1436,11 @@ export async function getHomeServiceConnectedPriceBook(token: string) {
     method: "GET",
     headers: createJobSyncBearerHeaders(token),
   });
+  const root = asRecord(payload);
+  const data = firstRecord(root?.data, root);
+  if (!Array.isArray(data?.services) && !Array.isArray(data?.items) && !Array.isArray(root?.services) && !Array.isArray(root?.items)) {
+    throw new JobSyncApiError("The Company Price Book response could not be verified. Tap Reload Services to try again.", null, "INVALID_PRICE_BOOK_RESPONSE");
+  }
   return normalizeHomeServiceConnectedPriceBook(payload);
 }
 

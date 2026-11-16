@@ -51,9 +51,10 @@ import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingS
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
+import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, isAssignedCompanyTechnician, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
-import { companyCalendarSlot, companyCalendarWeekPosition } from "@/lib/company-calendar";
+import { companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
 import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
 import { trpc } from "@/lib/trpc";
@@ -2407,7 +2408,14 @@ export default function ScheduleScreen() {
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [companyCalendarError, setCompanyCalendarError] = useState<string | null>(null);
 
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddModal, setShowAddModalState] = useState(false);
+  const [addSheetEpoch, setAddSheetEpoch] = useState(0);
+  const addSheetEpochRef = useRef(0);
+  const setShowAddModal = (visible: boolean) => {
+    addSheetEpochRef.current++;
+    setAddSheetEpoch(addSheetEpochRef.current);
+    setShowAddModalState(visible);
+  };
   const [showServiceWizard, setShowServiceWizard] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
@@ -3663,6 +3671,7 @@ export default function ScheduleScreen() {
   }, [employee, selectedLocation, legacyMediaIdentity, screenFocusEpoch]);
 
   const openAdd = (sh = 8, eh = 9) => {
+    if (companyJobMode && (!isJobSyncCompany || jobSyncLoading || !captureScreenAction()() || !jobSyncSession?.company?.id || !["owner", "dispatcher"].includes(jobSyncSession.user.role))) return;
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
     setAddress(""); setServiceTitle(""); setServiceDescription("");
     setPrice(""); setStartHour(sh); setEndHour(eh); setNotes("");
@@ -3690,6 +3699,7 @@ export default function ScheduleScreen() {
   };
 
   const saveJob = () => {
+    if (companyJobMode || !captureLegacyAction()()) return;
     if (!firstName.trim() || !lastName.trim() || !address.trim()) return;
     const resolvedTitle = serviceTitle.trim() || (packageId ? (PACKAGES.find(p => p.id === packageId)?.title ?? "Detail Service") : "Detail Service");
     const newJob: Job = {
@@ -6141,7 +6151,27 @@ export default function ScheduleScreen() {
 
       </Modal>
       {/* Add Job Modal - rendered outside ScreenContainer to prevent z-index conflicts */}
-      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+      {companyJobMode && showAddModal && <CompanyCreateJobSheet
+        key={addSheetEpoch}
+        visible={showAddModal}
+        session={jobSyncSession}
+        initialDate={companyCalendarDateAtPosition(weekOffset, selectedDay, new Date(), companyTimezone) ?? ""}
+        initialStartHour={startHour}
+        initialEndHour={endHour}
+        isCurrent={() => addSheetEpochRef.current === addSheetEpoch && Boolean(captureScreenAction()())}
+        onClose={() => { if (addSheetEpochRef.current === addSheetEpoch) setShowAddModal(false); }}
+        onCreated={(detail, timezone) => {
+          if (addSheetEpochRef.current !== addSheetEpoch || !(Boolean(captureScreenAction()())) || detail.companyId !== jobSyncSession?.company?.id) return;
+          const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
+          if (!slot) return;
+          const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
+              setCompanyTimezone(timezone);
+              setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);
+              setShowAddModal(false);
+              void syncServerJobs(employee?.city ? cityToSlug(employee.city) : selectedLocation, employee!);
+        }}
+      />}
+      <Modal visible={showAddModal && !companyJobMode} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
             <View style={s.modalOverlay}>
               <View style={[s.addSheet, { backgroundColor: colors.surface }]}>

@@ -149,3 +149,14 @@ export function companyCalendarWeekPosition(
     weekOffset: Math.round((appointmentMonday - todayMonday) / (7 * 86_400_000)),
   };
 }
+
+/** Company-local Monday-based day selected on the mobile calendar, independent of the phone's zone. */
+export function companyCalendarDateAtPosition(weekOffset: number, dayIndex: number, now = new Date(), timezone?: string | null) {
+  if (!Number.isInteger(weekOffset) || !Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6) return null;
+  const today = zonedParts(now, timezone);
+  if (!today) return null;
+  const midnight = dateAtUtcMidnight(today.date);
+  const monday = midnight - ((new Date(midnight).getUTCDay() + 6) % 7) * 86_400_000;
+  const selected = new Date(monday + (weekOffset * 7 + dayIndex) * 86_400_000);
+  return Number.isNaN(selected.getTime()) ? null : selected.toISOString().slice(0, 10);
+}
