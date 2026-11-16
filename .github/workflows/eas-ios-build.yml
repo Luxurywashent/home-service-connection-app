@@ -1,5 +1,4 @@
 name: Home Service Connection mobile build
-
 on:
   workflow_dispatch:
     inputs:
@@ -25,41 +24,47 @@ on:
         required: false
         type: string
       reuse_original_android_upload_key:
-        description: Reuse the verified original Play upload key for the corrected Android package
+        description: Reuse the verified original Play upload key for the corrected
+          Android package
         required: false
         default: false
         type: boolean
-
+      submission_build_id:
+        description: Optional finished iOS EAS ID to upload to private TestFlight; no
+          build is created
+        required: false
+        type: string
+      source_sha:
+        description: Exact approved mobile source for submission
+        required: false
+        type: string
+        default: f1365a8aa3a5bc6dc50b1fcfca4ddbe84676b766
 permissions:
   contents: read
-
 jobs:
   status:
-    if: ${{ inputs.status_build_id != '' }}
+    if: ${{ inputs.status_build_id != '' && inputs.submission_build_id == '' }}
     name: Monitor private Expo build
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Monitor EAS build status
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
+        run: >
           test -n "$EXPO_TOKEN"
+
           for attempt in $(seq 1 35); do
             set +e
             npx eas-cli@latest build:view "${{ inputs.status_build_id }}" --json > eas-build.json
@@ -78,60 +83,137 @@ jobs:
             esac
             sleep 60
           done
-          echo "EAS build did not reach a terminal status before the monitor timeout." >&2
-          exit 1
 
+          echo "EAS build did not reach a terminal status before the monitor timeout." >&2
+
+          exit 1
   build:
-    if: ${{ inputs.status_build_id == '' }}
+    if: ${{ inputs.status_build_id == '' && inputs.submission_build_id == '' }}
     name: Create Expo mobile build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Verify Expo project
         run: |
           npx expo install --check
           npx expo-doctor
-
       - name: Verify Android upload certificate
         if: ${{ inputs.platform == 'android' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           REUSE_ORIGINAL_KEY: ${{ inputs.reuse_original_android_upload_key }}
-        run: |
+        run: >
           args=()
-          if [ "$REUSE_ORIGINAL_KEY" = "true" ]; then args+=(--reuse-original); fi
-          node scripts/verify-android-upload-key.mjs "${args[@]}"
 
+          if [ "$REUSE_ORIGINAL_KEY" = "true" ]; then args+=(--reuse-original); fi
+
+          node scripts/verify-android-upload-key.mjs "${args[@]}"
       - name: Create EAS mobile build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_NO_VCS: "1"
           BUILD_PLATFORM: ${{ inputs.platform || 'ios' }}
           BUILD_PROFILE: ${{ inputs.profile }}
-        run: |
+        run: >
           test -n "$EXPO_TOKEN"
+
           case "$BUILD_PLATFORM" in ios|android) ;; *) exit 2 ;; esac
+
           case "$BUILD_PROFILE" in production|testflight|preview) ;; *) exit 2 ;; esac
+
           signing_args=()
+
           if [ "$BUILD_PLATFORM" = "android" ]; then signing_args+=(--freeze-credentials); fi
+
           npx eas-cli@latest build \
             --platform "$BUILD_PLATFORM" \
             --profile "$BUILD_PROFILE" \
             --non-interactive \
             "${signing_args[@]}" \
             --no-wait
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out exact approved mobile source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Verify source and restricted inputs
+        env:
+          EXPECTED_SOURCE: ${{ inputs.source_sha }}
+          BUILD_ID: ${{ inputs.submission_build_id }}
+        run: >
+          test "$EXPECTED_SOURCE" = "f1365a8aa3a5bc6dc50b1fcfca4ddbe84676b766"
+
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+
+          [[ "$BUILD_ID" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify finished iOS artifact and existing application identity
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ inputs.submission_build_id }}
+        run: >
+          test -n "$EXPO_TOKEN"
+
+          npx eas-cli@latest build:view "$BUILD_ID" --json > submission-build.json
+
+          node - <<'JS'
+
+          const fs = require('fs');
+
+          const b = JSON.parse(fs.readFileSync('submission-build.json', 'utf8'));
+
+          if (String(b.status).toLowerCase() !== 'finished' || String(b.platform).toLowerCase() !== 'ios') throw new Error('Only a finished iOS build may be uploaded');
+
+          if (b.id !== process.env.BUILD_ID || b.app?.id !== 'e6614385-618a-460d-a650-06ae63b97563' || b.app?.slug !== 'home-service-connection' || b.app?.ownerAccount?.name !== 'lilmerge4' || b.appIdentifier !== 'com.homeserviceconnection.mobile') throw new Error('Unexpected Expo app/build identity');
+
+          if (b.appVersion !== '1.0.1' || !Number.isSafeInteger(Number(b.appBuildVersion)) || Number(b.appBuildVersion) <= 10033) throw new Error('Unexpected iOS version or reused build number');
+
+          if (b.distribution && String(b.distribution).toLowerCase() !== 'store') throw new Error('A store-signed TestFlight archive is required');
+
+          console.log(JSON.stringify({id: b.id, status: b.status, platform: b.platform, appVersion: b.appVersion, appBuildVersion: b.appBuildVersion, distribution: b.distribution}));
+
+          JS
+      - name: Set existing App Store destination in temporary submit profile only
+        run: >
+          node - <<'JS'
+
+          const fs = require('fs');
+
+          const e = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+
+          e.submit.testflight = { extends: 'production', ios: { ascAppId: '6800959195' } };
+
+          fs.writeFileSync('eas.json', JSON.stringify(e, null, 2) + '\n');
+
+          JS
+      - name: Upload exact existing archive to private TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ inputs.submission_build_id }}
+        run: >
+          test -n "$EXPO_TOKEN"
+
+          npx eas-cli@latest submit --platform ios --profile testflight --id "$BUILD_ID" --non-interactive
+    if: ${{ inputs.submission_build_id != '' }}
