@@ -846,10 +846,10 @@ export function validateCompanyCheckoutUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 8192 || /[\u0000-\u0020\u007f\\]/.test(value)
     || /%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return null;
   // Inspect the raw authority too: URL parsing otherwise hides an explicit :443 port.
-  // Preserve proven provider forms: opaque %2F... c/pay suffix, or live g/pay Session /c/ with no query.
+  // Preserve proven provider forms: opaque c/pay suffix, or live g/pay Session with optional /c/ and no query.
   const match = value.match(/^https:\/\/checkout\.stripe\.com(\/[^?#]*)(?:\?[^#]*)?(?:#[A-Za-z0-9_%+=/.-]+)?$/i);
   if (!match || (!/^\/c\/pay\/cs_[A-Za-z0-9_]+(?:%2[fF](?:[A-Za-z0-9_+=-]|%2[fFbB]|%3[dD])+)?$/.test(match[1])
-    && !(/^\/g\/pay\/cs_live_[A-Za-z0-9_]+\/c\/$/.test(match[1]) && !value.includes("?")))) return null;
+    && !(/^\/g\/pay\/cs_live_[A-Za-z0-9_]+(?:\/c\/)?$/.test(match[1]) && !value.includes("?")))) return null;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && url.hostname === "checkout.stripe.com"

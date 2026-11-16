@@ -202,6 +202,8 @@ describe("hosted checkout URL defenses", () => {
     "https://checkout.stripe.com/c/pay/cs_test_a%2funsafe",
     "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/#fidkdWx%2FToken%2Btail%3D",
     "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/",
+    "https://checkout.stripe.com/g/pay/cs_live_Synthetic#fidkdWx%2FToken%2Btail%3D",
+    "https://checkout.stripe.com/g/pay/cs_live_Synthetic",
   ])("preserves a bounded proven provider path byte-for-byte with a $1/100-cent acknowledgment: %s", async (url) => {
     expect(validateCompanyCheckoutUrl(url)).toBe(url);
     const fetchSpy = stubResponse({ checkout: { ...CHECKOUT, url, amountCents: 100 } });
@@ -257,11 +259,19 @@ describe("hosted checkout URL defenses", () => {
       "/g/pay/cs_live_Synthetic/c/#", "/g/pay/cs_live_Synthetic/c/#fidkdWx%00Token",
       "/g/pay/cs_live_Synthetic/c/#fidkdWx%GG", "/g/pay/cs_live_Synthetic/c/#bad@fragment",
       "/g/pay/cs_live_Synthetic/c/#fidkdWx\nToken", `/g/pay/cs_live_Synthetic/c/#${"A".repeat(8192)}`,
+      "/g/pay/cs_live_Synthetic/", "/g/pay/cs_live_Synthetic/extra", "/g/pay/cs_live_Synthetic?",
+      "/g/pay/cs_live_Synthetic?locale=en#fidkdWxToken", "/g/pay/cs_live_Synthetic#",
+      "/g/pay/cs_live_Synthetic#fidkdWx%00Token", "/g/pay/cs_live_Synthetic#bad@fragment",
+      "/g/pay/cs_live_Synthetic%2FOpaque", "/g/pay/cs_live_", "/g/pay/cs_test_Synthetic",
     ].map((path) => `https://checkout.stripe.com${path}`),
     ...[
       "http://checkout.stripe.com", "https://checkout.stripe.com.evil.test", "https://checkout.stripe.com:443",
       "https://user:pass@checkout.stripe.com", "https://sub.checkout.stripe.com",
     ].map((authority) => `${authority}/g/pay/cs_live_Synthetic/c/#fidkdWxToken`),
+    ...[
+      "http://checkout.stripe.com", "https://checkout.stripe.com.evil.test", "https://checkout.stripe.com:443",
+      "https://user:pass@checkout.stripe.com", "https://sub.checkout.stripe.com",
+    ].map((authority) => `${authority}/g/pay/cs_live_Synthetic#fidkdWxToken`),
   ])("rejects deceptive/unsafe provider URL and acknowledgment: %j", async (url) => {
     expect(validateCompanyCheckoutUrl(url)).toBeNull();
     const fetchSpy = stubResponse({ checkout: { ...CHECKOUT, url } });

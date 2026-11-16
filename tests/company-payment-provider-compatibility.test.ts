@@ -121,8 +121,9 @@ const ORIGIN = "https://www.homeserviceconnected.com";
 const TOKEN = "provider-compatibility-synthetic-token";
 // Official public documentation URL, never a live user's URL and never navigated/fetched.
 const OFFICIAL_URL = "https://checkout.stripe.com/c/pay/cs_test_a11YYufWQzNY63zpQ6QSNRQhkUpVph4WRmzW0zWJO2znZKdVujZ0N0S22u%2FM2F8bUA2SDRySkFdUV81T1BSV0YxcWJcTUJcYW5rSzN3dzBLPUE0TzRKTTxzNFBjPWZEX1NKSkxpNTVjRjN8VHE0YicpJ2N3amhWYHdzYHcnP3F3cGApJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl";
-// Synthetic equivalent of the separately reported private stored live Session structure.
-const LIVE_G_PAY_URL = "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/#fidkdWx%2FToken%2Btail%3D";
+// Synthetic equivalent of the actual privately verified stored live Session: no terminal /c/.
+const LIVE_G_PAY_URL = "https://checkout.stripe.com/g/pay/cs_live_Synthetic#fidkdWx%2FToken%2Btail%3D";
+const LIVE_G_C_PAY_URL = "https://checkout.stripe.com/g/pay/cs_live_Synthetic/c/#fidkdWx%2FToken%2Btail%3D";
 const profile = () => ({
   accountType: "company",
   user: { id: 42, role: "owner", name: "Synthetic Owner", paymentCollectionEnabled: true },
@@ -234,7 +235,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("official provider response -> exact backend DTO -> actual mobile payment flow", () => {
-  it.each([OFFICIAL_URL, LIVE_G_PAY_URL].flatMap((url) => [false, true].flatMap((reused) => ["cancel", "dismiss", "success"].map((browserResult) => ({ url, reused, browserResult })))))("opens the verbatim proven provider path once for $1 = 100 cents (reused=$reused, browser=$browserResult), never a browser-confirmed paid record", async ({ url, reused, browserResult }) => {
+  it.each([OFFICIAL_URL, LIVE_G_PAY_URL, LIVE_G_C_PAY_URL].flatMap((url) => [false, true].flatMap((reused) => ["cancel", "dismiss", "success"].map((browserResult) => ({ url, reused, browserResult })))))("opens the verbatim proven provider path once for $1 = 100 cents (reused=$reused, browser=$browserResult), never a browser-confirmed paid record", async ({ url, reused, browserResult }) => {
     const backend = backendFixture(url); await backend.prepareOpen(reused);
     const h = harness(backend);
     h.openBrowser.mockResolvedValue({ type: browserResult, url: "https://synthetic.invalid/?payment=success" });
@@ -265,7 +266,22 @@ describe("official provider response -> exact backend DTO -> actual mobile payme
     expect(globalThis.open).not.toHaveBeenCalled();
   });
 
-  it.each([OFFICIAL_URL, `${OFFICIAL_URL}#fidkdWx%2FToken%2Btail%3D`, OFFICIAL_URL.replaceAll("%2F", "%2f"), LIVE_G_PAY_URL])("keeps the provider path and optional existing fragment unchanged through 201 transport: %s", async (url) => {
+  it("opens the existing bare-path live Session without creating another provider Session", async () => {
+    const backend = backendFixture(LIVE_G_PAY_URL);
+    backend.project("open", true, "100", LIVE_G_PAY_URL, "pending");
+    const h = harness(backend);
+    expect(await h.controller.pay()).toBe(true);
+    expect(h.openBrowser).toHaveBeenCalledTimes(1);
+    expect(h.openBrowser).toHaveBeenCalledWith(LIVE_G_PAY_URL);
+    expect(h.last().checkout).toMatchObject({ amountCents: 100, reused: true, attemptStatus: "pending" });
+    expect(backend.providerCreate).not.toHaveBeenCalled();
+    await h.controller.refresh();
+    expect(h.posts()).toHaveLength(1);
+    expect(h.openBrowser).toHaveBeenCalledTimes(1);
+    expect(h.states.some((state) => state.phase === "paid")).toBe(false);
+  });
+
+  it.each([OFFICIAL_URL, `${OFFICIAL_URL}#fidkdWx%2FToken%2Btail%3D`, OFFICIAL_URL.replaceAll("%2F", "%2f"), LIVE_G_PAY_URL, LIVE_G_C_PAY_URL])("keeps the provider path and optional existing fragment unchanged through 201 transport: %s", async (url) => {
     const backend = backendFixture(url); await backend.prepareOpen(); harness(backend);
     const result = await createJobSyncCompanyJobCheckout(TOKEN, 12);
     expect(result).toEqual(backend.lastWire().checkout);
@@ -276,12 +292,12 @@ describe("official provider response -> exact backend DTO -> actual mobile payme
     const require = createRequire(import.meta.url);
     const ExpoURL = require(require.resolve("whatwg-url-minimum", { paths: [require.resolve("expo/package.json")] })).URL;
     const values = [OFFICIAL_URL, `${OFFICIAL_URL}#fidkdWxToken`, OFFICIAL_URL.replace("%2F", "%252F"),
-      OFFICIAL_URL.replace("checkout.stripe.com", "checkout.stripe.com:443"), LIVE_G_PAY_URL,
-      LIVE_G_PAY_URL.replace("/c/#", "/c/?locale=en#")];
+      OFFICIAL_URL.replace("checkout.stripe.com", "checkout.stripe.com:443"), LIVE_G_PAY_URL, LIVE_G_C_PAY_URL,
+      LIVE_G_PAY_URL.replace("#", "?locale=en#"), LIVE_G_C_PAY_URL.replace("#", "?locale=en#")];
     const expected = values.map(validateCompanyCheckoutUrl);
     vi.stubGlobal("URL", ExpoURL);
     expect(values.map(validateCompanyCheckoutUrl)).toEqual(expected);
-    expect(expected).toEqual([values[0], values[1], null, null, values[4], null]);
+    expect(expected).toEqual([values[0], values[1], null, null, values[4], values[5], null, null]);
   });
 
   it.each(["1", "99", "101"])("does not navigate when a numeric canonical DTO amount %s differs from fresh 100-cent balance", async (amount) => {
