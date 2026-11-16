@@ -6,6 +6,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { getJobSyncCompanyCustomers, getJobSyncCompanySettings, getJobSyncMobileSession,
+  normalizeCompanyJobNewCustomer, type JobSyncCompanyNewCustomer,
   type JobSyncCompanyCustomer, type JobSyncCompanyJobDetail, type JobSyncNativeSession } from "@/lib/jobsync-mobile-api";
 import { companyCreateJobAllowed, companyCreateJobRateKeys, companyCreateJobScope, createCompanyJobController,
   type CompanyCreateJobState } from "@/lib/company-create-job";
@@ -57,8 +58,15 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const [customers, setCustomers] = useState<JobSyncCompanyCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [customerListError, setCustomerListError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<JobSyncCompanyCustomer | null>(null);
+  const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
+  const customerModeRef = useRef<"existing" | "new">("existing");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const customerRequest = useRef(0);
@@ -103,10 +111,10 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     return () => { committedLive.mounted = false; invalidateCustomerRequest(); controller.detach(); controllerRef.current = null; };
   }, [props.session, current, invalidateCustomerRequest]);
   const selectCustomer = useCallback(async (candidate: CompanyJobCustomerPrefill, manual: boolean, originCurrent: () => boolean = () => true) => {
-    if (!current()) return;
+    if (!current() || customerModeRef.current !== "existing") return;
     if (manual) customerChoiceTouched.current = true;
     const request = ++customerRequest.current;
-    const allowed = () => current() && originCurrent() && customerRequest.current === request;
+    const allowed = () => current() && originCurrent() && customerModeRef.current === "existing" && customerRequest.current === request;
     setCustomerLoading(true); setCustomerError(null); setSelectedCustomer(null);
     try {
       const customer = await verifyCompanyJobCustomerPrefill(live.current.props.session, candidate, allowed);
@@ -128,19 +136,31 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
       if (!allowed()) return;
       void refreshPriceBook();
       customerRequest.current++; setCustomerLoading(false);
-      setLoading(true); setLoadError(null); setCustomers([]); setTimezone(null);
+      setLoading(true); setLoadError(null); setCustomerListError(null); setCustomers([]); setTimezone(null);
       try {
         const signed = await getJobSyncMobileSession(props.session.token);
         if (!allowed()) return;
         if (!companyCreateJobAllowed(signed) || companyCreateJobScope(signed) !== companyCreateJobScope(props.session)) throw new Error("Your Company sign-in changed. Reopen Add Job.");
-        const rows = await getJobSyncCompanyCustomers(signed.token);
-        if (!allowed()) return;
+        // Company settings are mandatory in BOTH modes. A failed existing list
+        // search is separate and must not masquerade as new-customer failure.
         const settings = await getJobSyncCompanySettings(signed.token, { requireTimezone: true });
         if (!allowed()) return;
         if (settings.id !== props.session.company!.id || !settings.timezone.trim()) throw new Error("Company calendar settings are unavailable.");
         new Intl.DateTimeFormat("en-US", { timeZone: settings.timezone }).format();
-        setCustomers(rows); setTimezone(settings.timezone); setLoading(false);
-        if ((prefillCustomerId !== undefined || prefillCompanyId !== undefined) && !customerChoiceTouched.current && !prefillResolved.current) {
+        setTimezone(settings.timezone);
+        try {
+          const rows = await getJobSyncCompanyCustomers(signed.token);
+          if (!allowed()) return;
+          setCustomers(rows);
+        } catch {
+          if (allowed()) setCustomerListError("Existing Company customer search is unavailable. Refresh to select an existing customer.");
+        }
+        if (!allowed()) return;
+        const verified = await getJobSyncMobileSession(props.session.token);
+        if (!allowed()) return;
+        if (!companyCreateJobAllowed(verified) || companyCreateJobScope(verified) !== companyCreateJobScope(props.session)) throw new Error("Your Company sign-in changed. Reopen Add Job.");
+        setLoading(false);
+        if (customerModeRef.current === "existing" && (prefillCustomerId !== undefined || prefillCompanyId !== undefined) && !customerChoiceTouched.current && !prefillResolved.current) {
           const prefill = parseCompanyJobCustomerPrefill(prefillCustomerId, prefillCompanyId);
           if (!prefill) setCustomerError("This customer link is invalid. Select an existing customer from this Company.");
           else await selectCustomer(prefill, false, allowed);
@@ -158,16 +178,32 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const locked = busy || ["uncertain", "pending", "conflict", "saved", "succeeded"].includes(state.phase);
   const serviceBase = (service as (typeof service & { basePrice?: number }))?.basePrice;
   const requireRate = serviceBase !== undefined && serviceBase <= 0 && rates.length > 0;
-  const canSave = !locked && !loading && !loadError && !customerLoading && !customerError && Boolean(timezone && selectedCustomer && service)
+  const newCustomerFields = { firstName, lastName, email, phone, addressLine1: address, city, region, postalCode };
+  const newCustomerErrors: Partial<Record<keyof JobSyncCompanyNewCustomer, string>> = {};
+  if (customerMode === "new") for (const name of Object.keys(newCustomerFields) as (keyof JobSyncCompanyNewCustomer)[]) {
+    try { normalizeCompanyJobNewCustomer({ firstName: "Validation", lastName: "Only", [name]: newCustomerFields[name] }); }
+    catch (error) { newCustomerErrors[name] = error instanceof Error ? error.message : "Check this customer field."; }
+  }
+  const customerReady = customerMode === "existing" ? !customerListError && !customerLoading && !customerError && Boolean(selectedCustomer) : !Object.keys(newCustomerErrors).length;
+  const canSave = !locked && !loading && !loadError && customerReady && Boolean(timezone && service)
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && (!requireRate || Boolean(rateKey))
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));
   const close = () => { if (current()) live.current.props.onClose(); };
+  const changeCustomerMode = (mode: "existing" | "new") => {
+    if (!current() || locked || mode === customerMode) return;
+    customerModeRef.current = mode; invalidateCustomerRequest(); customerChoiceTouched.current = true;
+    setCustomerMode(mode); setSelectedCustomer(null); setQuery(""); setCustomerLoading(false); setCustomerError(null);
+    setFirstName(""); setLastName(""); setEmail(""); setPhone("");
+    // Clear customer-owned address/contact; keep service/rate/assignment/schedule.
+    setAddress(""); setCity(""); setRegion(""); setPostalCode("");
+  };
   const save = () => {
-    if (!canSave || !current() || !customerId) return;
+    if (!canSave || !current() || customerModeRef.current !== customerMode || (customerMode === "existing" && !customerId)) return;
     const controller = controllerRef.current;
     if (!controller) return;
-    void controller.submit({ customerId, serviceId, assignedEmployeeId: assignee,
+    const selector = customerMode === "new" ? { newCustomer: normalizeCompanyJobNewCustomer(newCustomerFields) } : { customerId: customerId! };
+    void controller.submit({ ...selector, serviceId, assignedEmployeeId: assignee,
       vehiclePriceKey: rateKey || undefined, date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
       addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes }).then(async (saved) => {
       // One authenticated GET-only check after an ambiguous response; never
@@ -180,6 +216,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const inputStyle = [styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }];
   const label = (text: string) => <Text style={[styles.label, { color: colors.muted }]}>{text}</Text>;
   const field = (name: string, value: string, setValue: (value: string) => void, placeholder?: string, multiline = false) => <View style={styles.field}>{label(name)}<TextInput accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked) setValue(next); }} editable={!locked} placeholder={placeholder} placeholderTextColor={colors.muted} style={inputStyle} multiline={multiline} autoCapitalize="none" /></View>;
+  const customerFeedback = (name: keyof JobSyncCompanyNewCustomer) => newCustomerErrors[name] ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{newCustomerErrors[name]}</Text> : null;
   const option = (name: string, selected: boolean, action: () => void) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked) action(); }} style={[styles.option, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.background : colors.surface }]}><Text style={{ color: selected ? colors.primary : colors.foreground }}>{name}</Text></TouchableOpacity>;
   const normalizedQuery = query.trim().toLowerCase();
   const matches = normalizedQuery.length < 2 ? [] : customers.filter((row) => [row.name, row.email, row.phone, row.addressLine1, row.city].some((value) => value?.toLowerCase().includes(normalizedQuery))).slice(0, 10);
@@ -193,9 +230,15 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.header}><Text style={[styles.title, { color: colors.foreground }]}>New Job</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close Add Job" onPress={close} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity></View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-          <Text style={[styles.note, { color: colors.muted }]}>Create one service for an existing Company customer. Prices come from your Company Price Book.</Text>
+          <Text style={[styles.note, { color: colors.muted }]}>Create one service for an existing or new Company customer. Prices come from your Company Price Book.</Text>
           {loading && <ActivityIndicator accessibilityLabel="Loading Company form" color={colors.primary} />}
           {loadError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{loadError}</Text>}
+          <View style={styles.row}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Existing Customer" accessibilityState={{ selected: customerMode === "existing", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode("existing")} style={[styles.option, { borderColor: customerMode === "existing" ? colors.primary : colors.border }]}><Text style={{ color: customerMode === "existing" ? colors.primary : colors.foreground }}>Existing Customer</Text></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="New Customer" accessibilityState={{ selected: customerMode === "new", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode("new")} style={[styles.option, { borderColor: customerMode === "new" ? colors.primary : colors.border }]}><Text style={{ color: customerMode === "new" ? colors.primary : colors.foreground }}>New Customer</Text></TouchableOpacity>
+          </View>
+          {customerMode === "existing" ? <>
+          {customerListError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{customerListError}</Text>}
           <View style={styles.field}>{label("Find Company customer")}<TextInput accessibilityLabel="Find Company customer" value={query} onChangeText={(next) => {
             if (!current() || locked) return;
             customerChoiceTouched.current = true; invalidateCustomerRequest();
@@ -208,7 +251,14 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {selectedCustomer && <Text style={[styles.note, { color: colors.muted }]}>{[selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(" · ") || "No contact information on this customer profile."}</Text>}
           {customerLoading && <ActivityIndicator accessibilityLabel="Verifying Company customer" color={colors.primary} />}
           {customerError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{customerError}</Text>}
-          {!selectedCustomer && !loading && normalizedQuery.length >= 2 && !matches.length && <Text style={{ color: colors.muted }}>No matching customer in the loaded Company list. Select an existing customer; new-customer creation is not available here.</Text>}
+          {!selectedCustomer && !loading && !customerListError && normalizedQuery.length >= 2 && !matches.length && <Text style={{ color: colors.muted }}>No matching customer in the loaded Company list. Select an existing customer or choose New Customer.</Text>}
+          </> : <>
+            {field("First name (required)", firstName, setFirstName)}{customerFeedback("firstName")}
+            {field("Last name (required)", lastName, setLastName)}{customerFeedback("lastName")}
+            {field("Email (optional)", email, setEmail)}{customerFeedback("email")}
+            {field("Phone (optional)", phone, setPhone)}{customerFeedback("phone")}
+            <Text style={[styles.note, { color: colors.muted }]}>The service address below also becomes the new customer&apos;s address. Customer and Job save together in one request.</Text>
+          </>}
           {label("Price Book service")}
           {priceBook.isLoading && <ActivityIndicator accessibilityLabel="Loading Company Price Book" color={colors.primary} />}
           {priceBook.error && <Text accessibilityRole="alert" style={{ color: colors.error }}>{priceBook.error}</Text>}
@@ -231,7 +281,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             if (target === "date") setDate(`${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`);
             else (target === "start" ? setStart : setEnd)(timeText(value.getHours() + value.getMinutes() / 60));
           }} />}
-          {field("Service address", address, setAddress)}{field("City", city, setCity)}{field("Region / state", region, setRegion)}{field("Postal code", postalCode, setPostalCode)}
+          {field("Service address", address, setAddress)}{customerFeedback("addressLine1")}{field("City", city, setCity)}{customerFeedback("city")}{field("Region / state", region, setRegion)}{customerFeedback("region")}{field("Postal code", postalCode, setPostalCode)}{customerFeedback("postalCode")}
           {field("Service notes", notes, setNotes, undefined, true)}{field("Private notes", privateNotes, setPrivateNotes, undefined, true)}
           <Text style={[styles.note, { color: colors.muted }]}>Customer confirmations follow Company server policy. Recurrence, custom prices, discounts, extra services and notification choices are not available in this form.</Text>
           {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}{state.jobId ? ` Job #${state.jobId}.` : ""}</Text>}

@@ -278,3 +278,51 @@ describe("source-harness creation entrypoint boundary", () => {
     for (const forbidden of ["Date.now", "upsert", "createRecurring", "mutateAsync", "persistJobs"]) expect(section).not.toContain(forbidden);
   });
 });
+
+describe("new customer plus Job through existing profile calendar callback", () => {
+  it("recovers canonical customer and Job IDs without another POST or contaminating the original customer history", async () => {
+    await render();
+    const sheet = await open();
+    const createdCustomerId = 88;
+    const operationKey = "profile-new-customer-operation-20261115";
+    const savedDetail = detail(84, createdCustomerId);
+    const create = vi.fn().mockRejectedValue(new JobSyncApiError("Response interrupted", null, "TIMEOUT"));
+    const readDetail = vi.fn().mockResolvedValue(savedDetail);
+    const status = vi.fn().mockResolvedValue({ key: operationKey, state: "saved", jobId: 84 });
+    const readCustomer = vi.fn().mockResolvedValue({ ...customer(createdCustomerId), companyId: 9 });
+    const onCreated = vi.fn(sheet.onCreated);
+    const controller = createCompanyJobController({
+      session: mocks.session, isCurrent: sheet.isCurrent, onCreated, onState: vi.fn(),
+      verifyAssignment: vi.fn().mockResolvedValue(true), newOperationKey: () => operationKey,
+      transport: {
+        session: mocks.signed, settings: mocks.settings, customer: readCustomer,
+        priceBook: vi.fn().mockResolvedValue([{ serviceId: "31", name: "Canonical Service", basePrice: 90, vehiclePrices: {} }]),
+        create, detail: readDetail, jobs: vi.fn().mockResolvedValue([]), operation: status,
+      } as any,
+    });
+    const draft = {
+      newCustomer: { firstName: "Canonical", lastName: "Customer", email: "actual@example.test", phone: "5550000000",
+        addressLine1: "Verified Address", city: "Verified City", region: "FL", postalCode: "32501" },
+      serviceId: "31", date: "2026-12-01", startHour: 9.5, endHour: 11,
+    };
+    await act(async () => { await controller.submit(draft); await controller.submit(draft); });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][2]).toMatchObject({ newCustomer: draft.newCustomer, operationKey });
+    expect(create.mock.calls[0][2]).not.toHaveProperty("customerId");
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(controller.getState().phase).toBe("uncertain");
+    mocks.jobs.mockResolvedValue([canonical(), canonical(84, createdCustomerId)]);
+    await act(async () => { await controller.reconcile(); });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenCalledWith(mocks.session.token, 9, operationKey);
+    expect(readDetail).toHaveBeenCalledWith(mocks.session.token, 84, 9);
+    expect(readCustomer).toHaveBeenCalledWith(mocks.session.token, createdCustomerId, 9);
+    expect(controller.getState().phase).toBe("succeeded");
+    await settleConfirmedClose();
+    expect(mocks.push).toHaveBeenCalledWith({ pathname: "/(tabs)/admin-schedule", params: { highlightBookingId: "84" } });
+    expect(doc.body.textContent).toContain("Jobs (1)");
+    expect(sheet.isCurrent()).toBe(false);
+    expect(legacyWrites()).toBe(0);
+    controller.detach();
+  });
+});

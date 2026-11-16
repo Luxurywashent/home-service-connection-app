@@ -12,7 +12,7 @@ vi.mock("../lib/company-job-creation-storage", () => ({ companyCreationStore: pr
 
 let nextActor = 23000;
 let nextKey = 0;
-const draft = (): CompanyCreateJobDraft => ({ customerId: 7, serviceId: "31", date: "2026-12-01", startHour: 9, endHour: 10,
+const draft = (): Extract<CompanyCreateJobDraft, { customerId: number }> => ({ customerId: 7, serviceId: "31", date: "2026-12-01", startHour: 9, endHour: 10,
   assignedEmployeeId: "jobsync-50", addressLine1: "  Canonical street  ", privateNotes: "  Private note  " });
 function actor(companyId = 9): JobSyncNativeSession {
   const id = ++nextActor;
@@ -53,6 +53,7 @@ function prepared(signed: JobSyncNativeSession, phase: CompanyCreationRecord["ph
     createdAt: "2026-11-16T01:00:00.000Z", updatedAt: "2026-11-16T01:00:00.000Z" };
 }
 function detail(signed: JobSyncNativeSession, request: JobSyncCompanyJobCreateInput = prepared(signed).payload): JobSyncCompanyJobDetail {
+  if (request.customerId === undefined) throw new Error("Existing-only fixture requires its canonical customer ID");
   return { id: 84, companyId: signed.company!.id, customerId: request.customerId, assignedUserId: request.assignedUserId ?? null,
     scheduledStartAt: request.scheduledStartAt, scheduledEndAt: request.scheduledEndAt ?? "2026-12-01T16:00:00.000Z", amount: 125,
     status: "scheduled", title: "Service", serviceName: "Service", customerName: "Customer", assignedName: "Technician", updatedAt: null,

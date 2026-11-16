@@ -1,7 +1,6 @@
+import { z } from "zod";
 import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
-
 export { getCompanyJobBillingState } from "./company-job-billing";
-
 export type JobSyncAccountType = "company" | "platform_admin";
 export type JobSyncPortalKind = "company" | "platform";
 export type JobSyncCompanyRole = "owner" | "dispatcher" | "technician";
@@ -433,8 +432,47 @@ export async function getJobSyncCompanyJobs(token: string, range?: { start?: str
   throw new JobSyncApiError("The Company calendar exceeds this refresh limit. No partial schedule was accepted.", null, "CALENDAR_REFRESH_LIMIT");
 }
 
-export type JobSyncCompanyJobCreateInput = {
-  customerId: number;
+export type JobSyncCompanyNewCustomer = {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  addressLine1?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+};
+export type JobSyncCompanyJobCustomerSelector =
+  | { customerId: number; newCustomer?: never }
+  | { customerId?: never; newCustomer: JobSyncCompanyNewCustomer };
+
+/** Canonical nested intent; validate/copy/freeze synchronously before any I/O. */
+export function normalizeCompanyJobNewCustomer(value: unknown): JobSyncCompanyNewCustomer {
+  const limits = { firstName: 120, lastName: 120, email: 320, phone: 64, addressLine1: 255, city: 96, region: 96, postalCode: 24 } as const;
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+    || Reflect.ownKeys(value).some((key) => typeof key !== "string" || !Object.hasOwn(limits, key))) throw new Error("New customer fields could not be verified.");
+  const row = value as Record<string, unknown>;
+  const result: JobSyncCompanyNewCustomer = { firstName: "", lastName: "" };
+  for (const field of Object.keys(limits) as (keyof typeof limits)[]) {
+    const raw = row[field];
+    const required = field === "firstName" || field === "lastName";
+    const label = field === "firstName" ? "First name" : field === "lastName" ? "Last name" : field === "email" ? "Email" : field === "phone" ? "Phone" : "Customer address";
+    if (raw === undefined && !required) continue;
+    if (typeof raw !== "string" || raw.trim().length > limits[field]) throw new Error(`${label} exceeds its limit or is invalid.`);
+    const text = raw.trim();
+    if (!text) { if (required) throw new Error(`${label} is required.`); continue; }
+    if (field === "email" && !z.email().safeParse(text).success) throw new Error("Email must be a valid email address.");
+    if (field === "phone") {
+      const digits = text.replace(/\D/g, "");
+      if (![7, 10].includes(digits.length) && !(digits.length === 11 && digits.startsWith("1"))) throw new Error("Phone must contain 7 or 10 digits, or 11 digits starting with 1.");
+      result.phone = digits.length === 11 ? digits.slice(1) : digits;
+    } else result[field] = field === "email" ? text.toLowerCase() : text;
+  }
+  return Object.freeze(result);
+}
+
+export type JobSyncCompanyJobCreateInput = JobSyncCompanyJobCustomerSelector & {
   priceBookServiceId: number;
   vehiclePriceKey?: string | null;
   assignedUserId?: number | null;
@@ -461,6 +499,8 @@ export type JobSyncCompanyJobCreationOperation = {
   key: string;
   state: "saved" | "pending" | "rejected" | "unknown";
   jobId: number | null;
+  /** Optional authoritative metadata; Job detail remains the required readback. */
+  customerId?: number;
   rejectionCode: string | null;
   rejectionMessage: string | null;
   createdAt: string | null;
@@ -502,8 +542,9 @@ export async function getJobSyncCompanyJobCreationOperation(
   const operation = asRecord(payload?.operation);
   const invalid = () => new JobSyncApiError("Could not verify this Company's Job creation operation. Refresh before trying again.", null, "INVALID_RESPONSE");
   if (!payload || !hasOnlyCompanyOperationFields(payload, ["operation"]) || !operation
-    || !hasOnlyCompanyOperationFields(operation, ["key", "state", "jobId", "rejectionCode", "rejectionMessage", "createdAt", "updatedAt"])
+    || !hasOnlyCompanyOperationFields(operation, ["key", "state", "jobId", "customerId", "rejectionCode", "rejectionMessage", "createdAt", "updatedAt"])
     || operation.key !== key || !["saved", "pending", "rejected", "unknown"].includes(operation.state as string)
+    || (Object.hasOwn(operation, "customerId") && (operation.state !== "saved" || typeof operation.customerId !== "number" || positiveJobSyncId(operation.customerId) !== operation.customerId))
     || (operation.state === "saved"
       ? typeof operation.jobId !== "number" || !Number.isSafeInteger(operation.jobId) || operation.jobId <= 0
       : operation.jobId !== null)
@@ -515,6 +556,7 @@ export async function getJobSyncCompanyJobCreationOperation(
     || (operation.rejectionMessage !== undefined && operation.rejectionMessage !== null)) throw invalid();
   return {
     key, state: operation.state as JobSyncCompanyJobCreationOperation["state"], jobId: operation.jobId as number | null,
+    ...(Object.hasOwn(operation, "customerId") ? { customerId: operation.customerId as number } : {}),
     rejectionCode: operation.rejectionCode as string | null | undefined ?? null,
     rejectionMessage: operation.rejectionMessage as string | null | undefined ?? null,
     createdAt: operation.createdAt as string | null | undefined ?? null,
@@ -523,16 +565,22 @@ export async function getJobSyncCompanyJobCreationOperation(
 }
 
 export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
-  if (positiveJobSyncId(input.customerId) !== input.customerId || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId) {
+  if (!input || typeof input !== "object" || Object.hasOwn(input, "customerId") === Object.hasOwn(input, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
+  const selector: JobSyncCompanyJobCustomerSelector = Object.hasOwn(input, "newCustomer")
+    ? { newCustomer: normalizeCompanyJobNewCustomer(input.newCustomer) } : { customerId: input.customerId! };
+  if (selector.newCustomer && Reflect.ownKeys(input).some((key) => typeof key !== "string"
+    || !["newCustomer", "priceBookServiceId", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey"].includes(key))) throw new Error("New customer Job fields could not be verified.");
+  if ((!selector.newCustomer && (typeof selector.customerId !== "number" || positiveJobSyncId(selector.customerId) !== selector.customerId)) || positiveJobSyncId(input.priceBookServiceId) !== input.priceBookServiceId) {
     throw new Error("Choose an existing Company customer and an active Price Book service.");
   }
+  if (selector.newCustomer && input.operationKey === undefined) throw new Error("A new customer requires a secure Job creation operation key.");
   const instant = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 19) === value.slice(0, 19);
   if (!instant(input.scheduledStartAt) || (input.scheduledEndAt !== undefined && (!instant(input.scheduledEndAt) || Date.parse(input.scheduledEndAt) <= Date.parse(input.scheduledStartAt)))) {
     throw new Error("Choose a valid Company calendar start and end time.");
   }
   if (input.assignedUserId !== undefined && input.assignedUserId !== null && positiveJobSyncId(input.assignedUserId) !== input.assignedUserId) throw new Error("Choose an eligible Company technician.");
-  const result: JobSyncCompanyJobCreateInput = { customerId: input.customerId, priceBookServiceId: input.priceBookServiceId, scheduledStartAt: input.scheduledStartAt };
+  const result: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: input.priceBookServiceId, scheduledStartAt: input.scheduledStartAt };
   if (input.operationKey !== undefined) result.operationKey = companyJobCreationOperationKey(input.operationKey);
   if (input.scheduledEndAt !== undefined) result.scheduledEndAt = input.scheduledEndAt;
   if (input.assignedUserId !== undefined) result.assignedUserId = input.assignedUserId;
@@ -547,7 +595,7 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
     if (typeof value !== "string" || value.trim().length > limits[key]) throw new Error("A Job address or note exceeds the supported limit.");
     result[key] = value.trim();
   }
-  return result;
+  return Object.freeze(result);
 }
 
 /** One POST only. Never retry an ambiguous creation failure or use legacy upsert. */
@@ -559,15 +607,17 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   const row = asRecord(payload?.job);
   const job = normalizeJobSyncMobileJob(row);
   const operation = asRecord(payload?.operation);
+  const customerMatches = Boolean(row && typeof row.customerId === "number" && positiveJobSyncId(row.customerId) === row.customerId
+    && (body.newCustomer ? row.companyId === companyId : row.customerId === body.customerId));
   if ((body.operationKey !== undefined && (!payload || !hasOnlyCompanyOperationFields(payload, ["job", "operation"])
     || !operation || operation.key !== body.operationKey || operation.state !== "saved"
     || typeof operation.replayed !== "boolean" || !hasOnlyCompanyOperationFields(operation, ["key", "state", "replayed"])
     || !row || typeof row.id !== "number" || !Number.isSafeInteger(row.id) || row.id <= 0
-    || row.customerId !== body.customerId
+    || !customerMatches
     || (row.priceBookServiceId !== null && row.priceBookServiceId !== body.priceBookServiceId)
     || row.assignedUserId !== (body.assignedUserId ?? null)
     || typeof row.amount !== "number" || !Number.isFinite(row.amount) || row.amount < 0))
-    || !row || !job || job.customerId !== body.customerId
+    || !row || !job || !customerMatches
     || (row.priceBookServiceId === null
       ? body.operationKey === undefined || operation?.replayed !== true
       : positiveJobSyncId(row.priceBookServiceId) !== body.priceBookServiceId)

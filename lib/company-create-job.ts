@@ -2,6 +2,7 @@ import {
   createJobSyncCompanyJob, getJobSyncCompanyJobDetail, getJobSyncCompanyJobs,
   getJobSyncCompanyCustomer, getJobSyncCompanySettings, getJobSyncMobileSession,
   getHomeServiceConnectedPriceBook, getJobSyncCompanyJobCreationOperation,
+  normalizeCompanyJobNewCustomer, type JobSyncCompanyJobCustomerSelector, type JobSyncCompanyCustomer,
   type HomeServiceConnectedPriceBookService, type JobSyncCompanyJobCreateInput,
   type JobSyncCompanyJobCreateResult, type JobSyncCompanyJobDetail,
   type JobSyncCompanySettings, type JobSyncNativeSession,
@@ -12,8 +13,7 @@ import {
   type CompanyCreationRecord, type CompanyCreationStore,
 } from "./company-job-creation-storage";
 
-export type CompanyCreateJobDraft = {
-  customerId: number;
+export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
   serviceId: string;
   assignedEmployeeId?: string;
   vehiclePriceKey?: string;
@@ -39,7 +39,7 @@ export type CompanyCreateJobTransport = {
   session: (token: string) => Promise<JobSyncNativeSession>;
   settings: (token: string) => Promise<JobSyncCompanySettings>;
   priceBook: (token: string) => Promise<HomeServiceConnectedPriceBookService[]>;
-  customer: (token: string, id: number, companyId: number) => Promise<{ id: number; companyId?: number }>;
+  customer: (token: string, id: number, companyId: number) => Promise<{ id: number; companyId?: number } & Partial<JobSyncCompanyCustomer>>;
   create: (token: string, companyId: number, input: JobSyncCompanyJobCreateInput) => Promise<JobSyncCompanyJobCreateResult>;
   detail: typeof getJobSyncCompanyJobDetail;
   jobs: typeof getJobSyncCompanyJobs;
@@ -116,7 +116,10 @@ function instantEqual(a: string | null | undefined, b: string | null | undefined
   return Boolean(a && b && Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b));
 }
 function immutable(record: CompanyCreationRecord): CompanyCreationRecord {
-  return Object.freeze({ ...record, payload: Object.freeze({ ...record.payload }) });
+  const payload: JobSyncCompanyJobCreateInput = record.payload.newCustomer
+    ? { ...record.payload, newCustomer: Object.freeze({ ...record.payload.newCustomer }) }
+    : { ...record.payload };
+  return Object.freeze({ ...record, payload: Object.freeze(payload) });
 }
 function recordState(record: CompanyCreationRecord): CompanyCreateJobState {
   if (record.jobId) return { phase: "saved", jobId: record.jobId, message: savedMessage };
@@ -174,6 +177,15 @@ export function createCompanyJobController(input: {
   const checkRecord = (record: CompanyCreationRecord) => {
     if (record.companyId !== origin.company!.id || record.userId !== origin.user.id
       || (record.payload.operationKey !== undefined && record.payload.operationKey !== record.operationKey)) throw new Error("The stored Job request does not match this Company account. Saving remains locked.");
+    if (Object.hasOwn(record.payload, "customerId") === Object.hasOwn(record.payload, "newCustomer")
+      || (Object.hasOwn(record.payload, "customerId") && !positive(record.payload.customerId))
+      || (record.resolvedCustomerId !== undefined && (!positive(record.resolvedCustomerId) || !positive(record.jobId)
+        || (record.payload.customerId !== undefined && record.resolvedCustomerId !== record.payload.customerId)))) throw new Error(persistenceMessage);
+    if (Object.hasOwn(record.payload, "newCustomer")) {
+      const normalized = normalizeCompanyJobNewCustomer(record.payload.newCustomer);
+      if (Object.keys(normalized).length !== Object.keys(record.payload.newCustomer!).length
+        || Object.keys(normalized).some((field) => normalized[field as keyof typeof normalized] !== record.payload.newCustomer![field as keyof typeof normalized])) throw new Error(persistenceMessage);
+    }
     return immutable(record);
   };
   const hydrate = async () => {
@@ -242,11 +254,29 @@ export function createCompanyJobController(input: {
     const payload = record.payload;
     // Operation status returns only an ID. Never invent a create acknowledgment
     // (in particular a missing priceBookServiceId) from that ID or from detail.
-    if (detail.id !== record.jobId || detail.companyId !== origin.company!.id || detail.customerId !== payload.customerId
+    if (detail.id !== record.jobId || detail.companyId !== origin.company!.id || !positive(detail.customerId)
+      || (payload.customerId !== undefined && detail.customerId !== payload.customerId)
+      || (record.resolvedCustomerId !== undefined && detail.customerId !== record.resolvedCustomerId)
       || detail.assignedUserId !== (payload.assignedUserId ?? null) || !instantEqual(detail.scheduledStartAt, payload.scheduledStartAt)
       || (payload.scheduledEndAt && !instantEqual(detail.scheduledEndAt, payload.scheduledEndAt))
       || (!payload.scheduledEndAt && attempt.ack?.scheduledEndAt && !instantEqual(detail.scheduledEndAt, attempt.ack.scheduledEndAt))
       || !Number.isFinite(detail.amount) || detail.amount < 0) throw new Error("Saved Job detail did not match its Company acknowledgment or original request.");
+    if (payload.newCustomer) {
+      if (!await fresh() || !current()) return false;
+      // The same-Company canonical Job has authoritatively resolved this ID.
+      // Keep it even if profile verification fails; a later read cannot swap it.
+      if (record.resolvedCustomerId === undefined) await settleRecord(attempt, { resolvedCustomerId: detail.customerId });
+      if (!current()) return false;
+      const customer = await api.customer(origin.token, detail.customerId, origin.company!.id);
+      if (!current()) return false;
+      if (customer.id !== detail.customerId || (customer.companyId !== undefined && customer.companyId !== origin.company!.id)) throw new Error("Saved customer profile did not match this Company's canonical Job.");
+      const profile = normalizeCompanyJobNewCustomer({ firstName: customer.firstName, lastName: customer.lastName,
+        ...Object.fromEntries((["email", "phone", "addressLine1", "city", "region", "postalCode"] as const)
+          .filter((field) => customer[field] !== null && customer[field] !== undefined).map((field) => [field, customer[field]])) });
+      const fields = ["firstName", "lastName", "email", "phone", "addressLine1", "city", "region", "postalCode"] as const;
+      if (fields.some((field) => profile[field] !== payload.newCustomer![field])) throw new Error("Saved customer profile did not match the original new customer request.");
+      if (!await fresh() || !current()) return false;
+    }
     const settings = await api.settings(origin.token);
     if (!current()) return false;
     if (settings.id !== origin.company!.id || !settings.timezone?.trim()) throw new Error("The current Company schedule settings could not be verified.");
@@ -289,6 +319,7 @@ export function createCompanyJobController(input: {
     }
     const operation = await api.operation(origin.token, origin.company!.id, record.operationKey);
     if (operation.key !== record.operationKey || !["unknown", "pending", "saved", "rejected"].includes(operation.state)
+      || (Object.hasOwn(operation, "customerId") && (operation.state !== "saved" || !positive(operation.customerId)))
       || (operation.state === "saved" ? !positive(operation.jobId) : operation.jobId !== null)) throw new Error("The Company creation status could not be verified. The original request remains locked.");
     // A delayed status GET may outlive bearer revocation. Keep settlement to the
     // origin mandatory, but suppress metadata publication until a new signed
@@ -297,8 +328,11 @@ export function createCompanyJobController(input: {
     // Settlement is durable to the origin even if this GET's view detached.
     if (operation.state === "saved") {
       if (record.jobId && record.jobId !== operation.jobId) throw new Error("Saved operation returned a different Job ID. The original request remains locked.");
+      if (operation.customerId !== undefined && ((record.resolvedCustomerId !== undefined && record.resolvedCustomerId !== operation.customerId)
+        || (record.payload.customerId !== undefined && record.payload.customerId !== operation.customerId))) throw new Error("Saved operation returned a different customer ID. The original request remains locked.");
       patch(attempt, { phase: "saved", jobId: operation.jobId, message: savedMessage, reconciling: true });
-      await settleRecord(attempt, { phase: "saved", jobId: operation.jobId });
+      await settleRecord(attempt, { phase: "saved", jobId: operation.jobId,
+        ...(operation.customerId !== undefined ? { resolvedCustomerId: operation.customerId } : {}) });
       if (!current()) return false;
       return recoverDetail(attempt);
     }
@@ -344,6 +378,21 @@ export function createCompanyJobController(input: {
   };
   const submit = async (draft: CompanyCreateJobDraft) => {
     if (!current() || runtime.busy || localState.phase === "succeeded") return false;
+    // Capture the entire intent before hydration's FIRST await, including nested
+    // customer fields. Neither caller mutation nor delayed auth can change it.
+    let captured: CompanyCreateJobDraft;
+    try {
+      if (!draft || typeof draft !== "object" || Object.hasOwn(draft, "customerId") === Object.hasOwn(draft, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
+      if (Object.hasOwn(draft, "customerId") && !positive(draft.customerId)) throw new Error("Choose an existing Company customer.");
+      if (Object.hasOwn(draft, "newCustomer") && Reflect.ownKeys(draft).some((field) => typeof field !== "string"
+        || !["newCustomer", "serviceId", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes"].includes(field))) throw new Error("New customer Job fields could not be verified.");
+      captured = Object.hasOwn(draft, "newCustomer")
+        ? Object.freeze({ ...draft, newCustomer: normalizeCompanyJobNewCustomer(draft.newCustomer) }) as CompanyCreateJobDraft
+        : Object.freeze({ ...draft });
+    } catch (error) {
+      if (!runtime.attempt) { localState = { phase: "error", jobId: null, message: error instanceof Error ? error.message : "New customer fields could not be verified." }; publish(); }
+      return false;
+    }
     if (!await hydrate() || !current() || runtime.busy) return false;
     const previous = runtime.attempt;
     if (previous && (previous.record?.phase !== "rejected" || previous.dirty || !previous.reserved || previous.state.phase !== "rejected")) return false;
@@ -356,16 +405,17 @@ export function createCompanyJobController(input: {
     notify(key);
     let reservationStarted = false;
     try {
-      const captured = { ...draft };
-      if (!positive(captured.customerId) || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))) throw new Error("Choose an existing Company customer and active Price Book service.");
+      if ((captured.customerId !== undefined && !positive(captured.customerId)) || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))) throw new Error("Choose a Company customer and active Price Book service.");
       if (!await fresh() || !current()) return false;
       const services = await api.priceBook(origin.token);
       if (!current()) return false;
       const service = services.find((candidate) => candidate.serviceId === captured.serviceId);
       if (!service) throw new Error("This service is no longer in the active Company Price Book. Refresh and select again.");
-      const customer = await api.customer(origin.token, captured.customerId, origin.company!.id);
-      if (!current()) return false;
-      if (customer.id !== captured.customerId || (customer.companyId !== undefined && customer.companyId !== origin.company!.id)) throw new Error("The selected Company customer could not be verified. Select again.");
+      if (captured.customerId !== undefined) {
+        const customer = await api.customer(origin.token, captured.customerId, origin.company!.id);
+        if (!current()) return false;
+        if (customer.id !== captured.customerId || (customer.companyId !== undefined && customer.companyId !== origin.company!.id)) throw new Error("The selected Company customer could not be verified. Select again.");
+      }
       const settings = await api.settings(origin.token);
       if (!current()) return false;
       if (settings.id !== origin.company!.id) throw new Error("The Company schedule settings could not be verified.");
@@ -383,7 +433,8 @@ export function createCompanyJobController(input: {
         if (!verified) throw new Error("This member is not a currently verified assignment candidate. Refresh and select again.");
         assignedUserId = Number(captured.assignedEmployeeId.slice(8));
       }
-      const payload: JobSyncCompanyJobCreateInput = { customerId: captured.customerId, priceBookServiceId: Number(captured.serviceId), scheduledStartAt };
+      const selector: JobSyncCompanyJobCustomerSelector = captured.newCustomer ? { newCustomer: captured.newCustomer } : { customerId: captured.customerId! };
+      const payload: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: Number(captured.serviceId), scheduledStartAt };
       if (scheduledEndAt) payload.scheduledEndAt = scheduledEndAt;
       if (assignedUserId !== undefined) payload.assignedUserId = assignedUserId;
       if (captured.vehiclePriceKey) payload.vehiclePriceKey = captured.vehiclePriceKey;
@@ -426,15 +477,17 @@ export function createCompanyJobController(input: {
       }
       const request = Object.freeze({ ...attempt.record.payload, operationKey: attempt.record.operationKey });
       const ack = await api.create(origin.token, origin.company!.id, request);
-      if (!positive(ack.id) || ack.companyId !== origin.company!.id || ack.customerId !== payload.customerId
+      if (!positive(ack.id) || ack.companyId !== origin.company!.id || !positive(ack.customerId)
+        || (payload.customerId !== undefined && ack.customerId !== payload.customerId)
         || (ack.priceBookServiceId !== payload.priceBookServiceId && !(ack.priceBookServiceId === null && ack.operation?.replayed === true))
         || ack.assignedUserId !== (payload.assignedUserId ?? null) || !instantEqual(ack.scheduledStartAt, payload.scheduledStartAt)
         || (payload.scheduledEndAt && !instantEqual(ack.scheduledEndAt, payload.scheduledEndAt))
         || !Number.isFinite(ack.amount) || ack.amount < 0
+        || (payload.newCustomer && (!ack.operation || typeof ack.operation.replayed !== "boolean"))
         || (ack.operation && (ack.operation.key !== operationKey || ack.operation.state !== "saved"))) throw new Error("The save response could not be verified. The original request remains locked.");
       attempt.ack = ack;
       patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
-      await settleRecord(attempt, { phase: "saved", jobId: ack.id });
+      await settleRecord(attempt, { phase: "saved", jobId: ack.id, ...(payload.newCustomer ? { resolvedCustomerId: ack.customerId } : {}) });
       if (!current()) return false;
       return await recoverDetail(attempt);
     } catch (error) {

@@ -337,6 +337,7 @@ describe("strict immutable records across both backends", () => {
     });
     it(`${backend}: enforces immutable payload/timezone/createdAt and accepts reordered payload fields`, async () => {
       const store = setup(); const value = record(); await store.reserve(value);
+      if (value.payload.customerId === undefined) throw new Error("Existing-only fixture requires its canonical customer ID");
       for (const candidate of [
         changed(value, { payload: { ...value.payload, customerId: 99 } }),
         changed(value, { timezone: "UTC" }), changed(value, { createdAt: "2026-11-15T19:00:00.000Z" }),
@@ -487,5 +488,75 @@ describe("encrypted web Company creation storage", () => {
       await expect(store.read(9, 42)).rejects.toThrow("could not be verified");
       await expect(store.reserve(first)).rejects.toThrow("could not be verified");
     }
+  });
+});
+
+
+describe("Phase 1 new customer immutable v1 protected storage", () => {
+  const newRecord = (): CompanyCreationRecord => record({ payload: {
+    newCustomer: { firstName: "Casey", lastName: "Example", email: "casey@example.test", phone: "5551234567", addressLine1: "Fixture address", city: "Fixture City", region: "FL", postalCode: "32501" },
+    priceBookServiceId: 20, scheduledStartAt: "2026-11-20T15:00:00.000Z", serviceNotes: "Fixture note",
+  } });
+  for (const backend of ["native", "web"] as const) {
+    const setup = () => backend === "native" ? companyCreationStore : browserStore(indexedDBMock());
+    it(`${backend}: captures/freezes nested intent before first await and round-trips across factory restart`, async () => {
+      const store = setup(); const value = newRecord(); const expected = structuredClone(value);
+      const saving = store.reserve(value); value.payload.newCustomer!.firstName = "Mutated"; value.payload.newCustomer!.city = "Changed";
+      expect(await saving).toBe(true); const read = await store.read(9, 42); expect(read).toEqual(expected); expect(read!.version).toBe(1);
+      expect(Object.isFrozen(read)).toBe(true); expect(Object.isFrozen(read!.payload)).toBe(true); expect(Object.isFrozen(read!.payload.newCustomer)).toBe(true);
+      expect(read!.payload).not.toHaveProperty("customerId"); expect(await store.read(10, 42)).toBeNull(); expect(await store.read(9, 43)).toBeNull();
+      if (backend === "native") expect(await createCompanyCreationStore({ platform: "android" }).read(9, 42)).toEqual(expected);
+    });
+    it(`${backend}: saved canonical customer metadata is additive and cannot be erased, changed or substituted into payload`, async () => {
+      const store = setup(); const value = newRecord(); await store.reserve(value);
+      const saved = changed(value, { phase: "saved", jobId: 84, resolvedCustomerId: 73 }); expect(await store.update(saved)).toBe(true);
+      expect((await store.read(9, 42))!.payload).toEqual(value.payload);
+      const erased = { ...saved }; delete erased.resolvedCustomerId;
+      for (const candidate of [erased, { ...saved, resolvedCustomerId: 74 }, { ...saved, jobId: 85 }, { ...saved, payload: { customerId: 73, priceBookServiceId: 20, scheduledStartAt: value.payload.scheduledStartAt } }]) await expect(store.update(candidate)).rejects.toThrow("could not be verified");
+      expect(await store.read(9, 42)).toEqual(saved);
+    });
+    it(`${backend}: customer metadata may be discovered after saved Job ID; no immutable nested field changes`, async () => {
+      const store = setup(); const value = newRecord(); await store.reserve(value);
+      const saved = changed(value, { phase: "saved", jobId: 84 }); await store.update(saved);
+      expect(await store.update({ ...saved, resolvedCustomerId: 73 })).toBe(true);
+      const edited = { ...saved, resolvedCustomerId: 73, payload: { ...saved.payload, newCustomer: { ...saved.payload.newCustomer!, firstName: "Other" } } } as CompanyCreationRecord;
+      await expect(store.update(edited)).rejects.toThrow("could not be verified");
+    });
+    it(`${backend}: conflict metadata updates preserve nested intent and cannot unlock a known canonical customer`, async () => {
+      const store = setup(); const value = newRecord(); await store.reserve(value);
+      const conflict = changed(value, { phase: "conflict" }); expect(await store.update(conflict)).toBe(true); expect((await store.read(9, 42))!.payload).toEqual(value.payload);
+      const saved = changed(value, { phase: "saved", jobId: 84, resolvedCustomerId: 73 }); expect(await store.update(saved)).toBe(true);
+      await expect(store.update({ ...saved, phase: "conflict" })).rejects.toThrow("could not be verified");
+      expect(await store.reserve(newRecord())).toBe(false); expect(await store.remove(9, 42, "different-operation-key")).toBe(false); expect(await store.read(9, 42)).toEqual(saved);
+    });
+    it.each([
+      ["unknown nested field", (value: any) => { value.payload.newCustomer.actorId = 99; }],
+      ["missing name", (value: any) => { delete value.payload.newCustomer.firstName; }],
+      ["untrimmed name", (value: any) => { value.payload.newCustomer.firstName = " Casey "; }],
+      ["noncanonical email", (value: any) => { value.payload.newCustomer.email = "CASEY@example.test"; }],
+      ["blank optional email", (value: any) => { value.payload.newCustomer.email = ""; }],
+      ["noncanonical phone", (value: any) => { value.payload.newCustomer.phone = "(555) 123-4567"; }],
+      ["bad phone", (value: any) => { value.payload.newCustomer.phone = "123"; }],
+      ["overlong city", (value: any) => { value.payload.newCustomer.city = "x".repeat(97); }],
+      ["both selectors", (value: any) => { value.payload.customerId = 73; }],
+      ["neither selector", (value: any) => { delete value.payload.newCustomer; }],
+      ["unknown payload field", (value: any) => { value.payload.customerName = "forbidden"; }],
+      ["nonpositive resolved customer", (value: any) => { value.phase = "saved"; value.jobId = 84; value.resolvedCustomerId = 0; }],
+      ["uncommitted resolved customer", (value: any) => { value.resolvedCustomerId = 73; }],
+    ] as const)(`${backend}: malformed %s fails closed before any protected write`, async (_name, damage) => {
+      const store = setup(); const value = newRecord(); damage(value); await expect(store.reserve(value)).rejects.toThrow("could not be verified"); expect(await store.read(9, 42)).toBeNull();
+    });
+  }
+  it("native: nested corruption with recomputed hash still fails closed for read/reserve/update/remove", async () => {
+    const value = newRecord(); await companyCreationStore.reserve(value); const manifest = JSON.parse(secureData.get(manifestKey())!); const key = `${actor()}.${manifest.snapshot}.0`;
+    const parsed = JSON.parse(secureData.get(key)!); parsed.payload.newCustomer.unknownActorId = 10; const raw = JSON.stringify(parsed);
+    secureData.set(key, raw); manifest.bytes = raw.length; manifest.sha256 = createHash("sha256").update(raw).digest("hex"); secureData.set(manifestKey(), JSON.stringify(manifest));
+    await expect(companyCreationStore.read(9, 42)).rejects.toThrow("could not be verified"); await expect(companyCreationStore.reserve(value)).rejects.toThrow("could not be verified");
+    await expect(companyCreationStore.update(changed(value))).rejects.toThrow("could not be verified"); await expect(companyCreationStore.remove(9, 42, value.operationKey)).rejects.toThrow("could not be verified");
+  });
+  it("v1 existing records remain readable without resolved customer metadata; wrong exact existing customer metadata fails closed", async () => {
+    const value = record(); await companyCreationStore.reserve(value); expect(await companyCreationStore.read(9, 42)).toEqual(value);
+    await expect(companyCreationStore.update(changed(value, { phase: "saved", jobId: 84, resolvedCustomerId: 99 }))).rejects.toThrow("could not be verified");
+    expect(await companyCreationStore.update(changed(value, { phase: "saved", jobId: 84, resolvedCustomerId: 14 }))).toBe(true);
   });
 });

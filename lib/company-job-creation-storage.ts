@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import type { JobSyncCompanyJobCreateInput } from "./jobsync-mobile-api";
+import { normalizeCompanyJobNewCustomer, type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCustomerSelector } from "./jobsync-mobile-api";
 
 export type CompanyCreationRecord = {
   version: 1;
@@ -12,6 +12,8 @@ export type CompanyCreationRecord = {
   timezone: string;
   phase: "prepared" | "uncertain" | "saved" | "rejected" | "conflict";
   jobId: number | null;
+  /** Saved canonical ID is metadata, never a replacement for nested intent. */
+  resolvedCustomerId?: number;
   rejectionCode?: string | null;
   rejectionMessage?: string | null;
   createdAt: string;
@@ -75,11 +77,24 @@ export function newCompanyCreationOperationKey(): string { return `hsc-job-${uui
 
 const textLimits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
 function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
-  shape(value, ["customerId", "priceBookServiceId", "scheduledStartAt"],
-    ["vehiclePriceKey", "assignedUserId", "scheduledEndAt", ...Object.keys(textLimits)]);
-  if (!positive(value.customerId) || !positive(value.priceBookServiceId) || !instant(value.scheduledStartAt)) throw corrupt();
+  shape(value, ["priceBookServiceId", "scheduledStartAt"],
+    ["customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", ...Object.keys(textLimits)]);
+  if (Object.hasOwn(value, "customerId") === Object.hasOwn(value, "newCustomer")
+    || (Object.hasOwn(value, "customerId") && !positive(value.customerId))
+    || !positive(value.priceBookServiceId) || !instant(value.scheduledStartAt)) throw corrupt();
+  let selector: JobSyncCompanyJobCustomerSelector;
+  if (Object.hasOwn(value, "newCustomer")) {
+    try {
+      const nested = normalizeCompanyJobNewCustomer(value.newCustomer);
+      // Recovery never silently repairs/normalizes a corrupted stored intent.
+      const source = value.newCustomer as Record<string, unknown>;
+      if (Object.keys(source).length !== Object.keys(nested).length
+        || Object.keys(source).some((key) => source[key] !== nested[key as keyof typeof nested])) throw corrupt();
+      selector = { newCustomer: nested };
+    } catch { throw corrupt(); }
+  } else selector = { customerId: value.customerId as number };
   const result: JobSyncCompanyJobCreateInput = {
-    customerId: value.customerId, priceBookServiceId: value.priceBookServiceId, scheduledStartAt: value.scheduledStartAt,
+    ...selector, priceBookServiceId: value.priceBookServiceId, scheduledStartAt: value.scheduledStartAt,
   };
   if (value.scheduledEndAt !== undefined) {
     if (!instant(value.scheduledEndAt) || Date.parse(value.scheduledEndAt) <= Date.parse(value.scheduledStartAt)) throw corrupt();
@@ -104,7 +119,7 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
 }
 function recordCopy(value: unknown, companyId?: number, userId?: number): CompanyCreationRecord {
   shape(value, ["version", "companyId", "userId", "operationKey", "payload", "timezone", "phase", "jobId", "createdAt", "updatedAt"],
-    ["rejectionCode", "rejectionMessage"]);
+    ["rejectionCode", "rejectionMessage", "resolvedCustomerId"]);
   if (value.version !== 1 || !positive(value.companyId) || !positive(value.userId)
     || (companyId !== undefined && value.companyId !== companyId) || (userId !== undefined && value.userId !== userId)
     || !operation(value.operationKey) || typeof value.timezone !== "string" || !value.timezone.trim()
@@ -119,6 +134,11 @@ function recordCopy(value: unknown, companyId?: number, userId?: number): Compan
     payload: payloadCopy(value.payload), timezone: value.timezone, phase: value.phase as CompanyCreationRecord["phase"],
     jobId: value.jobId as number | null, createdAt: value.createdAt, updatedAt: value.updatedAt,
   };
+  if (Object.hasOwn(value, "resolvedCustomerId")) {
+    if (!positive(value.resolvedCustomerId) || !positive(value.jobId)
+      || (result.payload.customerId !== undefined && value.resolvedCustomerId !== result.payload.customerId)) throw corrupt();
+    result.resolvedCustomerId = value.resolvedCustomerId;
+  }
   for (const [key, limit] of [["rejectionCode", 128], ["rejectionMessage", 4000]] as const) {
     const field = value[key];
     if (field === undefined) continue;
@@ -138,6 +158,7 @@ function parse(value: string): unknown {
 function compatible(previous: CompanyCreationRecord, next: CompanyCreationRecord) {
   if (previous.createdAt !== next.createdAt || previous.timezone !== next.timezone
     || ascii(previous.payload) !== ascii(next.payload) || Date.parse(next.updatedAt) < Date.parse(previous.updatedAt)
+    || (previous.resolvedCustomerId !== undefined && next.resolvedCustomerId !== previous.resolvedCustomerId)
     || (previous.jobId !== null && (next.jobId !== previous.jobId || !["saved", "conflict"].includes(next.phase)))
     || (previous.phase === "saved" && next.phase !== "saved")) throw corrupt();
 }

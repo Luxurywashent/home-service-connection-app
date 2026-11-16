@@ -24,6 +24,7 @@ function harness(actor = session()) {
     priceBook: vi.fn(async () => [{ serviceId: "31", name: "Actual service", emoji: "", description: "", features: [], vehiclePrices: {}, imageUrl: null, sortOrder: 0, serviceTypeId: 777, basePrice: 125 }]),
     customer: vi.fn(async () => ({ id: 7, companyId: actor.company!.id })),
     create: vi.fn(async (_token: string, companyId: number, input: JobSyncCompanyJobCreateInput): Promise<JobSyncCompanyJobCreateResult> => {
+      if (input.customerId === undefined) throw new Error("Existing-only fixture requires its canonical customer ID");
       acknowledgment = { id: 84, companyId, priceBookServiceId: input.priceBookServiceId, customerId: input.customerId,
         assignedUserId: input.assignedUserId ?? null, scheduledStartAt: input.scheduledStartAt, scheduledEndAt: input.scheduledEndAt ?? "2026-12-01T16:00:00.000Z",
         amount: 125, title: "Actual service", serviceName: "Actual service", customerName: "Actual customer", assignedName: null,
