@@ -186,7 +186,7 @@ jobs:
 
           if (String(b.status).toLowerCase() !== 'finished' || String(b.platform).toLowerCase() !== 'ios') throw new Error('Only a finished iOS build may be uploaded');
 
-          if (b.project?.slug !== 'home-service-connection') throw new Error('Unexpected Expo project');
+          if (b.id !== process.env.BUILD_ID || b.app?.id !== 'e6614385-618a-460d-a650-06ae63b97563' || b.app?.slug !== 'home-service-connection' || b.app?.ownerAccount?.name !== 'lilmerge4' || b.appIdentifier !== 'com.homeserviceconnection.mobile') throw new Error('Unexpected Expo app/build identity');
 
           if (b.appVersion !== '1.0.1') throw new Error('Unexpected iOS version');
 
