@@ -20,6 +20,10 @@ export type CompanyJobInvoiceRecipientProps = {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  /** Canonical Company Job detail email only; display, never an override. */
+  defaultEmail?: string | null;
+  /** A failed backend acceptance gate must be explained, not hidden. */
+  sendingUnavailableReason?: string | null;
   /** Required captured sheet/Job/session/focus/lock guard; never default true. */
   isCurrent: () => boolean;
   onInputFocus?: TextInputProps["onFocus"];
@@ -67,6 +71,9 @@ export function CompanyJobInvoiceRecipient(
       <Text style={[styles.label, { color: colors.foreground }]}>
         Invoice recipient email (optional)
       </Text>
+      <Text style={[styles.hint, { color: colors.muted }]}>
+        Email on file: {props.defaultEmail?.trim() || "Unavailable in canonical Job detail"}
+      </Text>
       <TextInput
         accessibilityLabel="Invoice recipient email (optional)"
         value={props.value}
@@ -81,6 +88,7 @@ export function CompanyJobInvoiceRecipient(
         autoCorrect={false}
         textContentType="emailAddress"
         maxLength={320}
+        returnKeyType="done"
         onFocus={(event) => {
           if (current()) props.onInputFocus?.(event);
         }}
@@ -114,6 +122,14 @@ export function CompanyJobInvoiceRecipient(
         invoice request; it does not change the customer profile. A resend
         requires a separate explicit choice.
       </Text>
+      {props.sendingUnavailableReason && (
+        <Text
+          accessibilityRole="alert"
+          style={[styles.hint, { color: colors.warning }]}
+        >
+          {props.sendingUnavailableReason}
+        </Text>
+      )}
       {error && (
         <Text
           accessibilityRole="alert"

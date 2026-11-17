@@ -609,6 +609,7 @@ export async function quoteJobSyncCompanyJob(
 
 export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
   if (!input || typeof input !== "object" || Object.hasOwn(input, "customerId") === Object.hasOwn(input, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
+  if (Object.hasOwn(input, "recurrence")) throw new Error("Recurring Job saving is unavailable until the backend persists the series and provides durable saved-series readback.");
   const selector: JobSyncCompanyJobCustomerSelector = Object.hasOwn(input, "newCustomer")
     ? { newCustomer: normalizeCompanyJobNewCustomer(input.newCustomer) } : { customerId: input.customerId! };
   const newPricingFlow = input.lineItems !== undefined || input.discount !== undefined;
@@ -745,6 +746,9 @@ export type JobSyncJobPhotoUploadResponse = {
   };
 };
 export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
+  /** Verified detail-only contact and legacy invoice projection, never schedule/draft data. */
+  customerEmail?: string | null;
+  invoiceSentAt?: string | null;
   companyId: number | null;
   /** Internal detail only; undefined means unavailable, null/empty means verified absence. */
   privateNotes?: string | null;
@@ -841,6 +845,8 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
     ...job,
     companyId,
     privateNotes: normalizeCompanyJobPrivateNotes(row),
+    customerEmail: normalizeCompanyJobInvoiceSentTo(row.customer_email, "email"),
+    invoiceSentAt: serverInstant(row.invoiceSentAt),
     serviceAddress: normalizeCompanyJobAddressDetail(row),
     confirmationCommunication: normalizeCompanyJobConfirmation(row.confirmationCommunication, row.customer_notification_enabled),
     ...(pricing ? { pricing } : {}),
@@ -1136,6 +1142,8 @@ export async function updateJobSyncCompanyJobPrivateNotes(
 export const updateJobSyncCompanyJobAddress: CompanyJobAddressWriter = async (token, jobId, input) => {
   validCompanyJobId(jobId);
   requireJobSyncMutationToken(token);
+  const line2 = (input as typeof input & { addressLine2?: unknown }).addressLine2;
+  if (line2 !== undefined && (typeof line2 !== "string" || line2.trim())) throw new Error("Address line 2 cannot be saved by the verified backend. Leave it empty before saving.");
   const payload = createCompanyJobAddressPayload({
     addressLine1: input.addressLine1, city: input.city ?? "",
     region: input.region ?? "", postalCode: input.postalCode ?? "",
@@ -1210,6 +1218,7 @@ export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number,
     body: JSON.stringify({ method: options.method, ...(input.resend !== undefined ? { resend: options.resend } : {}),
       ...(options.recipientEmail !== undefined ? { recipientEmail: options.recipientEmail } : {}) }),
   }));
+  if (result?.channel !== undefined && result.channel !== options.method) throw new JobSyncApiError("The backend returned a different invoice delivery channel. Review delivery before retrying.", null, "INVALID_RESPONSE");
   const publicUrl = firstString(result?.publicUrl);
   if (result?.success !== true || !publicUrl) throw new JobSyncApiError("The backend did not confirm the invoice request.", null, "INVALID_RESPONSE");
   const communicationState = invoiceCommunicationState(result.communicationState);

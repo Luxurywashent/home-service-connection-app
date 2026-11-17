@@ -1,5 +1,5 @@
 /**
- * Unpublished backend 2818bb72: Job detail/CREATE's confirmationCommunication.
+ * Backend 2574fb8d: Job detail/CREATE's confirmationCommunication.
  * This is NOT the customer's appointment-confirmation status.
  * The backend selects the latest Company/Job/purpose record but does not bind
  * that record to the current start or creation operation. Keep current status
@@ -7,7 +7,7 @@
  * No recipient, provider message/error text, public token or private note escapes.
  */
 export type CompanyJobConfirmationRecordStatus =
-  | "accepted" | "failed" | "suppressed" | "queued" | "deferred" | "in_progress" | "unknown";
+  | "accepted" | "delivered" | "failed" | "suppressed" | "queued" | "deferred" | "in_progress" | "unknown";
 export type CompanyJobConfirmation = Readonly<{
   status: "suppressed" | "unknown";
   recordStatus: CompanyJobConfirmationRecordStatus;
@@ -15,7 +15,10 @@ export type CompanyJobConfirmation = Readonly<{
   reason: "operator_opted_out" | "not_attempted" | "outcome_unavailable" | "appointment_binding_unavailable" | "invalid_outcome";
 }>;
 
-const statuses: readonly string[] = ["accepted", "failed", "suppressed", "queued", "deferred", "in_progress", "unknown"];
+// Keep the original normalized `accepted` record spelling for existing callers
+// and older persisted/test evidence. The exact target wire spelling is
+// `provider_accepted`; neither spelling establishes delivery or current binding.
+const statuses: readonly string[] = ["accepted", "provider_accepted", "delivered", "failed", "suppressed", "queued", "deferred", "in_progress", "unknown"];
 const unknown = (reason: CompanyJobConfirmation["reason"]): CompanyJobConfirmation => Object.freeze({
   status: "unknown", recordStatus: "unknown", communicationId: null, reason,
 });
@@ -43,7 +46,7 @@ export function normalizeCompanyJobConfirmation(value: unknown, storedNotificati
     return unknown("invalid_outcome");
   }
   return Object.freeze({
-    status: "unknown", recordStatus: row.status as CompanyJobConfirmationRecordStatus,
+    status: "unknown", recordStatus: row.status === "provider_accepted" ? "accepted" : row.status as CompanyJobConfirmationRecordStatus,
     communicationId: row.communicationId, reason: "appointment_binding_unavailable",
   });
 }
@@ -56,6 +59,7 @@ export function companyJobConfirmationMessage(notifyCustomer: boolean | undefine
   if (result.status === "suppressed") return `Job saved. Booking confirmation is suppressed by the saved booking preference. ${reminders}`;
   const recordMessages: Record<CompanyJobConfirmationRecordStatus, string> = {
     accepted: "The latest booking email record reports provider acceptance, not verified delivery.",
+    delivered: "The latest booking email record reports delivery, not customer appointment confirmation.",
     failed: "The latest booking email record reports a failure; the Job remains saved.",
     suppressed: "The latest booking email record reports suppression.",
     queued: "The latest booking email record is queued, not confirmed sent.",

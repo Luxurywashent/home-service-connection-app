@@ -235,9 +235,11 @@ describe("published 66141 source contract — address semantics, no transport ex
 });
 
 describe("PARENT INTEGRATION ACCEPTANCE — actual mobile screen, not fixture success", () => {
-  it("shows explicit noninteractive Company unavailability and gates the pencil to current legacy entry", () => {
+  it("mounts the authorized Company editor while retaining current legacy-only pencil isolation", () => {
     const screen = source();
-    expect(screen).toContain("Service address editing is unavailable for Company Jobs.");
+    expect(screen).toContain("companyJobMode && <CompanyJobAddressEditor");
+    expect(screen).toContain("writeAddress={updateJobSyncCompanyJobAddress}");
+    expect(screen).toContain("onVerified={onCompanyAddressVerified} onSaved={onCompanyAddressSaved}");
     expect(screen).toMatch(/!companyJobMode\s*&&\s*isCurrentLegacyAddressEntry\(\)/);
     expect(screen).toContain("onPress={openLegacyAddressEditor}");
     expect(screen).toContain("CustomerContactActions customerId={selectedJob.customerId}");

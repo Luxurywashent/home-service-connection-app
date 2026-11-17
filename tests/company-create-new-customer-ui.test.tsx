@@ -137,7 +137,36 @@ describe("Add Job new customer additive form", () => {
   });
   it("dropped response performs same-key status/detail/customer GET and calendar callback only once", async () => {
     await render(); await fillNew(); const original = mocks.create.getMockImplementation()!; mocks.create.mockImplementationOnce(async (...args) => { await original(...args); throw new Error("Simulated committed response loss"); });
-    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.operation).toHaveBeenCalledOnce(); expect(mocks.operation).toHaveBeenCalledWith(props.session!.token, 9, mocks.create.mock.calls[0][2].operationKey); expect(mocks.detail).toHaveBeenCalledOnce(); expect(mocks.detail).toHaveBeenCalledWith(props.session!.token, 84, 9); expect(mocks.customer).toHaveBeenCalledOnce(); expect(mocks.customer).toHaveBeenCalledWith(props.session!.token, 73, 9); expect(props.onCreated).toHaveBeenCalledOnce(); expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, customerId: 73, priceBookServiceId: 31 }), "America/Chicago"); expect(props.onClose).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
+    const calendar = deferred<boolean>(); const order: string[] = [];
+    vi.mocked(props.onCreated).mockImplementationOnce(async () => {
+      order.push("calendar"); const confirmed = await calendar.promise; order.push("calendar-confirmed"); return confirmed;
+    });
+    const savedAlert = vi.fn((message: string) => {
+      expect(order).toEqual(["calendar", "calendar-confirmed"]);
+      expect(props.onClose).not.toHaveBeenCalled();
+      expect(message).toContain("Job saved. Company calendar refreshed.");
+      expect(message).toContain("Booking confirmation outcome is unknown.");
+      expect(message).toContain("Do not automatically resend or create another Job.");
+      order.push("saved-feedback-acknowledged");
+    });
+    // The web alert returns only after user acknowledgment; this offline DOM has no alert.
+    vi.stubGlobal("alert", savedAlert);
+    vi.mocked(props.onClose).mockImplementationOnce(() => { order.push("close"); });
+    await press("Save Company Job");
+    expect(mocks.create).toHaveBeenCalledOnce();
+    expect(mocks.operation).toHaveBeenCalledOnce();
+    expect(mocks.operation).toHaveBeenCalledWith(props.session!.token, 9, mocks.create.mock.calls[0][2].operationKey);
+    expect(mocks.detail).toHaveBeenCalledOnce(); expect(mocks.detail).toHaveBeenCalledWith(props.session!.token, 84, 9);
+    expect(mocks.customer).toHaveBeenCalledOnce(); expect(mocks.customer).toHaveBeenCalledWith(props.session!.token, 73, 9);
+    expect(props.onCreated).toHaveBeenCalledOnce();
+    expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, customerId: 73, priceBookServiceId: 31 }), "America/Chicago");
+    expect(savedAlert).not.toHaveBeenCalled(); expect(props.onClose).not.toHaveBeenCalled();
+    await act(async () => { calendar.resolve(true); });
+    expect(savedAlert).toHaveBeenCalledOnce(); expect(props.onClose).toHaveBeenCalledOnce();
+    expect(order).toEqual(["calendar", "calendar-confirmed", "saved-feedback-acknowledged", "close"]);
+    expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.operation).toHaveBeenCalledOnce();
+    expect(mocks.detail).toHaveBeenCalledOnce(); expect(mocks.customer).toHaveBeenCalledOnce();
+    expect(props.onCreated).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
   });
 });
 

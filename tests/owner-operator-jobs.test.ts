@@ -364,8 +364,10 @@ describe("shared job screen integration boundaries", () => {
     const branch = admin.slice(admin.indexOf("if (companyJobMode) {", admin.indexOf("{/* Send button */}")), admin.indexOf("setInvoiceSending(true);\n                      try", admin.indexOf("{/* Send button */}")));
     expect(branch).toContain("sendJobSyncCompanyJobInvoice(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.options)");
     expect(branch).toContain("captureCompanyJobInvoiceIntent(jobSyncSession, selectedJob");
-    expect(branch).toContain("createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend)");
-    expect(branch).toContain("data.publicUrl");
+    expect(branch).toContain('createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend, invoiceMethod === "email" ? companyInvoiceRecipientEmail : undefined)');
+    expect(branch).toContain("companyInvoiceAttemptGuardRef.current.markDispatched(companyInvoiceAttempt)");
+    expect(branch).toContain("validateCompanyJobInvoiceRecipientReceipt(invoiceIntent, data)");
+    expect(branch).toContain("setInvoiceSentUrl(invoiceReceipt.publicUrl)");
     expect(branch).toContain("return; // Never fall back");
     expect(branch).not.toMatch(/overrideEmail|overridePhone|discountAmount|paymentUrl/);
     expect(admin).toContain("AdminCheckoutModal");

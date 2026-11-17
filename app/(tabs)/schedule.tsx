@@ -3040,7 +3040,7 @@ export default function ScheduleScreen() {
 
   // Sync server jobs (both manual + online) for the selected location into local state
   const scheduleReadEpochRef = useRef(0);
-	const syncServerJobs = async (location: LocationSlug, emp = employee, originCurrent: () => boolean = () => true, acceptedJobId?: number) => {
+	const syncServerJobs = async (location: LocationSlug, emp = employee, originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedCreated?: { id: number; assignedUserId: number | null; updatedAt: string | null; scheduledStartAt: string | null; scheduledEndAt: string | null }) => {
 			  const screenCurrent = captureScreenAction();
 			  if (!screenCurrent() || !originCurrent() || jobSyncLoading || authLoading) return false;
       const readEpoch = ++scheduleReadEpochRef.current;
@@ -3064,6 +3064,12 @@ export default function ScheduleScreen() {
         ]);
         if (!isCurrent()) return false;
         if (companySettings.id !== companyId) throw new Error("Company calendar settings could not be verified.");
+        if (expectedCreated) {
+          const saved = companyJobs.find(job => job.id === expectedCreated.id);
+          if (!saved || saved.assignedUserId !== expectedCreated.assignedUserId || saved.updatedAt !== expectedCreated.updatedAt
+            || Date.parse(saved.scheduledStartAt ?? "") !== Date.parse(expectedCreated.scheduledStartAt ?? "")
+            || Date.parse(saved.scheduledEndAt ?? "") !== Date.parse(expectedCreated.scheduledEndAt ?? "")) return false;
+        }
         const companyTimezone = companySettings.timezone;
         setCompanyTimezone(companyTimezone);
         const mappedCompanyJobs = companyJobs.flatMap((job) => {
@@ -6249,7 +6255,7 @@ export default function ScheduleScreen() {
           if (!isCurrentCompanyAdd() || detail.companyId !== jobSyncSession?.company?.id) return false;
           const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
           if (!slot) return false;
-          const refreshed = await syncServerJobs(employee?.city ? cityToSlug(employee.city) : selectedLocation, employee, isCurrentCompanyAdd, detail.id);
+          const refreshed = await syncServerJobs(employee?.city ? cityToSlug(employee.city) : selectedLocation, employee, isCurrentCompanyAdd, detail.id, detail);
           if (!isCurrentCompanyAdd() || !refreshed) return false;
           const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
           setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);

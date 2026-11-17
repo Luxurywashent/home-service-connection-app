@@ -65,12 +65,12 @@ describe("Company create strict wall-time conversion", () => {
 describe("Company create controller with actual orchestration and mocked reads/writes", () => {
   it("performs fresh verification, one allowlisted POST and canonical readback, never a fabricated price/ID", async () => {
     const h = harness();
-    const input = { ...draft(), amount: 9999, recurrence: { type: "weekly" }, notifyCustomer: false };
+    const input = { ...draft(), amount: 9999, customerName: "Never retain", notifyCustomer: false };
     expect(await h.controller.submit(input)).toBe(true);
     expect(h.api.create).toHaveBeenCalledTimes(1);
     expect(h.api.create).toHaveBeenCalledWith(h.actor.token, 9, {
       customerId: 7, priceBookServiceId: 31, scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", addressLine1: "Test address",
-      operationKey: expect.stringMatching(/^hsc-job-test-key-\d+$/),
+      notifyCustomer: false, operationKey: expect.stringMatching(/^hsc-job-test-key-\d+$/),
     });
     expect(h.api.session).toHaveBeenCalledWith(h.actor.token);
     expect(h.api.session.mock.calls.length).toBeGreaterThan(3);

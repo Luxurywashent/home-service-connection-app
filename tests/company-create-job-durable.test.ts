@@ -107,20 +107,22 @@ describe("durable Company create request preparation and actor-wide exclusion", 
     const h = await harness(); const writing = deferred<boolean>();
     const reserve = h.store.reserve.getMockImplementation()!;
     h.store.reserve.mockImplementationOnce(async (record) => { await writing.promise; return reserve(record); });
-    const input = { ...draft(), amount: 900, recurrence: {}, notifyCustomer: false, customerName: "Never retain" };
+    const input = { ...draft(), amount: 900, notifyCustomer: false, customerName: "Never retain" };
     const saving = h.controller.submit(input); await spin();
     expect(h.store.reserve).toHaveBeenCalledTimes(1); expect(h.api.create).not.toHaveBeenCalled();
     expect(h.store.reserve.mock.calls[0][0]).toMatchObject({ companyId: 9, userId: h.actor.user.id, phase: "prepared", timezone: "America/Chicago",
-      payload: { customerId: 7, priceBookServiceId: 31, assignedUserId: 50, addressLine1: "Canonical street", privateNotes: "Private note" } });
+      payload: { customerId: 7, priceBookServiceId: 31, assignedUserId: 50, addressLine1: "Canonical street", privateNotes: "Private note", notifyCustomer: false } });
     expect(Object.isFrozen(h.store.reserve.mock.calls[0][0].payload)).toBe(true);
     input.addressLine1 = "Changed while writing";
+    input.notifyCustomer = true;
     const other = await harness({ actor: h.actor, store: h.store });
     await Promise.all([h.controller.submit(draft()), other.controller.submit(draft()), other.controller.restore()]);
     expect(other.api.create).not.toHaveBeenCalled(); writing.resolve(true);
     expect(await saving).toBe(true); expect(h.api.create).toHaveBeenCalledTimes(1); expect(h.newOperationKey).toHaveBeenCalledTimes(1);
     const request = h.api.create.mock.calls[0][2];
     expect(request).toEqual({ ...h.store.reserve.mock.calls[0][0].payload, operationKey: h.store.reserve.mock.calls[0][0].operationKey });
-    expect(Object.keys(request)).not.toEqual(expect.arrayContaining(["amount", "recurrence", "notifyCustomer", "customerName"]));
+    expect(request.notifyCustomer).toBe(false);
+    for (const extra of ["amount", "recurrence", "customerName"]) expect(request).not.toHaveProperty(extra);
     expect(h.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 125 }), "America/Chicago");
     expect(h.store.value(h.actor)).toBeUndefined(); h.controller.detach(); other.controller.detach();
   });

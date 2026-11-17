@@ -3,18 +3,23 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { normalizeCompanyJobNewCustomer, normalizeCompanyJobLineItems, normalizeCompanyJobDiscount,
   type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCustomerSelector } from "./jobsync-mobile-api";
+import { normalizeCompanyJobRecurrence, type CompanyJobRecurrenceInput } from "./company-job-recurrence";
+
+export type CompanyCreationPayload = JobSyncCompanyJobCreateInput & { recurrence?: CompanyJobRecurrenceInput };
 
 export type CompanyCreationRecord = {
   version: 1;
   companyId: number;
   userId: number;
   operationKey: string;
-  payload: JobSyncCompanyJobCreateInput;
+  payload: CompanyCreationPayload;
   timezone: string;
   phase: "prepared" | "uncertain" | "saved" | "rejected" | "conflict";
   jobId: number | null;
   /** Saved canonical ID is metadata, never a replacement for nested intent. */
   resolvedCustomerId?: number;
+  /** First verified rule identity cannot change during GET-only recovery. */
+  recurrenceRuleId?: number;
   rejectionCode?: string | null;
   rejectionMessage?: string | null;
   createdAt: string;
@@ -77,9 +82,9 @@ function uuid() {
 export function newCompanyCreationOperationKey(): string { return `hsc-job-${uuid()}`; }
 
 const textLimits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
-function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
+function payloadCopy(value: unknown): CompanyCreationPayload {
   shape(value, ["scheduledStartAt"],
-    ["priceBookServiceId", "lineItems", "discount", "customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", "notifyCustomer", ...Object.keys(textLimits)]);
+    ["priceBookServiceId", "lineItems", "discount", "recurrence", "customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", "notifyCustomer", ...Object.keys(textLimits)]);
   if (Object.hasOwn(value, "customerId") === Object.hasOwn(value, "newCustomer")
     || (Object.hasOwn(value, "customerId") && !positive(value.customerId))
     || (Object.hasOwn(value, "priceBookServiceId") && !positive(value.priceBookServiceId))
@@ -96,7 +101,7 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
       selector = { newCustomer: nested };
     } catch { throw corrupt(); }
   } else selector = { customerId: value.customerId as number };
-  const result: JobSyncCompanyJobCreateInput = {
+  const result: CompanyCreationPayload = {
     ...selector, scheduledStartAt: value.scheduledStartAt,
   };
   // Preserve omission in old v1 records and reject corrupted explicit values.
@@ -104,6 +109,13 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
   if (Object.hasOwn(value, "notifyCustomer")) {
     if (typeof value.notifyCustomer !== "boolean") throw corrupt();
     result.notifyCustomer = value.notifyCustomer;
+  }
+  if (Object.hasOwn(value, "recurrence")) {
+    try {
+      const recurrence = normalizeCompanyJobRecurrence(value.recurrence);
+      if (!canonicalNested(value.recurrence, recurrence)) throw corrupt();
+      result.recurrence = recurrence;
+    } catch { throw corrupt(); }
   }
   if (Object.hasOwn(value, "priceBookServiceId")) result.priceBookServiceId = value.priceBookServiceId as number;
   try {
@@ -155,7 +167,7 @@ function canonicalNested(source: unknown, canonical: unknown): boolean {
 }
 function recordCopy(value: unknown, companyId?: number, userId?: number): CompanyCreationRecord {
   shape(value, ["version", "companyId", "userId", "operationKey", "payload", "timezone", "phase", "jobId", "createdAt", "updatedAt"],
-    ["rejectionCode", "rejectionMessage", "resolvedCustomerId"]);
+    ["rejectionCode", "rejectionMessage", "resolvedCustomerId", "recurrenceRuleId"]);
   if (value.version !== 1 || !positive(value.companyId) || !positive(value.userId)
     || (companyId !== undefined && value.companyId !== companyId) || (userId !== undefined && value.userId !== userId)
     || !operation(value.operationKey) || typeof value.timezone !== "string" || !value.timezone.trim()
@@ -174,6 +186,10 @@ function recordCopy(value: unknown, companyId?: number, userId?: number): Compan
     if (!positive(value.resolvedCustomerId) || !positive(value.jobId)
       || (result.payload.customerId !== undefined && value.resolvedCustomerId !== result.payload.customerId)) throw corrupt();
     result.resolvedCustomerId = value.resolvedCustomerId;
+  }
+  if (Object.hasOwn(value, "recurrenceRuleId")) {
+    if (!positive(value.recurrenceRuleId) || !positive(value.jobId) || !result.payload.recurrence) throw corrupt();
+    result.recurrenceRuleId = value.recurrenceRuleId;
   }
   for (const [key, limit] of [["rejectionCode", 128], ["rejectionMessage", 4000]] as const) {
     const field = value[key];
@@ -195,6 +211,7 @@ function compatible(previous: CompanyCreationRecord, next: CompanyCreationRecord
   if (previous.createdAt !== next.createdAt || previous.timezone !== next.timezone
     || ascii(previous.payload) !== ascii(next.payload) || Date.parse(next.updatedAt) < Date.parse(previous.updatedAt)
     || (previous.resolvedCustomerId !== undefined && next.resolvedCustomerId !== previous.resolvedCustomerId)
+    || (previous.recurrenceRuleId !== undefined && next.recurrenceRuleId !== previous.recurrenceRuleId)
     || (previous.jobId !== null && (next.jobId !== previous.jobId || !["saved", "conflict"].includes(next.phase)))
     || (previous.phase === "saved" && next.phase !== "saved")) throw corrupt();
 }

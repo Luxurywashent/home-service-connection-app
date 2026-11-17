@@ -7,6 +7,9 @@ import {
   assertCompanyJobInvoiceJob, assertCompanyJobInvoiceSession,
   captureCompanyJobInvoiceIntent, createCompanyJobInvoiceOptions, normalizeCompanyJobInvoiceSentTo,
 } from "../lib/company-job-invoice-intent";
+import {
+  createCompanyJobInvoiceAttemptGuard, validateCompanyJobInvoiceRecipientReceipt,
+} from "../lib/company-job-invoice-recipient";
 
 function session(role = "owner") {
   return { token: "synthetic-invoice-token", portal: "company", company: { id: 9 }, user: { id: 42, role } };
@@ -196,10 +199,9 @@ describe("Exact 66141 invoice route/services and actual mobile adapter", () => {
   });
 });
 
-// Only the parent owns the screen. Exercise its actual extracted closure with
-// the minimal proposed substitutions IN MEMORY, not an alternate production
-// controller. This proves a candidate integration, not an installed UI claim.
-function parentCandidate(overrides: Record<string, any> = {}) {
+// Execute the installed screen callback unchanged with its real intent, attempt
+// guard and receipt policy. Fake transport/UI seams are not native acceptance.
+function installedInvoiceClosure(overrides: Record<string, any> = {}) {
   const file = mobileRoot + "app/(tabs)/admin-schedule.tsx";
   const source = readFileSync(file, "utf8");
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -211,30 +213,28 @@ function parentCandidate(overrides: Record<string, any> = {}) {
   }
   visit(tree);
   if (!callback) throw new Error("Missing actual invoice closure");
-  let body = callback.getText(tree);
-  const oldRefresh = "const fresh = await getJobSyncMobileSession(token);";
-  const oldSend = "sendJobSyncCompanyJobInvoice(token, jobId, { method: invoiceMethod })";
-  if (body.includes(oldSend)) {
-    expect(body).toContain(oldRefresh);
-    body = body.replace(oldRefresh, "const invoiceIntent = captureCompanyJobInvoiceIntent(jobSyncSession, selectedJob, createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend));\nconst fresh = await getJobSyncMobileSession(invoiceIntent.token);")
-      .replace("const detail = await getJobSyncCompanyJobDetail(token, jobId, jobSyncSession!.company!.id);", "assertCompanyJobInvoiceSession(invoiceIntent, fresh);\nconst detail = await getJobSyncCompanyJobDetail(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.companyId);")
-      .replace(oldSend, "sendJobSyncCompanyJobInvoice(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.options)")
-      .replace("if (detail.id !== jobId || detail.companyId !== fresh.company?.id)", "assertCompanyJobInvoiceJob(invoiceIntent, detail);\nif (detail.id !== jobId || detail.companyId !== fresh.company?.id)");
-  } else {
-    expect(body).toContain("captureCompanyJobInvoiceIntent");
-    expect(body).toContain("invoiceIntent.options");
-  }
+  const body = callback.getText(tree);
   const current = { value: true };
   const context: Record<string, any> = {
     invoiceLockRef: { current: false }, isCurrentInvoice: () => current.value,
+    managementActionRef: { current: { mounted: true } },
+    companyInvoiceAttemptGuardRef: { current: createCompanyJobInvoiceAttemptGuard() },
     companyJobMode: true, isJobSyncCompany: true, jobSyncLoading: false,
-    jobSyncSession: session(), selectedJob: { id: "12", companyId: 9 }, positiveJobSyncId: (value: any) => Number(value),
-    invoiceMethod: "sms", invoiceResend: true,
-    getJobSyncMobileSession: vi.fn().mockResolvedValue(session()), getJobSyncCompanyJobDetail: vi.fn().mockResolvedValue({ id: 12, companyId: 9 }),
-    sendJobSyncCompanyJobInvoice: vi.fn().mockResolvedValue({ communicationState: "provider_accepted", publicUrl: "synthetic" }),
-    setInvoiceSending: vi.fn(), setInvoiceSentUrl: vi.fn(), setCompanyInvoiceStatus: vi.fn(), Alert: { alert: vi.fn() },
+    jobSyncSession: session(), selectedJob: { id: "12", companyId: 9, invoiceSentAt: null }, positiveJobSyncId: (value: any) => Number(value),
+    invoiceMethod: "sms", invoiceResend: true, companyInvoiceRecipientEmail: "",
+    invoiceSending: false, invoiceSentUrl: null, companyInvoiceStatus: null, companyInvoiceAcknowledgedRecipient: null,
+    getJobSyncMobileSession: vi.fn().mockResolvedValue(session()), getJobSyncCompanyJobDetail: vi.fn().mockResolvedValue({ id: 12, companyId: 9, invoiceSentAt: null }),
+    sendJobSyncCompanyJobInvoice: vi.fn(async (_token: string, _jobId: number, options: ReturnType<typeof createCompanyJobInvoiceOptions>) => ({
+      success: true, channel: options.method, sentTo: options.method === "email" ? "on-file@example.test" : "customer phone on file",
+      communicationState: "provider_accepted", publicUrl: "synthetic",
+    })),
+    setInvoiceSending: vi.fn((value: boolean) => { context.invoiceSending = value; }),
+    setInvoiceSentUrl: vi.fn((value: string | null) => { context.invoiceSentUrl = value; }),
+    setCompanyInvoiceStatus: vi.fn((value: string | null) => { context.companyInvoiceStatus = value; }),
+    setCompanyInvoiceAcknowledgedRecipient: vi.fn((value: string | null) => { context.companyInvoiceAcknowledgedRecipient = value; }),
+    Alert: { alert: vi.fn() },
     fetch: vi.fn(deny), captureCompanyJobInvoiceIntent, createCompanyJobInvoiceOptions,
-    assertCompanyJobInvoiceSession, assertCompanyJobInvoiceJob, ...overrides,
+    assertCompanyJobInvoiceSession, assertCompanyJobInvoiceJob, validateCompanyJobInvoiceRecipientReceipt, ...overrides,
   };
   const js = ts.transpileModule(`const extracted = (${body});`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
   const sandbox = vm.createContext(context);
@@ -248,36 +248,36 @@ function deferred() {
 }
 async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); }
 
-describe("Parent resend candidate with preserved actual sheet closure guards", () => {
+describe("Installed resend closure with preserved actual sheet closure guards", () => {
   it.each(["email", "sms"])("explicit %s resend captures options and synchronously permits one POST", async (method) => {
-    const f = parentCandidate({ invoiceMethod: method }); await Promise.all([f.send(), f.send()]);
+    const f = installedInvoiceClosure({ invoiceMethod: method }); await Promise.all([f.send(), f.send()]);
     expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledTimes(1);
     expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledWith("synthetic-invoice-token", 12, { method, resend: true });
     expect(f.context.setCompanyInvoiceStatus).toHaveBeenCalledWith("provider_accepted"); expect(f.context.fetch).not.toHaveBeenCalled();
   });
   it("retained pre-submit stale guard performs no signed read or mutation", async () => {
-    const f = parentCandidate(); f.current.value = false; await f.send();
+    const f = installedInvoiceClosure(); f.current.value = false; await f.send();
     expect(f.context.getJobSyncMobileSession).not.toHaveBeenCalled(); expect(f.context.sendJobSyncCompanyJobInvoice).not.toHaveBeenCalled();
   });
   it("change during signed refresh prevents POST and legacy fallback", async () => {
-    const wait = deferred(); const f = parentCandidate({ getJobSyncMobileSession: vi.fn().mockReturnValue(wait.promise) });
+    const wait = deferred(); const f = installedInvoiceClosure({ getJobSyncMobileSession: vi.fn().mockReturnValue(wait.promise) });
     const pending = f.send(); await flush(); f.current.value = false; wait.resolve(session()); await pending;
     expect(f.context.getJobSyncCompanyJobDetail).not.toHaveBeenCalled(); expect(f.context.sendJobSyncCompanyJobInvoice).not.toHaveBeenCalled(); expect(f.context.fetch).not.toHaveBeenCalled();
   });
   it("mutating rendered draft during await cannot change captured method/resend", async () => {
-    const wait = deferred(); const f = parentCandidate({ getJobSyncMobileSession: vi.fn().mockReturnValue(wait.promise) });
+    const wait = deferred(); const f = installedInvoiceClosure({ getJobSyncMobileSession: vi.fn().mockReturnValue(wait.promise) });
     const pending = f.send(); await flush(); f.context.invoiceMethod = "email"; f.context.invoiceResend = false;
     wait.resolve(session()); await pending;
     expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledWith("synthetic-invoice-token", 12, { method: "sms", resend: true });
   });
   it("closed/reopened stale response cannot populate another invoice sheet", async () => {
-    const wait = deferred(); const f = parentCandidate({ sendJobSyncCompanyJobInvoice: vi.fn().mockReturnValue(wait.promise) });
-    const pending = f.send(); await flush(); f.current.value = false; wait.resolve({ communicationState: "provider_accepted", publicUrl: "late" }); await pending;
+    const wait = deferred(); const f = installedInvoiceClosure({ sendJobSyncCompanyJobInvoice: vi.fn().mockReturnValue(wait.promise) });
+    const pending = f.send(); await flush(); f.current.value = false; wait.resolve({ success: true, channel: "sms", sentTo: "customer phone on file", communicationState: "provider_accepted", publicUrl: "late" }); await pending;
     expect(f.context.setInvoiceSentUrl).not.toHaveBeenCalledWith("late"); expect(f.context.setCompanyInvoiceStatus).not.toHaveBeenCalled();
     expect(f.context.invoiceLockRef.current).toBe(false);
   });
   it.each(["timeout", "HTTP 403", "invalid acknowledgment"])("%s sends once, preserves error, and does not retry/fallback", async (reason) => {
-    const f = parentCandidate({ sendJobSyncCompanyJobInvoice: vi.fn().mockRejectedValue(new Error(reason)) }); await f.send();
+    const f = installedInvoiceClosure({ sendJobSyncCompanyJobInvoice: vi.fn().mockRejectedValue(new Error(reason)) }); await f.send();
     expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledTimes(1); expect(f.context.fetch).not.toHaveBeenCalled();
     expect(f.context.Alert.alert).toHaveBeenCalledWith("Send Failed", reason); expect(f.context.invoiceLockRef.current).toBe(false);
   });

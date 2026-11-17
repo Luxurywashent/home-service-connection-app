@@ -5,14 +5,23 @@ import {
   type JobSyncNativeSession,
 } from "./jobsync-mobile-api";
 
-/** Exact unpublished 2818bb72 saved fs_jobs service-location snapshot. */
+/** Verified read-only 2574fb8d contract; line 2 is absent from strict PATCH and saved Job storage. */
+export const COMPANY_JOB_ADDRESS_CONTRACT = Object.freeze({
+  revision: "2574fb8d",
+  route: "/api/mobile/v1/company/jobs/:jobId/address",
+  method: "PATCH",
+  addressLine2Writable: false,
+} as const);
+
+/** Exact saved fs_jobs service-location snapshot, never a customer-profile address. */
 export type CompanyJobAddress = Readonly<{
   addressLine1: string | null;
   city: string | null;
   region: string | null;
   postalCode: string | null;
 }>;
-export type CompanyJobAddressDraft = { addressLine1: string; city: string; region: string; postalCode: string };
+/** Optional empty line 2 preserves older callers; nonempty line 2 must never be silently dropped. */
+export type CompanyJobAddressDraft = { addressLine1: string; addressLine2?: string; city: string; region: string; postalCode: string };
 /** All nullable fields MUST be explicit: omission clears them on this backend. */
 export type CompanyJobAddressMutation = CompanyJobAddress & { addressLine1: string; expectedUpdatedAt: string };
 export type CompanyJobAddressDetail = JobSyncCompanyJobDetail & { serviceAddress?: CompanyJobAddress };
@@ -28,6 +37,7 @@ const record = (v: unknown): Record<string, unknown> | null => v !== null && typ
 const instant = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(v)
   && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 19) === v.slice(0, 19);
 const sameInstant = (a: unknown, b: unknown) => instant(a) && instant(b) && Date.parse(a) === Date.parse(b);
+export function companyJobAddressVersionAvailable(value: unknown): boolean { return instant(value); }
 
 /** No customer-profile fallback; undefined/malformed is unavailable, never known empty. */
 export function normalizeCompanyJobAddress(value: unknown): CompanyJobAddress | undefined {
@@ -57,7 +67,9 @@ export function companyJobAddressesEqual(a: CompanyJobAddress | undefined, b: Co
 }
 export function createCompanyJobAddressPayload(draft: CompanyJobAddressDraft, expectedUpdatedAt: string): CompanyJobAddressMutation {
   const row = record(draft);
-  if (!row || Object.keys(row).length !== 4 || Object.keys(row).some((key) => !Object.hasOwn(fields, key))
+  if (row && Object.hasOwn(row, "addressLine2") && (typeof row.addressLine2 !== "string" || row.addressLine2.trim()))
+    throw new Error("Address line 2 cannot be saved by the verified backend. It has not been sent or discarded; leave it empty before saving.");
+  if (!row || Object.keys(row).some((key) => !Object.hasOwn(fields, key) && key !== "addressLine2")
     || Object.keys(fields).some((key) => typeof row[key] !== "string") || !instant(expectedUpdatedAt)) throw new Error("Enter a verified Job address and refresh its version.");
   const address = normalizeCompanyJobAddress(row);
   if (!address?.addressLine1) throw new Error("Enter a street address (255 characters maximum).");
@@ -162,12 +174,19 @@ export function createCompanyJobAddressController(input: {
         if (!current() || !await authenticate() || !current()) return interrupted();
         consumed = true; attempted = true; unresolved.add(key);
         let ack: unknown;
+        let conflict = false;
         try { ack = await input.write(original.token, baseline.id, mutation); }
-        catch { /* A lost response may follow a commit. Never automatically PATCH again. */ }
+        catch (error) {
+          // The existing REST adapter supplies status/code, never expose untrusted provider text.
+          conflict = record(error)?.status === 409 && record(error)?.code === "CONFLICT";
+          // A lost response may follow a commit. Never automatically PATCH again.
+        }
         if (!current()) return interrupted();
         const acknowledged = verifyCompanyJobAddressAck(ack, baseline, mutation);
         const detail = await read();
         if (!detail || !current()) return interrupted();
+        // Preserve the existing post-dispatch uncertain result/lifetime fence even for a known 409.
+        if (conflict) return { status: "uncertain", message: "This Job changed elsewhere while saving. Refresh and review the current service address before opening a new edit. This save will not be resent." };
         if (!acknowledged || !sameInstant(detail.updatedAt, record(ack)?.updatedAt) || !companyJobAddressesEqual(detail.serviceAddress, mutation)) return uncertain();
         if (!await input.onVerified(detail, current) || !current()) return uncertain();
         unresolved.delete(key);

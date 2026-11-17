@@ -6,6 +6,8 @@ import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { CompanyBookingServiceCard, CompanyBookingServicePicker } from "./company-booking-service-picker";
 import { CompanyBookingTimeField } from "./company-booking-time-field";
 import { CompanyJobKeyboardBoundary } from "./company-job-keyboard-boundary";
+import { CompanyJobRecurrence, type CompanyJobRecurrenceSelection } from "./company-job-recurrence";
+import { companyJobRecurrenceWeekday, type CompanyJobSavedSeries } from "@/lib/company-job-recurrence";
 import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useCompanyJobQuote } from "@/hooks/use-company-job-quote";
@@ -30,7 +32,7 @@ export type CompanyCreateJobSheetProps = {
   closeOnSuccess?: boolean;
   isCurrent: () => boolean;
   onClose: () => void;
-  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string) => boolean | void | Promise<boolean | void>;
+  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string, series?: CompanyJobSavedSeries) => boolean | void | Promise<boolean | void>;
 };
 export function CompanyCreateJobSheet(props: CompanyCreateJobSheetProps) {
   const focused = useIsFocused();
@@ -103,6 +105,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const [notes, setNotes] = useState("");
   const [privateNotes, setPrivateNotes] = useState("");
   const [notifyCustomer, setNotifyCustomer] = useState(true);
+  const [recurrence, setRecurrence] = useState<CompanyJobRecurrenceSelection | null>(null);
   const [picker, setPicker] = useState<"date" | "start" | "end" | null>(null);
   const [moreDetails, setMoreDetails] = useState(false);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
@@ -141,7 +144,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           if (current() && live.current.props.closeOnSuccess !== false) live.current.props.onClose();
         }
       },
-      onCreated: (detail, zone) => current() ? live.current.props.onCreated(detail, zone) : false,
+      onCreated: (detail, zone, series) => current() ? (series
+        ? live.current.props.onCreated(detail, zone, series) : live.current.props.onCreated(detail, zone)) : false,
     });
     controllerRef.current = controller; setState(controller.getState());
     void controller.restore();
@@ -250,12 +254,16 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     try { normalizeCompanyJobNewCustomer({ firstName: "Validation", lastName: "Only", [name]: newCustomerFields[name] }); }
     catch (error) { newCustomerErrors[name] = error instanceof Error ? error.message : "Check this customer field."; }
   }
+  let recurrenceWeekday = 0;
+  try { recurrenceWeekday = companyJobRecurrenceWeekday(date); } catch { /* Invalid date is rejected by the create controller. */ }
   const customerReady = customerMode === "existing" ? !customerListError && !customerLoading && !customerError && Boolean(selectedCustomer) : !Object.keys(newCustomerErrors).length;
-  const canSave = !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
+  // Exact 2574 cannot durably save/read mobile series. Controls remain editable,
+  // but never let a quote or a recurrence echo enable a destructive lone-Job POST.
+  const canSave = !recurrence && !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && !discountError
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));
-  const draftBinding = useMemo(() => ({ customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, canSave }), [customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, canSave]);
+  const draftBinding = useMemo(() => ({ customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, recurrence, canSave }), [customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, recurrence, canSave]);
   const committedDraft = useRef<object | null>(null);
   useLayoutEffect(() => { committedDraft.current = draftBinding; return () => { committedDraft.current = null; }; }, [draftBinding]);
   const close = () => { if (current()) { jobQuote.invalidate(); live.current.closing = true; invalidateCustomerRequest(); live.current.props.onClose(); } };
@@ -278,6 +286,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     jobQuote.invalidate();
     void controller.submit({ ...selector, lineItems, ...(discount ? { discount } : {}), assignedEmployeeId: assignee,
       date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
+      ...(recurrence ? { recurrence: { ...(recurrence as CompanyJobRecurrenceSelection), startDate: date } } : {}),
       addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes, notifyCustomer }).then(async (saved) => {
       // One authenticated GET-only check after an ambiguous response; never
       // resend, re-key, or drive a retained controller after close/scope change.
@@ -329,6 +338,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             <CompanyBookingTimeField label="End (optional)" accessibilityLabel="End time (optional)" type="time" value={end} placeholder="Auto" disabled={locked} isCurrent={current} onChange={setEnd} onPick={() => setPicker("end")} />
           </View>
           <Text style={[styles.note, { color: colors.muted }]}>{timezone || "Verifying timezone…"}</Text>
+          <CompanyJobRecurrence value={recurrence} weekday={recurrenceWeekday} disabled={locked} isCurrent={current}
+            onChange={(next) => { if (current() && !locked && committedDraft.current === draftBinding) setRecurrence(next); }} />
           {picker && Platform.OS !== "web" && <View>
             <DateTimePicker value={pickerValue()} mode={picker === "date" ? "date" : "time"} is24Hour onChange={(_event, value) => {
               const target = picker; setPicker(null); if (_event.type === "dismissed" || !value || !current() || locked) return;
@@ -426,6 +437,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           </View>
           <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>{locked ? "Original booking confirmation request is locked; this draft cannot change it" : "Booking confirmation only. Day-before and same-day reminders follow Company settings."}</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer" accessibilityState={{ checked: notifyCustomer, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked && committedDraft.current === draftBinding) setNotifyCustomer((value) => !value); }} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: notifyCustomer ? colors.primary : colors.border, alignItems: notifyCustomer ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
           {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}</Text>}
+          {state.savedSeries && <Text testID="company-job-saved-series" style={[styles.note, { color: colors.muted }]}>Saved series #{state.savedSeries.ruleId} · {state.savedSeries.count} persisted appointments · {state.savedSeries.neverEnds ? "Ongoing" : state.savedSeries.term.replace(/_/g, " ")} · {state.savedSeries.timezone}</Text>}
           {state.bookingConfirmationMessage && <Text accessibilityRole="alert" testID="company-booking-confirmation-feedback" style={[styles.note, { color: colors.muted }]}>{state.bookingConfirmationMessage}</Text>}
           {state.detailError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{state.detailError}</Text>}
           {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>Review and correct the form, then save a new request.</Text>}

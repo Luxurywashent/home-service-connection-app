@@ -3,6 +3,7 @@ import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
+import { normalizeCompanyJobRecurrence } from "../lib/company-job-recurrence";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCompanyJobDiscount, normalizeCompanyJobLineItems,
@@ -68,7 +69,7 @@ const api = evaluate<{
 const storageNames = ["corrupt", "positive", "object", "shape", "instant", "textLimits", "canonicalNested", "payloadCopy"];
 const storage = evaluate<{ payloadCopy: (input: unknown) => Record<string, unknown> }>(
   declarations(readMobile("lib/company-job-creation-storage.ts"), storageNames),
-  { ...pricing, normalizeCompanyJobNewCustomer: api.normalizeCompanyJobNewCustomer }, ["payloadCopy"],
+  { ...pricing, normalizeCompanyJobNewCustomer: api.normalizeCompanyJobNewCustomer, normalizeCompanyJobRecurrence }, ["payloadCopy"],
 );
 
 class DomainError extends Error {}
@@ -165,27 +166,27 @@ describe("published 66141 recurring-create contract remains blocked", () => {
   });
 
   it("current line-item mobile adapter refuses recurrence rather than pretending it is saved", () => {
-    expect(() => api.createJobSyncCompanyJobPayload({ ...base, recurrence: rules[0] })).toThrow(/fields could not be verified/);
+    expect(() => api.createJobSyncCompanyJobPayload({ ...base, recurrence: rules[0] })).toThrow(/Recurring Job saving is unavailable/);
   });
 
   it("new-customer adapter also rejects recurrence before an unsupported customer/series request", () => {
     const { customerId: _customerId, ...rest } = base;
     expect(() => api.createJobSyncCompanyJobPayload({ ...rest,
       newCustomer: { firstName: "Casey", lastName: "Example" }, recurrence: rules[0],
-    })).toThrow(/fields could not be verified/);
+    })).toThrow(/Recurring Job saving is unavailable/);
   });
 
-  it("legacy-shaped single-service omission is not recurrence support or a valid fallback", () => {
-    const payload = api.createJobSyncCompanyJobPayload({ customerId: 41, priceBookServiceId: 71,
+  it("legacy-shaped single-service recurrence is rejected rather than silently discarded", () => {
+    expect(() => api.createJobSyncCompanyJobPayload({ customerId: 41, priceBookServiceId: 71,
       scheduledStartAt: base.scheduledStartAt, operationKey: base.operationKey, recurrence: rules[0],
-    });
-    expect(payload).not.toHaveProperty("recurrence");
-    expect(payload.priceBookServiceId).toBe(71);
+    })).toThrow(/Recurring Job saving is unavailable/);
   });
 
-  it("protected mobile recovery cannot preserve a recurrence field today", () => {
+  it("protected recovery retains frozen valid recurrence intent without enabling unsupported writes", () => {
     const { operationKey: _key, ...durable } = base;
-    expect(() => storage.payloadCopy({ ...durable, recurrence: rules[0] })).toThrow(/recovery storage could not be verified/);
+    const payload = storage.payloadCopy({ ...durable, recurrence: rules[0] });
+    expect(payload).toMatchObject({ ...durable, recurrence: rules[0] });
+    expect(Object.isFrozen(payload.recurrence)).toBe(true);
   });
 
   it("quote-only support cannot bypass mobile quote intent or response validation", () => {

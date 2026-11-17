@@ -44,6 +44,10 @@ import { CompanyJobTags } from "@/components/company-job-tags";
 import { useCompanyJobTags } from "@/hooks/use-company-job-tags";
 import type { CompanyJobTagsTransport } from "@/lib/company-job-tags";
 import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
+import { CompanyJobAddressEditor } from "@/components/company-job-address-editor";
+import { COMPANY_JOB_ADDRESS_CONTRACT, companyJobAddressScope, type CompanyJobAddressDetail } from "@/lib/company-job-address";
+import { CompanyJobInvoiceRecipient } from "@/components/company-job-invoice-recipient";
+import { COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY, createCompanyJobInvoiceAttemptGuard, validateCompanyJobInvoiceRecipientReceipt, type CompanyJobInvoiceAttempt } from "@/lib/company-job-invoice-recipient";
 import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
 import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { CompanyJobLineItems } from "@/components/company-job-line-items";
@@ -69,6 +73,7 @@ import {
   getJobSyncCompanySettings,
   updateJobSyncCompanyJobSchedule,
   updateJobSyncCompanyJobPrivateNotes,
+  updateJobSyncCompanyJobAddress,
   positiveJobSyncId,
   sendJobSyncCompanyJobInvoice,
 } from "@/lib/jobsync-mobile-api";
@@ -1608,6 +1613,9 @@ export default function AdminScheduleScreen() {
   const [invoiceSending, setInvoiceSending] = useState(false);
   const [invoiceSentUrl, setInvoiceSentUrl] = useState<string | null>(null);
   const [companyInvoiceStatus, setCompanyInvoiceStatus] = useState<string | null>(null);
+  const [companyInvoiceRecipientEmail, setCompanyInvoiceRecipientEmail] = useState("");
+  const [companyInvoiceAcknowledgedRecipient, setCompanyInvoiceAcknowledgedRecipient] = useState<string | null>(null);
+  const companyInvoiceAttemptGuardRef = useRef(createCompanyJobInvoiceAttemptGuard());
   const [invoiceRemainingOnly, setInvoiceRemainingOnly] = useState(false);
   const [invoiceOverrideContact, setInvoiceOverrideContact] = useState<string>("");
   const [sendingJobReceipt, setSendingJobReceipt] = useState(false);
@@ -1813,6 +1821,59 @@ export default function AdminScheduleScreen() {
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh), paidTotal: fresh.paidTotal, refundTotal: fresh.refundTotal, appliedEstimateCredit: fresh.appliedEstimateCredit, balance: fresh.balance, paymentStatus: fresh.paymentStatus }] : [];
       }));
     }, isCurrentCompanyJobOperation, companyJobOperationScope);
+  // HSC_COMPANY_ADDRESS_PUBLICATION_START
+  const addressPublicationRef = useRef<null | { detail: CompanyJobAddressDetail; current: () => boolean }>(null);
+  const [companyAddressRefresh, setCompanyAddressRefresh] = useState<null | { scope: string; jobId: number; sheetEpoch: number }>(null);
+  const onCompanyAddressVerified = useCallback(async (detail: CompanyJobAddressDetail, current: () => boolean): Promise<boolean> => {
+    addressPublicationRef.current = null;
+    const session = jobSyncSession;
+    if (!session || !current() || !isCurrentCompanyJobOperation() || !companyJobAddressScope(session)
+      || companyPhotoJobId !== detail.id || detail.companyId !== session.company?.id || !detail.serviceAddress) return false;
+    const rows = await getJobSyncCompanyJobs(session.token);
+    if (!current() || !isCurrentCompanyJobOperation()) return false;
+    const row = rows.find(item => item.id === detail.id);
+    if (!row || row.customerId !== detail.customerId || row.updatedAt !== detail.updatedAt
+      || row.addressLine1 !== detail.serviceAddress.addressLine1 || row.city !== detail.serviceAddress.city
+      || row.assignedUserId !== detail.assignedUserId
+      || Date.parse(row.scheduledStartAt ?? "") !== Date.parse(detail.scheduledStartAt ?? "")
+      || Date.parse(row.scheduledEndAt ?? "") !== Date.parse(detail.scheduledEndAt ?? "")) return false;
+    addressPublicationRef.current = { detail, current };
+    return true;
+  }, [jobSyncSession, companyPhotoJobId, isCurrentCompanyJobOperation]);
+  const onCompanyAddressSaved = useCallback((detail: CompanyJobAddressDetail) => {
+    const publication = addressPublicationRef.current;
+    addressPublicationRef.current = null;
+    const scope = companyJobAddressScope(jobSyncSession);
+    if (!publication || publication.detail !== detail || !publication.current() || !scope
+      || !isCurrentCompanyJobOperation() || detail.id !== companyPhotoJobId
+      || detail.companyId !== jobSyncSession?.company?.id || !detail.serviceAddress) return;
+    const address = detail.serviceAddress;
+    setCompanyAddressRefresh({ scope, jobId: detail.id, sheetEpoch: sheetEpochRef.current });
+    const publish = (row: Job) => ({ ...row, address: address.addressLine1 ?? "", addressCity: address.city,
+      addressRegion: address.region, addressPostalCode: address.postalCode, updatedAt: detail.updatedAt });
+    setJobs(previous => previous.map(row => row.id === String(detail.id) && row.companyId === detail.companyId ? publish(row) : row));
+    setSelectedJob(previous => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? publish(previous) : previous);
+  }, [jobSyncSession, companyPhotoJobId, isCurrentCompanyJobOperation, setSelectedJob]);
+  const committedCompanyJobRefreshRef = useRef(companyJob.refresh);
+  useLayoutEffect(() => { committedCompanyJobRefreshRef.current = companyJob.refresh; });
+  useEffect(() => {
+    const requested = companyAddressRefresh;
+    if (!requested) return;
+    let cancelled = false;
+    const current = () => !cancelled && isFocused && (AppState.currentState == null || AppState.currentState === "active")
+      && isCurrentCompanyJobOperation() && companyJobAddressScope(jobSyncSession) === requested.scope
+      && companyPhotoJobId === requested.jobId && sheetEpochRef.current === requested.sheetEpoch;
+    const subscription = AppState.addEventListener("change", next => { if (next !== "active") cancelled = true; });
+    // Refresh only after the returned canonical address scope has committed, never inside verification.
+    void Promise.resolve().then(async () => {
+      if (!current()) return;
+      await committedCompanyJobRefreshRef.current();
+    }).catch(() => { /* The existing hook owns canonical read errors; never retry PATCH. */ }).finally(() => {
+      if (!cancelled) setCompanyAddressRefresh(value => value === requested ? null : value);
+    });
+    return () => { cancelled = true; subscription.remove(); };
+  }, [companyAddressRefresh, companyJobOperationScope, companyPhotoJobId, jobSyncSession, isFocused, isCurrentCompanyJobOperation]);
+  // HSC_COMPANY_ADDRESS_PUBLICATION_END
   const companyJobTags = useCompanyJobTags(jobSyncSession, companyPhotoJobId, companyJobTagsApi,
     isCurrentCompanyJobOperation, companyJobOperationScope);
   const refreshCompanyJob = async () => {
@@ -1836,8 +1897,28 @@ export default function AdminScheduleScreen() {
   });
   const isCurrentInvoice = () => managementActionRef.current.mounted && managementActionRef.current.focused
     && invoiceSessionRef.current.key === invoiceIdentityKey && invoiceSessionRef.current.generation === invoiceGeneration
-    && sheetEpochRef.current === renderedSheetEpoch && invoiceEpochRef.current === renderedInvoiceEpoch && showInvoiceSheet;
+    && sheetEpochRef.current === renderedSheetEpoch && invoiceEpochRef.current === renderedInvoiceEpoch && showInvoiceSheet
+    && (AppState.currentState == null || AppState.currentState === "active")
+    && invoiceLifecycleEpoch.getSnapshot() === renderedInvoiceLifecycleEpoch;
+  const invoiceLifecycleEpoch = useCompanyJobOperationEpoch();
+  const renderedInvoiceLifecycleEpoch = useSyncExternalStore(invoiceLifecycleEpoch.subscribe,
+    invoiceLifecycleEpoch.getSnapshot, invoiceLifecycleEpoch.getSnapshot);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", next => {
+      if (next !== "active") invoiceLifecycleEpoch.invalidate();
+    });
+    return () => subscription.remove();
+  }, [invoiceLifecycleEpoch]);
   const invoiceLockRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setCompanyInvoiceRecipientEmail("");
+      setCompanyInvoiceAcknowledgedRecipient(null);
+    });
+    return () => { cancelled = true; };
+  }, [invoiceIdentityKey, showInvoiceSheet]);
   const companyBilling = getCompanyJobBillingState(selectedJob ?? {});
   const canonicalCalendarKey = JSON.stringify([jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
   const canonicalCalendarScopeRef = useRef<string | null>(null);
@@ -3661,9 +3742,10 @@ export default function AdminScheduleScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
-                  {companyJobMode && <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginBottom: 8 }}>
-                    Service address editing is unavailable for Company Jobs. The saved Job address is shown above; changing a customer profile does not update this Job.
-                  </Text>}
+                  {companyJobMode && <CompanyJobAddressEditor session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob}
+                    isCurrent={isCurrentCompanyJobOperation} addressContract={COMPANY_JOB_ADDRESS_CONTRACT}
+                    writeAddress={updateJobSyncCompanyJobAddress} onVerified={onCompanyAddressVerified} onSaved={onCompanyAddressSaved}
+                    onInputFocus={detailInputFocus} onInputBlur={detailInputBlur} />}
                   <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} jobSheet />
                   {/* ── Location Photos ── */}
                   {!companyJobMode && <>
@@ -4654,7 +4736,7 @@ export default function AdminScheduleScreen() {
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
                     // If any payment has been recorded, show remaining balance mode automatically
                     const remainingOnly = companyJobMode ? (selectedJob.paidTotal ?? 0) > 0 : alreadyPaid > 0.01;
-                    setInvoiceMethod("email");                    setInvoiceResend(false);                    setCompanyInvoiceStatus(null);
+                    setInvoiceMethod("email");                    setInvoiceResend(false);                    setCompanyInvoiceStatus(null); setCompanyInvoiceRecipientEmail(""); setCompanyInvoiceAcknowledgedRecipient(null);
                     setInvoiceSentUrl(null);
                     setInvoiceRemainingOnly(remainingOnly);
                     setInvoiceOverrideContact(selectedJob.email ?? "");
@@ -4712,7 +4794,7 @@ export default function AdminScheduleScreen() {
                     <TouchableOpacity
                       onPress={() => {
                         if (!managementActionRef.current.mounted || !managementActionRef.current.focused || sheetEpochRef.current !== renderedSheetEpoch || invoiceSessionRef.current.key !== invoiceIdentityKey) return;
-                        setInvoiceMethod("email");                        setInvoiceResend(false);                        setCompanyInvoiceStatus(null);
+                        setInvoiceMethod("email");                        setInvoiceResend(false);                        setCompanyInvoiceStatus(null); setCompanyInvoiceRecipientEmail(""); setCompanyInvoiceAcknowledgedRecipient(null);
                         setInvoiceSentUrl(null);
                         setInvoiceRemainingOnly(true);
                         setInvoiceOverrideContact(selectedJob.email ?? "");
@@ -5633,6 +5715,9 @@ export default function AdminScheduleScreen() {
                   <Text style={{ fontSize: 14, color: jobSheetColors.muted, textAlign: "center" }}>
                     {companyJobMode ? `Backend communication state: ${companyInvoiceStatus ?? "unknown"}. The secure invoice link was returned by the Company backend; customer delivery is not confirmed.` : "The customer will receive a secure payment link to pay online."}
                   </Text>
+                  {companyJobMode && companyInvoiceAcknowledgedRecipient && <Text style={{ color: jobSheetColors.muted, fontSize: 13, textAlign: "center" }}>
+                    Backend acknowledged recipient: {companyInvoiceAcknowledgedRecipient}. Actual persisted recipient is not independently verified for this backend.
+                  </Text>}
                   <TouchableOpacity
                     onPress={() => { if (isCurrentInvoice()) setShowInvoiceSheet(false); }}
                     style={{ marginTop: 8, backgroundColor: jobSheetColors.primary, borderRadius: 50, paddingVertical: 12, paddingHorizontal: 32 }}
@@ -5720,7 +5805,11 @@ export default function AdminScheduleScreen() {
                     </Text>
                   </View>}
                   {/* Contact info — editable */}
-                  {companyJobMode ? <Text style={{ color: jobSheetColors.muted, marginBottom: 20 }}>The Company backend selects the customer contact, invoice amount and remaining balance. Mobile contact/amount overrides are unavailable.</Text> : <View style={{ marginBottom: 20 }}>
+                  {companyJobMode ? <CompanyJobInvoiceRecipient method={invoiceMethod} value={companyInvoiceRecipientEmail}
+                    onChange={setCompanyInvoiceRecipientEmail} defaultEmail={companyJob.detail?.customerEmail ?? null}
+                    disabled={invoiceSending || jobSyncLoading} isCurrent={() => !invoiceLockRef.current && isCurrentInvoice()}
+                    onInputFocus={detailInputFocus} onInputBlur={detailInputBlur}
+                    sendingUnavailableReason={COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.reason} /> : <View style={{ marginBottom: 20 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
                       {invoiceMethod === "email" ? "Send to Email" : "Send to Phone"}
                     </Text>
@@ -5756,26 +5845,36 @@ export default function AdminScheduleScreen() {
                         invoiceLockRef.current = true;
                         setInvoiceSending(true);
                         setInvoiceSentUrl(null);
+                        let companyInvoiceAttempt: CompanyJobInvoiceAttempt | undefined;
                         try {
                           const invoiceIntent = captureCompanyJobInvoiceIntent(jobSyncSession, selectedJob,
-                            createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend));
+                            createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend, invoiceMethod === "email" ? companyInvoiceRecipientEmail : undefined));
+                          companyInvoiceAttempt = companyInvoiceAttemptGuardRef.current.begin(invoiceIntent);
                           const fresh = await getJobSyncMobileSession(invoiceIntent.token);
                           if (!isCurrentInvoice()) return;
                           assertCompanyJobInvoiceSession(invoiceIntent, fresh);
                           const detail = await getJobSyncCompanyJobDetail(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.companyId);
                           if (!isCurrentInvoice()) return;
                           assertCompanyJobInvoiceJob(invoiceIntent, detail);
+                          if (detail.invoiceSentAt && !invoiceIntent.options.resend) throw new Error("An invoice was already sent. Choose explicit resend to request a new send.");
                           if (!isCurrentInvoice()) return;
+                          companyInvoiceAttemptGuardRef.current.markDispatched(companyInvoiceAttempt);
                           const data = await sendJobSyncCompanyJobInvoice(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.options);
+                          const invoiceReceipt = validateCompanyJobInvoiceRecipientReceipt(invoiceIntent, data);
+                          companyInvoiceAttemptGuardRef.current.finish(companyInvoiceAttempt, "acknowledged");
                           if (isCurrentInvoice()) {
-                            setCompanyInvoiceStatus(typeof data.communicationState === "string" ? data.communicationState : typeof data.status === "string" ? data.status : null);
-                            setInvoiceSentUrl(data.publicUrl);
+                            setCompanyInvoiceStatus(invoiceReceipt.communicationState);
+                            setCompanyInvoiceAcknowledgedRecipient(invoiceReceipt.acknowledgedRecipient);
+                            setInvoiceSentUrl(invoiceReceipt.publicUrl);
                           }
                         } catch (err: any) {
                           if (isCurrentInvoice()) Alert.alert("Send Failed", err.message ?? "Could not send the Company invoice. Review delivery before retrying.");
                         } finally {
+                          if (companyInvoiceAttempt) companyInvoiceAttemptGuardRef.current.finish(companyInvoiceAttempt, "not_dispatched");
                           invoiceLockRef.current = false;
-                          if (isCurrentInvoice()) setInvoiceSending(false);
+                          // This lock is screen-wide. A reopened sheet must not stay busy after
+                          // its original pending request settles; all receipt publication remains fenced.
+                          if (managementActionRef.current.mounted) setInvoiceSending(false);
                         }
                         return; // Never fall back to copied legacy invoice transport.
                       }
@@ -5914,7 +6013,7 @@ export default function AdminScheduleScreen() {
           if (!isCurrentCompanyAdd() || detail.companyId !== jobSyncSession?.company?.id) return false;
           const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
           if (!slot) return false;
-          const refreshed = await syncCompanyJobs(isCurrentCompanyAdd, detail.id);
+          const refreshed = await syncCompanyJobs(isCurrentCompanyAdd, detail.id, detail);
           if (!isCurrentCompanyAdd() || !refreshed) return false;
           const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
           setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);

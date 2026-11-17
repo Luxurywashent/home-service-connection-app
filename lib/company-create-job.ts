@@ -15,13 +15,17 @@ import { companyCalendarInstant } from "./company-calendar";
 import { companyJobConfirmationMessage, type CompanyJobConfirmation } from "./company-job-confirmation";
 import {
   companyCreationStore, newCompanyCreationOperationKey,
-  type CompanyCreationRecord, type CompanyCreationStore,
+  type CompanyCreationRecord, type CompanyCreationStore, type CompanyCreationPayload,
 } from "./company-job-creation-storage";
+import { normalizeCompanyJobRecurrence, companyJobRecurrenceFirstDate, normalizeCompanyJobRecurrenceReceipt,
+  verifyCompanyJobSavedSeries, companyJobRecurrenceUnavailableMessage,
+  type CompanyJobRecurrenceInput, type CompanyJobRecurrenceReceipt, type CompanyJobSavedSeries } from "./company-job-recurrence";
 
 export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
   serviceId?: string;
   lineItems?: JobSyncCompanyJobLineInput[];
   discount?: JobSyncCompanyJobDiscountInput;
+  recurrence?: CompanyJobRecurrenceInput;
   assignedEmployeeId?: string;
   vehiclePriceKey?: string;
   date: string;
@@ -44,19 +48,24 @@ export type CompanyCreateJobState = {
   detailError?: string | null;
   /** Saved-Job feedback derived from guarded canonical email-record readback. */
   bookingConfirmationMessage?: string;
+  /** Only published after bound durable GET readback, never from a quote. */
+  savedSeries?: CompanyJobSavedSeries;
 };
 export type CompanyCreateJobTransport = {
   session: (token: string) => Promise<JobSyncNativeSession>;
   settings: (token: string) => Promise<JobSyncCompanySettings>;
   priceBook: (token: string) => Promise<HomeServiceConnectedPriceBookService[]>;
   customer: (token: string, id: number, companyId: number) => Promise<{ id: number; companyId?: number } & Partial<JobSyncCompanyCustomer>>;
-  create: (token: string, companyId: number, input: JobSyncCompanyJobCreateInput) => Promise<JobSyncCompanyJobCreateResult>;
+  create: (token: string, companyId: number, input: CompanyCreationPayload) => Promise<JobSyncCompanyJobCreateResult & { recurrence?: CompanyJobRecurrenceReceipt | null }>;
   detail: typeof getJobSyncCompanyJobDetail;
   jobs: typeof getJobSyncCompanyJobs;
   /** Optional only for older injected transports; absence never authorizes a resend. */
   operation?: typeof getJobSyncCompanyJobCreationOperation;
   /** Required for lines/discount intent. Legacy single-service transports remain compatible. */
   quote?: typeof quoteJobSyncCompanyJob;
+  /** Canonical GET readback by original operation + Job, NOT CREATE replay or client list synthesis.
+   * No such contract exists in 2574; production must remain unavailable. */
+  series?: (token: string, companyId: number, jobId: number, operationKey: string) => Promise<CompanyJobSavedSeries>;
 };
 const transport: CompanyCreateJobTransport = {
   session: getJobSyncMobileSession, settings: (token) => getJobSyncCompanySettings(token, { requireTimezone: true }),
@@ -108,9 +117,10 @@ export function companyCreateJobInstant(date: string, hour: number, timezone: st
 type Attempt = {
   state: CompanyCreateJobState;
   record?: CompanyCreationRecord;
-  ack?: JobSyncCompanyJobCreateResult;
+  ack?: JobSyncCompanyJobCreateResult & { recurrence?: CompanyJobRecurrenceReceipt | null };
   /** Memory-only canonical outcome; never put provider data in durable create intent. */
   confirmation?: CompanyJobConfirmation;
+  series?: CompanyJobSavedSeries;
   /** A write may have completed even when its promise rejected. Never infer absence. */
   reserved: boolean;
   dirty: boolean;
@@ -133,10 +143,11 @@ function instantEqual(a: string | null | undefined, b: string | null | undefined
   return Boolean(a && b && Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b));
 }
 function immutable(record: CompanyCreationRecord): CompanyCreationRecord {
-  const payload: JobSyncCompanyJobCreateInput = { ...record.payload };
+  const payload: CompanyCreationPayload = { ...record.payload };
   if (payload.newCustomer) payload.newCustomer = Object.freeze({ ...payload.newCustomer });
   if (payload.lineItems) payload.lineItems = frozenLines(payload.lineItems);
   if (payload.discount) payload.discount = Object.freeze({ ...payload.discount });
+  if (payload.recurrence) payload.recurrence = normalizeCompanyJobRecurrence(payload.recurrence);
   return Object.freeze({ ...record, payload: Object.freeze(payload) });
 }
 function frozenLines(lines: JobSyncCompanyJobLineInput[]): JobSyncCompanyJobLineInput[] {
@@ -194,7 +205,7 @@ export function createCompanyJobController(input: {
   isCurrent: () => boolean;
   verifyAssignment: (employeeId: string) => Promise<boolean>;
   onState: (state: CompanyCreateJobState) => void;
-  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string) => boolean | void | Promise<boolean | void>;
+  onCreated: (detail: JobSyncCompanyJobDetail, timezone: string, series?: CompanyJobSavedSeries) => boolean | void | Promise<boolean | void>;
   transport?: CompanyCreateJobTransport;
   store?: CompanyCreationStore;
   newOperationKey?: () => string;
@@ -262,6 +273,12 @@ export function createCompanyJobController(input: {
       const discount = normalizeCompanyJobDiscount(record.payload.discount);
       if (!discount || !exactNested(record.payload.discount, discount)) throw new Error(persistenceMessage);
     }
+    if (Object.hasOwn(record.payload, "recurrence")) {
+      const recurrence = normalizeCompanyJobRecurrence(record.payload.recurrence);
+      if (!exactNested(record.payload.recurrence, recurrence)) throw new Error(persistenceMessage);
+    }
+    if (record.recurrenceRuleId !== undefined && (!positive(record.recurrenceRuleId)
+      || !positive(record.jobId) || !record.payload.recurrence)) throw new Error(persistenceMessage);
     return immutable(record);
   };
   const hydrate = async () => {
@@ -364,13 +381,27 @@ export function createCompanyJobController(input: {
     catch { throw new Error("The current Company timezone could not be verified."); }
     // Re-authenticate after the reads and before invoking the real calendar loader.
     if (!await fresh() || !current()) return false;
+    if (payload.recurrence) {
+      if (!api.series) throw new Error(companyJobRecurrenceUnavailableMessage);
+      const readback = await api.series(origin.token, origin.company!.id, record.jobId, record.operationKey);
+      if (!current()) return false;
+      const series = verifyCompanyJobSavedSeries(readback, { companyId: origin.company!.id,
+        customerId: detail.customerId, jobId: record.jobId, operationKey: record.operationKey, recurrence: payload.recurrence,
+        scheduledStartAt: payload.scheduledStartAt, scheduledEndAt: payload.scheduledEndAt,
+        ruleId: record.recurrenceRuleId ?? attempt.ack?.recurrence?.ruleId });
+      if (record.recurrenceRuleId === undefined) await settleRecord(attempt, { recurrenceRuleId: series.ruleId });
+      if (!await fresh() || !current()) return false;
+      attempt.series = series;
+    }
     await ensureRecorded(attempt);
     if (!current()) return false;
     attempt.confirmation = detail.confirmationCommunication;
-    patch(attempt, { phase: "saved", jobId: record.jobId, message: "Job saved. Refreshing the Company calendar…", reconciling: true });
+    patch(attempt, { phase: "saved", jobId: record.jobId, message: payload.recurrence ? "Recurring series verified. Refreshing the Company calendar…" : "Job saved. Refreshing the Company calendar…", reconciling: true,
+      ...(attempt.series ? { savedSeries: attempt.series } : {}) });
     if (!current()) return false;
-    const refreshed = await input.onCreated(detail, settings.timezone);
-    if (!current() || refreshed === false) {
+    // Preserve the existing two-argument callback for all old single Jobs.
+    const refreshed = attempt.series ? await input.onCreated(detail, settings.timezone, attempt.series) : await input.onCreated(detail, settings.timezone);
+    if (!current() || refreshed === false || (attempt.series && refreshed !== true)) {
       patch(attempt, { phase: "saved", jobId: record.jobId, message: savedMessage });
       return false;
     }
@@ -380,7 +411,8 @@ export function createCompanyJobController(input: {
     if (runtime.attempt === attempt) runtime.attempt = undefined;
     const succeeded = current();
     if (succeeded) localState = { phase: "succeeded", jobId: record.jobId, message: "Job saved. Company calendar refreshed.",
-      bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer, attempt.confirmation) };
+      bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer, attempt.confirmation),
+      ...(attempt.series ? { savedSeries: attempt.series } : {}) };
     notify(key);
     // A synchronous close from the confirmed-success onState notification must
     // not retroactively turn that completed calendar/removal into a failure.
@@ -458,7 +490,7 @@ export function createCompanyJobController(input: {
     })().finally(() => { restorePromise = undefined; });
     return restorePromise;
   };
-  const submit = async (draft: CompanyCreateJobDraft) => {
+  const submit = async (draft: JobSyncCompanyJobCustomerSelector & Omit<CompanyCreateJobDraft, "customerId" | "newCustomer" | "recurrence"> & { recurrence?: unknown }) => {
     if (!current() || runtime.busy || localState.phase === "succeeded") return false;
     // Capture the entire intent before hydration's FIRST await, including nested
     // customer fields. Neither caller mutation nor delayed auth can change it.
@@ -467,12 +499,19 @@ export function createCompanyJobController(input: {
       if (!draft || typeof draft !== "object" || Object.hasOwn(draft, "customerId") === Object.hasOwn(draft, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
       if (Object.hasOwn(draft, "customerId") && !positive(draft.customerId)) throw new Error("Choose an existing Company customer.");
       if (Object.hasOwn(draft, "newCustomer") && Reflect.ownKeys(draft).some((field) => typeof field !== "string"
-        || !["newCustomer", "serviceId", "lineItems", "discount", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "notifyCustomer"].includes(field))) throw new Error("New customer Job fields could not be verified.");
+        || !["newCustomer", "serviceId", "lineItems", "discount", "recurrence", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "notifyCustomer"].includes(field))) throw new Error("New customer Job fields could not be verified.");
       if (draft.notifyCustomer !== undefined && typeof draft.notifyCustomer !== "boolean") throw new Error("Notify customer must be on or off.");
-      const snapshot = { ...draft };
+      const snapshot = { ...draft } as CompanyCreateJobDraft;
       if (Object.hasOwn(draft, "newCustomer")) snapshot.newCustomer = normalizeCompanyJobNewCustomer(draft.newCustomer);
       if (Object.hasOwn(draft, "lineItems")) snapshot.lineItems = frozenLines(normalizeCompanyJobLineItems(draft.lineItems));
       if (draft.discount !== undefined) snapshot.discount = Object.freeze({ ...normalizeCompanyJobDiscount(draft.discount)! });
+      if (Object.hasOwn(draft, "recurrence")) {
+        snapshot.recurrence = normalizeCompanyJobRecurrence(draft.recurrence);
+        if (snapshot.recurrence.startDate !== draft.date) throw new Error("The recurrence start date must match the Company date.");
+        // Schema/quote acceptance alone cannot authorize creation that silently
+        // discards recurrence. Block BEFORE hydration, reservation or POST.
+        if (!api.series) throw new Error(companyJobRecurrenceUnavailableMessage);
+      }
       captured = Object.freeze(snapshot) as CompanyCreateJobDraft;
     } catch (error) {
       if (!runtime.attempt) { localState = { phase: "error", jobId: null, message: error instanceof Error ? error.message : "New customer fields could not be verified." }; publish(); }
@@ -519,8 +558,9 @@ export function createCompanyJobController(input: {
       const settings = await api.settings(origin.token);
       if (!current()) return false;
       if (settings.id !== origin.company!.id) throw new Error("The Company schedule settings could not be verified.");
-      const scheduledStartAt = companyCreateJobInstant(captured.date, captured.startHour, settings.timezone);
-      const scheduledEndAt = captured.endHour === undefined ? undefined : companyCreateJobInstant(captured.date, captured.endHour, settings.timezone);
+      const firstDate = captured.recurrence ? companyJobRecurrenceFirstDate(captured.recurrence) : captured.date;
+      const scheduledStartAt = companyCreateJobInstant(firstDate, captured.startHour, settings.timezone);
+      const scheduledEndAt = captured.endHour === undefined ? undefined : companyCreateJobInstant(firstDate, captured.endHour, settings.timezone);
       if (captured.startHour === 24 || (scheduledEndAt && Date.parse(scheduledEndAt) <= Date.parse(scheduledStartAt))) throw new Error("The scheduled end must be after the start time.");
       let assignedUserId: number | undefined;
       if (captured.assignedEmployeeId) {
@@ -531,9 +571,10 @@ export function createCompanyJobController(input: {
         assignedUserId = Number(captured.assignedEmployeeId.slice(8));
       }
       const selector: JobSyncCompanyJobCustomerSelector = captured.newCustomer ? { newCustomer: captured.newCustomer } : { customerId: captured.customerId! };
-      const payload: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: lines?.[0].priceBookItemId ?? Number(captured.serviceId), scheduledStartAt };
+      const payload: CompanyCreationPayload = { ...selector, priceBookServiceId: lines?.[0].priceBookItemId ?? Number(captured.serviceId), scheduledStartAt };
       if (lines) payload.lineItems = lines;
       if (captured.discount !== undefined) payload.discount = captured.discount;
+      if (captured.recurrence) payload.recurrence = captured.recurrence;
       // Old v1 omissions stay absent. New form preferences are immutable intent,
       // not quote fields or a reason to retry a rejected/ambiguous POST.
       if (captured.notifyCustomer !== undefined) payload.notifyCustomer = captured.notifyCustomer;
@@ -598,9 +639,15 @@ export function createCompanyJobController(input: {
       if (lines && (!ack.operation || typeof ack.operation.replayed !== "boolean" || ack.priceBookServiceId !== lines[0].priceBookItemId
         || !ack.scheduledEndAt || !Number.isFinite(Date.parse(ack.scheduledEndAt))
         || Date.parse(ack.scheduledEndAt) <= Date.parse(ack.scheduledStartAt!))) throw new Error("The multi-service save acknowledgment could not be verified. The original request remains locked.");
+      // Save identity is durable even if recurrence receipt is absent/malformed.
+      // A lone Job must never be announced as a verified recurring series.
       attempt.ack = ack;
       patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
       await settleRecord(attempt, { phase: "saved", jobId: ack.id, ...(payload.newCustomer ? { resolvedCustomerId: ack.customerId } : {}) });
+      if (payload.recurrence) {
+        const receipt = normalizeCompanyJobRecurrenceReceipt(ack.recurrence, payload.recurrence, ack.id);
+        await settleRecord(attempt, { recurrenceRuleId: receipt.ruleId });
+      }
       if (!current()) return false;
       return await recoverDetail(attempt);
     } catch (error) {

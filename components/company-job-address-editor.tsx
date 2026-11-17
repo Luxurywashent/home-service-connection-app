@@ -4,6 +4,7 @@ import { ActivityIndicator, AppState, StyleSheet, Text, TextInput, type TextInpu
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import {
   companyJobAddressScope, companyJobAddressWriteBlocked, createCompanyJobAddressController,
+  COMPANY_JOB_ADDRESS_CONTRACT, companyJobAddressVersionAvailable,
   normalizeCompanyJobAddress, type CompanyJobAddressApi, type CompanyJobAddressDetail,
   type CompanyJobAddressDraft, type CompanyJobAddressWriter,
 } from "@/lib/company-job-address";
@@ -15,6 +16,8 @@ export type CompanyJobAddressEditorProps = {
   jobId: number | null;
   job: { detail: CompanyJobAddressDetail | null; actor: JobSyncNativeSession | null; loading: boolean; pending: boolean; error: string | null };
   isCurrent: () => boolean;
+  /** Explicit manager-only mounting capability; defaults to the verified 2574fb8d contract. */
+  addressContract?: typeof COMPANY_JOB_ADDRESS_CONTRACT;
   writeAddress?: CompanyJobAddressWriter;
   /** Validate canonical list/selected-row projection without replacing the baseline while this callback runs. */
   onVerified: (detail: CompanyJobAddressDetail, isCurrent: () => boolean) => Promise<boolean>;
@@ -32,7 +35,7 @@ function AddressAction(props: { label: string; onPress: () => void; disabled: bo
   </TouchableOpacity>;
 }
 
-/** Manager-only addition; parent's existing saved-address/contact/map and legacy editor remain unchanged. */
+/** Manager-only Job snapshot editor; parent keeps contact/map and separate legacy-only editor unchanged. */
 export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
   const colors = useJobSheetColors();
   const focused = useIsFocused();
@@ -41,7 +44,7 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
   const scope = companyJobAddressScope(props.session);
   const marker = JSON.stringify([scope, companyJobAddressScope(props.job.actor), props.jobId,
     props.job.detail?.id, props.job.detail?.companyId, props.job.detail?.customerId, props.job.detail?.updatedAt,
-    props.job.detail?.serviceAddress, focused, active, lifecycle, props.job.loading, props.job.pending, props.job.error]);
+    props.job.detail?.serviceAddress, props.addressContract, focused, active, lifecycle, props.job.loading, props.job.pending, props.job.error]);
   const capturedVersion = props.job.detail?.updatedAt;
   const capturedAddress = JSON.stringify(props.job.detail?.serviceAddress);
   const capturedJob = JSON.stringify([props.job.detail?.id, props.job.detail?.companyId, props.job.detail?.customerId,
@@ -81,6 +84,7 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
       && now.props.writeAddress === props.writeAddress && now.props.onVerified === props.onVerified
       && now.props.onSaved === props.onSaved && now.props.api === props.api
       && now.props.isCurrent === props.isCurrent
+      && now.props.addressContract === props.addressContract
       && now.props.job.detail?.updatedAt === capturedVersion && JSON.stringify(now.props.job.detail?.serviceAddress) === capturedAddress
       && JSON.stringify([now.props.job.detail?.id, now.props.job.detail?.companyId, now.props.job.detail?.customerId,
         now.props.job.detail?.addressLine1, now.props.job.detail?.city]) === capturedJob
@@ -91,14 +95,17 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
   const valid = Boolean(scope && companyJobAddressScope(props.job.actor) === scope && props.jobId && detail
     && detail.id === props.jobId && detail.companyId === props.session?.company?.id && address
     && detail.addressLine1 === address.addressLine1 && detail.city === address.city);
+  const contract = props.addressContract ?? COMPANY_JOB_ADDRESS_CONTRACT;
+  const connected = Boolean(props.writeAddress && contract === COMPANY_JOB_ADDRESS_CONTRACT);
+  const versionAvailable = companyJobAddressVersionAvailable(detail?.updatedAt);
   const makeController = () => props.session && valid && detail && props.writeAddress ? createCompanyJobAddressController({
     session: props.session, baseline: detail, write: props.writeAddress, isCurrent: current, api: props.api, onVerified: props.onVerified,
   }) : null;
   const begin = () => {
-    if (lock.current || !current() || !valid || !props.writeAddress || companyJobAddressWriteBlocked(props.session, props.jobId!)) return;
+    if (lock.current || !current() || !valid || !connected || !versionAvailable || companyJobAddressWriteBlocked(props.session, props.jobId!)) return;
     const controller = makeController();
     if (!controller || !address) return;
-    setEditor({ identity, controller, draft: { addressLine1: address.addressLine1 ?? "", city: address.city ?? "", region: address.region ?? "", postalCode: address.postalCode ?? "" } });
+    setEditor({ identity, controller, draft: { addressLine1: address.addressLine1 ?? "", addressLine2: "", city: address.city ?? "", region: address.region ?? "", postalCode: address.postalCode ?? "" } });
     setFeedback(null);
   };
   const save = async () => {
@@ -114,7 +121,7 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
     } finally { lock.current = false; }
   };
   const refresh = async () => {
-    if (lock.current || !current()) return;
+    if (lock.current || !current() || !connected) return;
     const controller = makeController();
     if (!controller) return;
     lock.current = true; binding.current = null; setEditor(null);
@@ -131,13 +138,16 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
   const editing = editor?.identity === identity ? editor : null;
   const busy = props.job.loading || props.job.pending || Boolean(local?.busy);
   const blocked = companyJobAddressWriteBlocked(props.session, props.jobId!);
-  const editable = !busy && !props.job.error && !blocked && Boolean(props.writeAddress);
+  const editable = !busy && !props.job.error && !blocked && connected && versionAvailable;
   return <View testID="company-job-address-editor" style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}>
     <Text style={[styles.title, { color: colors.foreground }]}>Job Service Address</Text>
     <Text style={[styles.hint, { color: colors.muted }]}>Changes this Job only, not the customer profile or other appointments.</Text>
     {busy ? <ActivityIndicator accessibilityLabel="Saving or reviewing Job address" color={colors.primary} /> : null}
     {local?.message ? <Text accessibilityRole="alert" style={[styles.hint, { color: colors.muted }]}>{local.message}</Text> : null}
     {editing ? <>
+      <TextInput accessibilityLabel="Address line 2 (unavailable)" value={editing.draft.addressLine2 ?? ""} editable={false}
+        placeholder="Address line 2 — not supported by this backend" placeholderTextColor={colors.muted}
+        style={[styles.input, { borderColor: colors.border, color: colors.muted }]} />
       {([ ["addressLine1", "Street address", 255], ["city", "City", 96], ["region", "State or region", 96], ["postalCode", "Postal code", 24] ] as const).map(([field, label, maxLength]) =>
         <TextInput key={field} accessibilityLabel={label} value={editing.draft[field]} maxLength={maxLength} editable={!busy}
           placeholder={label} placeholderTextColor={colors.muted} autoComplete="off" autoCorrect={false}
@@ -152,9 +162,11 @@ export function CompanyJobAddressEditor(props: CompanyJobAddressEditorProps) {
         <AddressAction label="Save Job address" disabled={!editable} primary={colors.primary} muted={colors.muted} onPress={() => { void save(); }} />
       </View>
     </> : editable ? <AddressAction label="Edit Job address" disabled={busy} primary={colors.primary} muted={colors.muted} onPress={begin} /> : null}
-    {!props.writeAddress ? <Text style={[styles.hint, { color: colors.muted }]}>Service address editing is unavailable until the authorized backend is connected.</Text> : null}
+    <Text style={[styles.hint, { color: colors.muted }]}>The verified backend cannot save address line 2. No line 2 value will be sent or silently discarded.</Text>
+    {!connected ? <Text style={[styles.hint, { color: colors.muted }]}>Service address editing is unavailable until the authorized backend is connected.</Text> : null}
+    {!versionAvailable ? <Text accessibilityRole="alert" style={[styles.hint, { color: colors.muted }]}>The Job version is unavailable. Refresh and review before editing.</Text> : null}
     {blocked && !busy ? <Text accessibilityRole="alert" style={[styles.hint, { color: colors.muted }]}>An earlier address save is pending or unconfirmed. Refresh and review; do not resend blindly.</Text> : null}
-    {props.writeAddress ? <AddressAction label="Refresh and review Job address" disabled={busy} primary={colors.primary} muted={colors.muted} onPress={() => { void refresh(); }} /> : null}
+    {connected ? <AddressAction label="Refresh and review Job address" disabled={busy} primary={colors.primary} muted={colors.muted} onPress={() => { void refresh(); }} /> : null}
   </View>;
 }
 const styles = StyleSheet.create({
