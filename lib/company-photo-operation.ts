@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIsFocused } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import {
@@ -13,6 +13,8 @@ import {
 } from "./jobsync-mobile-api";
 import { companyPhotoScope, currentCompanyGallery, canDeleteCompanyPhoto } from "./company-photo-view";
 import { encodeCompanyPhotoDraft, LocalPhotoDraftError, type CompanyPhotoDraftInput, type LocalPhotoDraft } from "./company-photo-draft";
+
+import { COMPANY_PHOTO_CATEGORIES, nextCompanyPhotoDisplayOrder, type CompanyPhotoMetadata } from "./company-photo-view";
 
 export type CompanyPhotoOperationState = {
   pending: boolean;
@@ -80,11 +82,20 @@ export function createCompanyPhotoOperation(input: {
     let acknowledged = false;
     let uploadedId: number | null = null;
     const upload = "draft" in target;
+    // Immutable intent: picker/UI changes cannot retag a photo while encoding or reading access.
+    const draft = upload ? { ...target.draft } : null;
+    let metadata: { category: NonNullable<LocalPhotoDraft["category"]>; displayOrder: number } | null = null;
     try {
-      const encoded = upload ? await (input.encode ?? ((draft) => encodeCompanyPhotoDraft(draft, FileSystem.getInfoAsync, (uri) => FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }))))(target.draft) : null;
+      if (draft?.category !== undefined && !COMPANY_PHOTO_CATEGORIES.includes(draft.category))
+        throw new LocalPhotoDraftError("Choose Before, After, Damage or Other for this photo.");
+      const encoded = draft ? await (input.encode ?? ((value) => encodeCompanyPhotoDraft(value, FileSystem.getInfoAsync, (uri) => FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }))))(draft) : null;
       if (!input.isCurrent()) return false;
       const fresh = await read();
       if (!fresh || !input.isCurrent()) return false;
+      if (draft?.category !== undefined) {
+        try { metadata = { category: draft.category, displayOrder: nextCompanyPhotoDisplayOrder(fresh.detail) }; }
+        catch { throw new LocalPhotoDraftError("Stored photo order is unavailable, invalid or at its supported limit. Refresh photos before uploading."); }
+      }
       if (!upload && !canDeleteCompanyPhoto({ session: fresh.actor, jobId: input.jobId, job: { detail: fresh.detail, loading: false, pending: false, error: null } }, target.photoId)) {
         throw new Error("This photo is no longer available for removal by your signed account. Review the refreshed Job.");
       }
@@ -92,10 +103,14 @@ export function createCompanyPhotoOperation(input: {
       publish({ message: upload ? "Sending photo…" : "Removing photo from this Job…" });
       attempted = true;
       if (upload) {
-        const response = await api.upload(original.token, input.jobId, encoded!);
+        const payload = { ...encoded!, ...(metadata ?? {}) };
+        const response = await api.upload(original.token, input.jobId, payload);
         if (!input.isCurrent()) return false;
         const photo = response?.photo;
         if (!photo || typeof photo.id !== "number" || !positiveJobSyncId(photo.id) || typeof photo.uploadedByUserId !== "number" || photo.uploadedByUserId !== original.user.id || typeof photo.imageUrl !== "string" || !/^https:\/\//.test(photo.imageUrl)) throw new Error("The backend did not provide a valid photo acknowledgement.");
+        const returned = photo as typeof photo & CompanyPhotoMetadata;
+        if (metadata && (returned.category !== metadata.category || returned.displayOrder !== metadata.displayOrder || fresh.photoIds.includes(photo.id)))
+          throw new Error("The backend did not acknowledge this photo's category and display order.");
         uploadedId = photo.id;
       } else {
         const response = await api.remove(original.token, input.jobId, target.photoId);
@@ -107,8 +122,10 @@ export function createCompanyPhotoOperation(input: {
       const refreshed = await reconcile();
       if (!refreshed || !input.isCurrent()) return false;
       publish({ detail: refreshed.detail });
-      if (upload ? !refreshed.detail.photos.some((photo) => photo.id === uploadedId) : refreshed.photoIds.includes(target.photoId)) {
-        publish({ message: null, error: upload ? "Upload acknowledged, but the refreshed gallery does not confirm that photo. Review current photos before any deliberate new upload; it may still have been saved." : "Removal acknowledged, but the photo remains in the refreshed Job. Review current photos before trying again." });
+      const saved = refreshed.detail.photos.find((photo) => photo.id === uploadedId) as (JobSyncCompanyJobDetail["photos"][number] & CompanyPhotoMetadata) | undefined;
+      const metadataConfirmed = !metadata || (saved?.uploadedByUserId === original.user.id && saved.category === metadata.category && saved.displayOrder === metadata.displayOrder);
+      if (upload ? !saved || !metadataConfirmed : refreshed.photoIds.includes(target.photoId)) {
+        publish({ message: null, error: upload ? "Upload acknowledged, but the refreshed gallery does not confirm that photo and its selected metadata. Review current photos before any deliberate new upload; it may still have been saved." : "Removal acknowledged, but the photo remains in the refreshed Job. Review current photos before trying again." });
         return false;
       }
       publish({ message: upload ? "Photo upload confirmed by fresh Company Job detail." : "Photo removed from this Job and absence confirmed by fresh detail.", error: null });
@@ -135,58 +152,78 @@ export function createCompanyPhotoOperation(input: {
   return { upload: (draft: LocalPhotoDraft) => run({ draft }), remove: (photoId: number) => run({ photoId }) };
 }
 
+type OperationIdentity = { scope: string | null; focused: boolean };
+type OperationSnapshot = { identity: OperationIdentity; state: CompanyPhotoOperationState; parentDetail: JobSyncCompanyJobDetail | null };
+function createOperationLifecycle() {
+  let value = {
+    identity: null as OperationIdentity | null, active: false, cancelled: false, ownRefresh: false,
+    startDetail: null as JobSyncCompanyJobDetail | null, invalidSnapshot: null as OperationSnapshot | null, ticket: 0,
+  };
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => value,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    update: (patch: Partial<typeof value>) => {
+      value = { ...value, ...patch };
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
 /** Lifecycle guard is independent of draft read-scope: our own post-write refresh consumes drafts,
  * but cannot cancel the safely captured operation. Blur/identity/pending/reassignment do cancel it. */
 export function useCompanyPhotoOperation(input: CompanyPhotoDraftInput & { onRefresh: () => void | Promise<void> }) {
   const focused = useIsFocused();
   const scope = companyPhotoScope(input.session, input.jobId);
   const live = useRef({ input, focused, scope });
-  live.current = { input, focused, scope };
   const mounted = useRef(true);
-  const identity = useRef({ scope, focused, epoch: 0 });
-  if (identity.current.scope !== scope || identity.current.focused !== focused) identity.current = { scope, focused, epoch: identity.current.epoch + 1 };
-  const currentIdentity = identity.current;
-  const [snapshot, setSnapshot] = useState<{ identity: typeof currentIdentity; state: CompanyPhotoOperationState; parentDetail: JobSyncCompanyJobDetail | null } | null>(null);
-  const operation = useRef<ReturnType<typeof createCompanyPhotoOperation> | null>(null);
-  const active = useRef(false);
-  const cancelled = useRef(false);
-  const ownRefresh = useRef(false);
-  const startDetail = useRef(input.job.detail);
-  const ticket = useRef(0);
-  const cancelledSnapshot = useRef<typeof snapshot>(null);
-  const operationIdentity = useRef(currentIdentity);
-  if (operationIdentity.current !== currentIdentity) { operationIdentity.current = currentIdentity; operation.current = null; active.current = false; cancelled.current = false; ownRefresh.current = false; }
-  // Parent pending (field write) and loss of accessible identity/assignment must invalidate even
-  // when the caller later returns to the same context. Loading during our own readback is expected.
-  if (active.current && !cancelled.current && (input.job.pending || (!ownRefresh.current && currentCompanyGallery(input) === null) || (input.job.detail && (input.job.detail.id !== input.jobId || input.job.detail.companyId !== input.session?.company?.id || (input.session?.user.role === "technician" && input.job.detail.assignedUserId !== input.session.user.id))))) {
-    cancelled.current = true;
-    ticket.current++;
-    cancelledSnapshot.current = snapshot;
-  }
-  if (!active.current && cancelled.current && startDetail.current !== input.job.detail && currentCompanyGallery(input) !== null) cancelled.current = false;
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const isCurrent = () => mounted.current && identity.current === currentIdentity && live.current.focused && Boolean(scope) && live.current.scope === scope && !cancelled.current;
+  const identity = useMemo(() => ({ scope, focused }), [scope, focused]);
+  const lifecycle = useMemo(() => createOperationLifecycle(), []);
+  const control = useSyncExternalStore(lifecycle.subscribe, lifecycle.getSnapshot, lifecycle.getSnapshot);
+  const [snapshot, setSnapshot] = useState<OperationSnapshot | null>(null);
+  const accessible = currentCompanyGallery(input) !== null;
+  const mismatchedDetail = Boolean(input.job.detail && (input.job.detail.id !== input.jobId || input.job.detail.companyId !== input.session?.company?.id || (input.session?.user.role === "technician" && input.job.detail.assignedUserId !== input.session.user.id)));
+  const invalidParent = input.job.pending || mismatchedDetail || (!control.ownRefresh && !accessible);
+  // Mask old state during render; cancellation is published before callbacks in layout effects.
+  const cancelled = control.identity === identity && (control.cancelled || (control.active && invalidParent));
+  useLayoutEffect(() => {
+    live.current = { input, focused, scope };
+    const previous = lifecycle.getSnapshot();
+    if (previous.identity !== identity) {
+      lifecycle.update({ identity, active: false, cancelled: false, ownRefresh: false, ticket: previous.ticket + 1 });
+    } else if (previous.active && !previous.cancelled && invalidParent) {
+      lifecycle.update({ cancelled: true, invalidSnapshot: snapshot, ticket: previous.ticket + 1 });
+    } else if (!previous.active && previous.cancelled && previous.startDetail !== input.job.detail && accessible) {
+      lifecycle.update({ cancelled: false });
+    }
+  }, [input, focused, scope, identity, lifecycle, invalidParent, snapshot, accessible]);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; lifecycle.update({ ticket: lifecycle.getSnapshot().ticket + 1 }); };
+  }, [lifecycle]);
+  const isCurrent = () => {
+    const value = lifecycle.getSnapshot();
+    const latest = live.current;
+    return mounted.current && value.identity === identity && latest.focused && Boolean(scope) && latest.scope === scope && !value.cancelled && !latest.input.job.pending;
+  };
   const begin = (kind: "upload" | "remove", value: LocalPhotoDraft | number) => {
-    if (!isCurrent() || blocked || active.current || currentCompanyGallery(live.current.input) === null || !input.session || !input.jobId) return Promise.resolve(false);
-    active.current = true;
-    startDetail.current = input.job.detail;
-    ownRefresh.current = false;
-    const expectedTicket = ++ticket.current;
-    const operationCurrent = () => isCurrent() && ticket.current === expectedTicket;
-    operation.current = createCompanyPhotoOperation({
+    if (!isCurrent() || blocked || lifecycle.getSnapshot().active || currentCompanyGallery(live.current.input) === null || !input.session || !input.jobId) return Promise.resolve(false);
+    const expectedTicket = lifecycle.getSnapshot().ticket + 1;
+    lifecycle.update({ active: true, ownRefresh: false, startDetail: input.job.detail, ticket: expectedTicket });
+    const operationCurrent = () => isCurrent() && lifecycle.getSnapshot().ticket === expectedTicket;
+    const operation = createCompanyPhotoOperation({
       session: input.session, jobId: input.jobId, isCurrent: operationCurrent,
-      onRefresh: () => { if (operationCurrent()) { ownRefresh.current = true; return live.current.input.onRefresh(); } },
+      onRefresh: () => { if (operationCurrent()) { lifecycle.update({ ownRefresh: true }); return live.current.input.onRefresh(); } },
       onState: (state) => {
-        if (operationCurrent()) setSnapshot({ identity: currentIdentity, state, parentDetail: live.current.input.job.detail });
-        if (!state.pending) active.current = false;
+        if (operationCurrent()) setSnapshot({ identity, state, parentDetail: live.current.input.job.detail });
       },
     });
-    const promise = kind === "upload" ? operation.current.upload(value as LocalPhotoDraft) : operation.current.remove(value as number);
-    return promise.finally(() => { if (identity.current === currentIdentity) active.current = false; });
+    const promise = kind === "upload" ? operation.upload(value as LocalPhotoDraft) : operation.remove(value as number);
+    return promise.finally(() => { if (lifecycle.getSnapshot().identity === identity) lifecycle.update({ active: false }); });
   };
-  const state = snapshot && snapshot !== cancelledSnapshot.current && snapshot.identity === currentIdentity && focused && !cancelled.current ? snapshot.state : empty;
+  const state = snapshot && snapshot !== control.invalidSnapshot && snapshot.identity === identity && focused && !cancelled ? snapshot.state : empty;
   // A later parent canonical refresh wins; never resurrect an earlier reconciled snapshot.
   const canonical = state.detail && snapshot?.parentDetail === input.job.detail && currentCompanyGallery(input) !== null ? state.detail : null;
-  const blocked = cancelled.current || Boolean(state.error && !state.detail && snapshot?.parentDetail === input.job.detail);
+  const blocked = cancelled || Boolean(state.error && !state.detail && snapshot?.parentDetail === input.job.detail);
   return { ...state, detail: canonical, blocked, focused, upload: (draft: LocalPhotoDraft) => begin("upload", draft), remove: (photoId: number) => begin("remove", photoId) };
 }

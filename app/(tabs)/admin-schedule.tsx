@@ -57,10 +57,12 @@ import {
   getJobSyncCompanySettings,
   updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
+  updateJobSyncCompanyJobPrivateNotes,
   positiveJobSyncId,
   sendJobSyncCompanyJobInvoice,
 } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
+import { useCompanyJobOperation, useCompanyJobOperationEpoch } from "@/hooks/use-company-job-operation";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
@@ -1525,10 +1527,12 @@ export default function AdminScheduleScreen() {
   const [chargingCard, setChargingCard] = useState(false);
   const [selectedChargeCardId, setSelectedChargeCardId] = useState<string | null>(null);
   const [selectedJob, setSelectedJobState] = useState<Job | null>(null);
-  const setSelectedJob: React.Dispatch<React.SetStateAction<Job | null>> = (value) => {
-    if (typeof value !== "function") { sheetEpochRef.current++; invoiceEpochRef.current++; checkoutEpochRef.current++; }
+  const companyJobOperationEpoch = useCompanyJobOperationEpoch();
+  const invalidateCompanyJobOperation = companyJobOperationEpoch.invalidate;
+  const setSelectedJob: React.Dispatch<React.SetStateAction<Job | null>> = useCallback((value) => {
+    if (typeof value !== "function") { sheetEpochRef.current++; invoiceEpochRef.current++; checkoutEpochRef.current++; invalidateCompanyJobOperation(); }
     setSelectedJobState(value);
-  };
+  }, [invalidateCompanyJobOperation]);
   const legacyBillingAllowed = legacyTokenReady && !jobSyncSession && !jobSyncLoading && !hasJobSyncEmployee
     && selectedJob?.companyId === undefined && !!currentEmployee && !employeeLoading && isFocused;
   const chargeLockRef = useRef(false);
@@ -1598,6 +1602,19 @@ export default function AdminScheduleScreen() {
   managementActionRef.current.key = managementActionKey;
   managementActionRef.current.companyMode = companyJobMode;
   managementActionRef.current.focused = isFocused;
+  const { isCurrent: isCurrentCompanyJobOperation,
+    scopeKey: companyJobOperationScope } = useCompanyJobOperation(JSON.stringify([companyJobMode,
+    currentEmployee?.employeeId, currentEmployee?.role, currentEmployee?.sessionSource, employeeLoading,
+    legacyToken, legacyTokenReady, isFocused, jobSyncLoading, jobSyncSession?.token, jobSyncSession?.portal,
+    jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role,
+    jobSyncSession?.user.calendarEligible, selectedJob?.id, selectedJob?.companyId, selectedJob?.address]), () => {
+    const generation = managementActionRef.current.generation;
+    const sheetEpoch = sheetEpochRef.current;
+    return () => !employeeLoading && !jobSyncLoading
+      && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode
+      && managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === generation
+      && sheetEpochRef.current === sheetEpoch;
+  }, companyJobOperationEpoch);
   useEffect(() => {
     managementActionRef.current.mounted = true;
     return () => { managementActionRef.current.mounted = false; managementActionRef.current.generation++; };
@@ -1617,8 +1634,9 @@ export default function AdminScheduleScreen() {
       managementActionRef.current.generation++;
       calendarScopeRef.current.generation++;
       sheetEpochRef.current++; invoiceEpochRef.current++; checkoutEpochRef.current++;
+      invalidateCompanyJobOperation();
     };
-  }, [currentEmployee?.employeeId, currentEmployee?.role, currentEmployee?.sessionSource]));
+  }, [currentEmployee?.employeeId, currentEmployee?.role, currentEmployee?.sessionSource, invalidateCompanyJobOperation]));
   // Calendar reads must not refetch/clear the board simply because a Job sheet opens.
   const calendarScopeKey = JSON.stringify([companyJobMode, currentEmployee?.employeeId, currentEmployee?.role,
     currentEmployee?.sessionSource, employeeLoading, legacyToken, legacyTokenReady, isFocused,
@@ -1656,13 +1674,6 @@ export default function AdminScheduleScreen() {
   const isCurrentRefund = () => renderedLegacyAction() && refundEpochRef.current === renderedRefundEpoch && showRefundModal;
   isCurrentRefund.verify = async () => isCurrentRefund() && await renderedLegacyAction.verify() && isCurrentRefund();
   const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
-  const statusManagementGeneration = managementActionRef.current.generation;
-  const statusSheetEpoch = sheetEpochRef.current;
-  const isCurrentCompanyJobOperation = useCallback(() => !employeeLoading && !jobSyncLoading
-    && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode
-    && managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === statusManagementGeneration
-    && sheetEpochRef.current === statusSheetEpoch,
-  [employeeLoading, jobSyncLoading, managementActionKey, statusManagementGeneration, statusSheetEpoch]);
   const companyJob = useCompanyJob(jobSyncSession,
     companyPhotoJobId,
     (serverJobs) => {
@@ -1671,7 +1682,7 @@ export default function AdminScheduleScreen() {
         const fresh = current.get(job.id);
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh), paidTotal: fresh.paidTotal, refundTotal: fresh.refundTotal, appliedEstimateCredit: fresh.appliedEstimateCredit, balance: fresh.balance, paymentStatus: fresh.paymentStatus }] : [];
       }));
-    }, isCurrentCompanyJobOperation, `${managementActionKey}:${statusManagementGeneration}:${statusSheetEpoch}`);
+    }, isCurrentCompanyJobOperation, companyJobOperationScope);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -1706,7 +1717,7 @@ export default function AdminScheduleScreen() {
     setInvoiceSentUrl(null);
     setCompanyTimezone(null);
     setShowInvoiceSheet(false); setShowCheckout(false);
-  }, [jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role, setSelectedJob]);
   useEffect(() => {
     setCompanyPhotoPreview(null);
     setAdminPhotoPreview(null);
@@ -1718,7 +1729,7 @@ export default function AdminScheduleScreen() {
     const fields = { ...companyJobMilestoneFields(detail), paidTotal: detail.paidTotal, refundTotal: detail.refundTotal, appliedEstimateCredit: detail.appliedEstimateCredit, balance: detail.balance, paymentStatus: detail.paymentStatus };
     setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
     setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
-  }, [companyJob.detail]);
+  }, [companyJob.detail, setSelectedJob]);
   const [adminEditingTax, setAdminEditingTax] = useState(false);
   const [adminTaxInput, setAdminTaxInput] = useState("");
   const [adminEditingDiscount, setAdminEditingDiscount] = useState(false);
@@ -2089,7 +2100,7 @@ export default function AdminScheduleScreen() {
       })
       .catch(() => { /* ignore — offline or job not found */ });
     return () => { cancelled = true; };
-  }, [selectedJob?.id, companyJobMode, managementActionKey]);
+  }, [selectedJob?.id, companyJobMode, managementActionKey, setSelectedJob]);
 
   // Per-employee storage key: prevents cross-user cache leakage
   const STORAGE_KEY = `${STORAGE_KEY_BASE}_${currentEmployee?.employeeId || 'admin'}`;
@@ -2518,7 +2529,7 @@ export default function AdminScheduleScreen() {
     };
     void fetchAndOpen();
     return () => { cancelled = true; };
-  }, [highlightBookingId, jobs, companyJobMode, isFocused, managementActionKey]);
+  }, [highlightBookingId, jobs, companyJobMode, isFocused, managementActionKey, setSelectedJob]);
 
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
@@ -2933,7 +2944,7 @@ export default function AdminScheduleScreen() {
       // replace the optimistic card with the backend's authoritative record.
       forceSync();
     }
-  }, [forceSync, persistCompanyCalendarChange]);
+  }, [forceSync, persistCompanyCalendarChange, setSelectedJob, setJobs]);
 
   const handleMoveAdminJob = async (jobId: string, newStartHour: number, newLaneIdx?: number) => {
     const previous = jobs.find((job) => job.id === jobId);
@@ -4360,7 +4371,8 @@ export default function AdminScheduleScreen() {
                 {/* ── Private Notes Card ── */}
                 {(() => {
                   if (companyJobMode) return <CompanyJobPrivateNotes session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob}
-                    isCurrent={isCurrentCompanyPrivateNotes} onRefresh={refreshCompanyJob} />;
+                    isCurrent={isCurrentCompanyPrivateNotes} onRefresh={refreshCompanyJob}
+                    writePrivateNotes={updateJobSyncCompanyJobPrivateNotes} onInputFocus={detailInputFocus} onInputBlur={detailInputBlur} />;
                   const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                   return hasNotes ? (
                     <AdminPrivateNotesCard

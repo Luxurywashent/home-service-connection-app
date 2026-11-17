@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useFocusEffect, useIsFocused } from "expo-router";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
@@ -33,20 +33,23 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
   const scope = companyJobSessionKey(session, detail?.id ?? null);
   const actorScope = companyJobSessionKey(job.actor, detail?.id ?? null);
   const live = useRef({ session, job, scope, focused, mounted: true });
-  live.current = { session, job, scope, focused, mounted: live.current.mounted };
   const confirmation = useRef<object | null>(null);
   const busy = job.loading || job.pending;
-  const epoch = useRef({ scope, actorScope, focused, detail, busy, identity: {} });
-  if (epoch.current.scope !== scope || epoch.current.actorScope !== actorScope || epoch.current.focused !== focused || epoch.current.detail !== detail || epoch.current.busy !== busy) {
-    epoch.current = { scope, actorScope, focused, detail, busy, identity: {} };
-    confirmation.current = null;
-  }
-  const identity = epoch.current.identity;
+  const identity = useMemo(() => ({ scope, actorScope, focused, detail, busy }), [scope, actorScope, focused, detail, busy]);
+  const epoch = useRef<{ identity: object | null }>({ identity: null });
   const lock = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const committedEpoch = epoch.current;
     live.current.mounted = true;
-    return () => { live.current.mounted = false; confirmation.current = null; epoch.current.identity = {}; };
+    return () => { live.current.mounted = false; confirmation.current = null; committedEpoch.identity = {}; };
   }, []);
+  useLayoutEffect(() => {
+    live.current = { session, job, scope, focused, mounted: live.current.mounted };
+    if (epoch.current.identity !== identity) {
+      epoch.current.identity = identity;
+      confirmation.current = null;
+    }
+  });
   useFocusEffect(useCallback(() => {
     return () => { live.current.focused = false; confirmation.current = null; epoch.current.identity = {}; };
   }, []));

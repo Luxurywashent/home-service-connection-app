@@ -18,6 +18,7 @@ import {
   currentCompanyPhotos,
   sameCompanyPhoto,
   canDeleteCompanyPhoto,
+  companyPhotoCategoryLabel,
 } from "@/lib/company-photo-view";
 import { useCompanyPhotoOperation } from "@/lib/company-photo-operation";
 import { useCompanyPhotoBatch } from "@/lib/company-photo-batch";
@@ -361,6 +362,7 @@ function ScopedCompanyJobPhotos(
               }}
               onLongPress={() => requestRemoval(item.id)}
             />
+            {companyPhotoCategoryLabel(item) ? <Text style={[styles.photoCategory, { color: colors.muted }]}>{companyPhotoCategoryLabel(item)}</Text> : null}
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={`Remove Job photo ${item.id}`}
@@ -471,6 +473,7 @@ function ScopedCompanyJobPhotoPreview(
         isCurrent={current}
         onRetry={retry}
       />
+      {companyPhotoCategoryLabel(props.currentPhoto) ? <Text style={styles.previewMessage}>{companyPhotoCategoryLabel(props.currentPhoto)}</Text> : null}
       {error ? (
         <Text accessibilityRole="alert" style={styles.previewMessage}>
           {error}
@@ -509,6 +512,7 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 11, lineHeight: 15 },
   confirmation: { gap: 10, paddingVertical: 10 },
   grid: { gap: 8 },
+  photoCategory: { fontSize: 11, lineHeight: 15, textAlign: "center", paddingTop: 3 },
   thumbnail: { width: 90, height: 90 },
   thumb: { width: 90, height: 90, borderRadius: 8 },
   imageLoading: { position: "absolute", top: "40%", left: "40%" },

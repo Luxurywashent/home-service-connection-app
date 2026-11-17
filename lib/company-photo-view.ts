@@ -6,6 +6,35 @@ import type {
 } from "./jobsync-mobile-api";
 import { positiveJobSyncId } from "./jobsync-mobile-api";
 
+export const COMPANY_PHOTO_CATEGORIES = ["before", "after", "damage", "other"] as const;
+export type CompanyPhotoCategory = typeof COMPANY_PHOTO_CATEGORIES[number];
+/** Optional fields preserve old/null gallery metadata without assigning invented categories. */
+export type CompanyPhotoMetadata = { category?: CompanyPhotoCategory | null; displayOrder?: number | null };
+export function companyPhotoCategoryLabel(photo: CompanyPhotoMetadata | JobSyncJobPhoto): string | null {
+  const category = (photo as CompanyPhotoMetadata).category;
+  return category && COMPANY_PHOTO_CATEGORIES.includes(category)
+    ? { before: "Before", after: "After", damage: "Damage", other: "Other" }[category] : null;
+}
+/** Allocate only from a complete fresh canonical gallery, never local previews or stale props.
+ * Backend tie ordering remains authoritative; this is not a cross-client order reservation. */
+export function nextCompanyPhotoDisplayOrder(detail: JobSyncCompanyJobDetail): number {
+  const ids = detail.persistedPhotoIds;
+  if (!Array.isArray(ids) || ids.length !== detail.photos.length
+    || new Set(ids).size !== detail.photos.length
+    || detail.photos.some((photo) => !ids.includes(photo.id)))
+    throw new Error("Photo ordering is unavailable until all stored photo metadata can be read.");
+  let maximum = 0;
+  for (const photo of detail.photos) {
+    const order = (photo as JobSyncJobPhoto & CompanyPhotoMetadata).displayOrder;
+    if (order == null) continue; // Older missing/null metadata uses the backend's zero baseline.
+    if (!Number.isSafeInteger(order) || order < 0 || order > 100000)
+      throw new Error("Photo ordering metadata is invalid. Refresh before uploading.");
+    maximum = Math.max(maximum, order);
+  }
+  if (maximum >= 100000) throw new Error("The supported photo display order limit has been reached.");
+  return maximum + 1;
+}
+
 /** Opaque, memory-only scope. Never use this token-bearing key in test IDs or logs. */
 export function companyPhotoScope(
   session: JobSyncNativeSession | null,

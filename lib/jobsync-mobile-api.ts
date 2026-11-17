@@ -713,17 +713,23 @@ export function positiveJobSyncId(value: unknown): number | null {
 }
 
 export type JobSyncFieldStatus = "en_route" | "on_site" | "completed";
+export type JobSyncJobPhotoCategory = "before" | "after" | "damage" | "other";
 export type JobSyncJobPhoto = {
   id: number;
   imageUrl: string;
   caption: string | null;
   uploadedByUserId: number | null;
   createdAt: string | null;
+  /** Exact canonical metadata; older galleries may omit it. */
+  category?: JobSyncJobPhotoCategory | null;
+  displayOrder?: number | null;
 };
 export type JobSyncJobPhotoUploadInput = {
   contentType: "image/jpeg" | "image/png" | "image/webp";
   base64: string;
   caption?: string;
+  category?: JobSyncJobPhotoCategory;
+  displayOrder?: number;
 };
 export type JobSyncJobPhotoUploadResponse = {
   photo: {
@@ -731,6 +737,8 @@ export type JobSyncJobPhotoUploadResponse = {
     imageUrl: string;
     caption: string | null;
     uploadedByUserId: number;
+    category?: JobSyncJobPhotoCategory | null;
+    displayOrder?: number | null;
   };
 };
 export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
@@ -787,7 +795,24 @@ export function normalizeJobSyncPhotoUrl(value: unknown): string | null {
   } catch { return null; }
 }
 
-/** Backend 16a57f2e uses canonical imageUrl/createdAt; old snake_case fields are compatibility only. */
+function validJobSyncPhotoCategory(value: unknown): value is JobSyncJobPhotoCategory {
+  return value === "before" || value === "after" || value === "damage" || value === "other";
+}
+function validJobSyncPhotoDisplayOrder(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 100000;
+}
+function validJobSyncPhotoReadMetadata(photo: Record<string, unknown>): boolean {
+  return (photo.category === undefined || photo.category === null || validJobSyncPhotoCategory(photo.category))
+    && (photo.displayOrder === undefined || photo.displayOrder === null || validJobSyncPhotoDisplayOrder(photo.displayOrder));
+}
+function jobSyncPhotoReadMetadata(photo: Record<string, unknown>): { category?: JobSyncJobPhotoCategory | null; displayOrder?: number | null } {
+  return {
+    ...(photo.category !== undefined ? { category: photo.category as JobSyncJobPhotoCategory | null } : {}),
+    ...(photo.displayOrder !== undefined ? { displayOrder: photo.displayOrder as number | null } : {}),
+  };
+}
+
+/** Canonical signed gallery order/metadata from f3576bcb; snake URL/date fields remain legacy compatibility. */
 export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
   const row = asRecord(asRecord(payload)?.job);
   const job = normalizeJobSyncMobileJob(row);
@@ -802,7 +827,7 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
   for (const value of row.photos) {
     const photo = asRecord(value);
     const id = positiveJobSyncId(photo?.id);
-    if (!photo || !id || seenPhotoIds.has(id)) return null;
+    if (!photo || !id || seenPhotoIds.has(id) || !validJobSyncPhotoReadMetadata(photo)) return null;
     seenPhotoIds.add(id);
     persistedPhotoIds.push(id);
   }
@@ -820,7 +845,7 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
       const id = positiveJobSyncId(photo?.id);
       const imageUrl = normalizeJobSyncPhotoUrl(photo?.imageUrl !== undefined ? photo.imageUrl : photo?.image_url);
       if (!id || !imageUrl) return [];
-      return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.createdAt !== undefined ? photo.createdAt : photo?.created_at) }];
+      return [{ id, imageUrl, caption: firstString(photo?.caption), uploadedByUserId: positiveJobSyncId(photo?.uploadedByUserId), createdAt: serverInstant(photo?.createdAt !== undefined ? photo.createdAt : photo?.created_at), ...jobSyncPhotoReadMetadata(photo!) }];
     }),
   };
 }
@@ -913,6 +938,12 @@ function validateJobSyncPhotoUpload(input: JobSyncJobPhotoUploadInput) {
   if (typeof input.caption !== "undefined" && (typeof input.caption !== "string" || input.caption.trim().length > 1000)) {
     throw new Error("Job photo captions must be 1,000 characters or fewer.");
   }
+  if (input.category !== undefined && !validJobSyncPhotoCategory(input.category)) {
+    throw new Error("Choose Before, After, Damage, or Other for the Job photo category.");
+  }
+  if (input.displayOrder !== undefined && !validJobSyncPhotoDisplayOrder(input.displayOrder)) {
+    throw new Error("A valid canonical Job photo display order is required.");
+  }
   if (typeof input.base64 !== "string" || input.base64.length < 16 || input.base64.length > 21_000_000) {
     throw new Error("The selected Job photo could not be read as base64.");
   }
@@ -963,17 +994,35 @@ export async function uploadJobSyncCompanyJobPhoto(
   validateJobSyncPhotoUpload(input);
   const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/photos`, {
     method: "POST", headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ contentType: input.contentType, base64: input.base64, ...(input.caption !== undefined ? { caption: input.caption } : {}) }),
+    body: JSON.stringify({ contentType: input.contentType, base64: input.base64,
+      ...(input.caption !== undefined ? { caption: input.caption } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+      ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
+    }),
   }, 201));
   const photo = asRecord(result?.photo);
   const imageUrl = normalizeJobSyncPhotoUrl(photo?.imageUrl);
   const expectedCaption = input.caption?.trim() || null;
   if (!photo || typeof photo.id !== "number" || !positiveJobSyncId(photo.id)
     || typeof photo.uploadedByUserId !== "number" || !positiveJobSyncId(photo.uploadedByUserId)
-    || !imageUrl || photo.caption !== expectedCaption) {
+    || !imageUrl || photo.caption !== expectedCaption || !validJobSyncPhotoReadMetadata(photo)
+    || (input.category !== undefined && photo.category !== input.category)
+    || (input.displayOrder !== undefined && photo.displayOrder !== input.displayOrder)) {
     throw new JobSyncApiError("The backend did not acknowledge this Job photo. Refresh the Job before trying again.", null, "INVALID_RESPONSE");
   }
-  return { photo: { id: photo.id, imageUrl, caption: expectedCaption, uploadedByUserId: photo.uploadedByUserId } };
+  return { photo: { id: photo.id, imageUrl, caption: expectedCaption, uploadedByUserId: photo.uploadedByUserId, ...jobSyncPhotoReadMetadata(photo) } };
+}
+
+/** Exact f3576bcb private-only manager route; one PATCH, raw acknowledgment for independent verification. */
+export async function updateJobSyncCompanyJobPrivateNotes(token: string, jobId: number, privateNotes: string): Promise<unknown> {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  if (typeof privateNotes !== "string" || privateNotes.length > 4000) {
+    throw new Error("A valid private note is required.");
+  }
+  return requestJson(`/api/mobile/v1/company/jobs/${jobId}/private-notes`, {
+    method: "PATCH", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ privateNotes }),
+  }, 200);
 }
 
 /** Removes a persisted photo from the Job, not a guarantee of physical media erasure. */

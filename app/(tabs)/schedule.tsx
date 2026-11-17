@@ -50,8 +50,9 @@ import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingState, positiveJobSyncId } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingState, positiveJobSyncId, updateJobSyncCompanyJobPrivateNotes } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
+import { useCompanyJobOperation, useCompanyJobOperationEpoch } from "@/hooks/use-company-job-operation";
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
 import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
@@ -2428,7 +2429,13 @@ export default function ScheduleScreen() {
   const [customerPrefill, setCustomerPrefill] = useState<CompanyJobCustomerPrefill | null>(null);
   const addCompanyScope = companyCreateJobScope(jobSyncSession);
   const [showServiceWizard, setShowServiceWizard] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJobState] = useState<Job | null>(null);
+  const companyJobOperationEpoch = useCompanyJobOperationEpoch();
+  const invalidateCompanyJobOperation = companyJobOperationEpoch.invalidate;
+  const setSelectedJob: React.Dispatch<React.SetStateAction<Job | null>> = useCallback((value) => {
+    if (typeof value !== "function") invalidateCompanyJobOperation();
+    setSelectedJobState(value);
+  }, [invalidateCompanyJobOperation]);
   const [companyTimezone, setCompanyTimezone] = useState<string | null>(null);
   const [companyPhotoPreview, setCompanyPhotoPreview] = useState<CompanyPhotoSelection | null>(null);
   const companyJobMode = jobSyncSession !== null || hasJobSyncEmployee || jobSyncLoading || selectedJob?.companyId !== undefined;
@@ -2467,6 +2474,15 @@ export default function ScheduleScreen() {
       && employee?.sessionSource !== "jobsync" && employee?.companyId == null
       && job?.companyId === undefined && (!job || selectedJob?.id === job.id);
   };
+  const { isCurrent: isCurrentCompanyJobOperation,
+    scopeKey: companyJobOperationScope } = useCompanyJobOperation(JSON.stringify([actionKey, screenFocusEpoch]), () => {
+    const generation = legacyMediaSessionRef.current.generation;
+    return () => {
+      const current = legacyMediaSessionRef.current;
+      return !authLoading && !jobSyncLoading && current.mounted && current.focused
+        && current.key === actionKey && current.generation === generation;
+    };
+  }, companyJobOperationEpoch);
   useFocusEffect(useCallback(() => {
     legacyMediaSessionRef.current.focused = true;
     legacyMediaSessionRef.current.generation += 1;
@@ -2476,10 +2492,11 @@ export default function ScheduleScreen() {
       legacyMediaSessionRef.current.focused = false;
       legacyMediaSessionRef.current.generation += 1;
       legacyMediaSessionRef.current.focusGeneration += 1;
+      invalidateCompanyJobOperation();
       setViewingAddrPhoto(null); setAddrPhotos([]); setShowUpsellPanel(false); setShowEditServicesSheet(false);
       setShowCheckout(false);
     };
-  }, []));
+  }, [invalidateCompanyJobOperation]));
   useEffect(() => {
     legacyMediaSessionRef.current.mounted = true;
     return () => { legacyMediaSessionRef.current.mounted = false; legacyMediaSessionRef.current.generation += 1; };
@@ -2491,11 +2508,6 @@ export default function ScheduleScreen() {
     return true;
   };
   const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
-  const isCurrentCompanyJobOperation = useCallback(() => {
-    const current = legacyMediaSessionRef.current;
-    return !authLoading && !jobSyncLoading && current.mounted && current.focused
-      && current.key === actionKey && current.generation === actionGeneration;
-  }, [authLoading, jobSyncLoading, actionKey, actionGeneration]);
   const companyJob = useCompanyJob(jobSyncSession,
     companyPhotoJobId,
     (serverJobs) => {
@@ -2504,7 +2516,7 @@ export default function ScheduleScreen() {
         const fresh = current.get(job.id);
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
       }));
-    }, isCurrentCompanyJobOperation, `${actionKey}:${actionGeneration}:${screenFocusEpoch}`);
+    }, isCurrentCompanyJobOperation, companyJobOperationScope);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -2513,7 +2525,7 @@ export default function ScheduleScreen() {
     setSelectedJob(null);
     setCompanyPhotoPreview(null);
     setCompanyTimezone(null);
-  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id, setSelectedJob]);
   useEffect(() => { setCompanyPhotoPreview(null); }, [selectedJob?.id]);
   useEffect(() => {
     const detail = companyJob.detail;
@@ -2522,7 +2534,7 @@ export default function ScheduleScreen() {
       appliedEstimateCredit: detail.appliedEstimateCredit, balance: detail.balance, paymentStatus: detail.paymentStatus };
     setSelectedJob((previous) => previous?.id === String(detail.id) && previous.companyId === detail.companyId ? { ...previous, ...fields } : previous);
     setJobs((previous) => previous.map((job) => job.id === String(detail.id) && job.companyId === detail.companyId ? { ...job, ...fields } : job));
-  }, [companyJob.detail]);
+  }, [companyJob.detail, setSelectedJob]);
   const lateHistoryQ = trpc.phone.getLateArrivalHistory.useQuery(
     { jobId: selectedJob?.id },
     { enabled: !companyJobMode && !!selectedJob?.id, staleTime: 30000, refetchOnWindowFocus: false }
@@ -3684,7 +3696,7 @@ export default function ScheduleScreen() {
     };
     fetchAndOpen();
     return () => { cancelled = true; };
-  }, [highlightJobId, jobs, legacyMediaIdentity, screenFocusEpoch]);
+  }, [highlightJobId, jobs, legacyMediaIdentity, screenFocusEpoch, setSelectedJob]);
 
   // Pull-to-refresh handler for detailer view
   const handleRefresh = useCallback(async () => {
@@ -4494,7 +4506,7 @@ export default function ScheduleScreen() {
   const { attachScrollRef: detailScrollRef, relatedRef: detailTagRef,
     scrollProps: detailScrollProps, onInputFocus: detailInputFocus, onInputBlur: detailInputBlur } = useCompanyJobKeyboard({
     active: detailKeyboardActive, isCurrent: captureScreenAction(),
-    scopeKey: `${actionKey}:${actionGeneration}:${screenFocusEpoch}`,
+    scopeKey: companyJobOperationScope,
   });
 
   return (
@@ -5337,7 +5349,8 @@ export default function ScheduleScreen() {
                   {/* ─── Private Notes Card ─── */}
                   {(() => {
                     if (companyJobMode) return <CompanyJobPrivateNotes session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob}
-                      isCurrent={isCurrentCompanyJobOperation} onRefresh={refreshCompanyJob} />;
+                      isCurrent={isCurrentCompanyJobOperation} onRefresh={refreshCompanyJob}
+                      writePrivateNotes={updateJobSyncCompanyJobPrivateNotes} onInputFocus={detailInputFocus} onInputBlur={detailInputBlur} />;
                     const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                     return hasNotes ? (
                       <PrivateNotesCard

@@ -30,6 +30,7 @@ export function isAssignedCompanyTechnician(session: JobSyncNativeSession | null
   return session?.user.role === "technician" && isAssignedCompanyActor(session, job);
 }
 
+/** Calendar/assignment eligibility only. Do not use it for status, notes, photos or payment authority. */
 export function isAssignedCompanyFieldActor(session: JobSyncNativeSession | null, job: { companyId?: number | null; assignedUserId?: number | null }) {
   return isAssignedCompanyActor(session, job) && (session?.user.role === "technician"
     || ((session?.user.role === "owner" || session?.user.role === "dispatcher") && session.user.calendarEligible === true));
@@ -53,9 +54,12 @@ export function companyFieldworkBlockReason(session: JobSyncNativeSession | null
   if (!companyJobSessionKey(session, detail?.id ?? null)) return "A fresh signed Company Job session is required.";
   if (detail?.companyId !== session!.company!.id) return "Could not verify the current Company's Job. Refresh before continuing.";
   if (!["technician", "owner", "dispatcher"].includes(session!.user.role)) return "This signed role cannot perform Company field progress.";
-  // companyContext.permissionsForRole + jobService.changeJobStatus at both pinned checkpoints:
-  // owners/dispatchers may operate any same-Company Job; technicians are still assignment-scoped.
-  // Do not use the separate calendar lane/assignment eligibility predicate for status authority.
+  // Exact f3576bcb authority: permissionsForRole grants field status to these three roles,
+  // but changeJobStatus, getJob and listJobs retain technicianScopeSql (current assignee).
+  // Admin is the dispatcher access role, not a fourth role. Calendar opt-in, position
+  // eligibility and payment-collection capability neither grant nor revoke this status scope.
+  // Active membership/live role are independently refreshed before every write; the backend
+  // remains final authority. Private-note/photo/payment gates must be checked independently.
   if (session!.user.role === "technician" && !isAssignedCompanyTechnician(session, detail!)) {
     return "The backend requires the currently assigned technician for field progress. Ask a Company admin to update this Job; unassigned technician access requires a backend permission change.";
   }

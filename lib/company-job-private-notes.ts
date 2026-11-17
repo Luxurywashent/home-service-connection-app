@@ -111,6 +111,42 @@ export function canReadCompanyJobPrivateNotes(
   );
 }
 
-/** No mobile REST edit route exists at 002e0b8f or a07b8077; never infer one from tRPC. */
+/** Do not flatten structured legacy records and silently discard private author metadata. */
+export function editableCompanyJobPrivateNotes(
+  value: unknown,
+): value is string | null {
+  if (value === null) return true;
+  if (typeof value !== "string" || value.length > 4000) return false;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed !== null && typeof parsed === "object") return false;
+  } catch {
+    /* Plain text, including malformed legacy JSON, stays plain text. */
+  }
+  return true;
+}
+
+/** Match the strict string-only endpoint; empty string clears without null/coercion/trimming. */
+export function validCompanyJobPrivateNoteInput(
+  value: unknown,
+): value is string {
+  return typeof value === "string" && value.length <= 4000;
+}
+
+export function canEditCompanyJobPrivateNotes(
+  session: JobSyncNativeSession | null,
+  jobId: number | null,
+  job: Parameters<typeof canReadCompanyJobPrivateNotes>[2],
+): boolean {
+  return (
+    canReadCompanyJobPrivateNotes(session, jobId, job) &&
+    (session?.user.role === "owner" || session?.user.role === "dispatcher") &&
+    editableCompanyJobPrivateNotes(job.detail?.privateNotes) &&
+    typeof job.detail?.updatedAt === "string" &&
+    Number.isFinite(Date.parse(job.detail.updatedAt))
+  );
+}
+
+/** Kept for disconnected callsites; f3576bcb writer must be explicitly supplied by the parent. */
 export const COMPANY_PRIVATE_NOTES_EDIT_UNAVAILABLE =
   "Read-only on mobile. Private-note editing is not connected to the Company mobile API.";

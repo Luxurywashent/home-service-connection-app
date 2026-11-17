@@ -12,17 +12,26 @@ import {
   AppState,
   StyleSheet,
   Text,
+  TextInput,
+  type TextInputProps,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import {
   canReadCompanyJobPrivateNotes,
+  canEditCompanyJobPrivateNotes,
   companyJobPrivateNotesScope,
   formatCompanyJobPrivateNotes,
+  validCompanyJobPrivateNoteInput,
   COMPANY_PRIVATE_NOTES_EDIT_UNAVAILABLE,
   type CompanyJobPrivateNotesDetail,
 } from "@/lib/company-job-private-notes";
+import {
+  companyJobPrivateNotesWriteBlocked,
+  createCompanyJobPrivateNotesController,
+  type CompanyJobPrivateNotesWriter,
+} from "@/lib/company-job-private-notes-api";
 import type { JobSyncNativeSession } from "@/lib/jobsync-mobile-api";
 
 export type CompanyJobPrivateNotesProps = {
@@ -40,9 +49,13 @@ export type CompanyJobPrivateNotesProps = {
   /** Parent screen/session/selected-job generation guard. Required; never default to true. */
   isCurrent: () => boolean;
   onRefresh?: () => void | Promise<void>;
+  /** Only the verified f3576bcb manager-only Company PATCH adapter supplied by the parent. */
+  writePrivateNotes?: CompanyJobPrivateNotesWriter;
+  onInputFocus?: TextInputProps["onFocus"];
+  onInputBlur?: TextInputProps["onBlur"];
 };
 
-/** Internal detail only. No editor until an authorized bearer REST edit contract exists. */
+/** Internal detail only; editing requires the explicit authorized bearer REST adapter. */
 export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
   const colors = useJobSheetColors();
   const focused = useIsFocused();
@@ -51,6 +64,9 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
   const scope = companyJobPrivateNotesScope(props.session, props.jobId);
   const actorScope = companyJobPrivateNotesScope(props.job.actor, props.jobId);
   const parentCurrent = props.isCurrent();
+  const capturedVersion = props.job.detail?.updatedAt;
+  const capturedNote = props.job.detail?.privateNotes;
+  const capturedAssignment = props.job.detail?.assignedUserId;
   const marker = JSON.stringify([
     scope,
     actorScope,
@@ -68,34 +84,56 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
     props.job.detail?.privateNotes,
   ]);
   const identity = useMemo(
-    () => ({ marker, detail: props.job.detail }),
-    [marker, props.job.detail],
+    () => ({
+      marker,
+      detail: props.job.detail,
+      writer: props.writePrivateNotes,
+    }),
+    [marker, props.job.detail, props.writePrivateNotes],
   );
+  const [editor, setEditor] = useState<{
+    identity: object;
+    value: string;
+    controller: ReturnType<typeof createCompanyJobPrivateNotesController>;
+  } | null>(null);
+  const editorBinding = useRef(editor);
   const epoch = useRef({ identity });
   const live = useRef({ props, focused, active, mounted: true });
   useLayoutEffect(() => {
     live.current = { props, focused, active, mounted: live.current.mounted };
     epoch.current.identity = identity;
+    editorBinding.current = editor?.identity === identity ? editor : null;
   });
   const lock = useRef<object | null>(null);
   const [feedback, setFeedback] = useState<{
     identity: object;
     loading: boolean;
     error: boolean;
+    message?: string;
   } | null>(null);
   useEffect(() => {
     const lifecycleEpoch = epoch.current;
     live.current.mounted = true;
     const subscription = AppState.addEventListener("change", (next) => {
       // Invalidate synchronously, even if active -> background -> active happens before render.
-      lifecycleEpoch.identity = { marker: "invalidated", detail: null };
+      lifecycleEpoch.identity = {
+        marker: "invalidated",
+        detail: null,
+        writer: undefined,
+      };
       live.current.active = next === "active";
+      editorBinding.current = null;
+      setEditor(null);
       setLifecycle((value) => value + 1);
       setActive(next === "active");
     });
     return () => {
       live.current.mounted = false;
-      lifecycleEpoch.identity = { marker: "invalidated", detail: null };
+      lifecycleEpoch.identity = {
+        marker: "invalidated",
+        detail: null,
+        writer: undefined,
+      };
       subscription.remove();
     };
   }, []);
@@ -103,7 +141,13 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
     useCallback(
       () => () => {
         live.current.focused = false;
-        epoch.current.identity = { marker: "invalidated", detail: null };
+        epoch.current.identity = {
+          marker: "invalidated",
+          detail: null,
+          writer: undefined,
+        };
+        editorBinding.current = null;
+        setEditor(null);
         setLifecycle((value) => value + 1);
       },
       [],
@@ -125,16 +169,105 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
       companyJobPrivateNotesScope(now.props.job.actor, now.props.jobId) ===
         actorScope &&
       now.props.job.detail === props.job.detail &&
+      now.props.writePrivateNotes === props.writePrivateNotes &&
+      now.props.job.detail?.updatedAt === capturedVersion &&
+      now.props.job.detail?.privateNotes === capturedNote &&
+      now.props.job.detail?.assignedUserId === capturedAssignment &&
       !now.props.job.loading &&
       !now.props.job.pending
     );
+  };
+  const makeController = () => {
+    if (
+      !props.session ||
+      !props.jobId ||
+      !props.job.detail ||
+      !props.writePrivateNotes
+    )
+      return null;
+    return createCompanyJobPrivateNotesController({
+      session: props.session,
+      jobId: props.jobId,
+      detail: props.job.detail,
+      write: props.writePrivateNotes,
+      isCurrent: current,
+    });
+  };
+  const beginEdit = () => {
+    if (
+      lock.current ||
+      !current() ||
+      !canEditCompanyJobPrivateNotes(props.session, props.jobId, props.job) ||
+      companyJobPrivateNotesWriteBlocked(props.session, props.jobId)
+    )
+      return;
+    const controller = makeController();
+    if (!controller) return;
+    // Plain text is copied byte-for-byte. Structured legacy records remain read-only.
+    setEditor({
+      identity,
+      value: props.job.detail!.privateNotes ?? "",
+      controller,
+    });
+    setFeedback(null);
+  };
+  const save = async () => {
+    if (
+      lock.current ||
+      !current() ||
+      editor?.identity !== identity ||
+      !editor ||
+      editorBinding.current !== editor ||
+      !validCompanyJobPrivateNoteInput(editor.value) ||
+      !canEditCompanyJobPrivateNotes(props.session, props.jobId, props.job)
+    )
+      return;
+    const ticket = {};
+    lock.current = ticket;
+    setFeedback({ identity, loading: true, error: false });
+    try {
+      const result = await editor.controller.save(editor.value);
+      if (!current()) return;
+      editorBinding.current = null;
+      setEditor(null);
+      setFeedback({
+        identity,
+        loading: false,
+        error: result.status !== "saved",
+        message: result.message,
+      });
+      // Never publish submitted text optimistically. Parent refresh uses canonical bearer detail only.
+      if (result.status === "saved") {
+        try {
+          await (props.onRefresh ? props.onRefresh() : props.job.refresh());
+        } catch {
+          if (current())
+            setFeedback({
+              identity,
+              loading: false,
+              error: true,
+              message:
+                "Private notes were verified, but the displayed Job could not refresh. Refresh before editing.",
+            });
+        }
+      }
+    } finally {
+      if (lock.current === ticket) lock.current = null;
+    }
   };
   const refresh = async () => {
     if (lock.current || !current()) return;
     const ticket = {};
     lock.current = ticket;
+    editorBinding.current = null;
+    setEditor(null);
     setFeedback({ identity, loading: true, error: false });
     try {
+      // Reconcile uncertain writes with fresh signed membership + canonical detail, never another PATCH.
+      const controller = makeController();
+      if (controller && !(await controller.refresh()))
+        throw new Error("Private notes could not be verified.");
+      if (!current()) return;
       // Reuse the parent's signed session + canonical bearer detail refresh. No alternate transport.
       await (props.onRefresh ? props.onRefresh() : props.job.refresh());
       if (current()) setFeedback({ identity, loading: false, error: false });
@@ -168,6 +301,11 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
   const local = feedback?.identity === identity ? feedback : null;
   const busy =
     props.job.loading || props.job.pending || Boolean(local?.loading);
+  const editing = editor?.identity === identity ? editor : null;
+  const writeBlocked = companyJobPrivateNotesWriteBlocked(
+    props.session,
+    props.jobId,
+  );
   const failed = Boolean(props.job.error || local?.error);
   const readable =
     !busy &&
@@ -181,10 +319,17 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
   const hint = busy
     ? "Loading private notes…"
     : failed
-      ? "Private notes could not be verified. Refresh to retry."
+      ? (local?.message ??
+        "Private notes could not be verified. Refresh to retry.")
       : text === null
         ? "Private notes are unavailable. Refresh Job detail to check."
         : text || "No private notes.";
+  const editable =
+    !busy &&
+    !failed &&
+    !writeBlocked &&
+    Boolean(props.writePrivateNotes) &&
+    canEditCompanyJobPrivateNotes(props.session, props.jobId, props.job);
   return (
     <View
       testID="company-job-private-notes"
@@ -240,9 +385,103 @@ export function CompanyJobPrivateNotes(props: CompanyJobPrivateNotesProps) {
       >
         {hint}
       </Text>
-      <Text style={[styles.privacy, { color: colors.muted }]}>
-        {COMPANY_PRIVATE_NOTES_EDIT_UNAVAILABLE}
-      </Text>
+      {editing ? (
+        <>
+          <TextInput
+            testID="company-job-private-notes-editor"
+            accessibilityLabel="Edit internal Company private notes"
+            value={editing.value}
+            multiline
+            maxLength={4000}
+            textAlignVertical="top"
+            editable={!busy}
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            onFocus={props.onInputFocus}
+            onBlur={props.onInputBlur}
+            onChangeText={(value) => {
+              if (
+                !current() ||
+                lock.current ||
+                editorBinding.current !== editing ||
+                !validCompanyJobPrivateNoteInput(value)
+              )
+                return;
+              setEditor((prior) =>
+                prior?.identity === identity ? { ...prior, value } : prior,
+              );
+            }}
+            style={[
+              styles.editor,
+              {
+                color: colors.foreground,
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+              },
+            ]}
+          />
+          <View style={styles.actions}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Cancel private notes edit"
+              disabled={busy}
+              accessibilityState={{ disabled: busy }}
+              onPress={() => {
+                if (!current() || lock.current) return;
+                editorBinding.current = null;
+                setEditor(null);
+              }}
+              style={styles.refresh}
+            >
+              <Text style={[styles.refreshText, { color: colors.muted }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Save private job notes"
+              disabled={!editable}
+              accessibilityState={{ disabled: !editable }}
+              onPress={() => {
+                void save();
+              }}
+              style={styles.refresh}
+            >
+              <Text style={[styles.refreshText, { color: colors.primary }]}>
+                Save
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : editable ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Edit private job notes"
+          onPress={beginEdit}
+          style={styles.editAction}
+        >
+          <Text style={[styles.refreshText, { color: colors.primary }]}>
+            Edit
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={[styles.privacy, { color: colors.muted }]}>
+          {!props.writePrivateNotes
+            ? COMPANY_PRIVATE_NOTES_EDIT_UNAVAILABLE
+            : writeBlocked
+              ? "An earlier save is pending or unconfirmed. Refresh and review before editing; do not resend blindly."
+              : "Read-only private notes. Editing requires verified Company manager access and plain-text notes."}
+        </Text>
+      )}
+      {local?.message && !local.error ? (
+        <Text
+          accessibilityRole="alert"
+          style={[styles.privacy, { color: colors.muted }]}
+        >
+          {local.message}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -268,4 +507,19 @@ const styles = StyleSheet.create({
   refreshText: { fontSize: 11, lineHeight: 16, fontWeight: "600" },
   body: { fontSize: 13, lineHeight: 19 },
   privacy: { fontSize: 11, lineHeight: 16 },
+  editor: {
+    minHeight: 86,
+    maxHeight: 180,
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
+  editAction: {
+    alignSelf: "flex-end",
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
 });

@@ -61,8 +61,9 @@ function server(options: { failAt?: number; missingAt?: number; delayAt?: number
     if (init.method === "POST") {
       const index = ++count;
       events.push(`post:${index}`);
-      const item = { id: index, imageUrl: `https://fixture.invalid/api/storage/batch-${index}?expires=300&signature=fresh-${index}`, uploadedByUserId: actorId, caption: null, createdAt: null };
-      if (options.missingAt !== index) saved.unshift(item);
+      const body = JSON.parse(String(init.body));
+      const item = { id: index, imageUrl: `https://fixture.invalid/api/storage/batch-${index}?expires=300&signature=fresh-${index}`, uploadedByUserId: actorId, caption: null, createdAt: null, category: body.category ?? "other", displayOrder: body.displayOrder ?? 0 };
+      if (options.missingAt !== index) { saved.push(item); saved.sort((a, b) => a.displayOrder - b.displayOrder || b.id - a.id); }
       if (options.delayAt === index) return options.delay!.promise;
       if (options.failAt === index) return json({ error: { code: "BAD_REQUEST", message: "Fixture failure after persistence" } }, 400);
       return json({ photo: item }, 201);
@@ -206,7 +207,7 @@ describe("Phase 2 multiple-photo selection and ordered upload (real React lifecy
     }
     await act(async () => root.render(<Sheet />)); await tap(button("Library")); await tap(button("Upload local draft"));
     expect(writes()).toHaveLength(3);
-    expect(latest.verifiedPhotoDetail?.photos.map((photo) => photo.id)).toEqual([3, 2, 1]);
+    expect(latest.verifiedPhotoDetail?.photos.map((photo) => photo.id)).toEqual([1, 2, 3]);
     expect(nodes("native-image")).toHaveLength(3);
     fixture.saved.splice(0, fixture.saved.length);
     await act(async () => { await latest.refresh(); });
@@ -266,7 +267,7 @@ describe("Phase 2 multiple-photo selection and ordered upload (real React lifecy
     expect(latest.message).toBeNull(); expect(latest.progress).toBeNull();
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
-  it("passes captured Before/After categories through local queue snapshots unchanged without inventing backend fields", async () => {
+  it("passes captured Before/After categories through immutable queue snapshots unchanged", async () => {
     const before = await prepareCompanyPhotoBatch([asset(1), asset(2)], mocks.info, () => true, "before");
     const after = await prepareCompanyPhotoBatch([asset(3)], mocks.info, () => true, "after");
     const seen: string[] = [];

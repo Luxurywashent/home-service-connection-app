@@ -761,13 +761,15 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
 });
 
 function mockPhotoServer(options: { failure?: number; actor?: JobSyncNativeSession; readFailure?: boolean; missingUploadedId?: boolean } = {}) {
-  const saved = { id: 7, imageUrl: "https://fixture.invalid/manus-storage/companies/9/jobs/12/photos/fixture.jpg?expires=300&signature=fixture", caption: null, uploadedByUserId: 42, createdAt: null };
+  const saved: { id: number; imageUrl: string; caption: null; uploadedByUserId: number; createdAt: null; category?: "before" | "after" | "damage" | "other"; displayOrder?: number } = { id: 7, imageUrl: "https://fixture.invalid/manus-storage/companies/9/jobs/12/photos/fixture.jpg?expires=300&signature=fixture", caption: null, uploadedByUserId: 42, createdAt: null };
   let persisted = false;
   let reads = 0;
   mocks.fetch.mockImplementation(async (url: string, init: RequestInit) => {
     const path = new URL(url).pathname;
     if (path.endsWith("/auth/session")) return { ok: true, status: 200, json: async () => options.actor ?? session() };
     if (init.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      Object.assign(saved, { category: body.category ?? "other", displayOrder: body.displayOrder ?? 0 });
       persisted = true;
       return { ok: !options.failure, status: options.failure ?? 201, json: async () => options.failure ? { error: { code: "BAD_REQUEST", message: "A valid Job photo upload request is required." } } : { photo: saved } };
     }
@@ -789,7 +791,7 @@ describe("shared photo upload: actual encode, mocked bearer fetch and canonical 
     expect(mocks.bytes).toHaveBeenCalledWith(asset().uri,{encoding:"base64"});
     const writes=mocks.fetch.mock.calls.filter(([,init]) => init.method==="POST");
     expect(writes).toHaveLength(1);
-    expect(JSON.parse(writes[0][1].body)).toEqual({contentType:"image/jpeg",base64:await mocks.bytes.mock.results[0].value});
+    expect(JSON.parse(writes[0][1].body)).toEqual({contentType:"image/jpeg",base64:await mocks.bytes.mock.results[0].value,category:"other",displayOrder:1});
     expect(writes[0][1].headers.Authorization).toBe(`Bearer ${props.session!.token}`);
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("upload confirmed by fresh");
@@ -858,7 +860,7 @@ describe("shared photo upload late transport and cancellation regression",()=>{
     await renderUploadingGallery(input(),onRefresh);await event(button("Camera"));await event(button("Upload local draft"));
     expect(container.textContent).toContain("Sending photo");
     await renderUploadingGallery(changed(change),onRefresh);mocks.focused=true;await renderUploadingGallery(input(),onRefresh);
-    await settle(wait,{ok:true,status:201,json:async()=>({photo:saved})});
+    await settle(wait,{ok:true,status:201,json:async()=>({photo:{...saved,category:"other",displayOrder:1}})});
     expect(onRefresh).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("upload confirmed");
     expect(container.textContent).not.toContain(COMPANY_PHOTO_DRAFT_LABEL);
@@ -867,7 +869,7 @@ describe("shared photo upload late transport and cancellation regression",()=>{
     const saved=mockPhotoServer();const server=mocks.fetch.getMockImplementation()!;const wait=deferred<any>();
     mocks.fetch.mockImplementation((url,init)=>init.method==="POST"?wait.promise:server(url,init));
     const refresh=vi.fn().mockResolvedValue(undefined);await renderUploadingGallery(input(),refresh);await event(button("Camera"));await event(button("Upload local draft"));await act(async()=>root.unmount());unmounted=true;
-    await settle(wait,{ok:true,status:201,json:async()=>({photo:saved})});expect(refresh).not.toHaveBeenCalled();expect(container.textContent).toBe("");
+    await settle(wait,{ok:true,status:201,json:async()=>({photo:{...saved,category:"other",displayOrder:1}})});expect(refresh).not.toHaveBeenCalled();expect(container.textContent).toBe("");
   });
   it("timeout after mock persistence reconciles fresh gallery without replaying POST",async()=>{
     mockPhotoServer();const server=mocks.fetch.getMockImplementation()!;

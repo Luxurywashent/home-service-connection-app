@@ -91,7 +91,7 @@ function photoServer() {
     const path = new URL(url).pathname;
     if (path.endsWith("/auth/session")) return json(session());
     if (init.method === "DELETE") { stored = []; return json({ success: true }); }
-    if (init.method === "POST") { const saved = { ...photo(2, "uploaded"), caption: null }; stored = [...stored, saved]; return json({ photo: saved }, 201); }
+    if (init.method === "POST") { const body = JSON.parse(String(init.body)); const saved = { ...photo(2, "uploaded"), caption: null, category: body.category ?? "other", displayOrder: body.displayOrder ?? 0 }; stored = [...stored, saved]; return json({ photo: saved }, 201); }
     return json({ job: detail(stored) });
   });
 }
@@ -248,7 +248,7 @@ describe("restored Company photo gallery design (real React)", () => {
     await event(button("Library")); expect(mocks.libraryPermission).not.toHaveBeenCalled();
     await act(async () => { waiting.resolve(bytes); });
     const writes = mocks.fetch.mock.calls.filter(([, init]) => init.method === "POST"); expect(writes).toHaveLength(1);
-    expect(JSON.parse(writes[0][1].body)).toEqual({ contentType: "image/jpeg", base64: bytes });
+    expect(JSON.parse(writes[0][1].body)).toEqual({ contentType: "image/jpeg", base64: bytes, category: "other", displayOrder: 1 });
     expect(container.textContent).toContain("upload confirmed by fresh Company Job detail");
     expect(container.textContent).toContain("BEFORE & AFTER PHOTOS (2)"); expect(current.detail.photos).toHaveLength(1);
   });

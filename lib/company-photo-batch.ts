@@ -12,11 +12,10 @@ import {
 import { companyPhotoScope, currentCompanyGallery } from "./company-photo-view";
 import { createCompanyPhotoOperation, type CompanyPhotoOperationState } from "./company-photo-operation";
 
-/** Category is captured with each selection, never inferred from Job status or reordered.
- * The current backend has no category field; callers must not claim this is persisted. */
+/** Category is captured with each selection, never inferred from Job status or captions.
+ * Only fresh canonical metadata readback confirms persistence on the f3576bcb contract. */
 export type CompanyPhotoBatchDraft = LocalPhotoDraft & {
   assetKeys: string[];
-  category?: "before" | "after";
 };
 export type CompanyPhotoPickerAsset = LocalPhotoCandidate & { assetId?: string | null };
 export type CompanyPhotoBatchResult = {

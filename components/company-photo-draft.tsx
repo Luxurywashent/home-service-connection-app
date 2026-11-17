@@ -6,7 +6,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { COMPANY_PHOTO_DRAFT_LABEL, LocalPhotoDraftError, companyPhotoDraftScope, type CompanyPhotoDraftInput } from "@/lib/company-photo-draft";
-import { companyPhotoScope } from "@/lib/company-photo-view";
+import { COMPANY_PHOTO_CATEGORIES, companyPhotoCategoryLabel, companyPhotoScope, type CompanyPhotoCategory } from "@/lib/company-photo-view";
 import { companyPhotoBatchLocked, prepareCompanyPhotoBatch, useCompanyPhotoBatch, type CompanyPhotoBatchDraft, type CompanyPhotoBatchResult } from "@/lib/company-photo-batch";
 
 type Source = "Camera" | "Library";
@@ -18,7 +18,7 @@ type DraftState = {
 };
 type CompanyPhotoDraftProps = CompanyPhotoDraftInput & {
   headerLabel?: string;
-  /** Optional selection category is carried unchanged locally; backend has no category field. */
+  /** Optional initial selection intent; only signed canonical readback establishes persistence. */
   category?: CompanyPhotoBatchDraft["category"];
   onUploadBatch?: (drafts: CompanyPhotoBatchDraft[]) => Promise<CompanyPhotoBatchResult>;
 };
@@ -45,6 +45,8 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
   const pendingLock = useRef(false);
   const [state, setState] = useState<DraftState | null>(null);
   const [retained, setRetained] = useState<{ authority: typeof authority; selection: DraftState } | null>(null);
+  const [categorySelection, setCategorySelection] = useState<{ identity: Identity; value: CompanyPhotoCategory } | null>(null);
+  const category = categorySelection?.identity === identity ? categorySelection.value : props.category ?? "other";
   useLayoutEffect(() => {
     live.current = { props, focused, scope };
     authorityRef.current = authority;
@@ -98,7 +100,7 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
       const prepared = await prepareCompanyPhotoBatch(result.assets, async (uri) => {
         if (!current(operation)) throw new LocalPhotoDraftError("Photo selection is no longer current.");
         return FileSystem.getInfoAsync(uri);
-      }, () => current(operation), props.category);
+      }, () => current(operation), category);
       if (!current(operation)) return;
       setState({ ...initial, pending: false, drafts: prepared.drafts, error: prepared.errors.length ? `${prepared.errors.length} photo(s) could not be prepared. ${prepared.errors[0]}` : null, notice: prepared.duplicates ? `${prepared.duplicates} repeated selection(s) ignored.` : null });
     } catch (error) {
@@ -106,7 +108,7 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
       const message = error instanceof LocalPhotoDraftError ? error.message : stage === "permission" ? `Could not request ${source.toLowerCase()} permission. Retry when ready.` : stage === "picker" ? `Could not open ${source.toLowerCase()}. Retry when ready.` : "Could not prepare this local photo. Choose another photo and retry.";
       setState({ ...initial, pending: false, error: message });
     } finally { if (current(operation)) pendingLock.current = false; }
-  }, [current, disabled, identity, props.category]);
+  }, [current, disabled, identity, category]);
   const updateImage = useCallback((draft: CompanyPhotoBatchDraft, imageStatus: "loading" | "loaded" | "error") => {
     if (!visible || !selectionCurrent(visible)) return;
     setRetained(null);
@@ -140,7 +142,7 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
   const preview = (draft: CompanyPhotoBatchDraft, index: number) => {
     const imageStatus = visible?.imageStatus[draft.uri] ?? "loading";
     return <View style={styles.preview}>
-      {visible && visible.drafts.length > 1 ? <Text style={{ color: colors.muted }}>Photo {index + 1}{draft.category ? ` · ${draft.category === "before" ? "Before" : "After"}` : ""}</Text> : null}
+      <Text style={{ color: colors.muted }}>Photo {index + 1}{companyPhotoCategoryLabel(draft) ? ` · ${companyPhotoCategoryLabel(draft)}` : ""}</Text>
       {imageStatus !== "error" ? <Image key={`${visible?.generation}:${draft.uri}`} accessibilityLabel="Local draft photo preview" source={{ uri: draft.uri }} resizeMode="contain" style={visible && visible.drafts.length > 1 ? styles.batchImage : styles.image} onLoadStart={() => updateImage(draft, "loading")} onLoad={() => updateImage(draft, "loaded")} onError={() => updateImage(draft, "error")} /> : <View>
         <Text accessibilityRole="alert" style={{ color: colors.error }}>Local photo preview could not load. Discard it or choose another photo.</Text>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Retry ${visible?.source}`} onPress={() => { if (visible) void pick(visible.source); }}><Text style={{ color: colors.primary }}>Retry {visible?.source}</Text></TouchableOpacity>
@@ -154,6 +156,9 @@ export function CompanyPhotoDraft(props: CompanyPhotoDraftProps) {
       {props.headerLabel ? <Text style={[styles.heading, { color: colors.muted }]}>{props.headerLabel}</Text> : null}
       <View style={styles.row}>{(["Camera", "Library"] as const).map((source) => <TouchableOpacity key={source} accessibilityRole="button" accessibilityLabel={source} accessibilityState={{ disabled }} disabled={disabled} onPress={() => { void pick(source); }} style={[styles.captureButton, source === "Library" && styles.libraryButton, { backgroundColor: source === "Camera" ? colors.primary : colors.surface, borderColor: colors.border, opacity: disabled ? 0.35 : 1 }]}><Text style={[styles.captureButtonText, { color: source === "Camera" ? "#fff" : colors.foreground }]}>{source}</Text></TouchableOpacity>)}</View>
     </View>
+    <View style={styles.categoryRow}>{COMPANY_PHOTO_CATEGORIES.map((value) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityLabel={`Photo category ${companyPhotoCategoryLabel({ category: value })}`} accessibilityState={{ selected: category === value, disabled }} disabled={disabled} onPress={() => {
+      if (!disabled && !pendingLock.current && current()) setCategorySelection({ identity, value });
+    }} style={[styles.categoryButton, { borderColor: category === value ? colors.primary : colors.border, backgroundColor: category === value ? colors.surface : "transparent", opacity: disabled ? 0.35 : 1 }]}><Text style={[styles.categoryText, { color: category === value ? colors.primary : colors.muted }]}>{companyPhotoCategoryLabel({ category: value })}</Text></TouchableOpacity>)}</View>
     {busy ? <ActivityIndicator accessibilityLabel="Preparing local photo draft" color={colors.primary} /> : null}
     {!external && ownBatch.pending ? <ActivityIndicator accessibilityLabel="Sending Company Job photos" color={colors.primary} /> : null}
     {!external && ownBatch.pending && ownBatch.progress ? <Text accessibilityLiveRegion="polite" style={{ color: colors.muted }}>Uploading photo {ownBatch.progress.index} of {ownBatch.progress.total} · {ownBatch.progress.confirmed} confirmed</Text> : null}
@@ -177,6 +182,9 @@ const styles = StyleSheet.create({
   captureButton: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
   libraryButton: { borderWidth: 1 },
   captureButtonText: { fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  categoryButton: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
+  categoryText: { fontSize: 11, lineHeight: 15, fontWeight: "600" },
   button: { borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   buttonText: { color: "#fff", fontWeight: "700" },
   preview: { gap: 10 }, image: { width: "100%", height: 200, borderRadius: 8 },

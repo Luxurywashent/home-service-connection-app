@@ -1,4 +1,4 @@
-import { companyPhotoScope, currentCompanyGallery } from "./company-photo-view";
+import { companyPhotoScope, currentCompanyGallery, type CompanyPhotoCategory } from "./company-photo-view";
 import type {
   JobSyncCompanyJobDetail,
   JobSyncNativeSession,
@@ -27,6 +27,8 @@ export type LocalPhotoDraft = {
   uri: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp";
   size: number;
+  /** Captured explicit selection intent; order is allocated only by fresh signed preflight. */
+  category?: CompanyPhotoCategory;
 };
 export type LocalPhotoCandidate = {
   uri?: string | null;
