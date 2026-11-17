@@ -22,6 +22,19 @@ export function normalizeCompanyJobPrivateNotes(
   return value === null || typeof value === "string" ? value : undefined;
 }
 
+/** 2818bb72 canonical GET/PATCH version; do not invent a version from client time or aliases. */
+export function normalizeCompanyJobPrivateNotesVersion(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) return null;
+  const canonical = new Date(value).toISOString();
+  // Date.parse normalizes impossible calendar dates; those are not verified server versions.
+  if (canonical.slice(0, 19) !== value.slice(0, 19)) return null;
+  return canonical;
+}
+
 /** Matches shared/privateNotes.ts formatPrivateNotes in both exact backend snapshots. */
 export function formatCompanyJobPrivateNotes(value: string | null): string {
   if (value === null) return "";
@@ -140,11 +153,10 @@ export function canEditCompanyJobPrivateNotes(
     canReadCompanyJobPrivateNotes(session, jobId, job) &&
     (session?.user.role === "owner" || session?.user.role === "dispatcher") &&
     editableCompanyJobPrivateNotes(job.detail?.privateNotes) &&
-    typeof job.detail?.updatedAt === "string" &&
-    Number.isFinite(Date.parse(job.detail.updatedAt))
+    normalizeCompanyJobPrivateNotesVersion(job.detail?.updatedAt) !== null
   );
 }
 
-/** Kept for disconnected callsites; f3576bcb writer must be explicitly supplied by the parent. */
+/** Kept for disconnected callsites; the versioned 2818bb72 writer must be supplied by the parent. */
 export const COMPANY_PRIVATE_NOTES_EDIT_UNAVAILABLE =
   "Read-only on mobile. Private-note editing is not connected to the Company mobile API.";

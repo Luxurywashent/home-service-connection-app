@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installPhotoTestDOM, PhotoTestNode } from "./helpers/company-photo-test-dom";
 import { CompanyCreateJobSheet, type CompanyCreateJobSheetProps } from "../components/company-create-job-sheet";
 import { type JobSyncNativeSession, type JobSyncCompanyJobQuoteInput, type JobSyncCompanyJobQuote } from "../lib/jobsync-mobile-api";
+import { type CompanyJobConfirmation, companyJobConfirmationMessage } from "../lib/company-job-confirmation";
 
 vi.mock("../lib/company-job-creation-storage", async () => {
   const { memoryCreationStorageModule } = await import("./helpers/company-creation-memory-store");
@@ -104,12 +105,75 @@ describe("booking confirmation repair — real sheet/controller, isolated I/O", 
     expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.create.mock.calls[0][2].notifyCustomer).toBe(on);
     expect(mocks.alert).toHaveBeenCalledTimes(1); const message = mocks.alert.mock.calls[0][0];
     expect(message).toContain("Job saved. Company calendar refreshed.");
-    expect(message).toContain(on ? "Booking confirmation requested." : "Booking confirmation was not requested.");
-    if (on) expect(message).toContain("Confirmation outcome is unknown");
+    expect(message).toContain(companyJobConfirmationMessage(on));
+    if (on) expect(message).toContain("Booking confirmation outcome is unknown");
     expect(message).toContain("Day-before and same-day reminders");
-    expect(message).not.toMatch(/email sent|email failed|confirmation sent|already_sent|delivered/i);
+    expect(message).not.toMatch(/email (?:was )?(?:sent|delivered)|confirmation (?:was )?sent|already_sent|appointment confirmed/i);
     expect(events).toEqual(["feedback", "close"]); expect(container.textContent).toBe("");
     await act(async () => retained()); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    ["accepted", "provider acceptance, not verified delivery"],
+    ["failed", "reports a failure; the Job remains saved"],
+    ["queued", "queued, not confirmed sent"],
+    ["deferred", "deferred, not confirmed sent"],
+    ["suppressed", "latest booking email record reports suppression"],
+    ["in_progress", "in progress; provider outcome is unknown"],
+  ] as const)("presents canonical latest-record %s without claiming this appointment or authorizing resend", async (recordStatus, wording) => {
+    // Injected API mocks are already normalized; raw tax/provider evidence belongs to the adapter tests.
+    const confirmation: CompanyJobConfirmation = Object.freeze({ status: "unknown", recordStatus,
+      communicationId: 701, reason: "appointment_binding_unavailable" });
+    mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [], confirmationCommunication: confirmation }));
+    await ready(); await press("Save Company Job");
+    expect(byId("company-booking-confirmation-feedback")!.textContent).toBe(companyJobConfirmationMessage(true, confirmation));
+    const message = mocks.alert.mock.calls[0][0];
+    expect(message).toContain(wording); expect(message).toContain("Job saved. Company calendar refreshed.");
+    expect(message).toContain("Status for this appointment time is unknown.");
+    expect(message).toContain("Do not automatically resend or create another Job.");
+    expect(message).not.toMatch(/email (?:was )?(?:sent|delivered)|confirmation (?:was )?sent|already_sent|appointment confirmed/i);
+    expect(props.onCreated).toHaveBeenCalledTimes(1); expect(node("Save Company Job").nativeProps.disabled).toBe(true);
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it("ignores an unverified CREATE record and publishes only fresh canonical detail", async () => {
+    const original = mocks.create.getMockImplementation()!;
+    mocks.create.mockImplementation(async (...args: any[]) => ({ ...await (original as any)(...args),
+      confirmationCommunication: { status: "unknown", recordStatus: "accepted", communicationId: 701, reason: "appointment_binding_unavailable" } }));
+    await ready(); await press("Save Company Job");
+    expect(byId("company-booking-confirmation-feedback")!.textContent).toBe(companyJobConfirmationMessage(true));
+    expect(mocks.alert.mock.calls[0][0]).not.toContain("provider acceptance");
+    expect(mocks.detail).toHaveBeenCalledTimes(1); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it("preserves canonical record failure after calendar refresh fails without losing or recreating the Job", async () => {
+    const confirmation: CompanyJobConfirmation = { status: "unknown", recordStatus: "failed", communicationId: 701, reason: "appointment_binding_unavailable" };
+    mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [], confirmationCommunication: confirmation }));
+    await ready(); await render({ onCreated: vi.fn().mockResolvedValue(false) }); await press("Save Company Job");
+    expect(container.textContent).toContain("Job saved — calendar refresh failed.");
+    expect(byId("company-booking-confirmation-feedback")!.textContent).toBe(companyJobConfirmationMessage(true, confirmation));
+    expect(mocks.alert).not.toHaveBeenCalled(); expect(ack.id).toBe(84);
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it("recovers a failed latest record after lost CREATE acknowledgment via GET only", async () => {
+    const original = mocks.create.getMockImplementation()!;
+    const confirmation: CompanyJobConfirmation = { status: "unknown", recordStatus: "failed", communicationId: 701, reason: "appointment_binding_unavailable" };
+    mocks.create.mockImplementation(async (...args: any[]) => { await (original as any)(...args); throw new Error("Lost acknowledgment"); });
+    mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [], confirmationCommunication: confirmation }));
+    await ready(); await press("Save Company Job");
+    expect(mocks.operation).toHaveBeenCalled(); expect(mocks.detail).toHaveBeenCalledTimes(1);
+    expect(byId("company-booking-confirmation-feedback")!.textContent).toBe(companyJobConfirmationMessage(true, confirmation));
+    expect(props.onCreated).toHaveBeenCalledTimes(1); expect(mocks.create).toHaveBeenCalledTimes(1);
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it.each(["hidden", "unfocused", "stale"])("does not publish a canonical record arriving after the sheet becomes %s", async change => {
+    const wait = deferred<any>(); mocks.detail.mockReturnValue(wait.promise);
+    await ready(); await press("Save Company Job"); expect(mocks.detail).toHaveBeenCalledTimes(1);
+    if (change === "hidden") await render({ visible: false });
+    else if (change === "unfocused") { mocks.focused = false; await render(); }
+    else await render({ isCurrent: () => false });
+    await act(async () => wait.resolve({ ...ack, photos: [], persistedPhotoIds: [], confirmationCommunication: {
+      status: "unknown", recordStatus: "failed", communicationId: 701, reason: "appointment_binding_unavailable" } }));
+    expect(container.textContent).not.toContain("latest booking email record");
+    expect(mocks.alert).not.toHaveBeenCalled(); expect(props.onCreated).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledTimes(1);
   });
   it("also presents feedback for deferred-closing profile callbacks while retaining inline feedback", async () => {
     await ready(); await press("Save Company Job");
@@ -152,8 +216,11 @@ describe("booking confirmation repair — real sheet/controller, isolated I/O", 
   it("recovers saved status through GET only using original OFF rather than draft/default ON", async () => {
     await ready(); await press("Notify customer"); const original = mocks.create.getMockImplementation()!;
     mocks.create.mockImplementation(async (...args: any[]) => { await (original as any)(...args); throw new Error("Lost acknowledgment"); });
+    mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [], confirmationCommunication: {
+      status: "unknown", recordStatus: "accepted", communicationId: 701, reason: "appointment_binding_unavailable" } }));
     await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.operation).toHaveBeenCalled();
-    expect(byId("company-booking-confirmation-feedback")!.textContent).toContain("Booking confirmation was not requested.");
+    expect(byId("company-booking-confirmation-feedback")!.textContent).toBe(companyJobConfirmationMessage(false));
+    expect(mocks.alert.mock.calls[0][0]).not.toContain("provider acceptance");
     expect(mocks.alert.mock.calls[0][0]).toContain("was not requested");
   });
   it("captures OFF before async auth and blocks a retained editable toggle after submission", async () => {

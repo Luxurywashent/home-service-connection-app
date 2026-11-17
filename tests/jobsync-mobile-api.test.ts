@@ -659,7 +659,7 @@ describe("JobSync mobile API contract", () => {
     vi.stubGlobal("fetch", mock);
     try {
       const invoice = await sendJobSyncCompanyJobInvoice("mock-owner-token", 47, { method: "email" });
-      expect(invoice).toEqual({ success: true, publicUrl, status: "provider_accepted", communicationState: "provider_accepted", channel: "email", isDelivered: false });
+      expect(invoice).toEqual({ success: true, publicUrl, status: "provider_accepted", communicationState: "provider_accepted", channel: "email", isDelivered: false, sentTo: "private@example.test" });
       expect(invoice.status).not.toBe("sent");
       expect(mock).toHaveBeenCalledTimes(1);
       expect(mock).toHaveBeenCalledWith("https://jobwash-veysiubh.manus.space/api/mobile/v1/jobs/47/invoice", expect.objectContaining({ method: "POST", cache: "no-store", headers: expect.objectContaining({ Authorization: "Bearer mock-owner-token" }), body: JSON.stringify({ method: "email" }) }));
@@ -698,7 +698,7 @@ describe("JobSync mobile API contract", () => {
   it.each(["queued", "sending", "provider_accepted", "sent", "delivered", "suppressed", "failed", "unknown", null])("preserves honest SMS status without treating acknowledgment as delivery: %s", async (status) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, publicUrl: "https://unit.test/invoice", status, channel: "sms" }) }));
     try {
-      expect(await sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "sms" })).toEqual({ success: true, publicUrl: "https://unit.test/invoice", status: status === "unknown" ? null : status, communicationState: null, channel: "sms", isDelivered: status === "delivered" });
+      expect(await sendJobSyncCompanyJobInvoice("mock-token", 47, { method: "sms" })).toEqual({ success: true, publicUrl: "https://unit.test/invoice", status: status === "unknown" ? null : status, communicationState: null, channel: "sms", isDelivered: status === "delivered", sentTo: null });
     } finally { vi.unstubAllGlobals(); }
   });
 

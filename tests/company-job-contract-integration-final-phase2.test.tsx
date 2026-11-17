@@ -32,6 +32,8 @@ const { createRoot } = createRequire(import.meta.url)("react-dom/client") as {
 type NativeNode = PhotoTestNode & { nativeProps: Record<string, any> };
 const response = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const bytes = Buffer.concat([Buffer.from([255, 216, 255]), Buffer.alloc(509)]).toString("base64");
+const V0 = "2026-11-17T04:00:00.000Z";
+const V1 = "2026-11-17T04:01:00.000Z";
 let root: ReturnType<typeof createRoot>; let container: PhotoTestNode; let actor: JobSyncNativeSession;
 let wire: Record<string, unknown>; let fetchMock: ReturnType<typeof vi.fn>; let patchStatus: number;
 let acknowledgement: unknown; let readbackNote: string | undefined; let nextUser = 94000;
@@ -59,7 +61,7 @@ beforeEach(() => {
   actor = { token: `offline-connected-notes-${++nextUser}`, portal: "company",
     user: { id: nextUser, name: "Fixture manager", role: "owner", email: null, calendarEligible: false },
     company: { id: 9, name: "Fixture", slug: "fixture", logoUrl: null, primaryColor: null, accentColor: null } };
-  wire = { id: 12, companyId: 9, assignedUserId: 99, status: "scheduled", updatedAt: "2026-11-17T04:00:00Z", photos: [],
+  wire = { id: 12, companyId: 9, assignedUserId: 99, status: "scheduled", updatedAt: V0, photos: [],
     internal_notes: "Existing internal note", service_notes: "Customer-visible service note" };
   focusInput = vi.fn(); blurInput = vi.fn();
   fetchMock = vi.fn(async (url: string, init: RequestInit) => {
@@ -70,8 +72,10 @@ beforeEach(() => {
     if (path === "/api/mobile/v1/company/jobs/12/private-notes" && init.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       if (patchStatus !== 200) return response({ error: { code: "INTERNAL", message: "Unsafe backend message must not appear in UI" } }, patchStatus);
-      wire = { ...wire, internal_notes: readbackNote ?? body.privateNotes };
-      return response(acknowledgement ?? { success: true, jobId: 12, privateNotes: body.privateNotes });
+      expect(body.expectedUpdatedAt).toBe(V0);
+      expect(wire.updatedAt).toBe(V0);
+      wire = { ...wire, internal_notes: readbackNote ?? body.privateNotes, updatedAt: V1 };
+      return response(acknowledgement ?? { success: true, jobId: 12, privateNotes: body.privateNotes, updatedAt: V1 });
     }
     throw new Error(`Unexpected offline request ${init.method} ${path}`);
   }); vi.stubGlobal("fetch", fetchMock);
@@ -79,32 +83,32 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); vi.unstubAllGlobals(); });
 
-describe("private-note canonical adapter — exact f3576bcb shape, mocked HTTP only", () => {
+describe("private-note canonical adapter — unpublished 2818bb72 versioned shape, mocked HTTP only", () => {
   it.each(["", "  Exact text\n<literal>  ", "x".repeat(4000)])("sends private-only text without trimming once: %#", async privateNotes => {
-    const result = await updateJobSyncCompanyJobPrivateNotes(actor.token, 12, privateNotes);
-    expect(result).toEqual({ success: true, jobId: 12, privateNotes });
+    const result = await updateJobSyncCompanyJobPrivateNotes(actor.token, 12, privateNotes, V0);
+    expect(result).toEqual({ success: true, jobId: 12, privateNotes, updatedAt: V1 });
     expect(fetchMock).toHaveBeenCalledOnce(); const [url, init] = fetchMock.mock.calls[0];
     expect(new URL(url).pathname).toBe("/api/mobile/v1/company/jobs/12/private-notes");
     expect(init.method).toBe("PATCH"); expect(init.headers.Authorization).toBe(`Bearer ${actor.token}`);
-    expect(JSON.parse(init.body)).toEqual({ privateNotes }); expect(init).not.toHaveProperty("credentials");
+    expect(JSON.parse(init.body)).toEqual({ privateNotes, expectedUpdatedAt: V0 }); expect(init).not.toHaveProperty("credentials");
   });
   it.each([null, {}, [], 3, "x".repeat(4001)])("rejects invalid note before HTTP: %#", async privateNotes => {
-    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, privateNotes as string)).rejects.toThrow();
+    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, privateNotes as string, V0)).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])("rejects invalid Job before HTTP: %s", async jobId => {
-    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, jobId, "note")).rejects.toThrow(); expect(fetchMock).not.toHaveBeenCalled();
+    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, jobId, "note", V0)).rejects.toThrow(); expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each(["", "bad token", " bad", "bad\n"]) ("rejects invalid bearer before HTTP: %#", async token => {
-    await expect(updateJobSyncCompanyJobPrivateNotes(token, 12, "note")).rejects.toThrow(); expect(fetchMock).not.toHaveBeenCalled();
+    await expect(updateJobSyncCompanyJobPrivateNotes(token, 12, "note", V0)).rejects.toThrow(); expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each([401, 403, 404, 409, 500, 503])("does not fall back or retry HTTP %s", async status => {
-    patchStatus = status; await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, "note")).rejects.toThrow();
+    patchStatus = status; await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, "note", V0)).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
   it("rejects an unexpected success status rather than guessing an acknowledgment", async () => {
     fetchMock.mockResolvedValue(response({ success: true, jobId: 12, privateNotes: "note" }, 201));
-    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, "note")).rejects.toThrow(); expect(fetchMock).toHaveBeenCalledOnce();
+    await expect(updateJobSyncCompanyJobPrivateNotes(actor.token, 12, "note", V0)).rejects.toThrow(); expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 
@@ -114,6 +118,8 @@ describe("connected internal notes UI -> controller -> canonical adapter -> inde
     const save = control("Save private job notes");
     await act(async () => { save.nativeProps.onPress(); save.nativeProps.onPress(); });
     expect(patches()).toHaveLength(1); expect(container.textContent).toContain("Updated internal note");
+    expect(JSON.parse(String(patches()[0][1].body))).toEqual({ privateNotes: "Updated internal note", expectedUpdatedAt: V0 });
+    expect(wire.updatedAt).toBe(V1);
     expect(container.textContent).not.toContain("Customer-visible service note"); expect(wire.service_notes).toBe("Customer-visible service note");
     expect(container.textContent).toContain("Internal Company only");
     expect((await getJobSyncCompanyJobs(actor.token))[0]).not.toHaveProperty("privateNotes");

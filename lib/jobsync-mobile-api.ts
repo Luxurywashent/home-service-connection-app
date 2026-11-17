@@ -1,6 +1,9 @@
 import type { CompanyJobScheduleMutation, CompanyJobScheduleWriter } from "./company-job-schedule-update";
 import { z } from "zod";
-import { normalizeCompanyJobPrivateNotes } from "./company-job-private-notes";
+import { normalizeCompanyJobPrivateNotes, normalizeCompanyJobPrivateNotesVersion } from "./company-job-private-notes";
+import { normalizeCompanyJobConfirmation, type CompanyJobConfirmation } from "./company-job-confirmation";
+import { createCompanyJobAddressPayload, normalizeCompanyJobAddressDetail, type CompanyJobAddress, type CompanyJobAddressWriter } from "./company-job-address";
+import { createCompanyJobInvoiceOptions, normalizeCompanyJobInvoiceSentTo } from "./company-job-invoice-intent";
 import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
 import {
   normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, normalizeCompanyJobQuoteInput,
@@ -515,6 +518,8 @@ export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & {
   /** Optional canonical persisted pricing; absent legacy pricing stays absent. */
   pricing?: JobSyncCompanyJobPricing;
   operation?: { key: string; state: "saved"; replayed: boolean };
+  /** Detail/CREATE email record only; current-appointment binding may be unavailable. */
+  confirmationCommunication?: CompanyJobConfirmation;
 };
 
 export type JobSyncCompanyJobCreationOperation = {
@@ -658,7 +663,7 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   const payload = asRecord(await requestJson(COMPANY_JOBS_PATH, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) }, [200, 201]));
   const row = asRecord(payload?.job);
   const job = normalizeJobSyncMobileJob(row);
-  const pricing = row ? normalizeCompanyJobPricing(row) : null;
+  const pricing = row ? normalizeCompanyJobPricing(row, { requireStoredTaxEvidence: true }) : null;
   const operation = asRecord(payload?.operation);
   const customerMatches = Boolean(row && typeof row.customerId === "number" && positiveJobSyncId(row.customerId) === row.customerId
     && (body.newCustomer ? positiveJobSyncId(row.companyId ?? row.company_id) === companyId : row.customerId === body.customerId));
@@ -691,6 +696,7 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   return {
     ...job, companyId, priceBookServiceId: row.priceBookServiceId === null ? null : positiveJobSyncId(row.priceBookServiceId)!,
     ...(pricing ? { pricing } : {}),
+    confirmationCommunication: normalizeCompanyJobConfirmation(row.confirmationCommunication, row.customer_notification_enabled),
     ...(body.operationKey !== undefined ? { operation: { key: body.operationKey, state: "saved" as const, replayed: operation!.replayed as boolean } } : {}),
   };
 }
@@ -742,6 +748,9 @@ export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
   companyId: number | null;
   /** Internal detail only; undefined means unavailable, null/empty means verified absence. */
   privateNotes?: string | null;
+  /** Complete saved Job snapshot only, never customer-profile/list fallback. */
+  serviceAddress?: CompanyJobAddress;
+  confirmationCommunication?: CompanyJobConfirmation;
   enRouteAt: string | null;
   onSiteAt: string | null;
   completedAt: string | null;
@@ -813,7 +822,7 @@ function jobSyncPhotoReadMetadata(photo: Record<string, unknown>): { category?: 
 export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number, companyId: number): JobSyncCompanyJobDetail | null {
   const row = asRecord(asRecord(payload)?.job);
   const job = normalizeJobSyncMobileJob(row);
-  const pricing = row ? normalizeCompanyJobPricing(row) : null;
+  const pricing = row ? normalizeCompanyJobPricing(row, { requireStoredTaxEvidence: true }) : null;
   const returnedCompanyId = positiveJobSyncId(row?.companyId ?? row?.company_id);
   const rawCompanyId = row?.companyId ?? row?.company_id;
   if (!positiveJobSyncId(companyId) || !row || !job || pricing === null || job.id !== jobId || (rawCompanyId !== undefined && returnedCompanyId !== companyId)) return null;
@@ -832,6 +841,8 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
     ...job,
     companyId,
     privateNotes: normalizeCompanyJobPrivateNotes(row),
+    serviceAddress: normalizeCompanyJobAddressDetail(row),
+    confirmationCommunication: normalizeCompanyJobConfirmation(row.confirmationCommunication, row.customer_notification_enabled),
     ...(pricing ? { pricing } : {}),
     enRouteAt: serverInstant(row.enRouteAt),
     onSiteAt: serverInstant(row.onSiteAt),
@@ -1105,17 +1116,34 @@ export async function uploadJobSyncCompanyJobPhoto(
   return { photo: { id: photo.id, imageUrl, caption: expectedCaption, uploadedByUserId: photo.uploadedByUserId, ...jobSyncPhotoReadMetadata(photo) } };
 }
 
-/** Exact f3576bcb private-only manager route; one PATCH, raw acknowledgment for independent verification. */
-export async function updateJobSyncCompanyJobPrivateNotes(token: string, jobId: number, privateNotes: string): Promise<unknown> {
+/** Exact unpublished 2818bb72 private-only versioned manager route; no retry/downgrade. */
+export async function updateJobSyncCompanyJobPrivateNotes(
+  token: string, jobId: number, privateNotes: string, expectedUpdatedAt: string,
+): Promise<unknown> {
   validCompanyJobId(jobId);
   requireJobSyncMutationToken(token);
-  if (typeof privateNotes !== "string" || privateNotes.length > 4000) {
-    throw new Error("A valid private note is required.");
+  const version = normalizeCompanyJobPrivateNotesVersion(expectedUpdatedAt);
+  if (typeof privateNotes !== "string" || privateNotes.length > 4000 || !version) {
+    throw new Error("A valid private note and current Job version are required.");
   }
   return requestJson(`/api/mobile/v1/company/jobs/${jobId}/private-notes`, {
-    method: "PATCH", headers: createJobSyncBearerHeaders(token), body: JSON.stringify({ privateNotes }),
+    method: "PATCH", headers: createJobSyncBearerHeaders(token),
+    body: JSON.stringify({ privateNotes, expectedUpdatedAt: version }),
   }, 200);
 }
+
+/** Existing unpublished Company address route, not a customer-profile/legacy mutation. */
+export const updateJobSyncCompanyJobAddress: CompanyJobAddressWriter = async (token, jobId, input) => {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  const payload = createCompanyJobAddressPayload({
+    addressLine1: input.addressLine1, city: input.city ?? "",
+    region: input.region ?? "", postalCode: input.postalCode ?? "",
+  }, input.expectedUpdatedAt);
+  return requestJson(`${COMPANY_JOBS_PATH}/${jobId}/address`, {
+    method: "PATCH", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(payload),
+  }, 200);
+};
 
 /** Removes a persisted photo from the Job, not a guarantee of physical media erasure. */
 export async function deleteJobSyncCompanyJobPhoto(token: string, jobId: number, photoId: number): Promise<{ success: true }> {
@@ -1161,6 +1189,8 @@ export type JobSyncCompanyJobInvoiceAcknowledgment = {
   communicationState: string | null;
   channel: "email" | "sms";
   isDelivered: boolean;
+  /** Backend-reported recipient; reservation-collision agreement is not yet certified. */
+  sentTo: string | null;
 };
 
 // Backend 16a57f2e companyCommunicationService canonical ledger enum.
@@ -1171,12 +1201,14 @@ function invoiceCommunicationState(value: unknown): string | null {
   return state && INVOICE_COMMUNICATION_STATES.has(state) ? state : null;
 }
 
-export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number, input: { method: "email" | "sms"; resend?: boolean }): Promise<JobSyncCompanyJobInvoiceAcknowledgment> {
+export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number, input: { method: "email" | "sms"; resend?: boolean; recipientEmail?: string }): Promise<JobSyncCompanyJobInvoiceAcknowledgment> {
   validCompanyJobId(jobId);
-  if (!token.trim() || !["email", "sms"].includes(input.method)) throw new Error("A valid invoice delivery method and Company session are required.");
+  requireJobSyncMutationToken(token);
+  const options = createCompanyJobInvoiceOptions(input.method, input.resend ?? false, input.recipientEmail);
   const result = asRecord(await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice`, {
     method: "POST", headers: createJobSyncBearerHeaders(token),
-    body: JSON.stringify({ method: input.method, ...(input.resend !== undefined ? { resend: input.resend } : {}) }),
+    body: JSON.stringify({ method: options.method, ...(input.resend !== undefined ? { resend: options.resend } : {}),
+      ...(options.recipientEmail !== undefined ? { recipientEmail: options.recipientEmail } : {}) }),
   }));
   const publicUrl = firstString(result?.publicUrl);
   if (result?.success !== true || !publicUrl) throw new JobSyncApiError("The backend did not confirm the invoice request.", null, "INVALID_RESPONSE");
@@ -1188,7 +1220,8 @@ export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number,
     : input.method === "sms" && compatibilityState === "sent" ? "sent"
     : input.method === "email" && compatibilityState === "delivered" ? null
     : invoiceCommunicationState(compatibilityState);
-  return { success: true, publicUrl, status, communicationState, channel: input.method, isDelivered: status === "delivered" };
+  return { success: true, publicUrl, status, communicationState, channel: input.method, isDelivered: status === "delivered",
+    sentTo: normalizeCompanyJobInvoiceSentTo(result.sentTo, input.method) };
 }
 
 /** Persists one atomic Company Job time/lane intent under a fresh server version. */

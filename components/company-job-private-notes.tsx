@@ -49,7 +49,7 @@ export type CompanyJobPrivateNotesProps = {
   /** Parent screen/session/selected-job generation guard. Required; never default to true. */
   isCurrent: () => boolean;
   onRefresh?: () => void | Promise<void>;
-  /** Only the verified f3576bcb manager-only Company PATCH adapter supplied by the parent. */
+  /** Exact 2818bb72 manager PATCH adapter; must forward the fourth expectedUpdatedAt argument. */
   writePrivateNotes?: CompanyJobPrivateNotesWriter;
   onInputFocus?: TextInputProps["onFocus"];
   onInputBlur?: TextInputProps["onBlur"];

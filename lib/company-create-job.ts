@@ -12,6 +12,7 @@ import {
   type JobSyncCompanySettings, type JobSyncNativeSession,
 } from "./jobsync-mobile-api";
 import { companyCalendarInstant } from "./company-calendar";
+import { companyJobConfirmationMessage, type CompanyJobConfirmation } from "./company-job-confirmation";
 import {
   companyCreationStore, newCompanyCreationOperationKey,
   type CompanyCreationRecord, type CompanyCreationStore,
@@ -41,7 +42,7 @@ export type CompanyCreateJobState = {
   reconciling?: boolean;
   /** Read/refresh/persistence diagnostic, separate from the known save outcome. */
   detailError?: string | null;
-  /** Submitted booking intent only. The current API exposes no provider outcome. */
+  /** Saved-Job feedback derived from guarded canonical email-record readback. */
   bookingConfirmationMessage?: string;
 };
 export type CompanyCreateJobTransport = {
@@ -108,6 +109,8 @@ type Attempt = {
   state: CompanyCreateJobState;
   record?: CompanyCreationRecord;
   ack?: JobSyncCompanyJobCreateResult;
+  /** Memory-only canonical outcome; never put provider data in durable create intent. */
+  confirmation?: CompanyJobConfirmation;
   /** A write may have completed even when its promise rejected. Never infer absence. */
   reserved: boolean;
   dirty: boolean;
@@ -117,10 +120,8 @@ type Actor = { hydrated: boolean; hydration?: Promise<boolean>; busy: boolean; a
 // and detach/new controllers must not reset an actor's locks or hydration.
 const actors = new Map<string, Actor>();
 const listeners = new Map<string, Set<() => void>>();
-export function companyJobBookingConfirmationMessage(notifyCustomer: boolean | undefined): string {
-  return notifyCustomer === false
-    ? "Booking confirmation was not requested. Day-before and same-day reminders are separate and follow Company settings."
-    : "Booking confirmation requested. Confirmation outcome is unknown; the saved Job response does not report email status. Day-before and same-day reminders follow Company settings.";
+export function companyJobBookingConfirmationMessage(notifyCustomer: boolean | undefined, confirmation?: CompanyJobConfirmation): string {
+  return companyJobConfirmationMessage(notifyCustomer, confirmation);
 }
 const actorKey = (session: JobSyncNativeSession) => `${session.company!.id}:${session.user.id}`;
 const savedMessage = "Job saved — calendar refresh failed.";
@@ -220,7 +221,7 @@ export function createCompanyJobController(input: {
   set.add(publish);
   const patch = (attempt: Attempt, state: CompanyCreateJobState) => {
     attempt.state = state.phase === "saved" && state.jobId && attempt.record
-      ? { ...state, bookingConfirmationMessage: companyJobBookingConfirmationMessage(attempt.record.payload.notifyCustomer) }
+      ? { ...state, bookingConfirmationMessage: companyJobBookingConfirmationMessage(attempt.record.payload.notifyCustomer, attempt.confirmation) }
       : state;
     notify(key);
   };
@@ -365,6 +366,7 @@ export function createCompanyJobController(input: {
     if (!await fresh() || !current()) return false;
     await ensureRecorded(attempt);
     if (!current()) return false;
+    attempt.confirmation = detail.confirmationCommunication;
     patch(attempt, { phase: "saved", jobId: record.jobId, message: "Job saved. Refreshing the Company calendar…", reconciling: true });
     if (!current()) return false;
     const refreshed = await input.onCreated(detail, settings.timezone);
@@ -378,7 +380,7 @@ export function createCompanyJobController(input: {
     if (runtime.attempt === attempt) runtime.attempt = undefined;
     const succeeded = current();
     if (succeeded) localState = { phase: "succeeded", jobId: record.jobId, message: "Job saved. Company calendar refreshed.",
-      bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer) };
+      bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer, attempt.confirmation) };
     notify(key);
     // A synchronous close from the confirmed-success onState notification must
     // not retroactively turn that completed calendar/removal into a failure.

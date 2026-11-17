@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 // Deliberately outside application source: no server import, database, native storage,
 // notification, wallet, crypto-key generation, or real HTTP transport is permitted.
 const requireFixture = createRequire(import.meta.url);
-const fixture = requireFixture("/home/ubuntu/hsc-consolidated-repair-20261116/fixtures/company-create-source-harness.cjs");
+const fixture = requireFixture("/home/ubuntu/hsc-mobile-backend-compatibility-2818bb72-20261117/company-create-source-harness.cjs");
 const oldBackend = fixture.backend(fixture.OLD_DIR);
 const c0Backend = fixture.backend(fixture.BASELINE_DIR);
 const finalDir = process.env.HSC_REPAIR_BACKEND_DIR;

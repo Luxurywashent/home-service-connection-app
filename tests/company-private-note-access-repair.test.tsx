@@ -96,6 +96,8 @@ const { createRoot } = nativeRequire("react-dom/client") as {
     unmount: () => void;
   };
 };
+const V0 = "2026-12-01T12:00:00.000Z";
+const V1 = "2026-12-01T12:01:00.000Z";
 let sequence = 8000;
 function fixture(
   role: "owner" | "dispatcher" | "technician" = "technician",
@@ -214,14 +216,15 @@ describe("private notes follow fresh same-Company detail authority, not assignme
       };
       const value = "  Manager private text\n  ";
       const write = vi.fn(
-        async (token: string, jobId: number, privateNotes: string) => {
+        async (token: string, jobId: number, privateNotes: string, expectedUpdatedAt: string) => {
           expect(token).toBe(f.session.token);
+          expect(expectedUpdatedAt).toBe(V0);
           api.detail.mockResolvedValue({
             ...f.detail,
             privateNotes,
-            updatedAt: "2026-12-01T12:01:00Z",
+            updatedAt: V1,
           });
-          return { success: true, jobId, privateNotes };
+          return { success: true, jobId, privateNotes, updatedAt: V1 };
         },
       );
       expect(canEditCompanyJobPrivateNotes(f.session, 42, f.job)).toBe(true);
@@ -237,6 +240,7 @@ describe("private notes follow fresh same-Company detail authority, not assignme
       expect(api.session).toHaveBeenCalledTimes(2);
       expect(api.detail).toHaveBeenCalledTimes(2);
       expect(write).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenCalledWith(f.session.token, 42, value, V0);
       expect((await controller.save(value)).status).toBe("blocked");
       expect(f.detail.privateNotes).toBe("Internal Company instruction");
     },

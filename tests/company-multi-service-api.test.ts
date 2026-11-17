@@ -25,13 +25,15 @@ const quote = () => ({
   taxRateBps: 1000, tax: 18, total: 306, totalDurationMinutes: 180, recurrence: null,
   persistence: { taxStored: true, note: "Server stores tax." },
 });
+// Raw 2818 CREATE/detail wire: known fiscal values retain matching stored columns.
 const job = () => ({ id: 91, companyId: COMPANY, customerId: 41, priceBookServiceId: 71, assignedUserId: 81,
   title: "First service", serviceName: "First service", status: "scheduled", scheduledStartAt: start,
   scheduledEndAt: end, updatedAt: start, addressLine1: null, city: null, amount: 306,
   customerName: "Casey Example", assignedName: "Taylor Example", photos: [],
   lineItems: [{ id: 1001, priceBookItemId: 71, name: "First service", quantity: 2, unitPrice: 100, lineTotal: 200, sortOrder: 0 },
-  { id: 1002, priceBookItemId: 72, name: "Second service", quantity: 1, unitPrice: 120, lineTotal: 120, sortOrder: 0 }],
+  { id: 1002, priceBookItemId: 72, name: "Second service", quantity: 1, unitPrice: 120, lineTotal: 120, sortOrder: 1 }],
   subtotalAmount: 320, discountAmount: 32, taxAmount: 18, taxRateBps: 1000, discountKind: "percent", discountCode: "SAVE",
+  tax_amount: 18, tax_rate_bps: 1000,
 });
 const operation = { key: KEY, state: "saved", replayed: false };
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
@@ -188,16 +190,17 @@ describe("read-only server quote transport and exact input binding", () => {
 });
 
 describe("canonical persisted CREATE and GET pricing with legacy compatibility", () => {
-  it("accepts exact backend root line shape with repeated sortOrder zero and no quote-only persisted fields", async () => {
+  it("accepts exact 2818 root line shape with new persisted ordinals and no quote-only persisted fields", async () => {
     const fetch = mock({ job: job(), operation }, 201); const saved = await createJobSyncCompanyJob(TOKEN, COMPANY, input());
     expect(saved.pricing).toEqual({ lineItems: job().lineItems, subtotalAmount: 320, discountAmount: 32, taxAmount: 18,
       taxRateBps: 1000, discountKind: "percent", discountCode: "SAVE", totalAmount: 306 });
-    expect(saved.pricing!.lineItems.map(line => line.sortOrder)).toEqual([0, 0]);
+    expect(saved.pricing!.lineItems.map(line => line.sortOrder)).toEqual([0, 1]);
     expect(saved.pricing!.lineItems[0]).not.toHaveProperty("vehiclePriceKey"); expect(saved.pricing!.lineItems[0]).not.toHaveProperty("durationMinutes"); expect(saved.pricing!.lineItems[0]).not.toHaveProperty("taxable");
     expect(fetch).toHaveBeenCalledOnce(); expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty("amount");
   });
   it("uses server persisted pricing even when Price Book/tax legitimately changed since quote", async () => {
     const changed = { ...job(), amount: 450, subtotalAmount: 500, discountAmount: 50, taxAmount: 0, taxRateBps: 0,
+      tax_amount: 0, tax_rate_bps: 0,
       lineItems: job().lineItems.map(line => ({ ...line, unitPrice: 200, lineTotal: 300 })) };
     const fetch = mock({ job: changed, operation }, 201); const saved = await createJobSyncCompanyJob(TOKEN, COMPANY, input());
     expect(saved.pricing).toMatchObject({ totalAmount: 450, subtotalAmount: 500, discountAmount: 50, taxAmount: 0 });
@@ -227,7 +230,7 @@ describe("canonical persisted CREATE and GET pricing with legacy compatibility",
     expect(normalizeJobSyncCompanyJobDetail({ job: { ...canonical, photos: undefined } }, 91, COMPANY)).toBeNull();
   });
   it("preserves absent legacy pricing and refuses to guess nested pricingBreakdown", async () => {
-    const { lineItems, subtotalAmount, discountAmount, taxAmount, taxRateBps, discountKind, discountCode, ...legacy } = job();
+    const { lineItems, subtotalAmount, discountAmount, taxAmount, taxRateBps, tax_amount, tax_rate_bps, discountKind, discountCode, ...legacy } = job();
     mock({ job: { ...legacy, pricingBreakdown: { lineItems, subtotalAmount, taxAmount } } }, 201);
     const oldInput = { customerId: 41, priceBookServiceId: 71, assignedUserId: 81, scheduledStartAt: start, scheduledEndAt: end };
     expect(await createJobSyncCompanyJob(TOKEN, COMPANY, oldInput)).not.toHaveProperty("pricing");
@@ -235,11 +238,22 @@ describe("canonical persisted CREATE and GET pricing with legacy compatibility",
     expect(normalizeCompanyJobPricing(legacy)).toBeUndefined();
   });
   it("normalizes missing legacy taxes to unavailable null, but new CREATE cannot claim verification", async () => {
-    const { taxAmount, taxRateBps, discountKind, discountCode, ...legacyPricing } = job();
+    const { taxAmount, taxRateBps, tax_amount, tax_rate_bps, discountKind, discountCode, ...legacyPricing } = job();
     const detail = normalizeJobSyncCompanyJobDetail({ job: legacyPricing }, 91, COMPANY);
     expect(detail?.pricing).toMatchObject({ taxAmount: null, taxRateBps: null, discountKind: null, discountCode: null });
     mock({ job: legacyPricing, operation }, 201);
     await expect(createJobSyncCompanyJob(TOKEN, COMPANY, input())).rejects.toMatchObject({ code: "INVALID_CREATE_RESPONSE" });
+  });
+  it.each([undefined, null])("keeps false canonical zero unavailable with stored tax %j, and cannot certify CREATE/replay", async stored => {
+    const historical = { ...job(), taxAmount: 0, taxRateBps: 0, tax_amount: stored, tax_rate_bps: stored };
+    const detail = normalizeJobSyncCompanyJobDetail({ job: historical }, 91, COMPANY);
+    expect(detail?.pricing).toMatchObject({ taxAmount: null, taxRateBps: null, totalAmount: 306 });
+    expect(companyJobPricingMatchesInput(detail?.pricing, quoteInput())).toBe(false);
+    for (const replayed of [false, true]) {
+      const fetch = mock({ job: historical, operation: { ...operation, replayed } }, replayed ? 200 : 201);
+      await expect(createJobSyncCompanyJob(TOKEN, COMPANY, input())).rejects.toMatchObject({ code: "INVALID_CREATE_RESPONSE" });
+      expect(fetch).toHaveBeenCalledOnce();
+    }
   });
   it("accepts null legacy service references without inventing ID but rejects them for new request readback", async () => {
     const saved = job(); saved.lineItems[0].priceBookItemId = null as any;
@@ -270,10 +284,15 @@ describe("canonical persisted CREATE and GET pricing with legacy compatibility",
     const fetch = mock({ job: { ...job(), ...patch }, operation }, 201);
     await expect(createJobSyncCompanyJob(TOKEN, COMPANY, input())).rejects.toMatchObject({ code: "INVALID_CREATE_RESPONSE" }); expect(fetch).toHaveBeenCalledOnce();
   });
-  it("supports persisted-order validation without requiring unique/index sortOrder", () => {
-    const normalized = normalizeCompanyJobPricing(job())!;
+  it.each([[0, 0], [4, 4], [4, 9]])("supports legacy/tied/non-contiguous persisted order %j without unique/index ordinals", async (first, second) => {
+    const persisted = { ...job(), lineItems: job().lineItems.map((line, index) => ({ ...line, sortOrder: index === 0 ? first : second })) };
+    const normalized = normalizeCompanyJobPricing(persisted)!;
     expect(companyJobPricingMatchesInput(normalized, { lineItems: normalizeCompanyJobLineItems(lines()), discount: normalizeCompanyJobDiscount(discount()) })).toBe(true);
     expect(companyJobPricingMatchesInput(normalized, { lineItems: normalizeCompanyJobLineItems(lines().reverse()), discount: normalizeCompanyJobDiscount(discount()) })).toBe(false);
+    expect(normalizeJobSyncCompanyJobDetail({ job: persisted }, 91, COMPANY)?.pricing?.lineItems).toEqual(persisted.lineItems);
+    const fetch = mock({ job: persisted, operation }, 201);
+    expect((await createJobSyncCompanyJob(TOKEN, COMPANY, input())).pricing?.lineItems).toEqual(persisted.lineItems);
+    expect(fetch).toHaveBeenCalledOnce();
   });
   it.each([{ totalAmount: "306" }, { subtotalAmount: undefined }, { taxAmount: NaN }, { taxRateBps: Infinity },
     { discountAmount: -1 }, { discountKind: undefined }, { discountCode: undefined }, { lineItems: undefined },
@@ -286,6 +305,7 @@ describe("canonical persisted CREATE and GET pricing with legacy compatibility",
   });
   it("supports a legacy ID plus discount but keeps the new strict saved breakdown requirement", async () => {
     const saved = { ...job(), amount: 90, subtotalAmount: 100, discountAmount: 10, taxAmount: 0, taxRateBps: 0, discountKind: "flat", discountCode: null,
+      tax_amount: 0, tax_rate_bps: 0,
       lineItems: [{ ...job().lineItems[0], quantity: 1, lineTotal: 100 }] };
     mock({ job: saved, operation }, 201);
     const request = { ...input(), lineItems: undefined, priceBookServiceId: 71, discount: { kind: "flat" as const, value: 10 } };

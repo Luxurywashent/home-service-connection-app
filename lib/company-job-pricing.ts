@@ -1,4 +1,4 @@
-/** Exact mobile pricing contracts from backend c0c63e63; no client pricing formulas. */
+/** Mobile pricing contracts verified against unpublished 2818bb72; no client pricing formulas. */
 export type JobSyncCompanyJobLineInput = {
   priceBookItemId: number;
   quantity: number;
@@ -148,11 +148,29 @@ export function normalizeCompanyJobQuote(value: unknown, input: JobSyncCompanyJo
     persistence: Object.freeze({ taxStored: true as const, note: persistence.note }) });
 }
 
+/** 2818 detail/create retain stored snake-case columns via SELECT j.*; not a new wire field. */
+function persistedTaxValue(
+  row: Record<string, unknown>, field: "taxAmount" | "taxRateBps", storedField: "tax_amount" | "tax_rate_bps",
+  validate: (value: unknown) => value is number, requireStoredTaxEvidence: boolean,
+): number | null | undefined {
+  const canonical = row[field];
+  if (!Object.hasOwn(row, storedField)) return requireStoredTaxEvidence ? null : canonical as number | null | undefined ?? null;
+  const stored = row[storedField];
+  // The backend currently projects these unavailable values as zero. Do not repeat that claim.
+  if (stored === null || stored === undefined) return null;
+  const numeric = typeof stored === "string" && /^\d+(?:\.\d+)?$/.test(stored) ? Number(stored) : stored;
+  if (!validate(numeric) || (canonical !== null && canonical !== undefined && canonical !== numeric)) return undefined;
+  // Never fill a missing canonical value from a storage alias or calculate an amount.
+  return canonical as number | null | undefined ?? null;
+}
+
 /**
  * Read ONLY canonical root pricing. undefined = legacy absent; null = present malformed.
- * Missing/null tax fields are unavailable, not synthesized zero. No quote-only fields are invented.
+ * Missing/null tax fields are unavailable, not synthesized zero. Stored null overrides false canonical zero.
+ * Parent adapters must require stored evidence for 2818 detail/create/replay: its DTO has no availability flag.
+ * Default remains compatible with normalized pricing and pre-existing canonical-only fixtures.
  */
-export function normalizeCompanyJobPricing(value: unknown): JobSyncCompanyJobPricing | null | undefined {
+export function normalizeCompanyJobPricing(value: unknown, options: { requireStoredTaxEvidence?: boolean } = {}): JobSyncCompanyJobPricing | null | undefined {
   const row = record(value);
   if (!row) return null;
   const fields = ["lineItems", "subtotalAmount", "discountAmount", "taxAmount", "taxRateBps", "discountKind", "discountCode"];
@@ -163,6 +181,9 @@ export function normalizeCompanyJobPricing(value: unknown): JobSyncCompanyJobPri
     || (row.taxRateBps !== undefined && row.taxRateBps !== null && !taxRate(row.taxRateBps))
     || (row.discountKind !== undefined && !discountKind(row.discountKind))
     || (row.discountCode !== undefined && !discountCode(row.discountCode))) return null;
+  const taxAmount = persistedTaxValue(row, "taxAmount", "tax_amount", money, options.requireStoredTaxEvidence === true);
+  const taxRateBps = persistedTaxValue(row, "taxRateBps", "tax_rate_bps", taxRate, options.requireStoredTaxEvidence === true);
+  if (taxAmount === undefined || taxRateBps === undefined) return null;
   const seen = new Set<number>();
   const lines: JobSyncCompanyJobPricing["lineItems"] = [];
   for (const raw of row.lineItems) {
@@ -178,8 +199,7 @@ export function normalizeCompanyJobPricing(value: unknown): JobSyncCompanyJobPri
       quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder }));
   }
   return Object.freeze({ lineItems: Object.freeze(lines) as JobSyncCompanyJobPricing["lineItems"],
-    subtotalAmount: row.subtotalAmount, discountAmount: row.discountAmount, taxAmount: row.taxAmount as number | null | undefined ?? null,
-    taxRateBps: row.taxRateBps as number | null | undefined ?? null,
+    subtotalAmount: row.subtotalAmount, discountAmount: row.discountAmount, taxAmount, taxRateBps,
     discountKind: row.discountKind as JobSyncCompanyJobPricing["discountKind"] | undefined ?? null,
     discountCode: row.discountCode as string | null | undefined ?? null, totalAmount: row.amount });
 }

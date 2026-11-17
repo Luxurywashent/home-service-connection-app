@@ -1,6 +1,7 @@
 import {
   getJobSyncCompanyJobDetail,
   getJobSyncMobileSession,
+  JobSyncApiError,
   type JobSyncNativeSession,
 } from "./jobsync-mobile-api";
 import {
@@ -8,6 +9,7 @@ import {
   companyJobPrivateNotesScope,
   canEditCompanyJobPrivateNotes,
   validCompanyJobPrivateNoteInput,
+  normalizeCompanyJobPrivateNotesVersion,
   type CompanyJobPrivateNotesDetail,
 } from "./company-job-private-notes";
 
@@ -16,6 +18,7 @@ export type CompanyJobPrivateNotesWriter = (
   token: string,
   jobId: number,
   privateNotes: string,
+  expectedUpdatedAt: string,
 ) => Promise<unknown>;
 export type CompanyJobPrivateNotesTransport = {
   session: typeof getJobSyncMobileSession;
@@ -42,22 +45,29 @@ export function companyJobPrivateNotesWriteBlocked(
   return writes.has(key) || unresolved.has(key);
 }
 
-/** Exact f3576bcb acknowledgment. Do not accept a success flag, alias or coercion alone. */
+/** Exact 2818bb72 acknowledgment, with a verified canonical version; no aliases/coercion. */
 export function verifyCompanyJobPrivateNotesAck(
   payload: unknown,
   jobId: number,
   privateNotes: string,
+  expectedUpdatedAt?: string,
 ): boolean {
   if (!payload || typeof payload !== "object" || Array.isArray(payload))
     return false;
   const row = payload as Record<string, unknown>;
+  const version = normalizeCompanyJobPrivateNotesVersion(row.updatedAt);
+  const baseline = normalizeCompanyJobPrivateNotesVersion(expectedUpdatedAt);
   return (
     Object.hasOwn(row, "success") &&
     row.success === true &&
     Object.hasOwn(row, "jobId") &&
     row.jobId === jobId &&
     Object.hasOwn(row, "privateNotes") &&
-    row.privateNotes === privateNotes
+    row.privateNotes === privateNotes &&
+    Object.hasOwn(row, "updatedAt") &&
+    version !== null &&
+    (expectedUpdatedAt === undefined ||
+      (baseline !== null && Date.parse(version) > Date.parse(baseline)))
   );
 }
 
@@ -68,10 +78,7 @@ export type CompanyJobPrivateNotesSaveResult = {
 };
 
 function knownVersion(detail: CompanyJobPrivateNotesDetail): boolean {
-  return (
-    typeof detail.updatedAt === "string" &&
-    Number.isFinite(Date.parse(detail.updatedAt))
-  );
+  return normalizeCompanyJobPrivateNotesVersion(detail.updatedAt) !== null;
 }
 
 /** Narrow finite controller: one PATCH at most; no automatic retry, persistence or public DTO. */
@@ -119,6 +126,7 @@ export function createCompanyJobPrivateNotesController(input: {
         pending: false,
         error: null,
       }) ||
+      !knownVersion(detail) ||
       (typeof detail.privateNotes !== "string" && detail.privateNotes !== null)
     )
       throw new Error("Current private notes could not be verified.");
@@ -176,7 +184,8 @@ export function createCompanyJobPrivateNotesController(input: {
           return result("stale", "Private-note editing was interrupted.");
         if (
           !knownVersion(fresh) ||
-          fresh.updatedAt !== baseline.updatedAt ||
+          normalizeCompanyJobPrivateNotesVersion(fresh.updatedAt) !==
+            normalizeCompanyJobPrivateNotesVersion(baseline.updatedAt) ||
           fresh.privateNotes !== baseline.privateNotes ||
           fresh.assignedUserId !== baseline.assignedUserId
         )
@@ -186,7 +195,8 @@ export function createCompanyJobPrivateNotesController(input: {
           );
         if (!current())
           return result("stale", "Private-note editing was interrupted.");
-        // Strict endpoint has NO expectedUpdatedAt support. Never fabricate server concurrency protection.
+        // Exact new strict endpoint supports the canonical GET version in its atomic UPDATE predicate.
+        const expectedUpdatedAt = normalizeCompanyJobPrivateNotesVersion(baseline.updatedAt)!;
         consumed = true;
         attempted = true;
         unresolved.add(key);
@@ -194,6 +204,7 @@ export function createCompanyJobPrivateNotesController(input: {
           original.token,
           input.jobId,
           privateNotes,
+          expectedUpdatedAt,
         );
         if (!current())
           return result("stale", "Private-note editing was interrupted.");
@@ -201,6 +212,7 @@ export function createCompanyJobPrivateNotesController(input: {
           ack,
           input.jobId,
           privateNotes,
+          expectedUpdatedAt,
         );
         const detail = await read(); // Independent canonical readback even for malformed acknowledgments.
         if (!detail || !current())
@@ -208,7 +220,9 @@ export function createCompanyJobPrivateNotesController(input: {
         if (
           !acknowledged ||
           !knownVersion(detail) ||
-          detail.privateNotes !== privateNotes
+          detail.privateNotes !== privateNotes ||
+          normalizeCompanyJobPrivateNotesVersion(detail.updatedAt) !==
+            normalizeCompanyJobPrivateNotesVersion((ack as Record<string, unknown>).updatedAt)
         )
           return result(
             "uncertain",
@@ -216,7 +230,13 @@ export function createCompanyJobPrivateNotesController(input: {
           );
         unresolved.delete(key);
         return result("saved", "Private notes saved and verified.");
-      } catch {
+      } catch (error) {
+        if (!current()) return result("stale", "Private-note editing was interrupted.");
+        if (attempted && error instanceof JobSyncApiError && error.status === 409 && error.code === "CONFLICT")
+          return result(
+            "conflict",
+            "This Job changed elsewhere. Refresh and review current private notes before editing; this save was not confirmed.",
+          );
         // A failed preflight never writes. Any attempted PATCH may have committed, even after 4xx/5xx.
         return attempted
           ? result(

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   assertCompanyJobInvoiceJob, assertCompanyJobInvoiceSession,
-  captureCompanyJobInvoiceIntent, createCompanyJobInvoiceOptions,
+  captureCompanyJobInvoiceIntent, createCompanyJobInvoiceOptions, normalizeCompanyJobInvoiceSentTo,
 } from "../lib/company-job-invoice-intent";
 
 function session(role = "owner") {
@@ -37,7 +37,8 @@ describe("Company invoice captured options (no transport or override)", () => {
   });
   it("captures primitives and freezes nested options before await, ignoring unsupported fields", async () => {
     const signed = session(); const job = { id: "12", companyId: 9 };
-    const draft: any = { method: "sms", resend: true, recipientEmail: "override@example.test", overridePhone: "ignored", amount: 1 };
+    const draft: any = { method: "sms", resend: true, overridePhone: "ignored", amount: 1 };
+    expect(() => captureCompanyJobInvoiceIntent(signed, job, { ...draft, recipientEmail: "override@example.test" })).toThrow();
     const intent = captureCompanyJobInvoiceIntent(signed, job, draft);
     const afterAwait = Promise.resolve().then(() => intent);
     signed.token = "changed"; signed.company.id = 99; signed.user.id = 43; signed.user.role = "technician";
@@ -122,8 +123,8 @@ function harness(role = "owner", payments = true, companyId = 9) {
   return { company, db, selected, service, route, response };
 }
 function adapter(requestJson: (...args: any[]) => Promise<any>) {
-  return extract(mobileRoot + "lib/jobsync-mobile-api.ts", ["asRecord", "firstString", "validCompanyJobId", "createJobSyncBearerHeaders", "JobSyncApiError", "invoiceCommunicationState", "sendJobSyncCompanyJobInvoice"], {
-    requestJson, INVOICE_COMMUNICATION_STATES: new Set(["queued", "sending", "provider_accepted", "delivered", "failed", "bounced", "complained", "suppressed", "cancelled"]),
+  return extract(mobileRoot + "lib/jobsync-mobile-api.ts", ["asRecord", "firstString", "validCompanyJobId", "createJobSyncBearerHeaders", "requireJobSyncMutationToken", "JobSyncApiError", "invoiceCommunicationState", "sendJobSyncCompanyJobInvoice"], {
+    requestJson, createCompanyJobInvoiceOptions, normalizeCompanyJobInvoiceSentTo, INVOICE_COMMUNICATION_STATES: new Set(["queued", "sending", "provider_accepted", "delivered", "failed", "bounced", "complained", "suppressed", "cancelled"]),
   });
 }
 

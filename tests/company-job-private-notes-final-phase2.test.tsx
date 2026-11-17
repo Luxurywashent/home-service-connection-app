@@ -100,6 +100,8 @@ const { createRoot } = nativeRequire("react-dom/client") as {
     unmount: () => void;
   };
 };
+const V0 = "2026-12-01T12:00:00.000Z";
+const V1 = "2026-12-01T12:01:00.000Z";
 let sequence = 1000;
 function fixture() {
   const session: JobSyncNativeSession = {
@@ -164,9 +166,10 @@ function controllerFixture() {
   const write = vi
     .fn()
     .mockImplementation(
-      async (_token: string, jobId: number, privateNotes: string) => {
-        api.detail.mockResolvedValue({ ...detail, privateNotes });
-        return { success: true, jobId, privateNotes };
+      async (_token: string, jobId: number, privateNotes: string, expectedUpdatedAt: string) => {
+        expect(expectedUpdatedAt).toBe(V0);
+        api.detail.mockResolvedValue({ ...detail, privateNotes, updatedAt: V1 });
+        return { success: true, jobId, privateNotes, updatedAt: V1 };
       },
     );
   const make = (actor = session, baseline = detail) =>
@@ -310,9 +313,10 @@ describe("private-only exact endpoint contract and defensive input", () => {
   it("accepts exact empty-string acknowledgment, never null or alias", () => {
     expect(
       verifyCompanyJobPrivateNotesAck(
-        { success: true, jobId: 42, privateNotes: "" },
+        { success: true, jobId: 42, privateNotes: "", updatedAt: V1 },
         42,
         "",
+        V0,
       ),
     ).toBe(true);
   });
@@ -330,7 +334,7 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
       expect(f.api.session).toHaveBeenCalledTimes(2);
       expect(f.api.detail).toHaveBeenCalledTimes(2);
       expect(f.write).toHaveBeenCalledTimes(1);
-      expect(f.write).toHaveBeenCalledWith(f.session.token, 42, value);
+      expect(f.write).toHaveBeenCalledWith(f.session.token, 42, value, V0);
       expect((await controller.save(value)).status).toBe("blocked");
       expect(f.write).toHaveBeenCalledTimes(1);
     },
@@ -339,7 +343,7 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
     const f = controllerFixture();
     expect((await f.make().save("")).status).toBe("saved");
     expect(f.write).toHaveBeenCalledTimes(1);
-    expect(f.write).toHaveBeenCalledWith(f.session.token, 42, "");
+    expect(f.write).toHaveBeenCalledWith(f.session.token, 42, "", V0);
   });
   it.each([
     "role",
@@ -390,7 +394,7 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
     },
   );
   it.each(["version", "private note", "assignment", "missing version"])(
-    "rejects stale %s baseline without sending unsupported fields",
+    "rejects changed or unverified fresh %s without writing",
     async (kind) => {
       const f = controllerFixture();
       const fresh = { ...f.detail };
@@ -400,7 +404,7 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
       if (kind === "assignment") fresh.assignedUserId = 95;
       if (kind === "missing version") fresh.updatedAt = null;
       f.api.detail.mockResolvedValue(fresh);
-      expect((await f.make().save("new")).status).toBe("conflict");
+      expect((await f.make().save("new")).status).toBe(kind === "missing version" ? "blocked" : "conflict");
       expect(f.write).not.toHaveBeenCalled();
     },
   );
@@ -584,9 +588,10 @@ describe("actual React editor in existing compact slot — offline lifecycle fix
     writer = vi
       .fn()
       .mockImplementation(
-        async (_token: string, jobId: number, privateNotes: string) => {
-          mocks.detail.mockResolvedValue({ ...detail, privateNotes });
-          return { success: true, jobId, privateNotes };
+        async (_token: string, jobId: number, privateNotes: string, expectedUpdatedAt: string) => {
+          expect(expectedUpdatedAt).toBe(V0);
+          mocks.detail.mockResolvedValue({ ...detail, privateNotes, updatedAt: V1 });
+          return { success: true, jobId, privateNotes, updatedAt: V1 };
         },
       );
     props = {
@@ -734,17 +739,20 @@ describe("actual React editor in existing compact slot — offline lifecycle fix
       save();
     });
     expect(writer).toHaveBeenCalledTimes(1);
+    expect(writer).toHaveBeenCalledWith(props.session!.token, 42, "Private replacement", V0);
     expect(props.job.refresh).not.toHaveBeenCalled();
     expect(button("Save private job notes").disabled).toBe(true);
     mocks.detail.mockResolvedValue({
       ...props.job.detail!,
       privateNotes: "Private replacement",
+      updatedAt: V1,
     });
     await act(async () =>
       waiting.resolve({
         success: true,
         jobId: 42,
         privateNotes: "Private replacement",
+        updatedAt: V1,
       }),
     );
     expect(props.job.refresh).toHaveBeenCalledTimes(1);
