@@ -860,6 +860,101 @@ export async function getJobSyncCompanyJobDetail(token: string, jobId: number, c
   return detail;
 }
 
+/** Exact c5758ae6 Company Job tag resource. Not embedded in Job/customer DTOs. */
+export type JobSyncCompanyJobTag = {
+  id: number; jobId: number; displayName: string; normalizedName: string; createdBy: number;
+  createdAt: string | null; updatedAt: string | null;
+};
+export type JobSyncCompanyJobTagCreateInput = { name: string };
+export type JobSyncCompanyJobTagDeleteAcknowledgment = { success: true; tagId: number; jobId: number };
+
+export function createJobSyncCompanyJobTagPayload(input: JobSyncCompanyJobTagCreateInput): JobSyncCompanyJobTagCreateInput {
+  const row = asRecord(input);
+  if (!row || Object.keys(row).some((key) => key !== "name") || !Object.hasOwn(row, "name") || typeof row.name !== "string") {
+    throw new Error("A Company Job tag name is required.");
+  }
+  const name = row.name.normalize("NFKC").trim().replace(/\s+/g, " ");
+  if (!name) throw new Error("Tag name is required.");
+  if (name.length > 64) throw new Error("Tag name must be 64 characters or fewer.");
+  if (Array.from(name).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
+    throw new Error("Tag name contains an unsupported control character.");
+  }
+  return { name };
+}
+function normalizeJobSyncCompanyJobTag(value: unknown, jobId: number): JobSyncCompanyJobTag | null {
+  const row = asRecord(value);
+  if (!row || !Number.isSafeInteger(jobId) || jobId <= 0
+    || typeof row.id !== "number" || positiveJobSyncId(row.id) === null
+    || row.jobId !== jobId || typeof row.createdBy !== "number" || positiveJobSyncId(row.createdBy) === null
+    || !["id", "jobId", "displayName", "normalizedName", "createdBy", "createdAt", "updatedAt"].every((key) => Object.hasOwn(row, key))
+    || typeof row.normalizedName !== "string"
+    || !(row.createdAt === null || (typeof row.createdAt === "string" && row.createdAt.trim()))
+    || !(row.updatedAt === null || (typeof row.updatedAt === "string" && row.updatedAt.trim()))) return null;
+  try {
+    const { name } = createJobSyncCompanyJobTagPayload({ name: row.displayName as string });
+    if (row.displayName !== name || row.normalizedName !== name.toLocaleLowerCase("en-US")) return null;
+    return { id: row.id, jobId, displayName: name, normalizedName: row.normalizedName, createdBy: row.createdBy,
+      createdAt: row.createdAt as string | null, updatedAt: row.updatedAt as string | null };
+  } catch { return null; }
+}
+export function normalizeJobSyncCompanyJobTags(payload: unknown, jobId: number): JobSyncCompanyJobTag[] | null {
+  const root = asRecord(payload);
+  if (!root || !Object.hasOwn(root, "tags") || !Array.isArray(root.tags) || !Number.isSafeInteger(jobId) || jobId <= 0) return null;
+  const tags: JobSyncCompanyJobTag[] = [];
+  const ids = new Set<number>(); const names = new Set<string>();
+  for (const value of root.tags) {
+    const tag = normalizeJobSyncCompanyJobTag(value, jobId);
+    if (!tag || ids.has(tag.id) || names.has(tag.normalizedName)) return null;
+    ids.add(tag.id); names.add(tag.normalizedName); tags.push(tag);
+  }
+  return tags;
+}
+export function normalizeJobSyncCompanyJobTagCreateAcknowledgment(payload: unknown, jobId: number,
+  input: JobSyncCompanyJobTagCreateInput): JobSyncCompanyJobTag | null {
+  const root = asRecord(payload);
+  const tag = root && Object.hasOwn(root, "tag") ? normalizeJobSyncCompanyJobTag(root.tag, jobId) : null;
+  try {
+    const { name } = createJobSyncCompanyJobTagPayload(input);
+    return tag && tag.displayName === name && tag.normalizedName === name.toLocaleLowerCase("en-US") ? tag : null;
+  } catch { return null; }
+}
+export function normalizeJobSyncCompanyJobTagDeleteAcknowledgment(payload: unknown, jobId: number,
+  tagId: number): JobSyncCompanyJobTagDeleteAcknowledgment | null {
+  const root = asRecord(payload);
+  return root && ["success", "jobId", "tagId"].every((key) => Object.hasOwn(root, key))
+    && Number.isSafeInteger(jobId) && jobId > 0 && Number.isSafeInteger(tagId) && tagId > 0
+    && root.success === true && root.jobId === jobId && root.tagId === tagId ? { success: true, jobId, tagId } : null;
+}
+export async function getJobSyncCompanyJobTags(token: string, jobId: number): Promise<JobSyncCompanyJobTag[]> {
+  validCompanyJobId(jobId); requireJobSyncMutationToken(token);
+  const tags = normalizeJobSyncCompanyJobTags(await requestJson(`${COMPANY_JOBS_PATH}/${jobId}/tags`, {
+    method: "GET", headers: createJobSyncBearerHeaders(token),
+  }, 200), jobId);
+  if (tags === null) throw new JobSyncApiError("The backend did not return a verified Company Job tag collection. Refresh tags.", null, "INVALID_RESPONSE");
+  return tags;
+}
+/** One POST only; a duplicate or uncertain acknowledgment is not successful replay. */
+export async function addJobSyncCompanyJobTag(token: string, jobId: number,
+  input: JobSyncCompanyJobTagCreateInput): Promise<JobSyncCompanyJobTag> {
+  validCompanyJobId(jobId); requireJobSyncMutationToken(token);
+  const body = createJobSyncCompanyJobTagPayload(input);
+  const tag = normalizeJobSyncCompanyJobTagCreateAcknowledgment(await requestJson(`${COMPANY_JOBS_PATH}/${jobId}/tags`, {
+    method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body),
+  }, 201), jobId, body);
+  if (!tag) throw new JobSyncApiError("The backend did not acknowledge this Company Job tag. Refresh and review tags before trying again.", null, "INVALID_RESPONSE");
+  return tag;
+}
+/** Delete one canonical tag ID, no body/fallback/retry; readback remains controller-owned. */
+export async function removeJobSyncCompanyJobTag(token: string, jobId: number,
+  tagId: number): Promise<JobSyncCompanyJobTagDeleteAcknowledgment> {
+  validCompanyJobId(jobId); validCompanyJobId(tagId); requireJobSyncMutationToken(token);
+  const ack = normalizeJobSyncCompanyJobTagDeleteAcknowledgment(await requestJson(`${COMPANY_JOBS_PATH}/${jobId}/tags/${tagId}`, {
+    method: "DELETE", headers: createJobSyncBearerHeaders(token),
+  }, 200), jobId, tagId);
+  if (!ack) throw new JobSyncApiError("The backend did not acknowledge removing this Company Job tag. Refresh and review tags.", null, "INVALID_RESPONSE");
+  return ack;
+}
+
 function requireJobSyncMutationToken(token: string) {
   if (typeof token !== "string" || !token.trim() || /[\u0000-\u0020\u007f]/.test(token)) {
     throw new Error("A current Company session is required.");

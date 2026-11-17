@@ -38,6 +38,10 @@ import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { CompanyJobTags } from "@/components/company-job-tags";
+import { useCompanyJobTags } from "@/hooks/use-company-job-tags";
+import type { CompanyJobTagsTransport } from "@/lib/company-job-tags";
 import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
 import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
 import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
@@ -53,6 +57,9 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncMobileSession,
   getJobSyncCompanyJobDetail,
+  getJobSyncCompanyJobTags,
+  addJobSyncCompanyJobTag,
+  removeJobSyncCompanyJobTag,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
   updateJobSyncCompanyJobAssignment,
@@ -78,6 +85,12 @@ import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/
 import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
 import { CustomerContactActions } from "@/components/customer-contact-actions";
+
+const companyJobTagsApi: CompanyJobTagsTransport = {
+  session: getJobSyncMobileSession, detail: getJobSyncCompanyJobDetail, list: getJobSyncCompanyJobTags,
+  add: addJobSyncCompanyJobTag, remove: removeJobSyncCompanyJobTag,
+};
+
 
 const APP_API_BASE = "https://luxwashapp-n2wveyqg.manus.space";
 // Called only from the existing legacy blocker Save event, never during render.
@@ -1683,6 +1696,8 @@ export default function AdminScheduleScreen() {
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh), paidTotal: fresh.paidTotal, refundTotal: fresh.refundTotal, appliedEstimateCredit: fresh.appliedEstimateCredit, balance: fresh.balance, paymentStatus: fresh.paymentStatus }] : [];
       }));
     }, isCurrentCompanyJobOperation, companyJobOperationScope);
+  const companyJobTags = useCompanyJobTags(jobSyncSession, companyPhotoJobId, companyJobTagsApi,
+    isCurrentCompanyJobOperation, companyJobOperationScope);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -1699,7 +1714,8 @@ export default function AdminScheduleScreen() {
   const isCurrentCompanyPrivateNotes = isCurrentCompanyJobOperation;
   const { attachScrollRef: detailScrollRef, relatedRef: detailTagRef,
     scrollProps: detailScrollProps, onInputFocus: detailInputFocus, onInputBlur: detailInputBlur } = useCompanyJobKeyboard({
-    active: Boolean(selectedJob), isCurrent: renderedLegacyAction, scopeKey: managementActionKey,
+    active: Boolean(selectedJob), isCurrent: companyJobMode ? isCurrentCompanyJobOperation : renderedLegacyAction,
+    scopeKey: companyJobMode ? companyJobOperationScope : managementActionKey,
   });
   const isCurrentInvoice = () => managementActionRef.current.mounted && managementActionRef.current.focused
     && invoiceSessionRef.current.key === invoiceIdentityKey && invoiceSessionRef.current.generation === invoiceGeneration
@@ -3342,8 +3358,8 @@ export default function AdminScheduleScreen() {
 
       {/* Job Detail Modal */}
       <Modal visible={!!selectedJob && (!isJobSyncCompany || selectedJob.companyId === jobSyncSession?.company?.id)} animationType="slide" transparent={false}>
-        <CompanyJobKeyboardBoundary style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
-          <View style={{ flex: 1 }}>
+        <CompanyJobKeyboardBoundary active={Boolean(selectedJob)} style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
+          <SafeAreaView edges={Platform.OS === "ios" ? ["bottom"] : []} style={{ flex: 1 }}>
             {selectedJob && (
               <ScrollView ref={detailScrollRef} {...detailScrollProps} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
                 {/* ─── Native Google Maps job header ─── */}
@@ -4427,7 +4443,10 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 {/* ── Job Tags Card ── */}
-                <View ref={detailTagRef} collapsable={false} style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
+                {companyJobMode && <CompanyJobTags session={jobSyncSession} jobId={companyPhotoJobId}
+                    model={companyJobTags} isCurrent={isCurrentCompanyJobOperation} operationScopeKey={companyJobOperationScope}
+                    variant="admin" cardRef={detailTagRef} onInputFocus={detailInputFocus} onInputBlur={detailInputBlur} />}
+                  {!companyJobMode && <View ref={detailTagRef} collapsable={false} style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <Text style={{ fontSize: 16 }}>🏷️</Text>
                     <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Tags</Text>
@@ -4446,7 +4465,7 @@ export default function AdminScheduleScreen() {
                       <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Add</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
+                </View>}
 
                 {/* ── Reassign Section ── */}
 
@@ -4938,7 +4957,7 @@ export default function AdminScheduleScreen() {
                 </View>{/* end paddingHorizontal wrapper */}
               </ScrollView>
             )}
-          </View>
+          </SafeAreaView>
         </CompanyJobKeyboardBoundary>
         {/* Edit Address Modal */}
         {/* Full-screen Address Photo Viewer */}

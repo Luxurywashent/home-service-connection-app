@@ -43,6 +43,10 @@ import { formatJobMapAddress } from "@/lib/job-street-view";
 import { CustomerContactActions } from "@/components/customer-contact-actions";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { CompanyJobTags } from "@/components/company-job-tags";
+import { useCompanyJobTags } from "@/hooks/use-company-job-tags";
+import type { CompanyJobTagsTransport } from "@/lib/company-job-tags";
 import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
 import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
 import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
@@ -50,7 +54,7 @@ import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
 import { useJobSyncAuth } from "@/lib/jobsync-auth-context";
-import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingState, positiveJobSyncId, updateJobSyncCompanyJobPrivateNotes } from "@/lib/jobsync-mobile-api";
+import { getJobSyncCompanyJobs, getJobSyncCompanySettings, getCompanyJobBillingState, positiveJobSyncId, updateJobSyncCompanyJobPrivateNotes, getJobSyncMobileSession, getJobSyncCompanyJobDetail, getJobSyncCompanyJobTags, addJobSyncCompanyJobTag, removeJobSyncCompanyJobTag } from "@/lib/jobsync-mobile-api";
 import { useCompanyJob } from "@/hooks/use-company-job";
 import { useCompanyJobOperation, useCompanyJobOperationEpoch } from "@/hooks/use-company-job-operation";
 import { CompanyJobProgress } from "@/components/company-job-progress";
@@ -66,6 +70,11 @@ import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressSta
 import { trpc } from "@/lib/trpc";
 import * as Haptics from "expo-haptics";
 import { createForegroundLocationSession } from "@/lib/foreground-location-session";
+
+const companyJobTagsApi: CompanyJobTagsTransport = {
+  session: getJobSyncMobileSession, detail: getJobSyncCompanyJobDetail, list: getJobSyncCompanyJobTags,
+  add: addJobSyncCompanyJobTag, remove: removeJobSyncCompanyJobTag,
+};
 
 // ─── Service Catalog ──────────────────────────────────────────────────────────
 
@@ -2517,6 +2526,8 @@ export default function ScheduleScreen() {
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
       }));
     }, isCurrentCompanyJobOperation, companyJobOperationScope);
+  const companyJobTags = useCompanyJobTags(jobSyncSession, companyPhotoJobId, companyJobTagsApi,
+    isCurrentCompanyJobOperation, companyJobOperationScope);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -4730,7 +4741,7 @@ export default function ScheduleScreen() {
       {/* Job Detail Modal - rendered outside ScreenContainer to prevent z-index conflicts */}
       <Modal visible={!!selectedJob} animationType="slide" transparent={false} onRequestClose={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}>
           <CompanyJobKeyboardBoundary active={detailKeyboardActive} style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
-            <View style={{ flex: 1 }}>
+            <SafeAreaView edges={Platform.OS === "ios" ? ["bottom"] : []} style={{ flex: 1 }}>
               {selectedJob && (
                 <>
                 <ScrollView ref={detailScrollRef} {...detailScrollProps} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
@@ -5469,6 +5480,9 @@ export default function ScheduleScreen() {
                   ) : null}
 
                   {/* ─── Job Tags Card ─── */}
+                  {companyJobMode && <CompanyJobTags session={jobSyncSession} jobId={companyPhotoJobId}
+                    model={companyJobTags} isCurrent={isCurrentCompanyJobOperation} operationScopeKey={companyJobOperationScope}
+                    variant="schedule" cardRef={detailTagRef} onInputFocus={detailInputFocus} onInputBlur={detailInputBlur} />}
                   {!companyJobMode && <View ref={detailTagRef} collapsable={false} style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -6089,7 +6103,7 @@ export default function ScheduleScreen() {
                 )}
                 </>
               )}
-            </View>
+            </SafeAreaView>
           </CompanyJobKeyboardBoundary>
 
           {/* ─── In-App Chat — rendered INSIDE job detail Modal to avoid iOS two-modal limitation ─── */}

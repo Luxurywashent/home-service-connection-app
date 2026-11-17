@@ -209,11 +209,13 @@ describe("existing compact tag controls and keyboard hookups remain contract-lim
     expect(technician).toContain("onFocus={detailInputFocus}"); expect(technician).toContain("onBlur={detailInputBlur}");
     expect(technician).toContain("saveJobTags(selectedJob, [...(selectedJob.tags ?? []), trimmed])");
   });
-  it("admin card still appears but its tag actions and keyboard currentness remain legacy-only", () => {
+  it("legacy admin card keeps its guarded actions while keyboard currentness branches for Company mode", () => {
     expect(administrator).toContain("<View ref={detailTagRef} collapsable={false}");
     expect(administrator).toContain("onSubmitEditing={() => adminAddTag(selectedJob, adminTagInput)}");
     expect(administrator).toContain("onPress={() => adminRemoveTag(selectedJob, tag)}");
-    expect(administrator).toContain("active: Boolean(selectedJob), isCurrent: renderedLegacyAction, scopeKey: managementActionKey");
+    expect(administrator).toContain("isCurrent: companyJobMode ? isCurrentCompanyJobOperation : renderedLegacyAction");
+    expect(administrator).toContain("scopeKey: companyJobMode ? companyJobOperationScope : managementActionKey");
+    expect(administrator).toContain("{!companyJobMode && <View ref={detailTagRef}");
     expect(administrator).toContain("onFocus={detailInputFocus} onBlur={detailInputBlur} value={adminTagInput}");
   });
   it("retains bounded modal scrolling and AppState-aware keyboard handling, without adding a Company field", () => {

@@ -42,7 +42,6 @@ export function useCompanyJobKeyboard({ active, isCurrent, scopeKey }: {
   active: boolean; isCurrent: () => boolean; scopeKey: string | number;
 }) {
   const scrollRef = useRef<ScrollView | null>(null);
-  const attachScrollRef = useCallback((scroll: ScrollView | null) => { scrollRef.current = scroll; }, []);
   const relatedTarget = useRef<CompanyJobKeyboardTarget | null>(null);
   const relatedRef = useCallback((target: CompanyJobKeyboardTarget | null) => { relatedTarget.current = target; }, []);
   const live = useRef({ active, isCurrent, scopeKey, mounted: false, foreground: foreground() });
@@ -57,6 +56,16 @@ export function useCompanyJobKeyboard({ active, isCurrent, scopeKey }: {
     timers.current.forEach(clearTimeout);
     timers.current = [];
   }, []);
+  const attachScrollRef = useCallback((scroll: ScrollView | null) => {
+    if (scrollRef.current === scroll) return;
+    // A reopened sheet has a new native scroll origin/content extent. Never use
+    // the previous body's measurements, focused input, or deferred corrections.
+    cancel();
+    focused.current = null;
+    offset.current = 0;
+    contentHeight.current = 0;
+    scrollRef.current = scroll;
+  }, [cancel]);
   const allowed = useCallback(() => live.current.mounted && live.current.active && live.current.foreground
     && !suspended.current && live.current.isCurrent(), []);
   const reveal = useCallback((request: number) => {
