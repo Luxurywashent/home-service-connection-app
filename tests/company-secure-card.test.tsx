@@ -354,3 +354,42 @@ describe("browser fallback and minimal native payment plugin", () => {
     expect(JSON.stringify(config.ios?.entitlements ?? {})).not.toMatch(/proximity-reader|tap[- ]?to[- ]?pay/i);
   });
 });
+
+describe("checkout-bound configuration and queued final authorization", () => {
+  it("preserves readiness and entered-card completeness for freshly allocated equivalent configurations", async () => {
+    await render(); await cardChange(); const field = nodes("sdk-card-field")[0];
+    for (let n = 0; n < 3; n++) await render({ configuration: { ...props.configuration }, onChange: vi.fn() });
+    expect(mocks.init).toHaveBeenCalledTimes(1); expect(nodes("sdk-card-field")[0]).toBe(field);
+    expect(await outcome(() => handle.current!.tokenize())).toMatchObject({ paymentMethodId: "pm_FixtureOnly" });
+  });
+  it("resets readiness and card completeness for a real connected-account change", async () => {
+    await render(); await cardChange(); const original = handle.current!;
+    const wait = deferred<void>(undefined); mocks.init.mockReturnValueOnce(wait.promise);
+    await render({ configuration: configuration("test", "acct_Company10") });
+    expect(nodes("sdk-card-field")).toHaveLength(0); expect(props.onReady).toHaveBeenLastCalledWith(false);
+    const retainedConfirmation = original.confirm(CLIENT_SECRET, "pm_FixtureOnly").catch((error) => error);
+    await settle(wait, undefined); expect(props.onReady).toHaveBeenLastCalledWith(true);
+    expect(await retainedConfirmation).toBeInstanceOf(Error);
+    expect(await outcome(() => handle.current!.tokenize())).toEqual(new Error(secureCardMessage("incomplete")));
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+  it.each(["authorization", "quote"])("checks %s expiry immediately before SDK confirm after waiting in the process queue", async (_boundary) => {
+    await render(); await cardChange();
+    const wait = deferred(tokenResult()); mocks.tokenize.mockReturnValueOnce(wait.promise);
+    let token!: Promise<unknown>; let confirmation!: Promise<unknown>; let authorized = true;
+    const guard = vi.fn(() => authorized);
+    await act(async () => {
+      token = handle.current!.tokenize();
+      confirmation = handle.current!.confirm(CLIENT_SECRET, "pm_FixtureOnly", guard).catch((error) => error);
+    });
+    expect(guard).not.toHaveBeenCalled(); expect(mocks.confirm).not.toHaveBeenCalled(); authorized = false;
+    await settle(wait, tokenResult()); await token;
+    expect(await confirmation).toEqual(new Error(secureCardMessage("expired")));
+    expect(guard).toHaveBeenCalledTimes(1); expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+  it("permits one queued final confirmation when the per-call guard still authorizes it", async () => {
+    await render(); const guard = vi.fn(() => true);
+    expect(await outcome(() => handle.current!.confirm(CLIENT_SECRET, "pm_FixtureOnly", guard))).toMatchObject({ outcome: "succeeded" });
+    expect(guard).toHaveBeenCalledTimes(1); expect(mocks.confirm).toHaveBeenCalledTimes(1);
+  });
+});

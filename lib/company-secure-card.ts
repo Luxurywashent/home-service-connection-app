@@ -12,7 +12,8 @@ export type CompanySecureCardResult = {
 };
 export type CompanySecureCardHandle = {
   tokenize(): Promise<CompanySecureCardToken>;
-  confirm(clientSecret: string, paymentMethodId: string): Promise<CompanySecureCardResult>;
+  /** Rechecked inside the serialized SDK action, immediately before confirmation. */
+  confirm(clientSecret: string, paymentMethodId: string, isAuthorized?: () => boolean): Promise<CompanySecureCardResult>;
   clear(): void;
 };
 export type CompanySecureCardProps = {

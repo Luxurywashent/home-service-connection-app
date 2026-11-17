@@ -60,7 +60,10 @@ vi.mock("../components/company-native-checkout-flow", async () => {
   return { CompanyNativeCheckoutFlow: (props: CompanyNativeCheckoutFlowProps) => {
     mocks.flow = props;
     return R.createElement("checkout-flow-probe", null,
-      props.visible ? props.renderCardField?.({ disabled: false, visible: true, isCurrent: props.isCurrent }) : null);
+      props.visible && props.state.step !== "method" ? props.renderCardField?.({
+        disabled: props.state.status !== "ready" || !props.state.manualCardAvailable || props.state.step !== "card",
+        visible: props.state.step === "card", isCurrent: props.isCurrent,
+      }) : null);
   } };
 });
 vi.mock("../components/company-secure-card-field", async () => {
@@ -436,7 +439,7 @@ describe("secure-card and protected nonsensitive pointer wrapper wiring", () => 
     expect(controller().approveSignature).toHaveBeenCalledWith({ pngDataUrl: PNG }); expect(controller().confirm).toHaveBeenCalledTimes(1);
     const provider = input().provider!;
     await invoke(() => provider.confirm({ clientSecret: SECRET, paymentMethodId: PM, configuration: configured().configuration!, isCurrent: () => true }));
-    expect(mocks.confirmCard).toHaveBeenCalledWith(SECRET, PM);
+    expect(mocks.confirmCard).toHaveBeenCalledWith(SECRET, PM, expect.any(Function));
     expect(props.onVerifiedDetail).not.toHaveBeenCalled(); expect(flow().state.status).not.toBe("paid");
     expect(mocks.reserve).not.toHaveBeenCalled(); expect(JSON.stringify(flow().state)).not.toContain(SECRET);
     const unpaid = canonical(); await invoke(() => input().onVerifiedDetail?.(unpaid));
@@ -454,5 +457,89 @@ describe("secure-card and protected nonsensitive pointer wrapper wiring", () => 
     await invoke(() => flow().onClose()); await invoke(() => wait.resolve({ outcome: "succeeded", intentId: "pi_RoutingFixtureOnly" }));
     expect(await pending).toBeInstanceOf(Error); expect(flow().state.signature).toBeNull(); expect(props.onVerifiedDetail).not.toHaveBeenCalled();
     expect(mocks.clearCard).toHaveBeenCalled(); expect(mocks.reserve).not.toHaveBeenCalled();
+  });
+});
+
+describe("verified wrapper lifecycle completion regressions", () => {
+  function cardNode(node: PhotoTestNode = container): PhotoTestNode | undefined {
+    return node.nodeName.toLowerCase() === "secure-card-probe" ? node : node.childNodes.map((child) => cardNode(child)).find(Boolean);
+  }
+  it("keeps the same secure-card host throughout signature saving, preparation and final confirmation", async () => {
+    const base = quoteState().quote!;
+    const quote = { ...base, tip: { kind: "none" as const }, tipCents: 0, totalCents: base.principalCents };
+    const approvalWait = deferred<any>(); const prepareWait = deferred<any>();
+    const transport = {
+      capabilities: vi.fn(async () => configured().configuration!), quote: vi.fn(async () => quote),
+      approveSignature: vi.fn((..._args: Parameters<NonNullable<CompanyNativeCheckoutControllerInput["nativeTransport"]>["approveSignature"]>) => approvalWait.promise), prepare: vi.fn(() => prepareWait.promise),
+      authorizeConfirmation: vi.fn(async (_context, request) => ({ ...request, authorized: true as const, sharedLockHeld: true as const, expiresAt: Date.now() + 60000 })),
+      status: vi.fn(async (_context, operationKey) => ({ companyId: props.session.company!.id, jobId: 12, operationKey, state: "unknown" as const })),
+    } satisfies NonNullable<CompanyNativeCheckoutControllerInput["nativeTransport"]>;
+    mocks.factory.mockImplementation((options: CompanyNativeCheckoutControllerInput) => {
+      mocks.inputs.push(options);
+      const c = mocks.actualFactory({ ...options, nativeTransport: transport }); mocks.controllers.push(c); return c;
+    });
+    await render(); await invoke(() => flow().onManualCardEntry());
+    await invoke(() => { mocks.cardProps!.onReady(true); mocks.cardProps!.onChange({ complete: true, brand: "Visa", last4: "4242" }); });
+    const host = cardNode(); expect(host).toBeDefined();
+    await invoke(() => flow().onCardContinue()); await invoke(() => flow().onTipContinue());
+    expect(flow().state.step).toBe("signature"); const signed = draft();
+    await invoke(() => flow().onSignatureChange(signed)); await invoke(() => flow().onConfirmPayment(signed));
+    expect(transport.approveSignature).toHaveBeenCalledTimes(1); expect(cardNode()).toBe(host);
+    expect(flow().state.step).toBe("signature"); expect(mocks.cardProps!.disabled).toBe(false);
+    const intent = transport.approveSignature.mock.calls[0][1].intent;
+    await invoke(() => approvalWait.resolve({ intent, signatureApprovalId: "approval_fixture", privateStored: true }));
+    expect(transport.prepare).toHaveBeenCalledTimes(1); expect(cardNode()).toBe(host);
+    await invoke(() => prepareWait.resolve({ kind: "prepared", intent, signatureApprovalId: "approval_fixture", paymentIntentId: "pi_RoutingFixtureOnly",
+      clientSecret: SECRET, unconfirmed: true, serverReauthorized: true, sharedLockHeld: true }));
+    expect(mocks.confirmCard).toHaveBeenCalledTimes(1); expect(cardNode()).toBe(host);
+    expect(flow().state.status).toBe("processing"); expect(mocks.removePointer).not.toHaveBeenCalled();
+    await invoke(() => flow().onRefreshStatus()); expect(transport.status).toHaveBeenCalledWith(expect.anything(), POINTER_KEY);
+    expect(mocks.confirmCard).toHaveBeenCalledTimes(1); expect(mocks.removePointer).not.toHaveBeenCalled();
+  });
+  it.each(["processing", "unknown", "blocked"] as const)("preserves the card host and original recovery pointer during %s without a paid acknowledgement", async (phase) => {
+    await render(); await makeCardReady(); await reviewCustomQuote(); const host = cardNode();
+    await input().operations!.generateKey();
+    await emit({ ...quoteState(), phase }); expect(flow().state.step).toBe("signature"); expect(cardNode()).toBe(host);
+    await invoke(() => flow().onRefreshStatus()); expect(controller().refreshStatus).toHaveBeenCalledTimes(1);
+    expect(controller().refresh).toHaveBeenCalledTimes(1); expect(mocks.removePointer).not.toHaveBeenCalled();
+    await invoke(() => flow().onClose()); expect(mocks.removePointer).not.toHaveBeenCalled();
+  });
+  it("rechecks the controller's authorization after wrapper dispatch and rejects it after close", async () => {
+    await render(); await makeCardReady(); let authorized = true;
+    await input().provider!.confirm({ clientSecret: SECRET, paymentMethodId: PM, configuration: configured().configuration!, isCurrent: () => authorized });
+    const guard = mocks.confirmCard.mock.calls[0][2] as () => boolean;
+    expect(guard()).toBe(true); authorized = false; expect(guard()).toBe(false);
+    authorized = true; await invoke(() => flow().onClose()); expect(guard()).toBe(false);
+  });
+  it("cleans the loaded original pointer only on actual controller canonical paid/zero-balance readback", async () => {
+    const companyId = props.session.company!.id;
+    const pointer: CompanyNativePaymentPointer = { version: 1, companyId, userId: 42, jobId: 12, operationKey: POINTER_KEY, createdAt: "2026-11-17T00:00:00.000Z" };
+    mocks.read.mockResolvedValue(pointer); mocks.realController = true;
+    await render(); expect(mocks.removePointer).not.toHaveBeenCalled();
+    mocks.detail.mockImplementation(async () => canonical({ paymentStatus: "paid", balance: 0 }));
+    await invoke(() => flow().onRefreshStatus());
+    expect(flow().state.status).toBe("paid"); expect(mocks.removePointer).toHaveBeenCalledTimes(1);
+    expect(mocks.removePointer).toHaveBeenCalledWith(pointer); expect(mocks.confirmCard).not.toHaveBeenCalled();
+  });
+  it("paid cleanup refuses a different operation or Company and preserves canonical paid on remove failure", async () => {
+    await render(); const ops = input().operations!; const companyId = props.session.company!.id;
+    await ops.generateKey();
+    await ops.releasePaid!({ companyId, jobId: 12, operationKey: "different-original" }); expect(mocks.removePointer).not.toHaveBeenCalled();
+    await expect(ops.releasePaid!({ companyId: companyId + 1, jobId: 12, operationKey: POINTER_KEY })).rejects.toThrow();
+    mocks.removePointer.mockResolvedValue(false);
+    await expect(ops.releasePaid!({ companyId, jobId: 12, operationKey: POINTER_KEY })).rejects.toThrow();
+    expect(mocks.removePointer).toHaveBeenCalledTimes(1);
+  });
+  it("a reopened epoch is not stuck loading and old tokenization cannot unlock or complete the new epoch", async () => {
+    await render(); await makeCardReady(); const old = deferred<any>(); const next = deferred<any>();
+    mocks.tokenize.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+    await invoke(() => flow().onCardContinue()); await invoke(() => flow().onClose());
+    await render({ visible: false }); await render({ visible: true }); expect(flow().state.status).not.toBe("loading");
+    await makeCardReady(); await invoke(() => flow().onCardContinue()); expect(mocks.tokenize).toHaveBeenCalledTimes(2);
+    await invoke(() => old.resolve({ paymentMethodId: PM, brand: "Visa", last4: "4242" }));
+    await invoke(() => flow().onCardContinue()); expect(mocks.tokenize).toHaveBeenCalledTimes(2);
+    expect(controller().setPaymentMethod).not.toHaveBeenCalled();
+    await invoke(() => next.resolve({ paymentMethodId: PM, brand: "Visa", last4: "4242" }));
+    expect(controller().setPaymentMethod).toHaveBeenCalledTimes(1); expect(flow().state.status).not.toBe("loading");
   });
 });

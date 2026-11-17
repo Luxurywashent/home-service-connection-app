@@ -33,8 +33,9 @@ export function CompanyJobCheckout(props: Props) {
   const secureCard = useRef<CompanySecureCardHandle>(null);
   const generation = useRef(0); const closed = useRef(false);
   const mounted = useRef(false);
-  const tokenizationLock = useRef(false);
-  const [snapshot, setSnapshot] = useState<{ state: NativeCheckoutState; epoch: number } | null>(null);
+  const tokenizationLock = useRef<number | null>(null);
+  const hasOperation = useRef(false);
+  const [snapshot, setSnapshot] = useState<{ state: NativeCheckoutState; epoch: number; step: CompanyNativeCheckoutViewModel["step"] } | null>(null);
   const state = snapshot?.state ?? null;
   const [foreground, setForeground] = useState(AppState.currentState === "active");
   const [tokenizing, setTokenizing] = useState(false);
@@ -65,30 +66,52 @@ export function CompanyJobCheckout(props: Props) {
     const session = originProps.session; const jobId = originProps.jobId;
     if (!originProps.visible || !focused || !scope || !foreground || !active.current || !originProps.isCurrent()) return;
     const captured = ++generation.current; closed.current = false;
+    hasOperation.current = false; setTokenizing(false); setCardReady(false);
+    setCard({ complete: false, brand: null, last4: null }); setSignature(null);
     let pointer: CompanyNativePaymentPointer | null = null;
     const current = () => captured === generation.current && isCurrent();
     const c = createCompanyNativeCheckoutController({
       session, jobId, isCurrent: current,
-      onState: (next) => { if (current()) setSnapshot({ state: next, epoch: captured }); },
+      onState: (next) => {
+        if (current()) setSnapshot((previous) => {
+          const step = ["card", "tip", "signature"].includes(next.phase) ? next.phase as "card" | "tip" | "signature"
+            : next.phase === "method" || next.phase === "paid" || next.method !== "card" ? "method"
+            : previous?.epoch === captured && previous.step !== "method" ? previous.step
+            : next.quote ? "signature" : next.card ? "tip" : "card";
+          return { state: next, epoch: captured, step };
+        });
+      },
       onVerifiedDetail: (detail) => { if (current()) live.current.onVerifiedDetail(detail); },
       nativeTransport: companyNativePaymentTransport,
       operations: {
         load: async () => {
           pointer = await companyNativePaymentStore.read(session.company!.id, session.user.id, jobId);
+          if (current()) hasOperation.current = Boolean(pointer);
           return pointer ? { companyId: pointer.companyId, jobId: pointer.jobId, operationKey: pointer.operationKey } : null;
         },
         generateKey: () => {
           pointer = newCompanyNativePaymentPointer(session.company!.id, session.user.id, jobId);
+          if (current()) hasOperation.current = true;
           return pointer.operationKey;
         },
         save: async (anchor) => {
           if (!current() || !pointer || pointer.operationKey !== anchor.operationKey || pointer.companyId !== anchor.companyId || pointer.jobId !== anchor.jobId
             || !await companyNativePaymentStore.reserve(pointer)) throw new Error("Original payment recovery could not be secured.");
         },
+        // Only the controller's canonical-paid path calls this callback. Closing,
+        // provider outcomes and unresolved/declined attempts never release it.
+        releasePaid: async (anchor) => {
+          if (anchor.companyId !== session.company!.id || anchor.jobId !== jobId) throw new Error("Original payment recovery scope changed.");
+          const original = pointer ?? await companyNativePaymentStore.read(session.company!.id, session.user.id, jobId);
+          if (!original || original.companyId !== anchor.companyId || original.userId !== session.user.id
+            || original.jobId !== anchor.jobId || original.operationKey !== anchor.operationKey) return;
+          if (!await companyNativePaymentStore.remove(original)) throw new Error("Original payment recovery cleanup could not be confirmed.");
+          if (pointer?.operationKey === anchor.operationKey) pointer = null;
+        },
       },
       provider: { confirm: async ({ clientSecret, paymentMethodId, isCurrent: providerCurrent }) => {
         if (!current() || !providerCurrent() || !secureCard.current) throw new Error("The current checkout changed before confirmation.");
-        const result = await secureCard.current.confirm(clientSecret, paymentMethodId);
+        const result = await secureCard.current.confirm(clientSecret, paymentMethodId, () => current() && providerCurrent());
         if (!current() || !providerCurrent() || !["succeeded", "processing"].includes(result.outcome)) throw new Error("The original payment outcome must be checked.");
         return { status: result.outcome as "succeeded" | "processing" };
       } },
@@ -110,7 +133,7 @@ export function CompanyJobCheckout(props: Props) {
       : candidate.tip.kind === "percentage" && candidate.tip.percent === tipChoice);
     const quote = matchesTip ? candidate : null;
     return {
-      step: ["card", "tip", "signature"].includes(phase) ? phase as "card" | "tip" | "signature" : "method",
+      step: snapshot?.step ?? "method",
       status: state?.busy || tokenizing ? "loading" : ["processing", "unknown", "blocked", "paid", "error"].includes(phase) ? phase as "processing" | "unknown" | "blocked" | "paid" | "error" : state ? "ready" : "loading",
       customerName: props.customerName, serviceName: state?.detail?.title ?? "Job payment", balanceLabel: "Balance Due",
       balanceAmountText: balance === null ? "Not available" : money(Math.round(balance * 100)),
@@ -123,17 +146,18 @@ export function CompanyJobCheckout(props: Props) {
         serviceAmountText: money(quote.principalCents, quote.currency), tipAmountText: money(quote.tipCents, quote.currency), totalAmountText: money(quote.totalCents, quote.currency) } : null,
       canContinueTip: Boolean(quote && !state?.busy), canConfirmPayment: Boolean(quote && signature && !state?.busy), signature, message: state?.message,
     };
-  }, [state, props.customerName, cardReady, card, customTip, tipChoice, signature, tokenizing]);
+  }, [state, snapshot?.step, props.customerName, cardReady, card, customTip, tipChoice, signature, tokenizing]);
   const cardContinue = async () => {
     const c = controller.current;
-    if (!flowCurrent() || !c || !cardReady || !card.complete || !secureCard.current || tokenizationLock.current) return;
-    tokenizationLock.current = true; setTokenizing(true);
+    if (!flowCurrent() || !c || !cardReady || !card.complete || !secureCard.current || tokenizationLock.current === generation.current) return;
+    const tokenEpoch = generation.current;
+    tokenizationLock.current = tokenEpoch; setTokenizing(true);
     try {
       const token = await secureCard.current.tokenize();
       if (!flowCurrent() || controller.current !== c || !token.brand || !token.last4) return;
       if (c.setPaymentMethod(token.paymentMethodId, { brand: token.brand, last4: token.last4 })) await c.quoteTip({ kind: "none" });
     } catch { if (flowCurrent() && controller.current === c) await c.refresh(); }
-    finally { tokenizationLock.current = false; if (flowCurrent() && controller.current === c) setTokenizing(false); }
+    finally { if (tokenizationLock.current === tokenEpoch) tokenizationLock.current = null; if (flowCurrent() && controller.current === c) setTokenizing(false); }
   };
   const selectTip = (selection: CompanyCheckoutTipSelection) => {
     if (!flowCurrent()) return; setSignature(null); setTipChoice(selection);
@@ -159,7 +183,13 @@ export function CompanyJobCheckout(props: Props) {
     onCardContinue={() => { void cardContinue(); }} onTipSelect={selectTip} onCustomTipChange={changeCustomTip}
     onTipContinue={() => { if (flowCurrent() && vm.canContinueTip) controller.current?.continueToSignature(); }}
     onSignatureChange={signatureChanged} onConfirmPayment={(draft) => { void confirm(draft); }}
-    onRefreshStatus={() => { if (flowCurrent()) void controller.current?.refresh(); }}
+    onRefreshStatus={() => {
+      if (flowCurrent()) {
+        const c = controller.current;
+        if (hasOperation.current || state?.signatureApproved || ["processing", "unknown"].includes(state?.phase ?? "")) void c?.refreshStatus();
+        else void c?.refresh();
+      }
+    }}
     renderCardField={(slot) => state?.configuration ? <CompanySecureCardField ref={secureCard} scopeKey={`${scope ?? "invalid"}:${epoch ?? "pending"}`}
       configuration={state.configuration} disabled={slot.disabled && state.phase !== "processing"} isCurrent={flowCurrent} onReady={readyChanged} onChange={onCardChange} /> : null} />;
 }
