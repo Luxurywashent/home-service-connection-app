@@ -17,8 +17,8 @@ import {
   companyCreationStore, newCompanyCreationOperationKey,
   type CompanyCreationRecord, type CompanyCreationStore, type CompanyCreationPayload,
 } from "./company-job-creation-storage";
-import { normalizeCompanyJobRecurrence, companyJobRecurrenceFirstDate, normalizeCompanyJobRecurrenceReceipt,
-  verifyCompanyJobSavedSeries, companyJobRecurrenceUnavailableMessage,
+import { normalizeCompanyJobRecurrence, companyJobRecurrenceFirstDate,
+  companyJobRecurrenceUnavailableMessage,
   type CompanyJobRecurrenceInput, type CompanyJobRecurrenceReceipt, type CompanyJobSavedSeries } from "./company-job-recurrence";
 
 export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
@@ -63,9 +63,9 @@ export type CompanyCreateJobTransport = {
   operation?: typeof getJobSyncCompanyJobCreationOperation;
   /** Required for lines/discount intent. Legacy single-service transports remain compatible. */
   quote?: typeof quoteJobSyncCompanyJob;
-  /** Canonical GET readback by original operation + Job, NOT CREATE replay or client list synthesis.
-   * 752 raw GET exists, but its CREATE timezone/server-duration guarantees fail.
-   * Do not install a production collaborator until those guarantees pass. */
+  /** Retained collaborator signature for compatibility, NOT an authorization.
+   * 0fbd raw GET lacks durable original-intent/timezone/anchor/snapshot proof;
+   * a request-populated semantic projection cannot enable Save or recovery unlock. */
   series?: (token: string, companyId: number, jobId: number, operationKey: string) => Promise<CompanyJobSavedSeries>;
 };
 const transport: CompanyCreateJobTransport = {
@@ -383,16 +383,10 @@ export function createCompanyJobController(input: {
     // Re-authenticate after the reads and before invoking the real calendar loader.
     if (!await fresh() || !current()) return false;
     if (payload.recurrence) {
-      if (!api.series) throw new Error(companyJobRecurrenceUnavailableMessage);
-      const readback = await api.series(origin.token, origin.company!.id, record.jobId, record.operationKey);
-      if (!current()) return false;
-      const series = verifyCompanyJobSavedSeries(readback, { companyId: origin.company!.id,
-        customerId: detail.customerId, jobId: record.jobId, operationKey: record.operationKey, recurrence: payload.recurrence,
-        scheduledStartAt: payload.scheduledStartAt, scheduledEndAt: payload.scheduledEndAt,
-        ruleId: record.recurrenceRuleId ?? attempt.ack?.recurrence?.ruleId });
-      if (record.recurrenceRuleId === undefined) await settleRecord(attempt, { recurrenceRuleId: series.ruleId });
-      if (!await fresh() || !current()) return false;
-      attempt.series = series;
+      // Preserve the known saved Job/key and all secure recovery locks. The raw
+      // 0fbd GET is useful for inspection, but a semantic adapter copying intent
+      // or current settings into it is not durable proof and must not clear it.
+      throw new Error(companyJobRecurrenceUnavailableMessage);
     }
     await ensureRecorded(attempt);
     if (!current()) return false;
@@ -482,7 +476,16 @@ export function createCompanyJobController(input: {
       runtime.busy = true;
       patch(attempt, { ...attempt.state, reconciling: true });
       try { return await lookup(attempt); }
-      catch (error) { diagnostic(attempt, error); return false; }
+      catch (error) {
+        diagnostic(attempt, error);
+        if (attempt.record?.payload.recurrence) {
+          // Operation settlement intentionally hides metadata until re-auth.
+          // A mismatched saved ID must not leave the recurring form displaying
+          // ready while its durable original request is still locked.
+          try { if (await fresh()) publish(); } catch { /* Revoked/stale scopes remain hidden and cannot submit. */ }
+        }
+        return false;
+      }
       finally {
         runtime.busy = false;
         if (runtime.attempt === attempt) attempt.state = { ...attempt.state, reconciling: false };
@@ -509,9 +512,10 @@ export function createCompanyJobController(input: {
       if (Object.hasOwn(draft, "recurrence")) {
         snapshot.recurrence = normalizeCompanyJobRecurrence(draft.recurrence);
         if (snapshot.recurrence.startDate !== draft.date) throw new Error("The recurrence start date must match the Company date.");
-        // Schema/quote acceptance alone cannot authorize creation that silently
-        // discards recurrence. Block BEFORE hydration, reservation or POST.
-        if (!api.series) throw new Error(companyJobRecurrenceUnavailableMessage);
+        // The exact 0fbd CREATE fixes pass, but no collaborator can fill omitted
+        // durable GET proof from this request. Block before hydration/key/storage
+        // reservation/quote/POST, including for injected semantic transports.
+        throw new Error(companyJobRecurrenceUnavailableMessage);
       }
       captured = Object.freeze(snapshot) as CompanyCreateJobDraft;
     } catch (error) {
@@ -645,10 +649,6 @@ export function createCompanyJobController(input: {
       attempt.ack = ack;
       patch(attempt, { phase: "saved", message: savedMessage, jobId: ack.id });
       await settleRecord(attempt, { phase: "saved", jobId: ack.id, ...(payload.newCustomer ? { resolvedCustomerId: ack.customerId } : {}) });
-      if (payload.recurrence) {
-        const receipt = normalizeCompanyJobRecurrenceReceipt(ack.recurrence, payload.recurrence, ack.id);
-        await settleRecord(attempt, { recurrenceRuleId: receipt.ruleId });
-      }
       if (!current()) return false;
       return await recoverDetail(attempt);
     } catch (error) {

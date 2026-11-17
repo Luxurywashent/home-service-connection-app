@@ -8,7 +8,7 @@ export type CompanyJobRecurrenceInput = {
   ordinal?: 1 | 2 | 3 | 4 | -1;
   startDate: string;
 };
-export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: Company timezone and full server-duration availability are not yet guaranteed for every occurrence, and saved-rule dates cannot be safely verified. Nothing will be submitted. Choose One appointment to save a single Job.";
+export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: Company timezone and full server-duration availability now pass the isolated 0fbd gate, but canonical saved-series GET does not expose the persisted creation timezone, rule-to-first-Job anchor, or original start-date/term and operation-payload binding. Separate GETs have no shared snapshot/version, so completeness and concurrent edits cannot be safely verified. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
 const invalid = () => new Error("Choose a valid recurrence, term, Company start date, weekday and monthly occurrence.");
 function plain(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -65,7 +65,8 @@ export type CompanyJobRecurrenceReceipt = {
   ruleId: number; occurrenceJobIds: number[]; occurrences: CompanyJobRecurrenceOccurrence[];
   timezone: string; count: number; neverEnds: boolean; term: CompanyJobRecurrenceInput["term"];
 };
-/** Semantic bound GET projection; not the raw 752 recurrence DTO. Production remains blocked. */
+/** Historical/future semantic projection, NOT the raw 0fbd GET DTO or persistence proof.
+ * The 0fbd controller never accepts this projection as permission to write/unlock. */
 export type CompanyJobSavedSeries = CompanyJobRecurrenceReceipt & {
   companyId: number; customerId: number; jobId: number; operationKey: string;
   recurrence: CompanyJobRecurrenceInput;
@@ -79,6 +80,78 @@ function dense(value: unknown): value is unknown[] {
     && Reflect.ownKeys(value).length === value.length + 1
     && Array.from({ length: value.length }, (_, index) => Object.hasOwn(value, index)
       && Object.hasOwn(Object.getOwnPropertyDescriptor(value, String(index))!, "value")).every(Boolean);
+}
+/** Exact server/jobService.ts getJobRecurrenceSeries DTO at 0fbd3b67.
+ * A current materialized-row read, not an original-intent/complete-series certificate.
+ * Nulls, gaps, cancellations and edited appointment times stay visible; no dates,
+ * term, timezone, pricing, customer or operation identity are synthesized. */
+export type CompanyJobRecurrenceReadback = {
+  readonly jobId: number;
+  readonly recurrence: null | {
+    readonly ruleId: number;
+    readonly cadence: "weekly" | "biweekly" | "monthly_day" | "monthly_weekday";
+    readonly weekday: number | null;
+    readonly ordinalWeek: number | null;
+    readonly dayOfMonth: number | null;
+    readonly startsOn: string;
+    readonly endsOn: string | null;
+    readonly startTime: string;
+    readonly durationMinutes: number;
+    readonly isActive: boolean;
+    readonly cancelledFromOccurrenceNumber: number | null;
+  };
+  readonly occurrences: readonly {
+    readonly jobId: number;
+    readonly occurrenceNumber: number | null;
+    readonly occurrenceKey: string | null;
+    readonly status: string;
+    readonly scheduledStartAt: string | null;
+    readonly scheduledEndAt: string | null;
+    readonly updatedAt: string | null;
+  }[];
+};
+function exactReadbackFields(value: unknown, fields: readonly string[]): value is Record<string, unknown> {
+  return plain(value) && fields.every(field => Object.hasOwn(value, field)) && ownData(value, fields);
+}
+const nullableInteger = (value: unknown, min: number, max: number): value is number | null => value === null
+  || (typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max);
+/** Normalize only the actual canonical GET JSON, never a CREATE echo or an adapter
+ * populated from the request. Even valid output must NOT enable recurring Save. */
+export function normalizeCompanyJobRecurrenceReadback(value: unknown, requestedJobId: number): CompanyJobRecurrenceReadback {
+  const failure = () => new Error("Canonical recurrence readback could not be verified. The original request remains locked; do not resend.");
+  if (!positive(requestedJobId) || !exactReadbackFields(value, ["jobId", "recurrence", "occurrences"])
+    || value.jobId !== requestedJobId || !dense(value.occurrences) || !value.occurrences.length) throw failure();
+  let recurrence: CompanyJobRecurrenceReadback["recurrence"] = null;
+  if (value.recurrence !== null) {
+    const rule = value.recurrence;
+    if (!exactReadbackFields(rule, ["ruleId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber"])
+      || !positive(rule.ruleId) || !["weekly", "biweekly", "monthly_day", "monthly_weekday"].includes(rule.cadence as string)
+      || !nullableInteger(rule.weekday, 0, 6) || !nullableInteger(rule.ordinalWeek, 1, 5) || !nullableInteger(rule.dayOfMonth, 1, 31)
+      || (rule.cadence === "monthly_day" ? rule.dayOfMonth === null || rule.weekday !== null || rule.ordinalWeek !== null
+        : rule.weekday === null || rule.dayOfMonth !== null || (rule.cadence === "monthly_weekday" ? rule.ordinalWeek === null : rule.ordinalWeek !== null))
+      || typeof rule.startTime !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(rule.startTime)
+      || rule.durationMinutes === null || !nullableInteger(rule.durationMinutes, 15, 1440) || typeof rule.isActive !== "boolean"
+      || !nullableInteger(rule.cancelledFromOccurrenceNumber, 0, Number.MAX_SAFE_INTEGER)) throw failure();
+    try { dateOnly(rule.startsOn); if (rule.endsOn !== null) dateOnly(rule.endsOn); } catch { throw failure(); }
+    recurrence = Object.freeze({ ...rule }) as CompanyJobRecurrenceReadback["recurrence"];
+  }
+  const seen = new Set<number>();
+  let previousNumber = -1;
+  const rows = value.occurrences;
+  const occurrences = rows.map(raw => {
+    if (!exactReadbackFields(raw, ["jobId", "occurrenceNumber", "occurrenceKey", "status", "scheduledStartAt", "scheduledEndAt", "updatedAt"])
+      || !positive(raw.jobId) || seen.has(raw.jobId) || typeof raw.status !== "string" || !raw.status.trim()
+      || ![raw.scheduledStartAt, raw.scheduledEndAt, raw.updatedAt].every(item => item === null || instant(item))) throw failure();
+    if (recurrence) {
+      if (raw.occurrenceNumber === null || !nullableInteger(raw.occurrenceNumber, 0, Number.MAX_SAFE_INTEGER)
+        || raw.occurrenceNumber <= previousNumber || raw.occurrenceKey !== `${recurrence.ruleId}:${raw.occurrenceNumber}`) throw failure();
+      previousNumber = raw.occurrenceNumber;
+    } else if (raw.occurrenceNumber !== null || raw.occurrenceKey !== null || raw.jobId !== requestedJobId || rows.length !== 1) throw failure();
+    seen.add(raw.jobId);
+    return Object.freeze({ ...raw }) as CompanyJobRecurrenceReadback["occurrences"][number];
+  });
+  if (!seen.has(requestedJobId)) throw failure();
+  return Object.freeze({ jobId: requestedJobId, recurrence, occurrences: Object.freeze(occurrences) });
 }
 export function normalizeCompanyJobRecurrenceReceipt(value: unknown, intent: CompanyJobRecurrenceInput, jobId: number): CompanyJobRecurrenceReceipt {
   const request = normalizeCompanyJobRecurrence(intent);
@@ -102,7 +175,10 @@ export function normalizeCompanyJobRecurrenceReceipt(value: unknown, intent: Com
     neverEnds: request.term === "never_ends", occurrenceJobIds: Object.freeze([...value.occurrenceJobIds]) as number[],
     occurrences: Object.freeze(occurrences) as CompanyJobRecurrenceOccurrence[] });
 }
-/** Binds a real series read to the immutable actor/key/customer/Job/request, never a quote or CREATE echo. */
+/** Legacy semantic shape/binding validator, retained for compatibility only.
+ * It cannot establish where fields came from. The actual 0fbd raw GET omits
+ * required proof; never populate this shape from request/CREATE/settings or use
+ * its success to authorize a write, calendar close or recovery removal. */
 export function verifyCompanyJobSavedSeries(value: unknown, expected: {
   companyId: number; customerId: number; jobId: number; operationKey: string; recurrence: CompanyJobRecurrenceInput;
   scheduledStartAt: string; scheduledEndAt?: string; ruleId?: number;

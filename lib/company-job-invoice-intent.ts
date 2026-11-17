@@ -44,7 +44,8 @@ export function createCompanyJobInvoiceOptions(
       "An invoice email recipient is only supported for email invoices.",
     );
   }
-  // Exact752 mobile wire fields only; never amount, phone override or profile edits.
+  // Exact0fbd mobile wire fields only; no operation/retry key is accepted.
+  // Never add amount, phone overrides or customer profile edits here.
   return Object.freeze({
     method,
     resend,

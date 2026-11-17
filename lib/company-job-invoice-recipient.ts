@@ -3,15 +3,21 @@ import {
   type CompanyJobInvoiceIntent,
 } from "./company-job-invoice-intent";
 
-/** Exact752 source-handler gates; not a live/server-advertised capability. */
+/** Exact0fbd source/isolated-fixture findings; not a live advertised capability. */
 export const COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY = Object.freeze({
-  backendRevision: "752ccca3edf69ef35ca7b1a470484f3f204f4568",
+  backendRevision: "0fbd3b673eaadb0a1e646c2003b806d439c87088",
   wireOverrideSupported: true,
-  stableInitialReservation: false,
-  persistedRecipientAcknowledgment: false,
+  stableInitialReservation: true,
+  persistedRecipientAcknowledgment: true,
+  durableCommunicationIdentity: true,
+  providerUnknownHeldWithoutAutomaticResend: true,
+  clientOperationKeySupported: false,
+  explicitResendReplaySafe: false,
+  authenticatedInvoiceReadbackAvailable: false,
+  restartSafeUncertainOperationRecovery: false,
   alternateRecipientSendingEnabled: false,
   reason:
-    "Alternate-recipient sending is unavailable: this backend has not passed initial-send reuse and actual-recipient acknowledgment checks.",
+    "Alternate-recipient sending is unavailable: initial-send reuse and persisted-recipient acknowledgments are verified, but this backend has no authenticated mobile invoice/communication readback or client operation key. An explicit resend gets a new server identity on each POST, so a lost response cannot be safely reconciled after an app restart. Do not retry or resend an uncertain request; review it with a Company manager in the web communication history. Blank still uses the contact on file.",
 });
 
 /** Preserve existing on-file invoices; never silently discard an override. */
@@ -81,9 +87,10 @@ export function validateCompanyJobInvoiceRecipientReceipt(
       "The backend did not acknowledge a valid invoice recipient. Review communication history before another attempt.",
     );
   }
-  // Exact752 rerun still disproves this field's actual-recipient guarantee.
-  // Equality with the draft would not prove delivery; a valid future reuse can
-  // deliberately retain a DIFFERENT persisted recipient.
+  // Exact0fbd proves persisted-recipient agreement, but this compatibility
+  // projection does not attest the responding server revision or retain its
+  // communication ID. Do not certify an unpinned runtime receipt from those
+  // source-only findings. Reuse may retain a DIFFERENT persisted recipient.
   return Object.freeze({
     publicUrl: receipt.publicUrl.trim(),
     communicationState: state,
