@@ -103,6 +103,7 @@ const config: ExpoConfig = {
     // so it strips expo-audio/video additions last without changing iOS options.
     "./plugins/with-android-foreground-media",
     "expo-router",
+    ["@stripe/stripe-react-native", { enableGooglePay: false }],
     [
       "react-native-maps",
       {

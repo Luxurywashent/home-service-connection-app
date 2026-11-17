@@ -886,6 +886,15 @@ export async function createJobSyncCompanyJobCheckout(token: string, jobId: numb
   };
 }
 
+/** Read-only native capability probe. No unverified enablement or secret projection. */
+export async function getJobSyncCompanyNativePaymentCapabilities(token: string, jobId: number): Promise<unknown> {
+  validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  return requestJson(`/api/mobile/v1/jobs/${jobId}/native-payment/capabilities`, {
+    method: "GET", headers: createJobSyncBearerHeaders(token),
+  });
+}
+
 /** Validate actual encoded file bytes without Buffer/atob dependencies in native bundles. */
 function validateJobSyncPhotoUpload(input: JobSyncJobPhotoUploadInput) {
   if (!asRecord(input) || !["image/jpeg", "image/png", "image/webp"].includes(input.contentType)) {
