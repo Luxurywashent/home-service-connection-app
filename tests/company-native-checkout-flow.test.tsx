@@ -80,8 +80,10 @@ describe("controlled checkout bottom sheet, actual React DOM lifecycle", () => {
     await render();
     expect(container.textContent).toContain("Fictional Customer · Lawn Service");
     expect(container.textContent).toContain("Balance Due");
-    expect(container.textContent).toContain("Apple entitlements are not configured or verified");
+    expect(container.textContent).not.toContain("Apple entitlements are not configured or verified");
     const tap = button("Tap to Pay on iPhone unavailable"); expect(tap.nativeProps.disabled).toBe(true);
+    expect(tap.textContent).toBe("▣Tap to Pay on iPhone");
+    expect(tap.nativeProps.accessibilityState.disabled).toBe(true);
     await press(tap); expect(props.onManualCardEntry).not.toHaveBeenCalled();
     const backdrop = nodes("native-keyboard")[0].nativeProps.style;
     expect(backdrop.justifyContent).toBe("flex-end");

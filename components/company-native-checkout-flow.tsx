@@ -197,7 +197,7 @@ function ScopedCompanyNativeCheckoutFlow(props: CompanyNativeCheckoutFlowProps) 
               accessibilityHint={TAP_UNAVAILABLE} accessibilityState={{ disabled: true }} disabled onPress={() => undefined}
               style={[styles.method, styles.tapMethod]}>
               <Text style={styles.methodIcon}>▣</Text>
-              <View style={styles.methodCopy}><Text style={styles.methodTitle}>Tap to Pay on iPhone</Text><Text style={styles.tapReason}>{TAP_UNAVAILABLE}</Text></View>
+              <View style={styles.methodCopy}><Text style={styles.methodTitle}>Tap to Pay on iPhone</Text></View>
             </TouchableOpacity>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Manual Card Entry" disabled={!manualAvailable}
               accessibilityState={{ disabled: !manualAvailable }} onPress={() => {
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   tapMethod: { borderColor: "#604494", backgroundColor: "#231e36" },
   methodIcon: { color: C.muted, fontSize: 28 }, methodCopy: { flex: 1, gap: 4 },
   methodTitle: { color: C.text, fontSize: 18, lineHeight: 24, fontWeight: "700" },
-  tapReason: { color: C.purple, fontSize: 13, lineHeight: 19 }, chevron: { color: C.muted, fontSize: 26 },
+  chevron: { color: C.muted, fontSize: 26 },
   panel: { borderWidth: 1, borderColor: C.border, backgroundColor: C.panel, borderRadius: 17, padding: 16, gap: 10 },
   fieldLabel: { color: C.muted, fontSize: 15, lineHeight: 22, fontWeight: "600" },
   hiddenCard: { display: "none" },
