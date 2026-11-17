@@ -125,11 +125,11 @@ describe("Company create sheet: real React lifecycle + controller, mocked native
     await choose(); expect(field("Service address").nativeProps.value).toBe("Canonical Address"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
     expect(container.textContent).toContain("Catalog unit rate\n$125.00"); expect(container.textContent).toContain("SERVER QUOTE · NOT YET SAVED"); expect(container.textContent).toContain("Final quote total $125.00");
     await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.quote).toHaveBeenCalledTimes(2); expect(mocks.quote).toHaveBeenLastCalledWith(props.session!.token, 9, { lineItems: [{ priceBookItemId: 31, quantity: 1 }] });
-    expect(mocks.create.mock.calls[0][2]).toEqual({ customerId: 7, priceBookServiceId: 31, lineItems: [{ priceBookItemId: 31, quantity: 1 }], scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", addressLine1: "Canonical Address", city: "Company City", operationKey: expect.any(String) });
+    expect(mocks.create.mock.calls[0][2]).toEqual({ customerId: 7, priceBookServiceId: 31, lineItems: [{ priceBookItemId: 31, quantity: 1 }], scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", addressLine1: "Canonical Address", city: "Company City", operationKey: expect.any(String), notifyCustomer: true });
     expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 125, photos: [] }), "America/Chicago");
-    expect(button("Notify customer unavailable").nativeProps).toMatchObject({ disabled: true, accessibilityRole: "switch", accessibilityState: { checked: false, disabled: true } });
+    expect(button("Notify customer").nativeProps).toMatchObject({ disabled: true, accessibilityRole: "switch", accessibilityState: { checked: true, disabled: true } });
     expect(container.textContent).not.toContain("Company server policy");
-    for (const forbidden of ["notifyCustomer", "amount", "newCustomer", "recurrence", "unitPrice", "taxAmount", "totalAmount", "durationMinutes", "vehiclePriceKey", "discount"]) expect(mocks.create.mock.calls[0][2]).not.toHaveProperty(forbidden);
+    for (const forbidden of ["amount", "newCustomer", "recurrence", "unitPrice", "taxAmount", "totalAmount", "durationMinutes", "vehiclePriceKey", "discount"]) expect(mocks.create.mock.calls[0][2]).not.toHaveProperty(forbidden);
   });
   it("free services remain selectable and only verified empty catalogs show empty state", async () => {
     mocks.catalog[0].basePrice = 0; await render(); await choose(); expect(button("Save Company Job").nativeProps.disabled).toBe(false);

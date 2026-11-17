@@ -163,7 +163,7 @@ describe("restored circular Company progress design (real React, mocked RN hosts
 });
 
 describe("progress permissions, freshness and confirmation safeguards", () => {
-  it.each(["signed out", "wrong portal", "blank token", "wrong Company", "unassigned technician", "other role", "manager OFF", "manager unknown", "actor OFF", "missing actor", "missing version", "completed", "cancelled", "unknown status"])("disables all controls and rejects direct native callbacks for %s", async (change) => {
+  it.each(["signed out", "wrong portal", "blank token", "wrong Company", "unassigned technician", "other role", "actor mismatch", "missing actor", "missing version", "completed", "cancelled", "unknown status"])("disables all controls and rejects direct native callbacks for %s", async (change) => {
     let signed: JobSyncNativeSession | null = session();
     let current = job();
     if (change === "signed out") signed = null;
@@ -172,9 +172,7 @@ describe("progress permissions, freshness and confirmation safeguards", () => {
     if (change === "wrong Company") current.detail = detail({ companyId: 10 });
     if (change === "unassigned technician") current.detail = detail({ assignedUserId: 43 });
     if (change === "other role") signed = session("developer");
-    if (change === "manager OFF") signed = session("owner", false);
-    if (change === "manager unknown") signed = session("dispatcher");
-    if (change === "actor OFF") { signed = session("owner", true); current.actor = session("owner", false); }
+    if (change === "actor mismatch") { signed = session("owner", true); current.actor = session("dispatcher", false); }
     if (change === "missing actor") current.actor = null;
     if (change === "missing version") current.detail = detail({ updatedAt: null });
     if (["completed", "cancelled", "unknown status"].includes(change)) current.detail = detail({ status: change === "unknown status" ? "draft" : change });

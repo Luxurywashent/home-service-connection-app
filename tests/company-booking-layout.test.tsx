@@ -30,7 +30,7 @@ vi.mock("react-native", async () => {
   return { Modal: host("native-modal"), View: host("native-view"), Text: host("native-text"), TextInput: host("native-input"),
     TouchableOpacity: host("native-touch"), ActivityIndicator: host("activity-indicator"), ScrollView: host("native-scroll"), KeyboardAvoidingView: host("native-keyboard"),
     FlatList: (props: any) => R.createElement("native-list", { ref: (node: any) => { if (node) node.nativeProps = props; } }, props.data.length ? props.data.map((item: any, index: number) => R.createElement(R.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item, index }))) : props.ListEmptyComponent),
-    Platform: { get OS() { return mocks.platform; } }, StyleSheet: { create: (value: any) => value } };
+    AppState: { currentState: "active", addEventListener: () => ({ remove: vi.fn() }) }, Keyboard: { addListener: () => ({ remove: vi.fn() }) }, Platform: { get OS() { return mocks.platform; } }, StyleSheet: { create: (value: any) => value } };
 });
 const { createRoot } = createRequire(import.meta.url)("react-dom/client") as { createRoot: (container: unknown) => { render: (node: React.ReactNode) => void; unmount: () => void } };
 type NativeNode = PhotoTestNode & { nativeProps: Record<string, any> };
@@ -164,7 +164,7 @@ describe("approved compact booking layout — actual React/controller lifecycle,
     await render({ customerPrefill: { customerId: 7, companyId: 9 }, closeOnSuccess: false }); await chooseService(); await press("More Details");
     await input("Service address", "Job-only address"); await input("City", "Job City"); await input("Region / state", "NY"); await input("Postal code", "10001"); await input("Service notes", "Public note"); await input("Private notes", "Private note"); await press("More Details");
     await press("Save Company Job"); expect(mocks.create.mock.calls[0][2]).toMatchObject({ addressLine1: "Job-only address", city: "Job City", region: "NY", postalCode: "10001", serviceNotes: "Public note", privateNotes: "Private note" }); expect(props.onClose).not.toHaveBeenCalled(); expect(mocks.create.mock.calls[0][2].lineItems).toEqual([{ priceBookItemId: 31, quantity: 1 }]);
-    expect(node("Notify customer unavailable").nativeProps.disabled).toBe(true); for (const unsupported of ["notifyCustomer", "quantity", "recurrence", "discount", "amount", "unitPrice", "taxAmount", "totalAmount", "durationMinutes", "vehiclePriceKey"]) expect(mocks.create.mock.calls[0][2]).not.toHaveProperty(unsupported);
+    expect(node("Notify customer").nativeProps.disabled).toBe(true); expect(mocks.create.mock.calls[0][2].notifyCustomer).toBe(true); for (const unsupported of ["quantity", "recurrence", "discount", "amount", "unitPrice", "taxAmount", "totalAmount", "durationMinutes", "vehiclePriceKey"]) expect(mocks.create.mock.calls[0][2]).not.toHaveProperty(unsupported);
   });
   it("uses generic returned service rates without vehicle category controls, and preserves the chosen rate on mode change", async () => {
     mocks.catalog[0].basePrice = 0; mocks.catalog[0].vehiclePrices = { truck: 150 }; await render(); await chooseCustomer(); await chooseService();

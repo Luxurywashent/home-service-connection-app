@@ -43,6 +43,9 @@ import { formatJobMapAddress } from "@/lib/job-street-view";
 import { CustomerContactActions } from "@/components/customer-contact-actions";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
+import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
+import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useEmployeeAuth } from "@/lib/auth-context";
@@ -2488,6 +2491,11 @@ export default function ScheduleScreen() {
     return true;
   };
   const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
+  const isCurrentCompanyJobOperation = useCallback(() => {
+    const current = legacyMediaSessionRef.current;
+    return !authLoading && !jobSyncLoading && current.mounted && current.focused
+      && current.key === actionKey && current.generation === actionGeneration;
+  }, [authLoading, jobSyncLoading, actionKey, actionGeneration]);
   const companyJob = useCompanyJob(jobSyncSession,
     companyPhotoJobId,
     (serverJobs) => {
@@ -2496,7 +2504,7 @@ export default function ScheduleScreen() {
         const fresh = current.get(job.id);
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh) }] : [];
       }));
-    });
+    }, isCurrentCompanyJobOperation, `${actionKey}:${actionGeneration}:${screenFocusEpoch}`);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -4482,6 +4490,12 @@ export default function ScheduleScreen() {
   });
   const jobsByDay = weekDates.map((_, i) => visibleJobs.some((j) => j.dayIndex === i && j.weekOffset === weekOffset));
   const selectedCompanyBilling = selectedJob && companyJobMode ? getCompanyJobBillingState(selectedJob) : null;
+  const detailKeyboardActive = Boolean(selectedJob) && !showChatModal && !showInspectionModal;
+  const { attachScrollRef: detailScrollRef, relatedRef: detailTagRef,
+    scrollProps: detailScrollProps, onInputFocus: detailInputFocus, onInputBlur: detailInputBlur } = useCompanyJobKeyboard({
+    active: detailKeyboardActive, isCurrent: captureScreenAction(),
+    scopeKey: `${actionKey}:${actionGeneration}:${screenFocusEpoch}`,
+  });
 
   return (
     <View style={{ flex: 1 }}>
@@ -4703,11 +4717,11 @@ export default function ScheduleScreen() {
 
       {/* Job Detail Modal - rendered outside ScreenContainer to prevent z-index conflicts */}
       <Modal visible={!!selectedJob} animationType="slide" transparent={false} onRequestClose={() => { setSelectedJob(null); setShowUpsellPanel(false); setUpsellIds([]); setUpsellQtys({}); }}>
-          <View style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
+          <CompanyJobKeyboardBoundary active={detailKeyboardActive} style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
             <View style={{ flex: 1 }}>
               {selectedJob && (
                 <>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView ref={detailScrollRef} {...detailScrollProps} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
                   {/* ─── Street View Hero ─── */}
                   {selectedJob.address ? (
                     <View style={{ position: "relative", height: 320, marginBottom: 0 }}>
@@ -5322,7 +5336,8 @@ export default function ScheduleScreen() {
 
                   {/* ─── Private Notes Card ─── */}
                   {(() => {
-                    if (companyJobMode) return null;
+                    if (companyJobMode) return <CompanyJobPrivateNotes session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob}
+                      isCurrent={isCurrentCompanyJobOperation} onRefresh={refreshCompanyJob} />;
                     const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                     return hasNotes ? (
                       <PrivateNotesCard
@@ -5441,7 +5456,7 @@ export default function ScheduleScreen() {
                   ) : null}
 
                   {/* ─── Job Tags Card ─── */}
-                  {!companyJobMode && <View style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
+                  {!companyJobMode && <View ref={detailTagRef} collapsable={false} style={[s.detailCard, { backgroundColor: jobSheetColors.background, borderColor: jobSheetColors.border }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         <Text style={{ fontSize: 16 }}>🏷️</Text>
@@ -5471,6 +5486,8 @@ export default function ScheduleScreen() {
                       <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                         <TextInput
                           value={tagInput}
+                          onFocus={detailInputFocus}
+                          onBlur={detailInputBlur}
                           onChangeText={setTagInput}
                           placeholder="Type a tag and press Add"
                           placeholderTextColor={jobSheetColors.muted}
@@ -6060,7 +6077,7 @@ export default function ScheduleScreen() {
                 </>
               )}
             </View>
-          </View>
+          </CompanyJobKeyboardBoundary>
 
           {/* ─── In-App Chat — rendered INSIDE job detail Modal to avoid iOS two-modal limitation ─── */}
           {showChatModal && (

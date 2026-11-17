@@ -55,15 +55,15 @@ describe("owner-operator Company canonical fieldwork", () => {
       expect(test.api.status).toHaveBeenCalledWith(session.token, 47, { status: "en_route", expectedUpdatedAt: version });
     }
   });
-  it("keeps false/null/missing/malformed manager capability unavailable, regardless of invented hints", async () => {
+  it("does not treat calendar lane eligibility as a manager Job-status permission", async () => {
     for (const calendarEligible of [false, null, undefined, "true", 1, {}]) {
       const actor = { ...session, user: { ...session.user, role: "owner", calendarEligible, availableForFieldJobs: true } } as unknown as JobSyncNativeSession;
-      expect(companyFieldworkBlockReason(actor, detail())).not.toBeNull();
+      expect(companyFieldworkBlockReason(actor, detail())).toBeNull();
       expect(isAssignedCompanyFieldActor(actor, detail())).toBe(false);
-      const test = setup({}, actor);
+      const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail("en_route")) }, actor);
       await test.controller.refresh();
-      expect(await test.controller.advance("en_route")).toBe(false);
-      expect(test.api.status).not.toHaveBeenCalled();
+      expect(await test.controller.advance("en_route")).toBe(true);
+      expect(test.api.status).toHaveBeenCalledOnce();
     }
   });
   it("denies invalid version and unsupported/terminal state", () => {
@@ -87,13 +87,14 @@ describe("owner-operator Company canonical fieldwork", () => {
   it("locks repeat taps, awaits acknowledgement AND refreshed detail/list before success", async () => {
     const ack = deferred<{ success: true; status: "en_route" }>();
     const refreshed = deferred<JobSyncCompanyJobDetail>();
-    const read = vi.fn().mockResolvedValueOnce(detail()).mockReturnValueOnce(refreshed.promise);
+    const read = vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockReturnValueOnce(refreshed.promise);
     const test = setup({ detail: read, status: vi.fn().mockReturnValue(ack.promise) });
     await test.controller.refresh();
     const first = test.controller.advance("en_route");
     expect(test.state().success).toBeNull();
     expect(test.state().pending).toBe(true);
     expect(await test.controller.advance("en_route")).toBe(false);
+    await vi.waitFor(() => expect(test.api.status).toHaveBeenCalledOnce());
     expect(test.api.status).toHaveBeenCalledTimes(1);
     expect(test.api.status).toHaveBeenCalledWith(session.token, 47, { status: "en_route", expectedUpdatedAt: version });
     ack.resolve({ success: true, status: "en_route" });
@@ -106,7 +107,7 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(test.state().success).toContain("confirmed");
   });
   it("finishes a reopened canonical on_site Job without any photo/payment/clock requirement", async () => {
-    const read = vi.fn().mockResolvedValueOnce(detail("on_site")).mockResolvedValueOnce({ ...detail("completed"), completedAt: "2026-11-14T18:20:00.000Z" });
+    const read = vi.fn().mockResolvedValueOnce(detail("on_site")).mockResolvedValueOnce(detail("on_site")).mockResolvedValueOnce({ ...detail("completed"), completedAt: "2026-11-14T18:20:00.000Z" });
     const test = setup({ detail: read, status: vi.fn().mockResolvedValue({ success: true, status: "completed" }) });
     await test.controller.refresh();
     expect(await test.controller.advance("completed")).toBe(true);
@@ -125,10 +126,10 @@ describe("owner-operator Company canonical fieldwork", () => {
     new JobSyncApiError("Reassigned", 409, "CONFLICT"), new JobSyncApiError("Denied", 403, "FORBIDDEN"),
     new JobSyncApiError("Timeout", null, "TIMEOUT"), new Error("Network disconnected"),
   ])("reconciles failed/ambiguous writes without success: %s", async (error) => {
-    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce({ ...detail(), assignedUserId: 42 }), status: vi.fn().mockRejectedValue(error) });
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockResolvedValueOnce({ ...detail(), assignedUserId: 42 }), status: vi.fn().mockRejectedValue(error) });
     await test.controller.refresh();
     expect(await test.controller.advance("en_route")).toBe(false);
-    expect(test.api.detail).toHaveBeenCalledTimes(2);
+    expect(test.api.detail).toHaveBeenCalledTimes(3);
     expect(test.api.list).toHaveBeenCalledTimes(1);
     expect(test.state().success).toBeNull();
     expect(test.state().error).toContain(error.message);
@@ -137,7 +138,7 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(test.api.status).toHaveBeenCalledTimes(1);
   });
   it("disables progress when failed acknowledgement cannot be reconciled", async () => {
-    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockRejectedValue(new Error("offline")), status: vi.fn().mockRejectedValue(new JobSyncApiError("conflict", 409, "CONFLICT")) });
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockRejectedValue(new Error("offline")), status: vi.fn().mockRejectedValue(new JobSyncApiError("conflict", 409, "CONFLICT")) });
     await test.controller.refresh();
     expect(await test.controller.advance("en_route")).toBe(false);
     expect(test.state().detail).toBeNull();
@@ -157,10 +158,11 @@ describe("owner-operator Company canonical fieldwork", () => {
     const action = setup({ status: vi.fn().mockReturnValue(ack.promise) });
     await action.controller.refresh();
     const advancing = action.controller.advance("en_route");
+    await vi.waitFor(() => expect(action.api.status).toHaveBeenCalledOnce());
     action.leave();
     ack.resolve({ success: true, status: "en_route" });
     expect(await advancing).toBe(false);
-    expect(action.api.detail).toHaveBeenCalledTimes(1);
+    expect(action.api.detail).toHaveBeenCalledTimes(2);
     expect(action.state().success).toBeNull();
   });
   it("a successful empty photo DTO clears all legacy/local gallery aliases", async () => {
@@ -183,22 +185,23 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(test.api.cancel).not.toHaveBeenCalled();
     expect(test.state().actor?.user.role).toBe("dispatcher");
   });
-  it.each([false, null, undefined])("refreshes manager opt-out/unavailable %s before writing, without trusting login-time ON", async (calendarEligible) => {
+  it.each([false, null, undefined])("reads live manager calendar change %s without treating it as status denial", async (calendarEligible) => {
     const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
-    const test = setup({ session: vi.fn().mockResolvedValueOnce(actor).mockResolvedValue({ ...actor, user: { ...actor.user, calendarEligible } }) }, actor);
+    const test = setup({ session: vi.fn().mockResolvedValueOnce(actor).mockResolvedValue({ ...actor, user: { ...actor.user, calendarEligible } }),
+      detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail()).mockResolvedValueOnce(detail("en_route")) }, actor);
     await test.controller.refresh();
-    expect(await test.controller.advance("en_route")).toBe(false);
-    expect(test.api.status).not.toHaveBeenCalled();
+    expect(await test.controller.advance("en_route")).toBe(true);
+    expect(test.api.status).toHaveBeenCalledOnce();
     expect(test.state().actor?.user.calendarEligible).toBe(calendarEligible);
-    expect(test.state().error).toContain("Available for Field Jobs");
+    expect(test.state().error).toBeNull();
   });
-  it.each([42, null, "41", 0])("denies manager reassignment/non-numeric assignment %s immediately before writing", async (assignedUserId) => {
+  it.each([42, null, "41", 0])("does not require manager assignment %s for verified backend status authority", async (assignedUserId) => {
     const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
-    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValue({ ...detail(), assignedUserId }) }, actor);
+    const test = setup({ detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce({ ...detail(), assignedUserId }).mockResolvedValueOnce(detail("en_route")) }, actor);
     await test.controller.refresh();
-    expect(await test.controller.advance("en_route")).toBe(false);
-    expect(test.api.status).not.toHaveBeenCalled();
-    expect(test.state().error).toContain("assigned");
+    expect(await test.controller.advance("en_route")).toBe(true);
+    expect(test.api.status).toHaveBeenCalledOnce();
+    expect(test.state().error).toBeNull();
   });
   it("denies a manager action whose fresh Job is terminal or has a different next action", async () => {
     const actor: JobSyncNativeSession = { ...session, user: { ...session.user, role: "owner", calendarEligible: true } };
@@ -347,8 +350,8 @@ describe("shared job screen integration boundaries", () => {
     expect(photos).toContain('Platform.OS !== "web"');
     const hook = source("hooks/use-company-job.ts");
     expect(hook).toContain("instance.current === identity");
-    expect(hook).toContain("focused && snapshot.key === key && snapshot.identity === identity");
-    expect(hook).toContain("live.current.mounted && live.current.focused && live.current.key === key");
+    expect(hook).toContain("focused && active && snapshot.key === key && snapshot.identity === identity");
+    expect(hook).toContain("live.current.mounted && live.current.focused && live.current.active && foreground()");
     const progress = source("components/company-job-progress.tsx");
     expect(progress).toContain("companyDurationMs(detail?.enRouteAt");
     expect(progress).not.toContain('return "Unknown"');

@@ -38,6 +38,9 @@ import { ScreenContainer } from "@/components/screen-container";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { useColors } from "@/hooks/use-colors";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
+import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
+import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
+import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { CompanyJobLineItems } from "@/components/company-job-line-items";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
@@ -1653,6 +1656,13 @@ export default function AdminScheduleScreen() {
   const isCurrentRefund = () => renderedLegacyAction() && refundEpochRef.current === renderedRefundEpoch && showRefundModal;
   isCurrentRefund.verify = async () => isCurrentRefund() && await renderedLegacyAction.verify() && isCurrentRefund();
   const companyPhotoJobId = selectedJob?.companyId === jobSyncSession?.company?.id ? positiveJobSyncId(selectedJob?.id) : null;
+  const statusManagementGeneration = managementActionRef.current.generation;
+  const statusSheetEpoch = sheetEpochRef.current;
+  const isCurrentCompanyJobOperation = useCallback(() => !employeeLoading && !jobSyncLoading
+    && managementActionRef.current.mounted && managementActionRef.current.focused && managementActionRef.current.companyMode
+    && managementActionRef.current.key === managementActionKey && managementActionRef.current.generation === statusManagementGeneration
+    && sheetEpochRef.current === statusSheetEpoch,
+  [employeeLoading, jobSyncLoading, managementActionKey, statusManagementGeneration, statusSheetEpoch]);
   const companyJob = useCompanyJob(jobSyncSession,
     companyPhotoJobId,
     (serverJobs) => {
@@ -1661,7 +1671,7 @@ export default function AdminScheduleScreen() {
         const fresh = current.get(job.id);
         return fresh ? [{ ...job, ...companyJobDisplayFields(fresh), paidTotal: fresh.paidTotal, refundTotal: fresh.refundTotal, appliedEstimateCredit: fresh.appliedEstimateCredit, balance: fresh.balance, paymentStatus: fresh.paymentStatus }] : [];
       }));
-    });
+    }, isCurrentCompanyJobOperation, `${managementActionKey}:${statusManagementGeneration}:${statusSheetEpoch}`);
   const refreshCompanyJob = async () => {
     setCompanyPhotoPreview(null);
     await companyJob.refresh();
@@ -1675,6 +1685,11 @@ export default function AdminScheduleScreen() {
   const renderedSheetEpoch = sheetEpochRef.current;
   const renderedInvoiceEpoch = invoiceEpochRef.current;
   const renderedCheckoutEpoch = checkoutEpochRef.current;
+  const isCurrentCompanyPrivateNotes = isCurrentCompanyJobOperation;
+  const { attachScrollRef: detailScrollRef, relatedRef: detailTagRef,
+    scrollProps: detailScrollProps, onInputFocus: detailInputFocus, onInputBlur: detailInputBlur } = useCompanyJobKeyboard({
+    active: Boolean(selectedJob), isCurrent: renderedLegacyAction, scopeKey: managementActionKey,
+  });
   const isCurrentInvoice = () => managementActionRef.current.mounted && managementActionRef.current.focused
     && invoiceSessionRef.current.key === invoiceIdentityKey && invoiceSessionRef.current.generation === invoiceGeneration
     && sheetEpochRef.current === renderedSheetEpoch && invoiceEpochRef.current === renderedInvoiceEpoch && showInvoiceSheet;
@@ -3316,10 +3331,10 @@ export default function AdminScheduleScreen() {
 
       {/* Job Detail Modal */}
       <Modal visible={!!selectedJob && (!isJobSyncCompany || selectedJob.companyId === jobSyncSession?.company?.id)} animationType="slide" transparent={false}>
-        <View style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
+        <CompanyJobKeyboardBoundary style={{ flex: 1, backgroundColor: jobSheetColors.surface }}>
           <View style={{ flex: 1 }}>
             {selectedJob && (
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView ref={detailScrollRef} {...detailScrollProps} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
                 {/* ─── Native Google Maps job header ─── */}
                 {selectedJob.address ? (
                   <View style={{ position: "relative", height: 320, marginBottom: 0 }}>
@@ -4344,7 +4359,8 @@ export default function AdminScheduleScreen() {
 
                 {/* ── Private Notes Card ── */}
                 {(() => {
-                  if (companyJobMode) return null;
+                  if (companyJobMode) return <CompanyJobPrivateNotes session={jobSyncSession} jobId={companyPhotoJobId} job={companyJob}
+                    isCurrent={isCurrentCompanyPrivateNotes} onRefresh={refreshCompanyJob} />;
                   const hasNotes = (selectedJob.privateNotes ?? []).length > 0;
                   return hasNotes ? (
                     <AdminPrivateNotesCard
@@ -4399,7 +4415,7 @@ export default function AdminScheduleScreen() {
                 })()}
 
                 {/* ── Job Tags Card ── */}
-                <View style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
+                <View ref={detailTagRef} collapsable={false} style={{ backgroundColor: jobSheetColors.background, borderRadius: 0, borderTopWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0, borderRightWidth: 0, paddingHorizontal: 20, paddingVertical: 14, marginBottom: 8, borderColor: jobSheetColors.border }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <Text style={{ fontSize: 16 }}>🏷️</Text>
                     <Text style={{ fontSize: 15, fontWeight: "700", color: jobSheetColors.foreground }}>Job Tags</Text>
@@ -4413,7 +4429,7 @@ export default function AdminScheduleScreen() {
                     ))}
                   </View>
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <TextInput value={adminTagInput} onChangeText={setAdminTagInput} placeholder="Add tag..." placeholderTextColor={jobSheetColors.muted} style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, color: jobSheetColors.foreground, fontSize: 14 }} returnKeyType="done" onSubmitEditing={() => adminAddTag(selectedJob, adminTagInput)} />
+                    <TextInput onFocus={detailInputFocus} onBlur={detailInputBlur} value={adminTagInput} onChangeText={setAdminTagInput} placeholder="Add tag..." placeholderTextColor={jobSheetColors.muted} style={{ flex: 1, borderWidth: 1, borderColor: jobSheetColors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, color: jobSheetColors.foreground, fontSize: 14 }} returnKeyType="done" onSubmitEditing={() => adminAddTag(selectedJob, adminTagInput)} />
                     <TouchableOpacity onPress={() => adminAddTag(selectedJob, adminTagInput)} style={{ backgroundColor: jobSheetColors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6, justifyContent: "center" }}>
                       <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Add</Text>
                     </TouchableOpacity>
@@ -4911,7 +4927,7 @@ export default function AdminScheduleScreen() {
               </ScrollView>
             )}
           </View>
-        </View>
+        </CompanyJobKeyboardBoundary>
         {/* Edit Address Modal */}
         {/* Full-screen Address Photo Viewer */}
         {!companyJobMode && isFocused && viewingAddrPhoto && (

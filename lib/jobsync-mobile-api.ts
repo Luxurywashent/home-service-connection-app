@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeCompanyJobPrivateNotes } from "./company-job-private-notes";
 import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
 import {
   normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, normalizeCompanyJobQuoteInput,
@@ -501,6 +502,8 @@ export type JobSyncCompanyJobCreateInput = JobSyncCompanyJobCustomerSelector & {
   serviceNotes?: string;
   privateNotes?: string;
   operationKey?: string;
+  /** Omission retains the backend's default ON and old durable intent. */
+  notifyCustomer?: boolean;
 };
 
 /** CREATE is the canonical list-shaped DTO, not the detail/photo-gallery DTO. */
@@ -604,7 +607,8 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
     ? { newCustomer: normalizeCompanyJobNewCustomer(input.newCustomer) } : { customerId: input.customerId! };
   const newPricingFlow = input.lineItems !== undefined || input.discount !== undefined;
   if ((selector.newCustomer || newPricingFlow) && Reflect.ownKeys(input).some((key) => typeof key !== "string"
-    || !["customerId", "newCustomer", "priceBookServiceId", "lineItems", "discount", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey"].includes(key))) throw new Error("Company Job fields could not be verified.");
+    || !["customerId", "newCustomer", "priceBookServiceId", "lineItems", "discount", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey", "notifyCustomer"].includes(key))) throw new Error("Company Job fields could not be verified.");
+  if (input.notifyCustomer !== undefined && typeof input.notifyCustomer !== "boolean") throw new Error("Notify customer must be on or off.");
   const lineItems = input.lineItems !== undefined ? normalizeCompanyJobLineItems(input.lineItems) : undefined;
   const discount = input.discount !== undefined ? normalizeCompanyJobDiscount(input.discount) : undefined;
   if ((!selector.newCustomer && (typeof selector.customerId !== "number" || positiveJobSyncId(selector.customerId) !== selector.customerId))
@@ -624,6 +628,9 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
   if (lineItems) result.lineItems = lineItems;
   if (discount) result.discount = discount;
   if (input.operationKey !== undefined) result.operationKey = companyJobCreationOperationKey(input.operationKey);
+  // Never turn an opt-out into omission, including on strict legacy servers.
+  // There is no retry/downgrade without this field if the server rejects it.
+  if (input.notifyCustomer !== undefined) result.notifyCustomer = input.notifyCustomer;
   if (input.scheduledEndAt !== undefined) result.scheduledEndAt = input.scheduledEndAt;
   if (input.assignedUserId !== undefined) result.assignedUserId = input.assignedUserId;
   if (input.vehiclePriceKey !== undefined) {
@@ -728,6 +735,8 @@ export type JobSyncJobPhotoUploadResponse = {
 };
 export type JobSyncCompanyJobDetail = JobSyncMobileJob & {
   companyId: number | null;
+  /** Internal detail only; undefined means unavailable, null/empty means verified absence. */
+  privateNotes?: string | null;
   enRouteAt: string | null;
   onSiteAt: string | null;
   completedAt: string | null;
@@ -800,6 +809,7 @@ export function normalizeJobSyncCompanyJobDetail(payload: unknown, jobId: number
   return {
     ...job,
     companyId,
+    privateNotes: normalizeCompanyJobPrivateNotes(row),
     ...(pricing ? { pricing } : {}),
     enRouteAt: serverInstant(row.enRouteAt),
     onSiteAt: serverInstant(row.onSiteAt),

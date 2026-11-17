@@ -384,10 +384,11 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
       expect(permission).toHaveBeenCalledTimes(1);
       expect(picker).toHaveBeenCalledWith({
         mediaTypes: ["images"],
-        allowsMultipleSelection: false,
+        allowsMultipleSelection: source === "Library",
         allowsEditing: false,
         base64: false,
         exif: false,
+        ...(source === "Library" ? { orderedSelection: true } : {}),
       });
       expect(nodes("native-image")).toHaveLength(1);
       expect(container.textContent).toContain(COMPANY_PHOTO_DRAFT_LABEL);
@@ -470,13 +471,14 @@ describe("local draft component (real React lifecycle, mocked RN and Expo)", () 
     expect(container.textContent).not.toContain("fixture-sensitive-path");
     mocks.library.mockResolvedValueOnce({ canceled: false, assets: [] });
     await event(button("Retry Library"));
-    expect(container.textContent).toContain("Select one still photo");
+    expect(container.textContent).toContain("Select at least one still photo");
     mocks.library.mockResolvedValueOnce({
       canceled: false,
       assets: [asset(), asset()],
     });
     await event(button("Retry Library"));
-    expect(nodes("native-image")).toHaveLength(0);
+    expect(nodes("native-image")).toHaveLength(1);
+    expect(container.textContent).toContain("repeated selection(s) ignored");
   });
   it("discards only in-memory draft; old image callbacks cannot resurrect it", async () => {
     await render();

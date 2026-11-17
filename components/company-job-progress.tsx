@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useIsFocused } from "expo-router";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
-import { companyDurationMs, companyFieldworkBlockReason, companyJobSessionKey, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
+import { companyDurationMs, companyFieldworkBlockReason, companyFieldworkErrorHint, companyJobActorBlockReason, companyJobSessionKey, nextCompanyFieldStatus } from "@/lib/company-job-fieldwork";
 import type { JobSyncNativeSession, JobSyncFieldStatus } from "@/lib/jobsync-mobile-api";
 import type { useCompanyJob } from "@/hooks/use-company-job";
 
@@ -19,10 +19,9 @@ const actions: { label: string; icon: string; color: string; target: JobSyncFiel
 ];
 function compactBlockHint(reason: string, status?: string) {
   if (reason.includes("fresh signed")) return "Refresh your Company session to continue.";
+  if (reason.includes("identity") || reason.includes("current Company's Job")) return "Company identity changed. Refresh your session and job.";
   if (reason.includes("signed role")) return "This role cannot update progress.";
-  if (reason.includes("is OFF")) return "Field progress is off for your signed session.";
-  if (reason.includes("Explicit Available")) return "Field eligibility unverified. Refresh to check.";
-  if (reason.includes("currently assigned")) return "Only the assigned field worker can update progress.";
+  if (reason.includes("currently assigned")) return "Backend requires assignment. Ask a Company admin to update.";
   if (reason.includes("Job version")) return "Refresh this job before updating progress.";
   if (reason.includes("terminal")) return status === "completed" ? "Job finished." : "Job cancelled.";
   return "No progress action is available for this job.";
@@ -32,13 +31,14 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
   const focused = useIsFocused();
   const detail = job.detail;
   const scope = companyJobSessionKey(session, detail?.id ?? null);
+  const actorScope = companyJobSessionKey(job.actor, detail?.id ?? null);
   const live = useRef({ session, job, scope, focused, mounted: true });
   live.current = { session, job, scope, focused, mounted: live.current.mounted };
   const confirmation = useRef<object | null>(null);
   const busy = job.loading || job.pending;
-  const epoch = useRef({ scope, focused, detail, busy, identity: {} });
-  if (epoch.current.scope !== scope || epoch.current.focused !== focused || epoch.current.detail !== detail || epoch.current.busy !== busy) {
-    epoch.current = { scope, focused, detail, busy, identity: {} };
+  const epoch = useRef({ scope, actorScope, focused, detail, busy, identity: {} });
+  if (epoch.current.scope !== scope || epoch.current.actorScope !== actorScope || epoch.current.focused !== focused || epoch.current.detail !== detail || epoch.current.busy !== busy) {
+    epoch.current = { scope, actorScope, focused, detail, busy, identity: {} };
     confirmation.current = null;
   }
   const identity = epoch.current.identity;
@@ -50,12 +50,12 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
   useFocusEffect(useCallback(() => {
     return () => { live.current.focused = false; confirmation.current = null; epoch.current.identity = {}; };
   }, []));
-  const reason = companyFieldworkBlockReason(session, detail) || companyFieldworkBlockReason(job.actor, detail);
+  const reason = companyJobActorBlockReason(session, job.actor) || companyFieldworkBlockReason(session, detail) || companyFieldworkBlockReason(job.actor, detail);
   const next = detail ? nextCompanyFieldStatus(detail.status) : null;
   const current = (target?: JobSyncFieldStatus) => {
     const now = live.current;
     return now.mounted && now.focused && Boolean(scope) && now.scope === scope && epoch.current.identity === identity && now.job.detail === detail && !now.job.loading && !now.job.pending
-      && (!target || (!companyFieldworkBlockReason(now.session, now.job.detail) && !companyFieldworkBlockReason(now.job.actor, now.job.detail) && nextCompanyFieldStatus(now.job.detail!.status) === target));
+      && (!target || (!companyJobActorBlockReason(now.session, now.job.actor) && !companyFieldworkBlockReason(now.session, now.job.detail) && !companyFieldworkBlockReason(now.job.actor, now.job.detail) && nextCompanyFieldStatus(now.job.detail!.status) === target));
   };
   const advance = (target: JobSyncFieldStatus) => {
     if (lock.current || !current(target)) return;
@@ -68,7 +68,7 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
       if (confirmation.current) return;
       const ticket = {};
       confirmation.current = ticket;
-      Alert.alert("Mark as Arrived?", "Only tap Arrived when you are physically at the customer location.", [
+      Alert.alert("Mark as Arrived?", "Only tap Arrived when you are physically at the customer location. Arrived starts the Job and records the backend Start time.", [
         { text: "Not Yet", style: "cancel", onPress: () => { if (confirmation.current === ticket) confirmation.current = null; } },
         { text: "Yes, I've Arrived", onPress: () => {
           if (confirmation.current !== ticket || !current(target)) return;
@@ -81,7 +81,7 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
   // Durations require both canonical timestamps. No local running clock or placeholder zero.
   const driveTime = companyDurationMs(detail?.enRouteAt ?? null, detail?.onSiteAt ?? null);
   const jobTime = companyDurationMs(detail?.onSiteAt ?? null, detail?.completedAt ?? null);
-  const hint = job.error ? "Progress could not be confirmed. Refresh to retry."
+  const hint = job.error ? companyFieldworkErrorHint(job.error)
     : job.loading ? "Loading progress…" : job.pending ? "Updating progress…"
     : reason ? compactBlockHint(reason, detail?.status) : job.success ? "Progress updated." : null;
   const showRefresh = Boolean(reason || job.error || job.loading);
@@ -89,7 +89,7 @@ export function CompanyJobProgress({ session, job, onRefresh }: Props) {
     <View style={styles.row}>{actions.map(({ label, icon, color, target }) => {
       const disabled = Boolean(!focused || reason || job.loading || job.pending || next !== target);
       const active = detail?.status === target;
-      return <TouchableOpacity key={target} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={() => press(target)} activeOpacity={0.7} style={[styles.action, { opacity: disabled ? 0.35 : 1 }]}>
+      return <TouchableOpacity key={target} accessibilityRole="button" accessibilityLabel={label} accessibilityHint={target === "on_site" ? "Start the Job by marking arrival at the customer location." : undefined} accessibilityState={{ disabled }} disabled={disabled} onPress={() => press(target)} activeOpacity={0.7} style={[styles.action, { opacity: disabled ? 0.35 : 1 }]}>
         <View style={[styles.circle, { backgroundColor: active ? color : colors.surface, borderColor: active ? color : colors.border }]}>
           <Text style={styles.icon}>{icon}</Text>
         </View>

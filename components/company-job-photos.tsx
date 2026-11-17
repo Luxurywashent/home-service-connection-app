@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,6 +20,7 @@ import {
   canDeleteCompanyPhoto,
 } from "@/lib/company-photo-view";
 import { useCompanyPhotoOperation } from "@/lib/company-photo-operation";
+import { useCompanyPhotoBatch } from "@/lib/company-photo-batch";
 import type {
   JobSyncJobPhoto,
   JobSyncNativeSession,
@@ -62,7 +63,7 @@ function photoProps<T extends PhotoJobProps>(props: T): T {
 
 function useMounted() {
   const mounted = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -124,7 +125,7 @@ function CompanyPhotoImage({
   );
   const mounted = useMounted();
   const live = useRef(isCurrent);
-  live.current = isCurrent;
+  useLayoutEffect(() => { live.current = isCurrent; }, [isCurrent]);
   const update = (next: typeof status) => {
     if (mounted.current && live.current()) setStatus(next);
   };
@@ -200,13 +201,31 @@ export function CompanyJobPhotos(props: GalleryProps) {
   );
 }
 
+function createPhotoReadStore() {
+  let snapshot: PhotoJobProps["job"] | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    publish: (job: typeof snapshot) => {
+      if (snapshot === job) return;
+      snapshot = job;
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
+function usePhotoConfirmationIdentity(detail: PhotoJobProps["job"]["detail"], focused: boolean, blocked: boolean, pending: boolean, refreshing: boolean, available: boolean) {
+  return useMemo(() => ({ detail, focused, blocked, pending, refreshing, available }), [detail, focused, blocked, pending, refreshing, available]);
+}
+
 function ScopedCompanyJobPhotos(
   props: GalleryProps & { scope: string | null },
 ) {
   const colors = useJobSheetColors();
   const mounted = useMounted();
   const live = useRef(props);
-  live.current = props;
+  useLayoutEffect(() => { live.current = props; }, [props]);
   const current = () =>
     mounted.current &&
     Boolean(props.scope) &&
@@ -217,32 +236,47 @@ function ScopedCompanyJobPhotos(
   // own reconciliation only, retain the accessible pre-refresh input so its independent verified
   // readback can be handed to the parent even if that parent's progress read failed. This input is
   // never rendered as a fallback gallery and cannot authorize a new operation while pending.
-  const ownRead = useRef<PhotoJobProps["job"] | null>(null);
+  const readStore = useMemo(() => createPhotoReadStore(), []);
+  const ownRead = useSyncExternalStore(readStore.subscribe, readStore.getSnapshot, readStore.getSnapshot);
   const sameAccess = !sharedProps.job.detail || (sharedProps.job.detail.id === props.jobId && sharedProps.job.detail.companyId === props.session?.company?.id && (props.session?.user.role !== "technician" || sharedProps.job.detail.assignedUserId === props.session.user.id));
-  const readbackInput = ownRead.current && sameAccess && !sharedProps.job.pending
-    ? { ...sharedProps, job: ownRead.current } : sharedProps;
-  const operation = useCompanyPhotoOperation({ ...readbackInput, onRefresh: async () => {
+  const readbackInput = ownRead && sameAccess && !sharedProps.job.pending
+    ? { ...sharedProps, job: ownRead } : sharedProps;
+  const reconcilePhotos = async () => {
     if (!current()) return;
-    ownRead.current = currentCompanyGallery(sharedProps) !== null ? sharedProps.job : ownRead.current;
+    if (currentCompanyGallery(sharedProps) !== null) readStore.publish(sharedProps.job);
     await (props.onRefresh ? props.onRefresh() : props.job.refresh());
-  } });
-  useEffect(() => {
+  };
+  const removal = useCompanyPhotoOperation({ ...readbackInput, onRefresh: reconcilePhotos });
+  const batch = useCompanyPhotoBatch({ ...readbackInput, onRefresh: reconcilePhotos });
+  const [operationKind, setOperationKind] = useState<"upload" | "remove">("upload");
+  const selectedOperation = operationKind === "upload" ? batch : removal;
+  const operation = { ...selectedOperation, pending: batch.pending || removal.pending, blocked: selectedOperation.blocked || batch.pending || removal.pending, remove: removal.remove };
+  const { acceptVerifiedDetail } = props.job;
+  const { scope } = props;
+  const deliveredDetail = useRef<typeof operation.detail>(null);
+  useLayoutEffect(() => {
     if (operation.detail && !operation.pending && current()) {
-      props.job.acceptVerifiedDetail?.(operation.detail, props.scope!);
-      ownRead.current = null;
-    } else if (!operation.pending) ownRead.current = null;
-  }, [operation.detail, operation.pending, props.scope]);
+      if (deliveredDetail.current !== operation.detail) {
+        deliveredDetail.current = operation.detail;
+        acceptVerifiedDetail?.(operation.detail, scope!);
+      }
+      readStore.publish(null);
+    } else if (!operation.pending) { deliveredDetail.current = null; readStore.publish(null); }
+  });
   const canonicalProps = operation.detail ? { ...sharedProps, job: { ...sharedProps.job, detail: operation.detail, error: null } } : sharedProps;
   const photos = operation.focused ? currentCompanyPhotos(canonicalProps) : [];
-  const [confirmation, setConfirmation] = useState<{ photoId: number; detail: unknown } | null>(null);
+  const { detail: canonicalDetail } = canonicalProps.job;
+  const { focused: operationFocused, blocked: operationBlocked, pending: operationPending } = operation;
+  const confirmationIdentity = usePhotoConfirmationIdentity(canonicalDetail, operationFocused, operationBlocked, operationPending, refreshing, currentCompanyGallery(canonicalProps) !== null);
+  const [confirmation, setConfirmation] = useState<{ photoId: number; identity: typeof confirmationIdentity } | null>(null);
   const removeLock = useRef(false);
   const canonicalLive = useRef({ props: canonicalProps, focused: operation.focused, blocked: operation.blocked, pending: operation.pending, refreshing });
-  canonicalLive.current = { props: canonicalProps, focused: operation.focused, blocked: operation.blocked, pending: operation.pending, refreshing };
+  useLayoutEffect(() => { canonicalLive.current = { props: canonicalProps, focused: operation.focused, blocked: operation.blocked, pending: operation.pending, refreshing }; });
   const canRemove = (photoId: number) => current() && canonicalLive.current.focused && !canonicalLive.current.blocked && !canonicalLive.current.pending && !canonicalLive.current.refreshing && Platform.OS !== "web" && canDeleteCompanyPhoto(canonicalLive.current.props, photoId);
-  const validConfirmation = confirmation && confirmation.detail === canonicalProps.job.detail && canRemove(confirmation.photoId) ? confirmation : null;
+  const canRenderRemoval = (photoId: number) => Boolean(props.scope) && operation.focused && !operation.blocked && !operation.pending && !refreshing && Platform.OS !== "web" && canDeleteCompanyPhoto(canonicalProps, photoId);
+  const validConfirmation = confirmation && confirmation.identity === confirmationIdentity && canRenderRemoval(confirmation.photoId) ? confirmation : null;
   const confirmationRef = useRef(validConfirmation);
-  confirmationRef.current = validConfirmation;
-  useEffect(() => { if (confirmation && !validConfirmation) setConfirmation(null); }, [confirmation, validConfirmation]);
+  useLayoutEffect(() => { confirmationRef.current = validConfirmation; }, [validConfirmation]);
   const canUse = (photo: JobSyncJobPhoto) =>
     current() &&
     canonicalLive.current.focused &&
@@ -258,7 +292,7 @@ function ScopedCompanyJobPhotos(
   const showRemovalHelp = Boolean(props.scope) && operation.focused && !operation.blocked && !busy && Platform.OS !== "web" && photos.some((photo) => canDeleteCompanyPhoto(canonicalProps, photo.id));
   const requestRemoval = (photoId: number) => {
     if (canRemove(photoId))
-      setConfirmation({ photoId, detail: canonicalLive.current.props.job.detail });
+      setConfirmation({ photoId, identity: confirmationIdentity });
   };
   return (
     <View
@@ -273,7 +307,8 @@ function ScopedCompanyJobPhotos(
         jobId={props.jobId}
         job={{ ...canonicalProps.job, loading: busy || operation.blocked || !operation.focused }}
         onRefresh={props.onRefresh ?? props.job.refresh}
-        onUpload={operation.upload}
+        onUpload={async (draft) => { setOperationKind("upload"); const result = await batch.upload([{ ...draft, assetKeys: [`uri:${draft.uri}`] }]); return !result.stopped; }}
+        onUploadBatch={(drafts) => { setOperationKind("upload"); return batch.upload(drafts); }}
         operationPending={operation.pending}
       />
       {busy ? (
@@ -282,6 +317,7 @@ function ScopedCompanyJobPhotos(
           color={colors.primary}
         />
       ) : null}
+      {batch.pending && batch.progress ? <Text accessibilityLiveRegion="polite" style={[styles.help, { color: colors.muted }]}>Uploading photo {batch.progress.index} of {batch.progress.total} · {batch.progress.confirmed} confirmed</Text> : null}
       {operation.message ? <Text style={[styles.help, { color: colors.muted }]}>{operation.message}</Text> : null}
       {operation.error ? <Text accessibilityRole="alert" style={{ color: colors.error }}>{operation.error}</Text> : null}
       {canonicalProps.job.error || error ? (
@@ -328,11 +364,11 @@ function ScopedCompanyJobPhotos(
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={`Remove Job photo ${item.id}`}
-              accessibilityState={{ disabled: !canRemove(item.id) }}
-              disabled={!canRemove(item.id)}
+              accessibilityState={{ disabled: !canRenderRemoval(item.id) }}
+              disabled={!canRenderRemoval(item.id)}
               onPress={() => requestRemoval(item.id)}
               style={styles.remove}
-            ><Text style={[styles.actionText, { color: colors.error, opacity: canRemove(item.id) ? 1 : 0.35 }]}>Remove</Text></TouchableOpacity>
+            ><Text style={[styles.actionText, { color: colors.error, opacity: canRenderRemoval(item.id) ? 1 : 0.35 }]}>Remove</Text></TouchableOpacity>
           </View>
         )}
       />
@@ -345,6 +381,7 @@ function ScopedCompanyJobPhotos(
           removeLock.current = true;
           const photoId = validConfirmation.photoId;
           setConfirmation(null);
+          setOperationKind("remove");
           void operation.remove(photoId).finally(() => { removeLock.current = false; });
         }}><Text style={{ color: colors.error }}>Remove from Job</Text></TouchableOpacity>
       </View> : null}
@@ -390,9 +427,10 @@ export function CompanyJobPhotoPreview(props: PreviewProps) {
       : null;
   const valid = Boolean(photo && scope);
   // Invalid selections are also cleared in the parent so a later gallery cannot resurrect them.
+  const { onClose } = props;
   useEffect(() => {
-    if (selection && !valid) props.onClose();
-  }, [selection, valid, props.onClose]);
+    if (selection && !valid) onClose();
+  }, [selection, valid, onClose]);
   if (!photo || !scope) return null;
   return (
     <ScopedCompanyJobPhotoPreview
@@ -409,7 +447,7 @@ function ScopedCompanyJobPhotoPreview(
 ) {
   const mounted = useMounted();
   const live = useRef(props);
-  live.current = props;
+  useLayoutEffect(() => { live.current = props; }, [props]);
   const current = () =>
     mounted.current &&
     companyPhotoScope(live.current.session, live.current.jobId) ===

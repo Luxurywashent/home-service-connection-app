@@ -51,7 +51,7 @@ describe("new customer and Job transport: strict XOR, one POST", () => {
   it.each(invalid)("invalid nested customer fails before POST: %j", async value => {
     await expect(createJobSyncCompanyJob("offline", 9, { ...request(), newCustomer: value } as any)).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
   });
-  it.each([{ ...request(), customerId: 7 }, { priceBookServiceId: 31, scheduledStartAt: request().scheduledStartAt }, { ...request(), operationKey: undefined }, { ...request(), notifyCustomer: true }])("rejects selector/key/unknown request violation before POST: %j", async value => {
+  it.each([{ ...request(), customerId: 7 }, { priceBookServiceId: 31, scheduledStartAt: request().scheduledStartAt }, { ...request(), operationKey: undefined }, { ...request(), notifyCustomer: "true" }])("rejects selector/key/unknown request violation before POST: %j", async value => {
     await expect(createJobSyncCompanyJob("offline", 9, value as any)).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
   });
   it("posts customer and Job together once and accepts a positive canonical customer acknowledgment", async () => {

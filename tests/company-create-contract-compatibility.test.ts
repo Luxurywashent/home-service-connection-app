@@ -158,11 +158,11 @@ for (const version of ["shipped", "current"]) {
       else expect(await saving).toMatchObject({ id: 91, companyId: 9 });
       expect(fetch).toHaveBeenCalledOnce();
     });
-    it("legacy unkeyed existing-customer request body remains unchanged and client-only overrides omitted", async () => {
+    it("legacy unkeyed request preserves current notification intent while omitting client-only overrides", async () => {
       const { operationKey, ...legacy } = input(); const ack = oldBackend.response(rawDetail(), { id: 91, priceBookServiceId: 71 });
       const fetch = vi.fn(async (_url: string, _init: any) => response(ack.body, ack.status)); const rt = runtime(version, fetch);
       expect(await rt.api.createJobSyncCompanyJob(TOKEN, 9, { ...legacy, amount: 1, companyId: 99, notifyCustomer: false })).toMatchObject({ id: 91, amount: 125 });
-      expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(legacy); expect(fetch).toHaveBeenCalledOnce();
+      expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(version === "shipped" ? legacy : { ...legacy, notifyCustomer: false }); expect(fetch).toHaveBeenCalledOnce();
     });
     it.each(["key", "state", "replayed", "missingOperation", "extraEnvelope", "customer", "service", "assignment", "start", "amount"])("corrupted keyed %s acknowledgment rejects with one dispatch", async field => {
       const ack = oldBackend.response(rawDetail(), created());

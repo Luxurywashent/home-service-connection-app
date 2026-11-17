@@ -1,6 +1,6 @@
 import {
   cancelJobSyncCompanyJob, getJobSyncMobileSession, getJobSyncCompanyJobDetail, getJobSyncCompanyJobs, updateJobSyncCompanyJobStatus,
-  positiveJobSyncId, type JobSyncCompanyJobDetail, type JobSyncFieldStatus,
+  JobSyncApiError, positiveJobSyncId, type JobSyncCompanyJobDetail, type JobSyncFieldStatus,
   type JobSyncMobileJob, type JobSyncNativeSession,
 } from "./jobsync-mobile-api";
 
@@ -35,6 +35,15 @@ export function isAssignedCompanyFieldActor(session: JobSyncNativeSession | null
     || ((session?.user.role === "owner" || session?.user.role === "dispatcher") && session.user.calendarEligible === true));
 }
 
+/** Match the independently refreshed bearer actor; calendar eligibility is not a Job-status permission. */
+export function companyJobActorBlockReason(session: JobSyncNativeSession | null, actor: JobSyncNativeSession | null): string | null {
+  if (!signedCompanyIdentity(session) || !signedCompanyIdentity(actor) || actor!.token !== session!.token
+    || actor!.company!.id !== session!.company!.id || actor!.user.id !== session!.user.id || actor!.user.role !== session!.user.role) {
+    return "The signed Company identity or live role changed. Refresh your session before continuing.";
+  }
+  return null;
+}
+
 export function nextCompanyFieldStatus(status: string): JobSyncFieldStatus | null {
   // follow_up -> completed is an existing backend transition, not a new status.
   return ({ scheduled: "en_route", en_route: "on_site", on_site: "completed", follow_up: "completed" } as Record<string, JobSyncFieldStatus>)[status] ?? null;
@@ -42,11 +51,14 @@ export function nextCompanyFieldStatus(status: string): JobSyncFieldStatus | nul
 
 export function companyFieldworkBlockReason(session: JobSyncNativeSession | null, detail: JobSyncCompanyJobDetail | null): string | null {
   if (!companyJobSessionKey(session, detail?.id ?? null)) return "A fresh signed Company Job session is required.";
+  if (detail?.companyId !== session!.company!.id) return "Could not verify the current Company's Job. Refresh before continuing.";
   if (!["technician", "owner", "dispatcher"].includes(session!.user.role)) return "This signed role cannot perform Company field progress.";
-  if (session!.user.role !== "technician" && session!.user.calendarEligible !== true) return session!.user.calendarEligible === false
-    ? "Available for Field Jobs is OFF in your signed session. Management permissions are unchanged."
-    : "Explicit Available for Field Jobs ON is unavailable in your signed session. Refresh before performing fieldwork.";
-  if (!isAssignedCompanyFieldActor(session, detail!)) return "Only the currently assigned Company field actor can update field progress. Refresh the schedule.";
+  // companyContext.permissionsForRole + jobService.changeJobStatus at both pinned checkpoints:
+  // owners/dispatchers may operate any same-Company Job; technicians are still assignment-scoped.
+  // Do not use the separate calendar lane/assignment eligibility predicate for status authority.
+  if (session!.user.role === "technician" && !isAssignedCompanyTechnician(session, detail!)) {
+    return "The backend requires the currently assigned technician for field progress. Ask a Company admin to update this Job; unassigned technician access requires a backend permission change.";
+  }
   if (!detail?.updatedAt || !Number.isFinite(Date.parse(detail.updatedAt))) return "The backend Job version is unavailable. Refresh before updating progress.";
   if (!nextCompanyFieldStatus(detail.status)) return ["completed", "cancelled"].includes(detail.status)
     ? "This Job is terminal. No field progress action is available."
@@ -61,6 +73,25 @@ export function companyManagementCancelBlockReason(session: JobSyncNativeSession
   if (["completed", "cancelled"].includes(detail.status)) return "This Job is terminal. Management cancellation is unavailable.";
   if (!["draft", "scheduled", "en_route", "on_site", "follow_up"].includes(detail.status)) return "This backend status does not support management cancellation.";
   return null;
+}
+
+/** Safe, actionable feedback only; never render arbitrary backend error text in the compact Job UI. */
+export function companyFieldworkErrorHint(message: string): string {
+  if (message.startsWith("Company session expired.")) return "Session expired. Sign in again, then refresh this job.";
+  if (message.startsWith("Company Job access denied.")) return "Backend denied access. Ask a Company admin, then refresh.";
+  if (message.startsWith("Company Job changed elsewhere.")) return "Job changed elsewhere. Refresh and review before retrying.";
+  if (message.startsWith("Company Job outcome unconfirmed.")) return "Outcome unconfirmed. Refresh before retrying; do not repeat.";
+  return "Progress could not be confirmed. Refresh to retry.";
+}
+
+function companyStatusErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Could not update Company Job progress.";
+  const status = error instanceof JobSyncApiError ? error.status : null;
+  if (status === 401) return `Company session expired. ${message}`;
+  if (status === 403 || status === 404) return `Company Job access denied. ${message}`;
+  if (status === 409 || status === 412) return `Company Job changed elsewhere. ${message}`;
+  if (error instanceof JobSyncApiError && (error.code === "TIMEOUT" || error.code === "NETWORK_ERROR")) return `Company Job outcome unconfirmed. ${message}`;
+  return message;
 }
 
 export function companyJobDisplayFields(job: JobSyncMobileJob) {
@@ -145,16 +176,14 @@ export function createCompanyJobController(input: {
     publish({ pending: true, success: null, error: null });
     let attemptedWrite = false;
     try {
-      // Every manager control write checks the live session and Job immediately before PATCH.
-      // No opt-in/assignment is required for the independent management Cancel action.
-      if (management || original.user.role === "owner" || original.user.role === "dispatcher") {
-        const fresh = await read();
-        if (!fresh || !input.isCurrent()) return false;
-        const freshReason = block();
-        if (freshReason || (!management && nextCompanyFieldStatus(fresh.status) !== target)) {
-          publish({ error: freshReason ?? "Job progress changed. Review the refreshed Job before retrying." });
-          return false;
-        }
+      // Every status write checks live membership/role, assignment scope and Job version before PATCH.
+      // The backend remains the final authority; no local timestamp/history or permission is invented.
+      const fresh = await read();
+      if (!fresh || !input.isCurrent()) return false;
+      const freshReason = block();
+      if (freshReason || (!management && nextCompanyFieldStatus(fresh.status) !== target)) {
+        publish({ error: freshReason ?? "Job progress changed. Review the refreshed Job before retrying." });
+        return false;
       }
       if (!input.isCurrent()) return false;
       attemptedWrite = true;
@@ -168,7 +197,7 @@ export function createCompanyJobController(input: {
       return true;
     } catch (error) {
       if (!input.isCurrent()) return false;
-      const message = error instanceof Error ? error.message : "Could not update Company Job progress.";
+      const message = companyStatusErrorMessage(error);
       publish({ detail: null, actor: null, loading: attemptedWrite, success: null });
       if (!attemptedWrite) {
         // A failed freshness check never writes or quietly re-enables a captured opt-in.

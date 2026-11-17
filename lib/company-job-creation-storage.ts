@@ -79,7 +79,7 @@ export function newCompanyCreationOperationKey(): string { return `hsc-job-${uui
 const textLimits = { addressLine1: 255, city: 96, region: 96, postalCode: 24, serviceNotes: 4000, privateNotes: 4000 } as const;
 function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
   shape(value, ["scheduledStartAt"],
-    ["priceBookServiceId", "lineItems", "discount", "customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", ...Object.keys(textLimits)]);
+    ["priceBookServiceId", "lineItems", "discount", "customerId", "newCustomer", "vehiclePriceKey", "assignedUserId", "scheduledEndAt", "notifyCustomer", ...Object.keys(textLimits)]);
   if (Object.hasOwn(value, "customerId") === Object.hasOwn(value, "newCustomer")
     || (Object.hasOwn(value, "customerId") && !positive(value.customerId))
     || (Object.hasOwn(value, "priceBookServiceId") && !positive(value.priceBookServiceId))
@@ -99,6 +99,12 @@ function payloadCopy(value: unknown): JobSyncCompanyJobCreateInput {
   const result: JobSyncCompanyJobCreateInput = {
     ...selector, scheduledStartAt: value.scheduledStartAt,
   };
+  // Preserve omission in old v1 records and reject corrupted explicit values.
+  // compatible() already prevents adding/removing/changing this intent later.
+  if (Object.hasOwn(value, "notifyCustomer")) {
+    if (typeof value.notifyCustomer !== "boolean") throw corrupt();
+    result.notifyCustomer = value.notifyCustomer;
+  }
   if (Object.hasOwn(value, "priceBookServiceId")) result.priceBookServiceId = value.priceBookServiceId as number;
   try {
     if (Object.hasOwn(value, "lineItems")) {

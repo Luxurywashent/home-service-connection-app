@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useIsFocused } from "expo-router";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { CompanyBookingServiceCard, CompanyBookingServicePicker } from "./company-booking-service-picker";
 import { CompanyBookingTimeField } from "./company-booking-time-field";
+import { CompanyJobKeyboardBoundary } from "./company-job-keyboard-boundary";
+import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { useCompanyJobQuote } from "@/hooks/use-company-job-quote";
 import { useCompanyFieldworkCalendar } from "@/hooks/use-company-fieldwork-calendar";
@@ -100,9 +102,14 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
   const [privateNotes, setPrivateNotes] = useState("");
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
   const [picker, setPicker] = useState<"date" | "start" | "end" | null>(null);
   const [moreDetails, setMoreDetails] = useState(false);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  const { attachScrollRef, scrollProps, onInputFocus, onInputBlur } = useCompanyJobKeyboard({
+    active: props.visible && !servicePickerOpen, isCurrent: current,
+    scopeKey: `${companyCreateJobScope(props.session)}:${props.customerPrefill?.customerId ?? "none"}`,
+  });
   const invalidateCustomerRequest = useCallback(() => { customerRequest.current++; }, []);
   const controllerRef = useRef<ReturnType<typeof createCompanyJobController> | null>(null);
   useLayoutEffect(() => {
@@ -233,7 +240,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && !discountError
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));
-  const draftBinding = useMemo(() => ({ customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, canSave }), [customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, canSave]);
+  const draftBinding = useMemo(() => ({ customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, canSave }), [customerMode, customerId, firstName, lastName, email, phone, address, city, region, postalCode, date, start, end, assignee, notes, privateNotes, notifyCustomer, canSave]);
   const committedDraft = useRef<object | null>(null);
   useLayoutEffect(() => { committedDraft.current = draftBinding; return () => { committedDraft.current = null; }; }, [draftBinding]);
   const close = () => { if (current()) { jobQuote.invalidate(); live.current.closing = true; invalidateCustomerRequest(); live.current.props.onClose(); } };
@@ -256,7 +263,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
     jobQuote.invalidate();
     void controller.submit({ ...selector, lineItems, ...(discount ? { discount } : {}), assignedEmployeeId: assignee,
       date, startHour: parseTime(start), endHour: end.trim() ? parseTime(end) : undefined,
-      addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes }).then(async (saved) => {
+      addressLine1: address, city, region, postalCode, serviceNotes: notes, privateNotes, notifyCustomer }).then(async (saved) => {
       // One authenticated GET-only check after an ambiguous response; never
       // resend, re-key, or drive a retained controller after close/scope change.
       if (!saved && current() && controllerRef.current === controller
@@ -270,7 +277,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   const SafeArea = Platform.OS === "web" ? View : require("react-native-safe-area-context").SafeAreaView;
   const label = (text: string) => <Text style={[styles.label, { color: colors.muted }]}>{text}</Text>;
   const field = (name: string, value: string, setValue: (value: string) => void, options: { paired?: boolean; readonly?: boolean; multiline?: boolean; keyboard?: "phone-pad" | "email-address"; feedback?: keyof JobSyncCompanyNewCustomer; displayLabel?: string } = {}) => <View style={[styles.field, options.paired && styles.pairedField]}>
-    {label(options.displayLabel || name)}<TextInput accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked && !options.readonly) setValue(next); }} editable={!locked && !options.readonly}
+    {label(options.displayLabel || name)}<TextInput onFocus={onInputFocus} onBlur={onInputBlur} accessibilityLabel={name} value={value} onChangeText={(next) => { if (current() && !locked && !options.readonly) setValue(next); }} editable={!locked && !options.readonly}
       placeholder={options.readonly ? "—" : undefined} placeholderTextColor={colors.muted} style={[...inputStyle, options.multiline && styles.multiline]} multiline={options.multiline} keyboardType={options.keyboard}
       autoCapitalize={options.keyboard === "email-address" ? "none" : "sentences"} returnKeyType="done" />
     {options.feedback && customerMode === "new" && newCustomerErrors[options.feedback] && Boolean(value.trim()) && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{newCustomerErrors[options.feedback]}</Text>}
@@ -295,12 +302,12 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   };
   return <Modal visible transparent animationType="slide" onRequestClose={() => { if (servicePickerOpen && current()) setServicePickerOpen(false); else close(); }}>
     {/* Android's native Modal resizes for the IME; a second height avoidance would shrink it twice. */}
-    <KeyboardAvoidingView enabled={Platform.OS === "ios"} behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.backdrop}>
+    <CompanyJobKeyboardBoundary style={styles.backdrop}>
       <SafeArea testID="company-booking-viewport" edges={["top", "left", "right"]} style={styles.viewport}>
       <View testID="company-booking-sheet" style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View accessibilityElementsHidden={servicePickerOpen} importantForAccessibility={servicePickerOpen ? "no-hide-descendants" : "auto"} style={styles.main}>
         <View style={styles.header}><Text style={[styles.title, { color: colors.foreground }]}>New Job</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel="Close Add Job" onPress={close} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity></View>
-        <ScrollView testID="company-booking-main-scroll" style={styles.scroll} horizontal={false} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
+        <ScrollView ref={attachScrollRef} {...scrollProps} testID="company-booking-main-scroll" style={styles.scroll} horizontal={false} automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
           <View testID="company-booking-time-row" style={styles.timeRow}>
             <CompanyBookingTimeField label="Date" accessibilityLabel="Company date" type="date" value={date} disabled={locked} isCurrent={current} onChange={setDate} onPick={() => setPicker("date")} />
             <CompanyBookingTimeField label="Start" accessibilityLabel="Start time" type="time" value={start} disabled={locked} isCurrent={current} onChange={setStart} onPick={() => setPicker("start")} />
@@ -320,7 +327,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {label("CUSTOMER")}
           {customerMode === "existing" && <>
           {customerListError && <Text accessibilityRole="alert" style={{ color: colors.error }}>{customerListError}</Text>}
-          <View style={styles.searchRow}><TextInput accessibilityLabel="Find Company customer" value={selectedCustomer ? selectedCustomer.name : query} onChangeText={clearCustomer} editable={!locked} placeholder="Search name, phone, email or address…" placeholderTextColor={colors.muted} style={[...inputStyle, styles.flex]} autoCapitalize="none" returnKeyType="search" />
+          <View style={styles.searchRow}><TextInput onFocus={onInputFocus} onBlur={onInputBlur} accessibilityLabel="Find Company customer" value={selectedCustomer ? selectedCustomer.name : query} onChangeText={clearCustomer} editable={!locked} placeholder="Search name, phone, email or address…" placeholderTextColor={colors.muted} style={[...inputStyle, styles.flex]} autoCapitalize="none" returnKeyType="search" />
             {(query || selectedCustomer) && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Clear customer selection" disabled={locked} onPress={() => clearCustomer()} style={styles.close}><Text style={[styles.closeText, { color: colors.muted }]}>×</Text></TouchableOpacity>}
           </View>
           {matches.length > 0 && !selectedCustomer && <FlatList testID="company-booking-customer-results" nestedScrollEnabled style={[styles.customerResults, { borderColor: colors.border, backgroundColor: colors.surface }]} data={matches} keyExtractor={(row) => String(row.id)} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => <TouchableOpacity accessibilityRole="button" accessibilityLabel={[item.name, item.phone || item.email || item.addressLine1].filter(Boolean).join(" · ")} disabled={locked} onPress={() => { if (current() && !locked) void selectCustomer({ customerId: item.id, companyId: props.session.company!.id }, true); }} style={[styles.customerResult, { borderColor: colors.border }]}>
@@ -358,7 +365,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             const quantityValid = /^\d+$/.test(line.quantity) && Number(line.quantity) >= 1 && Number(line.quantity) <= 100;
             return <View key={line.serviceId} testID={`company-job-draft-line-${line.serviceId}`} style={styles.field}>
               {service ? <CompanyBookingServiceCard service={service} selected rateKey={line.rateKey} catalogLabel disabled={locked} onPress={() => openServicePicker(line.serviceId)} /> : <Text accessibilityRole="alert" style={{ color: colors.error }}>Selected service is unavailable. Remove or refresh it.</Text>}
-              <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label("Quantity (1–100)")}<TextInput accessibilityLabel={`Service ${index + 1} quantity`} value={line.quantity} editable={!locked} keyboardType="number-pad" onChangeText={(next) => changeLine({ quantity: next })} style={inputStyle} /></View>
+              <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label("Quantity (1–100)")}<TextInput onFocus={onInputFocus} onBlur={onInputBlur} accessibilityLabel={`Service ${index + 1} quantity`} value={line.quantity} editable={!locked} keyboardType="number-pad" onChangeText={(next) => changeLine({ quantity: next })} style={inputStyle} /></View>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove service ${index + 1}`} disabled={locked} onPress={() => editPricing(() => setDraftLines((rows) => rows.filter((row) => row.serviceId !== line.serviceId)))} style={[styles.option, { borderColor: colors.border }]}><Text style={[styles.optionText, { color: colors.foreground }]}>Remove</Text></TouchableOpacity></View>
               {!quantityValid && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>Quantity must be a whole number from 1 to 100.</Text>}
               {rates.length > 0 && <View style={styles.field}>{label(requireRate ? "Service rate (required)" : "Service rate")}
@@ -371,7 +378,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           {draftLines.length === 50 && <Text style={[styles.note, { color: colors.muted }]}>Maximum 50 services. Use quantity for repetition.</Text>}
           {draftLines.length > 0 && <>
             {label("DISCOUNT (OPTIONAL)")}<View style={styles.timeRow}><CompanyJobPricingOption {...pricingOptionProps} name="No discount" selected={discountKind === "none"} action={() => { if (discountKind !== "none") editPricing(() => setDiscountKind("none")); }} /><CompanyJobPricingOption {...pricingOptionProps} name="Flat discount" selected={discountKind === "flat"} action={() => { if (discountKind !== "flat") editPricing(() => setDiscountKind("flat")); }} /><CompanyJobPricingOption {...pricingOptionProps} name="Percent discount" selected={discountKind === "percent"} action={() => { if (discountKind !== "percent") editPricing(() => setDiscountKind("percent")); }} /></View>
-            {discountKind !== "none" && <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label(discountKind === "percent" ? "Discount percent" : "Discount amount")}<TextInput accessibilityLabel="Discount value" value={discountValue} editable={!locked} keyboardType="decimal-pad" onChangeText={(next) => { if (next !== discountValue) editPricing(() => setDiscountValue(next)); }} style={inputStyle} /></View><View style={[styles.field, styles.flex]}>{label("Discount code (optional)")}<TextInput accessibilityLabel="Discount code (optional)" value={discountCode} editable={!locked} autoCapitalize="none" onChangeText={(next) => { if (next !== discountCode) editPricing(() => setDiscountCode(next)); }} style={inputStyle} /></View></View>}
+            {discountKind !== "none" && <View style={styles.pair}><View style={[styles.field, styles.flex]}>{label(discountKind === "percent" ? "Discount percent" : "Discount amount")}<TextInput onFocus={onInputFocus} onBlur={onInputBlur} accessibilityLabel="Discount value" value={discountValue} editable={!locked} keyboardType="decimal-pad" onChangeText={(next) => { if (next !== discountValue) editPricing(() => setDiscountValue(next)); }} style={inputStyle} /></View><View style={[styles.field, styles.flex]}>{label("Discount code (optional)")}<TextInput onFocus={onInputFocus} onBlur={onInputBlur} accessibilityLabel="Discount code (optional)" value={discountCode} editable={!locked} autoCapitalize="none" onChangeText={(next) => { if (next !== discountCode) editPricing(() => setDiscountCode(next)); }} style={inputStyle} /></View></View>}
             {discountError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{discountError}</Text>}
             {jobQuote.loading && <ActivityIndicator accessibilityLabel="Loading server Job quote" color={colors.primary} />}
             {jobQuote.error && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{jobQuote.error}</Text>}
@@ -402,7 +409,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             <TouchableOpacity accessibilityRole="switch" accessibilityLabel="New Customer" accessibilityState={{ checked: customerMode === "new", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode(customerMode === "new" ? "existing" : "new")} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: customerMode === "new" ? colors.primary : colors.border, alignItems: customerMode === "new" ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity>
             {customerMode === "new" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Existing Customer" disabled={locked} onPress={() => changeCustomerMode("existing")} style={styles.existingAction}><Text style={[styles.note, { color: colors.primary }]}>Find existing</Text></TouchableOpacity>}
           </View>
-          <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>Unavailable in this form</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer unavailable" accessibilityState={{ checked: false, disabled: true }} disabled style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: colors.border }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
+          <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>{locked ? "Original request is locked; this draft cannot change it" : "Turn off to opt out for this Job"}</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer" accessibilityState={{ checked: notifyCustomer, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked && committedDraft.current === draftBinding) setNotifyCustomer((value) => !value); }} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: notifyCustomer ? colors.primary : colors.border, alignItems: notifyCustomer ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
           {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}</Text>}
           {state.detailError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{state.detailError}</Text>}
           {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>Review and correct the form, then save a new request.</Text>}
@@ -428,7 +435,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
           } }} />}
       </View>
       </SafeArea>
-    </KeyboardAvoidingView>
+    </CompanyJobKeyboardBoundary>
   </Modal>;
 }
 const styles = StyleSheet.create({

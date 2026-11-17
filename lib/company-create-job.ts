@@ -32,6 +32,7 @@ export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
   postalCode?: string;
   serviceNotes?: string;
   privateNotes?: string;
+  notifyCustomer?: boolean;
 };
 export type CompanyCreateJobState = {
   phase: "ready" | "restoring" | "validating" | "submitting" | "uncertain" | "pending" | "conflict" | "rejected" | "saved" | "succeeded" | "error";
@@ -228,6 +229,7 @@ export function createCompanyJobController(input: {
   const checkRecord = (record: CompanyCreationRecord) => {
     if (record.companyId !== origin.company!.id || record.userId !== origin.user.id
       || (record.payload.operationKey !== undefined && record.payload.operationKey !== record.operationKey)) throw new Error("The stored Job request does not match this Company account. Saving remains locked.");
+    if (Object.hasOwn(record.payload, "notifyCustomer") && typeof record.payload.notifyCustomer !== "boolean") throw new Error(persistenceMessage);
     if (Object.hasOwn(record.payload, "customerId") === Object.hasOwn(record.payload, "newCustomer")
       || (Object.hasOwn(record.payload, "customerId") && !positive(record.payload.customerId))
       || (record.resolvedCustomerId !== undefined && (!positive(record.resolvedCustomerId) || !positive(record.jobId)
@@ -449,7 +451,8 @@ export function createCompanyJobController(input: {
       if (!draft || typeof draft !== "object" || Object.hasOwn(draft, "customerId") === Object.hasOwn(draft, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
       if (Object.hasOwn(draft, "customerId") && !positive(draft.customerId)) throw new Error("Choose an existing Company customer.");
       if (Object.hasOwn(draft, "newCustomer") && Reflect.ownKeys(draft).some((field) => typeof field !== "string"
-        || !["newCustomer", "serviceId", "lineItems", "discount", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes"].includes(field))) throw new Error("New customer Job fields could not be verified.");
+        || !["newCustomer", "serviceId", "lineItems", "discount", "assignedEmployeeId", "vehiclePriceKey", "date", "startHour", "endHour", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "notifyCustomer"].includes(field))) throw new Error("New customer Job fields could not be verified.");
+      if (draft.notifyCustomer !== undefined && typeof draft.notifyCustomer !== "boolean") throw new Error("Notify customer must be on or off.");
       const snapshot = { ...draft };
       if (Object.hasOwn(draft, "newCustomer")) snapshot.newCustomer = normalizeCompanyJobNewCustomer(draft.newCustomer);
       if (Object.hasOwn(draft, "lineItems")) snapshot.lineItems = frozenLines(normalizeCompanyJobLineItems(draft.lineItems));
@@ -515,6 +518,9 @@ export function createCompanyJobController(input: {
       const payload: JobSyncCompanyJobCreateInput = { ...selector, priceBookServiceId: lines?.[0].priceBookItemId ?? Number(captured.serviceId), scheduledStartAt };
       if (lines) payload.lineItems = lines;
       if (captured.discount !== undefined) payload.discount = captured.discount;
+      // Old v1 omissions stay absent. New form preferences are immutable intent,
+      // not quote fields or a reason to retry a rejected/ambiguous POST.
+      if (captured.notifyCustomer !== undefined) payload.notifyCustomer = captured.notifyCustomer;
       if (scheduledEndAt) payload.scheduledEndAt = scheduledEndAt;
       if (assignedUserId !== undefined) payload.assignedUserId = assignedUserId;
       if (!lines && captured.vehiclePriceKey) payload.vehiclePriceKey = captured.vehiclePriceKey;
