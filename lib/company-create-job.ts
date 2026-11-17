@@ -64,7 +64,8 @@ export type CompanyCreateJobTransport = {
   /** Required for lines/discount intent. Legacy single-service transports remain compatible. */
   quote?: typeof quoteJobSyncCompanyJob;
   /** Canonical GET readback by original operation + Job, NOT CREATE replay or client list synthesis.
-   * No such contract exists in 2574; production must remain unavailable. */
+   * 752 raw GET exists, but its CREATE timezone/server-duration guarantees fail.
+   * Do not install a production collaborator until those guarantees pass. */
   series?: (token: string, companyId: number, jobId: number, operationKey: string) => Promise<CompanyJobSavedSeries>;
 };
 const transport: CompanyCreateJobTransport = {

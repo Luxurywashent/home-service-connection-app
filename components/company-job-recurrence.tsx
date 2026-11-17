@@ -67,7 +67,7 @@ export function CompanyJobRecurrence(props: CompanyJobRecurrenceProps) {
         keyboardDismissMode="on-drag" contentContainerStyle={styles.choices} renderItem={({ item }) => option(item.label,
           props.value?.term === item.term, () => change({ ...props.value!, term: item.term }))} />
       <Text accessibilityRole="alert" testID="company-job-recurrence-unavailable" style={[styles.note, { color: colors.error }]}>{companyJobRecurrenceUnavailableMessage}</Text>
-      <Text style={[styles.note, { color: colors.muted }]}>{props.disabled ? "The original submitted recurrence is locked. Draft controls do not describe a recovered series." : "Recurrence starts on the first matching date on or after the selected Company date. Ongoing does not mean an unlimited number of appointments is already saved."}</Text>
+      <Text style={[styles.note, { color: colors.muted }]}>{props.disabled ? "The original submitted recurrence is locked. Draft controls do not describe a recovered series." : "Recurrence starts on the first matching date on or after the selected Company date. Finite terms end from that first occurrence. Ongoing does not mean an unlimited number of appointments is already saved: the backend materializes an initial 13-occurrence horizon; automatic future expansion is not verified."}</Text>
     </>}
   </View>;
 }

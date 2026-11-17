@@ -25,10 +25,10 @@ function receipt(extra: Record<string, unknown> = {}) {
   return { success: true, channel: "email", publicUrl: "https://synthetic.invalid/invoice/opaque", communicationState: "provider_accepted", sentTo: "actual@example.test", ...extra };
 }
 
-describe("Exact2574 fail-closed alternate recipient policy", () => {
+describe("Current752 fail-closed alternate recipient policy (historical filename retained)", () => {
   it("records supported wire separately from failed effect/ack acceptance and never enables alternate sending", () => {
     expect(Object.isFrozen(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY)).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.backendRevision).toBe("2574fb8df702cb57bdb2e9317aba7b7fe7fe5e77");
+    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.backendRevision).toBe("752ccca3edf69ef35ca7b1a470484f3f204f4568");
     expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.wireOverrideSupported).toBe(true);
     expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.alternateRecipientSendingEnabled).toBe(false);
     expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.stableInitialReservation).toBe(false);

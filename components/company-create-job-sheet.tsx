@@ -257,8 +257,8 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   let recurrenceWeekday = 0;
   try { recurrenceWeekday = companyJobRecurrenceWeekday(date); } catch { /* Invalid date is rejected by the create controller. */ }
   const customerReady = customerMode === "existing" ? !customerListError && !customerLoading && !customerError && Boolean(selectedCustomer) : !Object.keys(newCustomerErrors).length;
-  // Exact 2574 cannot durably save/read mobile series. Controls remain editable,
-  // but never let a quote or a recurrence echo enable a destructive lone-Job POST.
+  // Exact 752 persists series, but CREATE loses non-default Company timezone and
+  // Auto End's server duration. Neither a quote nor GET aliases can enable Save.
   const canSave = !recurrence && !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && !discountError
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))

@@ -3,9 +3,9 @@ import {
   type CompanyJobInvoiceIntent,
 } from "./company-job-invoice-intent";
 
-/** Source-handler acceptance, not a live/server-advertised capability. */
+/** Exact752 source-handler gates; not a live/server-advertised capability. */
 export const COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY = Object.freeze({
-  backendRevision: "2574fb8df702cb57bdb2e9317aba7b7fe7fe5e77",
+  backendRevision: "752ccca3edf69ef35ca7b1a470484f3f204f4568",
   wireOverrideSupported: true,
   stableInitialReservation: false,
   persistedRecipientAcknowledgment: false,
@@ -81,7 +81,7 @@ export function validateCompanyJobInvoiceRecipientReceipt(
       "The backend did not acknowledge a valid invoice recipient. Review communication history before another attempt.",
     );
   }
-  // Exact2574 collision tests disprove this field's actual-recipient guarantee.
+  // Exact752 rerun still disproves this field's actual-recipient guarantee.
   // Equality with the draft would not prove delivery; a valid future reuse can
   // deliberately retain a DIFFERENT persisted recipient.
   return Object.freeze({

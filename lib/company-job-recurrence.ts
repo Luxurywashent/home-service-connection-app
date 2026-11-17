@@ -1,4 +1,4 @@
-/** Exact mobile 2574 recurrence wire intent. No client occurrence creation or pricing. */
+/** Exact mobile recurrence wire intent. No client occurrence creation or pricing. */
 export const companyJobRecurrenceTypes = ["weekly", "biweekly", "monthly_date", "monthly_ordinal"] as const;
 export const companyJobRecurrenceTerms = ["1_month", "3_months", "6_months", "1_year", "never_ends"] as const;
 export type CompanyJobRecurrenceInput = {
@@ -8,7 +8,7 @@ export type CompanyJobRecurrenceInput = {
   ordinal?: 1 | 2 | 3 | 4 | -1;
   startDate: string;
 };
-export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: the current Company backend does not persist mobile series or provide durable saved-series readback. Nothing will be submitted. Choose One appointment to save a single Job.";
+export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: Company timezone and full server-duration availability are not yet guaranteed for every occurrence, and saved-rule dates cannot be safely verified. Nothing will be submitted. Choose One appointment to save a single Job.";
 const invalid = () => new Error("Choose a valid recurrence, term, Company start date, weekday and monthly occurrence.");
 function plain(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -65,7 +65,7 @@ export type CompanyJobRecurrenceReceipt = {
   ruleId: number; occurrenceJobIds: number[]; occurrences: CompanyJobRecurrenceOccurrence[];
   timezone: string; count: number; neverEnds: boolean; term: CompanyJobRecurrenceInput["term"];
 };
-/** Required canonical GET projection. 2574 does not currently supply this contract. */
+/** Semantic bound GET projection; not the raw 752 recurrence DTO. Production remains blocked. */
 export type CompanyJobSavedSeries = CompanyJobRecurrenceReceipt & {
   companyId: number; customerId: number; jobId: number; operationKey: string;
   recurrence: CompanyJobRecurrenceInput;

@@ -114,7 +114,8 @@ describe("recurrence in the authoritative shared compact Company sheet", () => {
     await render(); await choose(); expect(button("One appointment").nativeProps.accessibilityState.selected).toBe(true);
     expect(button("Save Company Job").nativeProps.disabled).toBe(false);
     await press(label); expect(button(label).nativeProps.accessibilityState.selected).toBe(true);
-    expect(container.textContent).toContain("does not persist mobile series"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    expect(container.textContent).toContain("Company timezone and full server-duration availability"); expect(button("Save Company Job").nativeProps.disabled).toBe(true);
+    expect(container.textContent).toContain("Nothing will be submitted");
     await press("Save Company Job"); expect(mocks.create).not.toHaveBeenCalled(); expect(props.onCreated).not.toHaveBeenCalled();
     await press("One appointment"); expect(button("Save Company Job").nativeProps.disabled).toBe(false);
     await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.create.mock.calls[0][2]).not.toHaveProperty("recurrence");
