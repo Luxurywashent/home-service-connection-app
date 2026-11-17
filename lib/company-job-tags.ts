@@ -56,9 +56,7 @@ export function companyJobTagsBlockReason(session: JobSyncNativeSession | null, 
   const actorReason = companyJobActorBlockReason(session, actor);
   if (actorReason) return actorReason;
   if (!detail || detail.id !== jobId || detail.companyId !== session!.company!.id) return "Could not verify this Company's Job. Refresh tags before continuing.";
-  if (actor!.user.role === "technician" && detail.assignedUserId !== actor!.user.id) {
-    return "Only the currently assigned technician can access this Job's tags. Ask a Company admin, then refresh.";
-  }
+  // Exact 66141 Company Job tags are tenant-scoped, not assignee-scoped.
   return null;
 }
 

@@ -105,6 +105,7 @@ beforeEach(() => {
     ack = fixtureSavedJob(companyId, input); return ack;
   });
   mocks.detail.mockImplementation(async () => ({ ...ack, photos: [], persistedPhotoIds: [] }));
+  vi.stubGlobal("alert", vi.fn());
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Live transport forbidden")));
 });
 afterEach(async () => { await act(async () => root.unmount()); expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });

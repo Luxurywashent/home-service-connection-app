@@ -41,6 +41,8 @@ export type CompanyCreateJobState = {
   reconciling?: boolean;
   /** Read/refresh/persistence diagnostic, separate from the known save outcome. */
   detailError?: string | null;
+  /** Submitted booking intent only. The current API exposes no provider outcome. */
+  bookingConfirmationMessage?: string;
 };
 export type CompanyCreateJobTransport = {
   session: (token: string) => Promise<JobSyncNativeSession>;
@@ -115,6 +117,11 @@ type Actor = { hydrated: boolean; hydration?: Promise<boolean>; busy: boolean; a
 // and detach/new controllers must not reset an actor's locks or hydration.
 const actors = new Map<string, Actor>();
 const listeners = new Map<string, Set<() => void>>();
+export function companyJobBookingConfirmationMessage(notifyCustomer: boolean | undefined): string {
+  return notifyCustomer === false
+    ? "Booking confirmation was not requested. Day-before and same-day reminders are separate and follow Company settings."
+    : "Booking confirmation requested. Confirmation outcome is unknown; the saved Job response does not report email status. Day-before and same-day reminders follow Company settings.";
+}
 const actorKey = (session: JobSyncNativeSession) => `${session.company!.id}:${session.user.id}`;
 const savedMessage = "Job saved — calendar refresh failed.";
 const uncertainMessage = "Creation status is unknown. This request may have created a Job. Check its creation status before creating another. Do not resend this request.";
@@ -174,7 +181,8 @@ function verifyPricing(pricing: JobSyncCompanyJobPricing | undefined, payload: J
   // may legitimately differ from the earlier quote; there is no quote-lock token.
 }
 function recordState(record: CompanyCreationRecord): CompanyCreateJobState {
-  if (record.jobId) return { phase: "saved", jobId: record.jobId, message: savedMessage };
+  if (record.jobId) return { phase: "saved", jobId: record.jobId, message: savedMessage,
+    bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer) };
   if (record.phase === "rejected") return { phase: "rejected", jobId: null, message: record.rejectionMessage || "The original Job request was rejected. Correct it and deliberately save a new request." };
   if (record.phase === "conflict") return { phase: "conflict", jobId: null, message: conflictMessage };
   return { phase: "uncertain", jobId: null, message: uncertainMessage };
@@ -210,7 +218,12 @@ export function createCompanyJobController(input: {
   let set = listeners.get(key);
   if (!set) listeners.set(key, set = new Set());
   set.add(publish);
-  const patch = (attempt: Attempt, state: CompanyCreateJobState) => { attempt.state = state; notify(key); };
+  const patch = (attempt: Attempt, state: CompanyCreateJobState) => {
+    attempt.state = state.phase === "saved" && state.jobId && attempt.record
+      ? { ...state, bookingConfirmationMessage: companyJobBookingConfirmationMessage(attempt.record.payload.notifyCustomer) }
+      : state;
+    notify(key);
+  };
   const diagnostic = (attempt: Attempt, error: unknown) => {
     const state = attempt.state;
     patch(attempt, { ...state, phase: attempt.record?.jobId ? "saved" : state.phase === "rejected" && attempt.dirty ? "uncertain" : state.phase,
@@ -364,7 +377,8 @@ export function createCompanyJobController(input: {
     if (!await store.remove(origin.company!.id, origin.user.id, record.operationKey)) throw new Error(persistenceMessage);
     if (runtime.attempt === attempt) runtime.attempt = undefined;
     const succeeded = current();
-    if (succeeded) localState = { phase: "succeeded", jobId: record.jobId, message: "Job saved. Company calendar refreshed." };
+    if (succeeded) localState = { phase: "succeeded", jobId: record.jobId, message: "Job saved. Company calendar refreshed.",
+      bookingConfirmationMessage: companyJobBookingConfirmationMessage(record.payload.notifyCustomer) };
     notify(key);
     // A synchronous close from the confirmed-success onState notification must
     // not retroactively turn that completed calendar/removal into a failure.

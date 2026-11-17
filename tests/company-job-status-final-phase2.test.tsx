@@ -10,6 +10,9 @@ import {
   JobSyncApiError, normalizeJobSyncCompanyJobDetail, type JobSyncCompanyJobDetail, type JobSyncNativeSession,
 } from "../lib/jobsync-mobile-api";
 
+// Historical backend regression evidence only. Current66141 authority is tested
+// separately in company-technician-job-access-repair; do not infer live/current
+// assignment requirements from this frozen old source.
 const BASE = "/home/ubuntu/hsc-mobile-final-phase2-20261116/backend-source-f3576bcb";
 const VERSION = "2026-11-16T12:00:00.000Z";
 const source = (file: string) => readFileSync(`${BASE}/${file}`, "utf8");
@@ -179,14 +182,16 @@ function fixture(options: { role?: Role; assignedUserId?: number | null; calenda
 beforeEach(() => vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Live HTTP prohibited in exact backend status fixtures"); })));
 afterEach(() => vi.unstubAllGlobals());
 
-describe("f3576bcb exact active Company status/read/list authority", () => {
+describe("historical f3576bcb backend status/read/list authority versus current mobile gate", () => {
   it.each(["owner", "dispatcher", "technician"] as const)("%s authority is unchanged by calendar or payment capability and remains tenant/assignment scoped", async (role) => {
     for (const calendar of [true, false, null]) for (const assignedUserId of [41, 42, null, 0]) {
       const f = fixture({ role, calendar, assignedUserId });
       const c = await f.company();
       expect(c.permissions.canUpdateFieldStatus).toBe(true);
       const eligible = role !== "technician" || assignedUserId === 41;
-      expect(companyFieldworkBlockReason(await f.session(), { id: 47, companyId: 9, assignedUserId, status: "scheduled", updatedAt: VERSION } as JobSyncCompanyJobDetail) === null).toBe(eligible);
+      // Current mobile follows verified66141 same-Company access; the frozen old
+      // backend below still demonstrates its historical assignment restriction.
+      expect(companyFieldworkBlockReason(await f.session(), { id: 47, companyId: 9, assignedUserId, status: "scheduled", updatedAt: VERSION } as JobSyncCompanyJobDetail)).toBeNull();
       if (eligible) {
         expect((await f.service.getJob(f.db, c, 47)).id).toBe(47);
         expect(await f.service.listJobs(f.db, c)).toHaveLength(1);

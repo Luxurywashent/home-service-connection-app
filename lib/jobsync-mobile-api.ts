@@ -1,3 +1,4 @@
+import type { CompanyJobScheduleMutation, CompanyJobScheduleWriter } from "./company-job-schedule-update";
 import { z } from "zod";
 import { normalizeCompanyJobPrivateNotes } from "./company-job-private-notes";
 import { normalizeCompanyJobBillingAmount, normalizeCompanyJobPaymentStatus } from "./company-job-billing";
@@ -694,11 +695,7 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
   };
 }
 
-export type JobSyncCompanyJobScheduleInput = {
-  scheduledStartAt: string;
-  scheduledEndAt: string;
-  expectedUpdatedAt?: string | null;
-};
+export type JobSyncCompanyJobScheduleInput = CompanyJobScheduleMutation;
 
 function validCompanyJobId(jobId: number) {
   if (!Number.isSafeInteger(jobId) || jobId <= 0) {
@@ -1194,23 +1191,29 @@ export async function sendJobSyncCompanyJobInvoice(token: string, jobId: number,
   return { success: true, publicUrl, status, communicationState, channel: input.method, isDelivered: status === "delivered" };
 }
 
-/** Persists a Company Job's authoritative start/end instants. */
-export async function updateJobSyncCompanyJobSchedule(
-  token: string,
-  jobId: number,
-  input: JobSyncCompanyJobScheduleInput,
-) {
+/** Persists one atomic Company Job time/lane intent under a fresh server version. */
+export const updateJobSyncCompanyJobSchedule: CompanyJobScheduleWriter = async (
+  token, jobId, input: CompanyJobScheduleMutation,
+): Promise<unknown> => {
   validCompanyJobId(jobId);
+  requireJobSyncMutationToken(token);
+  if (!input || !serverInstant(input.expectedUpdatedAt)
+    || !serverInstant(input.scheduledStartAt) || !serverInstant(input.scheduledEndAt)
+    || Date.parse(input.scheduledEndAt) <= Date.parse(input.scheduledStartAt)
+    || (input.assignedUserId !== null && (typeof input.assignedUserId !== "number"
+      || !positiveJobSyncId(input.assignedUserId)))) {
+    throw new Error("A fresh version, complete schedule and verified assignment are required.");
+  }
   return requestJson(`${COMPANY_JOBS_PATH}/${jobId}/schedule`, {
-    method: "PATCH",
-    headers: createJobSyncBearerHeaders(token),
+    method: "PATCH", headers: createJobSyncBearerHeaders(token),
     body: JSON.stringify({
       scheduledStartAt: input.scheduledStartAt,
       scheduledEndAt: input.scheduledEndAt,
-      ...(input.expectedUpdatedAt ? { expectedUpdatedAt: input.expectedUpdatedAt } : {}),
+      assignedUserId: input.assignedUserId,
+      expectedUpdatedAt: input.expectedUpdatedAt,
     }),
   });
-}
+};
 
 /** Persists a Company Job's Team Member lane, including explicit unassignment. */
 export async function updateJobSyncCompanyJobAssignment(

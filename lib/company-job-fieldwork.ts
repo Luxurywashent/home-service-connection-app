@@ -54,15 +54,11 @@ export function companyFieldworkBlockReason(session: JobSyncNativeSession | null
   if (!companyJobSessionKey(session, detail?.id ?? null)) return "A fresh signed Company Job session is required.";
   if (detail?.companyId !== session!.company!.id) return "Could not verify the current Company's Job. Refresh before continuing.";
   if (!["technician", "owner", "dispatcher"].includes(session!.user.role)) return "This signed role cannot perform Company field progress.";
-  // Exact f3576bcb authority: permissionsForRole grants field status to these three roles,
-  // but changeJobStatus, getJob and listJobs retain technicianScopeSql (current assignee).
+  // Exact 66141 list/detail/status authority is same-Company, independent of assignee.
   // Admin is the dispatcher access role, not a fourth role. Calendar opt-in, position
   // eligibility and payment-collection capability neither grant nor revoke this status scope.
   // Active membership/live role are independently refreshed before every write; the backend
   // remains final authority. Private-note/photo/payment gates must be checked independently.
-  if (session!.user.role === "technician" && !isAssignedCompanyTechnician(session, detail!)) {
-    return "The backend requires the currently assigned technician for field progress. Ask a Company admin to update this Job; unassigned technician access requires a backend permission change.";
-  }
   if (!detail?.updatedAt || !Number.isFinite(Date.parse(detail.updatedAt))) return "The backend Job version is unavailable. Refresh before updating progress.";
   if (!nextCompanyFieldStatus(detail.status)) return ["completed", "cancelled"].includes(detail.status)
     ? "This Job is terminal. No field progress action is available."
@@ -180,7 +176,7 @@ export function createCompanyJobController(input: {
     publish({ pending: true, success: null, error: null });
     let attemptedWrite = false;
     try {
-      // Every status write checks live membership/role, assignment scope and Job version before PATCH.
+      // Every status write checks live membership/role, Company Job scope and version before PATCH.
       // The backend remains the final authority; no local timestamp/history or permission is invented.
       const fresh = await read();
       if (!fresh || !input.isCurrent()) return false;

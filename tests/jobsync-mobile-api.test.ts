@@ -173,6 +173,7 @@ describe("JobSync mobile API contract", () => {
       await updateJobSyncCompanyJobSchedule("company-token", 47, {
         scheduledStartAt: "2026-10-14T14:00:00.000Z",
         scheduledEndAt: "2026-10-14T16:00:00.000Z",
+        assignedUserId: 42,
         expectedUpdatedAt: "2026-10-13T20:00:00.000Z",
       });
       await updateJobSyncCompanyJobAssignment("company-token", 47, null);
@@ -187,7 +188,8 @@ describe("JobSync mobile API contract", () => {
           body: JSON.stringify({
             scheduledStartAt: "2026-10-14T14:00:00.000Z",
             scheduledEndAt: "2026-10-14T16:00:00.000Z",
-            expectedUpdatedAt: "2026-10-13T20:00:00.000Z",
+            assignedUserId: 42,
+        expectedUpdatedAt: "2026-10-13T20:00:00.000Z",
           }),
         }),
       );

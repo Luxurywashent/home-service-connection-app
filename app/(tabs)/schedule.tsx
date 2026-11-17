@@ -63,7 +63,7 @@ import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
 import { companyCreateJobAllowed, companyCreateJobScope } from "@/lib/company-create-job";
 import { parseCompanyJobCustomerPrefill, type CompanyJobCustomerPrefill } from "@/lib/company-job-customer-prefill";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
-import { companyJobDisplayFields, companyJobMilestoneFields, isAssignedCompanyTechnician, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
+import { companyJobDisplayFields, companyJobMilestoneFields, JOB_VIDEOS_ENABLED, COMPANY_PHOTO_MUTATIONS_PENDING } from "@/lib/company-job-fieldwork";
 import { companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
 import { calculateJobCollectionAmount, shouldShowCollectPayment } from "@/lib/job-payment";
 import { getJobProgressTransition, restoreJobProgressStatus, type JobProgressStatus } from "@/lib/job-progress";
@@ -3616,10 +3616,11 @@ export default function ScheduleScreen() {
     if (!screenCurrent()) return;
     // Search in already-loaded jobs first
     const match = jobs.find((j) => companyJobMode
-      ? isJobSyncCompany && jobSyncSession?.company?.id !== undefined
+      ? isJobSyncCompany && Boolean(jobSyncSession?.token.trim())
+        && ["owner", "dispatcher", "technician"].includes(jobSyncSession?.user.role ?? "")
+        && positiveJobSyncId(jobSyncSession?.company?.id) !== null
         && positiveJobSyncId(highlightJobId) !== null && j.id === String(positiveJobSyncId(highlightJobId))
         && j.companyId === jobSyncSession?.company?.id && positiveJobSyncId(j.id) !== null
-        && (jobSyncSession?.user.role !== "technician" || isAssignedCompanyTechnician(jobSyncSession, j))
       : j.companyId === undefined && (j.id === highlightJobId || j.bookingId === highlightJobId));
     if (match) {
       highlightJobHandledRef.current = highlightJobId;
@@ -4496,8 +4497,10 @@ export default function ScheduleScreen() {
   const myId = employee?.employeeId ?? "";
   const visibleJobs = jobs.filter((j) => {
     if (companyJobMode || j.companyId !== undefined) {
-      if (j.companyId !== jobSyncSession?.company?.id) return false;
-      return jobSyncSession?.user.role === "technician" ? isAssignedCompanyTechnician(jobSyncSession, j) : isJobSyncCompany;
+      return Boolean(isJobSyncCompany && jobSyncSession?.token.trim()
+        && ["owner", "dispatcher", "technician"].includes(jobSyncSession?.user.role ?? "")
+        && positiveJobSyncId(jobSyncSession?.company?.id) !== null
+        && j.companyId === jobSyncSession?.company?.id && positiveJobSyncId(j.id) !== null);
     }
     if (isAdminRole) return !j.location || j.location.toLowerCase() === selectedLocation.toLowerCase();
     // Detailer view: only show jobs explicitly assigned to this detailer.

@@ -53,8 +53,7 @@ const hasAccess = (props: CompanyJobTagsProps) => {
   const scope = sessionKey(props.session, props.jobId);
   const detail = props.model.detail;
   return Boolean(scope && sessionKey(props.model.actor, props.jobId) === scope && detail
-    && detail.id === props.jobId && detail.companyId === props.session?.company?.id
-    && (props.session?.user.role !== "technician" || detail.assignedUserId === props.session.user.id));
+    && detail.id === props.jobId && detail.companyId === props.session?.company?.id);
 };
 // Mirrors only the declared service name rules; DB equality and persistence remain controller authority.
 const tagName = (value: unknown) => {
@@ -224,14 +223,9 @@ export function CompanyJobTags({ cardRef, ...props }: CompanyJobTagsProps) {
   if (!scope || !focused || !active || AppState.currentState !== "active" || !parentCurrent) return null;
   const allowed = hasAccess(props);
   const readable = allowed && props.model.tags !== null;
-  const deniedTechnician = props.session?.user.role === "technician" && props.model.detail
-    && props.model.detail.id === props.jobId && props.model.detail.companyId === props.session.company?.id
-    && props.model.detail.assignedUserId !== props.session.user.id;
   const error = props.model.error || local?.error;
-  const hint = deniedTechnician
-    ? "Job tags are unavailable: technicians must be assigned to this Job to read or change its tags."
-    : busy ? "Loading job tags…"
-      : error || (!readable ? "Job tags are not verified. Refresh to check availability and access." : null);
+  const hint = busy ? "Loading job tags…"
+    : error || (!readable ? "Job tags are not verified. Refresh to check availability and access." : null);
   const removeEnabled = editable && (inline || Boolean(editing));
   const addEnabled = editable && Boolean(candidate) && !duplicate;
   return (
@@ -256,8 +250,8 @@ export function CompanyJobTags({ cardRef, ...props }: CompanyJobTagsProps) {
         </View>
       </View>
       {busy ? <ActivityIndicator size="small" color={colors.primary} accessibilityLabel="Loading job tags" /> : null}
-      {hint ? <Text accessibilityRole={error || deniedTechnician ? "alert" : undefined}
-        style={[styles.hint, { color: error || deniedTechnician ? colors.error : colors.muted }]}>{hint}</Text> : null}
+      {hint ? <Text accessibilityRole={error ? "alert" : undefined}
+        style={[styles.hint, { color: error ? colors.error : colors.muted }]}>{hint}</Text> : null}
       {readable ? <View style={styles.chips}>
         {props.model.tags!.map((tag) => <TouchableOpacity key={tag.id}
           accessibilityRole={removeEnabled ? "button" : undefined}

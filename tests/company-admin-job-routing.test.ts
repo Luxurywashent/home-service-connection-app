@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { getCompanyJobBillingState } from "../lib/company-job-billing";
+import { createCompanyJobInvoiceOptions, captureCompanyJobInvoiceIntent, assertCompanyJobInvoiceSession, assertCompanyJobInvoiceJob } from "../lib/company-job-invoice-intent";
 
 // Execute AST-extracted *actual* screen closures, not replicas. This fixture does
 // not mount AdminScheduleScreen or claim native picker/provider acceptance.
@@ -117,7 +118,8 @@ function invoiceContext() {
   const context: Record<string, any> = { ...f.context, companyJobMode: true, isJobSyncCompany: true, jobSyncLoading: false, selectedJob: job({ companyId: 9 }), jobSyncSession: session,
     invoiceIdentityKey: "invoice-fixture", invoiceSessionRef: { current: { key: "invoice-fixture", generation: 3 } }, invoiceGeneration: 3,
     renderedSheetEpoch: 4, invoiceEpochRef: { current: 2 }, renderedInvoiceEpoch: 2, showInvoiceSheet: true,
-    invoiceLockRef: { current: false }, invoiceMethod: "email", positiveJobSyncId: (id: any) => /^\d+$/.test(String(id)) && Number.isSafeInteger(Number(id)) && Number(id) > 0 ? Number(id) : null,
+    invoiceLockRef: { current: false }, invoiceMethod: "email", invoiceResend: false,
+    createCompanyJobInvoiceOptions, captureCompanyJobInvoiceIntent, assertCompanyJobInvoiceSession, assertCompanyJobInvoiceJob, positiveJobSyncId: (id: any) => /^\d+$/.test(String(id)) && Number.isSafeInteger(Number(id)) && Number(id) > 0 ? Number(id) : null,
     getJobSyncMobileSession: vi.fn().mockResolvedValue(session), getJobSyncCompanyJobDetail: vi.fn().mockResolvedValue({ id: 12, companyId: 9 }),
     sendJobSyncCompanyJobInvoice: vi.fn().mockResolvedValue({ success: true, publicUrl: "https://www.homeserviceconnected.com/invoice/fixture", status: "sent", communicationState: "provider_accepted" }),
     setInvoiceSending: vi.fn(), setInvoiceSentUrl: vi.fn(), setCompanyInvoiceStatus: vi.fn(), Alert: { alert: vi.fn() }, fetch: vi.fn(() => { throw new Error("Forbidden legacy network"); }),
@@ -141,7 +143,7 @@ describe("Admin actual invoice Send closure", () => {
     expect(f.context.getJobSyncCompanyJobDetail).toHaveBeenCalledWith("company-fixture", 12, 9);
     expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledTimes(1);
     expect(f.context.getJobSyncMobileSession).toHaveBeenCalledTimes(1);
-    expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledWith("company-fixture", 12, { method: "email" });
+    expect(f.context.sendJobSyncCompanyJobInvoice).toHaveBeenCalledWith("company-fixture", 12, { method: "email", resend: false });
     expect(f.context.setCompanyInvoiceStatus).toHaveBeenCalledWith("provider_accepted"); expect(f.context.fetch).not.toHaveBeenCalled();
   });
   it.each(["user", "role", "token", "company", "job", "sheet", "close/reopen", "blur", "unmount"])("retained Send after %s starts no signed read or POST", async (change) => {

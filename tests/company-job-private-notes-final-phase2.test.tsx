@@ -207,9 +207,9 @@ afterEach(() => {
 });
 
 describe("private-only exact endpoint contract and defensive input", () => {
-  it("verifies f3576bcb route, strict schema, membership, role, privacy and lack of server concurrency", () => {
+  it("verifies 66141 route, strict schema, membership, role, context blocker, privacy and lack of server concurrency", () => {
     const base =
-      "/home/ubuntu/hsc-mobile-final-phase2-20261116/backend-source-f3576bcb";
+      "/home/ubuntu/hsc-mobile-release-readiness-20261117/backend-source-66141c98";
     const mobile = readFileSync(`${base}/server/mobileOperations.ts`, "utf8");
     const service = readFileSync(`${base}/server/jobService.ts`, "utf8");
     const auth = readFileSync(`${base}/server/mobileAuth.ts`, "utf8");
@@ -233,7 +233,10 @@ describe("private-only exact endpoint contract and defensive input", () => {
       "updateJobNotes(db, company, { jobId, privateNotes: input.privateNotes })",
     );
     expect(endpoint).toContain(
-      "success: true, jobId, privateNotes: (detail as any).internal_notes ?? null",
+      "success: true, jobId, privateNotes: (detail as any).private_notes ?? null",
+    );
+    expect(endpoint).toContain(
+      "const company = { companyId, userId: claims.accountId, role: claims.role, name: claims.name } as any",
     );
     expect(endpoint).not.toMatch(/expectedUpdatedAt|idempotency|If-Match/);
     expect(update).toContain("requireManager(company)");
@@ -437,6 +440,8 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
     "different readback",
     "failed readback",
     "fresh readback role",
+    "missing readback version",
+    "malformed readback version",
   ])(
     "does not claim success or retry for %s, and requires explicit read reconciliation",
     async (kind) => {
@@ -445,6 +450,12 @@ describe("fresh authorization/version and one-write canonical reconciliation", (
         f.api.detail.mockResolvedValue({
           ...f.detail,
           privateNotes: kind === "different readback" ? "other edit" : "new",
+          updatedAt:
+            kind === "missing readback version"
+              ? null
+              : kind === "malformed readback version"
+                ? "invalid"
+                : f.detail.updatedAt,
         });
         if (kind === "failed readback")
           f.api.detail.mockRejectedValue(new Error("sensitive backend body"));

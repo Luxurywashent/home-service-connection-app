@@ -1,0 +1,89 @@
+export type CompanyJobInvoiceMethod = "email" | "sms";
+export type CompanyJobInvoiceOptions = Readonly<{
+  method: CompanyJobInvoiceMethod;
+  resend: boolean;
+}>;
+
+// This structural subset accepts the existing signed Company session without
+// importing the shared transport (or creating a second invoice API).
+type InvoiceSession = {
+  token: string;
+  portal: string;
+  company?: { id: number };
+  user: { id: number; role: string };
+};
+type InvoiceJob = { id: number | string; companyId?: number };
+
+export type CompanyJobInvoiceIntent = Readonly<{
+  token: string;
+  companyId: number;
+  userId: number;
+  role: "owner" | "dispatcher";
+  jobId: number;
+  options: CompanyJobInvoiceOptions;
+}>;
+
+/** A new sheet starts with initial intent. Resend requires an explicit choice. */
+export function createCompanyJobInvoiceOptions(
+  method: CompanyJobInvoiceMethod = "email",
+  resend: boolean = false,
+): CompanyJobInvoiceOptions {
+  if ((method !== "email" && method !== "sms") || typeof resend !== "boolean") {
+    throw new Error("A valid invoice delivery method and explicit resend choice are required.");
+  }
+  // Only verified mobile invoice fields; never contact, amount or legacy fields.
+  return Object.freeze({ method, resend });
+}
+
+function positiveId(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^\d+$/.test(value))) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+/** Capture primitives before the first await; caller retains sheet/focus/locks. */
+export function captureCompanyJobInvoiceIntent(
+  session: InvoiceSession | null | undefined,
+  job: InvoiceJob | null | undefined,
+  options: CompanyJobInvoiceOptions,
+): CompanyJobInvoiceIntent {
+  const jobId = positiveId(job?.id);
+  const role = session?.user?.role;
+  if (session?.portal !== "company" || typeof session.token !== "string" || !session.token.trim()
+    || typeof session.company?.id !== "number" || !positiveId(session.company.id)
+    || typeof session.user?.id !== "number" || !positiveId(session.user.id)
+    || (role !== "owner" && role !== "dispatcher") || !jobId
+    || job?.companyId !== session.company?.id) {
+    throw new Error("A signed manager and originating Company Job are required. Reopen the Job before sending.");
+  }
+  return Object.freeze({
+    token: session.token,
+    companyId: session.company!.id,
+    userId: session.user.id,
+    role,
+    jobId,
+    options: createCompanyJobInvoiceOptions(options.method, options.resend),
+  });
+}
+
+/** Must be called after the existing signed session refresh, not instead of it. */
+export function assertCompanyJobInvoiceSession(
+  intent: CompanyJobInvoiceIntent,
+  fresh: InvoiceSession | null | undefined,
+): void {
+  if (fresh?.portal !== "company" || fresh.token !== intent.token
+    || fresh.company?.id !== intent.companyId || fresh.user?.id !== intent.userId
+    || fresh.user?.role !== intent.role) {
+    throw new Error("Signed Company identity changed. Reopen the Job before sending.");
+  }
+}
+
+/** Canonical detail must match the immutable originating Job and Company. */
+export function assertCompanyJobInvoiceJob(
+  intent: CompanyJobInvoiceIntent,
+  detail: { id: number; companyId?: number | null } | null | undefined,
+): void {
+  if (detail?.id !== intent.jobId || detail?.companyId !== intent.companyId) {
+    throw new Error("The originating Company Job is unavailable.");
+  }
+}

@@ -205,7 +205,11 @@ export function createCompanyJobPrivateNotesController(input: {
         const detail = await read(); // Independent canonical readback even for malformed acknowledgments.
         if (!detail || !current())
           return result("stale", "Private-note editing was interrupted.");
-        if (!acknowledged || detail.privateNotes !== privateNotes)
+        if (
+          !acknowledged ||
+          !knownVersion(detail) ||
+          detail.privateNotes !== privateNotes
+        )
           return result(
             "uncertain",
             "Save could not be confirmed. Refresh and review current private notes; do not resend blindly.",

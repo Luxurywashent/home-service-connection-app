@@ -163,14 +163,23 @@ describe("restored circular Company progress design (real React, mocked RN hosts
 });
 
 describe("progress permissions, freshness and confirmation safeguards", () => {
-  it.each(["signed out", "wrong portal", "blank token", "wrong Company", "unassigned technician", "other role", "actor mismatch", "missing actor", "missing version", "completed", "cancelled", "unknown status"])("disables all controls and rejects direct native callbacks for %s", async (change) => {
+  it.each([42, null, 43])("authorizes the current same-Company technician regardless of assignee %s", async (assignedUserId) => {
+    const current = job(detail({ assignedUserId }));
+    await render({ session: session(), job: current });
+    expect(labels.map((label) => button(label).nativeProps.disabled)).toEqual([false, true, true]);
+    await tap(button("ARRIVED")); await tap(button("FINISH"));
+    expect(current.advance).not.toHaveBeenCalled();
+    await tap(button("ON MY WAY"));
+    expect(current.advance).toHaveBeenCalledTimes(1);
+    expect(current.advance).toHaveBeenCalledWith("en_route");
+  });
+  it.each(["signed out", "wrong portal", "blank token", "wrong Company", "other role", "actor mismatch", "missing actor", "missing version", "completed", "cancelled", "unknown status"])("disables all controls and rejects direct native callbacks for %s", async (change) => {
     let signed: JobSyncNativeSession | null = session();
     let current = job();
     if (change === "signed out") signed = null;
     if (change === "wrong portal") signed = { ...session(), portal: "platform" };
     if (change === "blank token") signed = { ...session(), token: " " };
     if (change === "wrong Company") current.detail = detail({ companyId: 10 });
-    if (change === "unassigned technician") current.detail = detail({ assignedUserId: 43 });
     if (change === "other role") signed = session("developer");
     if (change === "actor mismatch") { signed = session("owner", true); current.actor = session("dispatcher", false); }
     if (change === "missing actor") current.actor = null;

@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe("Company creation operation-key payload", () => {
-  it("adds only the supplied trimmed key to the existing strict allowlist", async () => {
+  it("preserves explicit booking-confirmation OFF and the trimmed operation key in the strict allowlist", async () => {
     const fetch = mockResponse({ job, operation: acknowledgment }, 201);
     const result = await createJobSyncCompanyJob(TOKEN, COMPANY, {
       ...input, operationKey: `  ${KEY}  `, vehiclePriceKey: " standard ", serviceNotes: " note ", privateNotes: " private ",
@@ -68,9 +68,48 @@ describe("Company creation operation-key payload", () => {
     expect(JSON.parse(init.body)).toEqual({
       ...input, addressLine1: "100 Example Street", operationKey: KEY, vehiclePriceKey: "standard",
       serviceNotes: "note", privateNotes: "private", city: "Example", region: "FL", postalCode: "32500",
+      notifyCustomer: false,
     });
     expect(result).toMatchObject({ id: 91, companyId: COMPANY, priceBookServiceId: 71, operation: acknowledgment });
     expect(result).not.toHaveProperty("photos");
+  });
+
+  it("captures immutable explicit OFF through ambiguous POST and exact-key GET-only recovery", async () => {
+    const original = { ...input, operationKey: KEY, notifyCustomer: false };
+    const payload = createJobSyncCompanyJobPayload(original);
+    expect(Object.isFrozen(payload)).toBe(true);
+    expect(payload).toMatchObject({ operationKey: KEY, notifyCustomer: false });
+    expect(() => { payload.notifyCustomer = true; }).toThrow(TypeError);
+    const lost = new Error("Connection lost after Job save");
+    const fetch = vi.fn().mockRejectedValueOnce(lost).mockResolvedValueOnce(response({ operation: saved }));
+    vi.stubGlobal("fetch", fetch);
+    const submission = createJobSyncCompanyJob(TOKEN, COMPANY, payload);
+    original.notifyCustomer = true;
+    await expect(submission).rejects.toBe(lost);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(payload);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).notifyCustomer).toBe(false);
+    expect(await lookup()).toEqual(saved);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.map(([, init]) => init.method)).toEqual(["POST", "GET"]);
+    expect(fetch.mock.calls[1][0]).toMatch(new RegExp(`/operations/${KEY}$`));
+    expect(fetch.mock.calls[1][1]).not.toHaveProperty("body");
+    expect(payload.notifyCustomer).toBe(false);
+    expect(original.notifyCustomer).toBe(true);
+  });
+
+  it("retains explicit ON while old omitted preferences remain absent", () => {
+    expect(createJobSyncCompanyJobPayload({ ...keyed, notifyCustomer: true })).toHaveProperty("notifyCustomer", true);
+    expect(createJobSyncCompanyJobPayload(keyed)).not.toHaveProperty("notifyCustomer");
+    expect(createJobSyncCompanyJobPayload({ ...keyed, notifyCustomer: undefined })).not.toHaveProperty("notifyCustomer");
+  });
+
+  it.each([null, "false", "true", 0, 1, {}, []])("rejects nonboolean preference %j before POST without omission or downgrade", async notifyCustomer => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const invalid = { ...keyed, notifyCustomer } as unknown as JobSyncCompanyJobCreateInput;
+    expect(() => createJobSyncCompanyJobPayload(invalid)).toThrow("Notify customer must be on or off.");
+    await expect(createJobSyncCompanyJob(TOKEN, COMPANY, invalid)).rejects.toThrow("Notify customer must be on or off.");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each([8, 128])("accepts exact trimmed key boundary length %s", length => {

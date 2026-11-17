@@ -5,7 +5,7 @@
  * - Empty Companies receive an explicit empty-team state instead of placeholder lanes
  */
 
-import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useFocusEffect, useIsFocused, useLocalSearchParams } from "expo-router";
 import {
   View,
@@ -23,6 +23,7 @@ import {
   Image,
   Switch,
   RefreshControl,
+  AppState,
 } from "react-native";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS, withTiming } from "react-native-reanimated";
@@ -46,6 +47,9 @@ import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
 import { CompanyJobKeyboardBoundary } from "@/components/company-job-keyboard-boundary";
 import { useCompanyJobKeyboard } from "@/lib/company-job-keyboard";
 import { CompanyJobLineItems } from "@/components/company-job-line-items";
+import { createCompanyJobScheduleUpdateController, companyJobScheduleWriteBlocked } from "@/lib/company-job-schedule-update";
+import { createCompanyJobInvoiceOptions, captureCompanyJobInvoiceIntent,
+  assertCompanyJobInvoiceSession, assertCompanyJobInvoiceJob } from "@/lib/company-job-invoice-intent";
 import { useCompanyPriceBook } from "@/hooks/use-company-price-book";
 import { trpc } from "@/lib/trpc";
 import { AdminCheckoutModal } from "@/components/admin-checkout-modal";
@@ -57,12 +61,12 @@ import {
   getJobSyncCompanyJobs,
   getJobSyncMobileSession,
   getJobSyncCompanyJobDetail,
+  type JobSyncCompanyJobDetail,
   getJobSyncCompanyJobTags,
   addJobSyncCompanyJobTag,
   removeJobSyncCompanyJobTag,
   getJobSyncCompanyMembers,
   getJobSyncCompanySettings,
-  updateJobSyncCompanyJobAssignment,
   updateJobSyncCompanyJobSchedule,
   updateJobSyncCompanyJobPrivateNotes,
   positiveJobSyncId,
@@ -80,7 +84,7 @@ import { useCompanyScheduleBlocks } from "@/hooks/use-company-schedule-blocks";
 import { companyScheduleBlockDay, isCompanyScheduleBlockAllDay } from "@/lib/company-schedule-blocks";
 import { CompanyJobPhotos, CompanyJobPhotoPreview, type CompanyPhotoSelection } from "@/components/company-job-photos";
 import { companyJobDisplayFields, companyJobMilestoneFields, companyManagementCancelBlockReason } from "@/lib/company-job-fieldwork";
-import { companyCalendarInstant, companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
+import { companyCalendarSlot, companyCalendarWeekPosition, companyCalendarDateAtPosition } from "@/lib/company-calendar";
 import { formatPriceBookServiceRate, getPriceBookServiceStartingPrice } from "@/lib/price-book-service";
 import { JobLocationMap } from "@/components/job-location-map";
 import { formatJobMapAddress } from "@/lib/job-street-view";
@@ -1438,7 +1442,15 @@ export default function AdminScheduleScreen() {
   const jobMetaMutation = trpc.jobs.updateMeta.useMutation();
   const jobStatusMutation = trpc.jobs.updateStatus.useMutation();
   // ── Edit Address ──
-  const [showEditAddressModal, setShowEditAddressModal] = useState(false);
+  const [showEditAddressModal, setShowEditAddressModalState] = useState(false);
+  const addressModalEpoch = useCompanyJobOperationEpoch();
+  const addressEntryEpoch = useCompanyJobOperationEpoch();
+  const addressSaveLockRef = useRef(false);
+  const addressEditorScopeRef = useRef<null | { jobId: string; isCurrent: () => boolean; verify: () => Promise<boolean> }>(null);
+  const setShowEditAddressModal = useCallback((visible: boolean) => {
+    addressModalEpoch.invalidate();
+    setShowEditAddressModalState(visible);
+  }, [addressModalEpoch]);
   const [editAddressDraft, setEditAddressDraft] = useState("");
   const [savingAddress, setSavingAddress] = useState(false);
   const jobSavePaymentMutation = trpc.jobs.savePayment.useMutation({
@@ -1592,6 +1604,7 @@ export default function AdminScheduleScreen() {
     { enabled: legacyBillingAllowed && !!selectedJob?.id && !!selectedJob?.payment?.paymentIntentId }
   );
   const [invoiceMethod, setInvoiceMethod] = useState<"email" | "sms">("email");
+  const [invoiceResend, setInvoiceResend] = useState(false);
   const [invoiceSending, setInvoiceSending] = useState(false);
   const [invoiceSentUrl, setInvoiceSentUrl] = useState<string | null>(null);
   const [companyInvoiceStatus, setCompanyInvoiceStatus] = useState<string | null>(null);
@@ -1679,6 +1692,110 @@ export default function AdminScheduleScreen() {
   };
   // Capture during render, NOT when a retained callback executes against newer refs.
   const renderedLegacyAction = captureLegacyJobAction();
+  // HSC_LEGACY_ADDRESS_CONTROLLER_START
+  const addressIdentityKey = JSON.stringify([managementActionKey, companyJobMode, selectedJob?.id,
+    selectedJob?.companyId, jobSyncSession?.portal, jobSyncSession?.token,
+    jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role,
+    jobSyncLoading, hasJobSyncEmployee, currentEmployee?.employeeId,
+    currentEmployee?.role, currentEmployee?.sessionSource, employeeLoading,
+    legacyToken, legacyTokenReady, isFocused]);
+  const renderedAddressOpenEpoch = useSyncExternalStore(addressModalEpoch.subscribe,
+    addressModalEpoch.getSnapshot, addressModalEpoch.getSnapshot);
+  const { isCurrent: isCurrentLegacyAddressEntry, scopeKey: addressEntryScope } = useCompanyJobOperation(addressIdentityKey, () => {
+    return () => !companyJobMode && selectedJob?.companyId === undefined && Boolean(selectedJob?.id)
+      && !jobSyncSession && !jobSyncLoading && !hasJobSyncEmployee
+      && (AppState.currentState == null || AppState.currentState === "active")
+      && renderedLegacyAction();
+  }, addressEntryEpoch);
+  useEffect(() => {
+    addressEditorScopeRef.current = null;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setShowEditAddressModal(false);
+      setEditAddressDraft("");
+      setSavingAddress(false);
+    });
+    return () => { cancelled = true; };
+  }, [addressIdentityKey, setShowEditAddressModal]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") return;
+      addressEntryEpoch.invalidate();
+      addressEditorScopeRef.current = null;
+      setShowEditAddressModal(false);
+      setEditAddressDraft("");
+      setSavingAddress(false);
+    });
+    return () => subscription.remove();
+  }, [addressEntryEpoch, setShowEditAddressModal]);
+  const openLegacyAddressEditor = async () => {
+    if (!isCurrentLegacyAddressEntry() || addressSaveLockRef.current
+      || addressModalEpoch.getSnapshot() !== renderedAddressOpenEpoch) return;
+    if (!await renderedLegacyAction.verify() || !isCurrentLegacyAddressEntry()
+      || addressModalEpoch.getSnapshot() !== renderedAddressOpenEpoch) return;
+    const editorEpoch = addressModalEpoch.getSnapshot() + 1;
+    const jobId = selectedJob!.id;
+    const scope = {
+      jobId,
+      isCurrent: () => isCurrentLegacyAddressEntry() && addressModalEpoch.getSnapshot() === editorEpoch,
+      verify: async () => scope.isCurrent() && await renderedLegacyAction.verify() && scope.isCurrent(),
+    };
+    addressEditorScopeRef.current = scope;
+    setEditAddressDraft(selectedJob!.address || "");
+    setSavingAddress(false);
+    setShowEditAddressModal(true);
+  };
+  const { isCurrent: isCurrentLegacyAddressEditor, scopeKey: addressEditorScopeKey } = useCompanyJobOperation(
+    JSON.stringify([addressIdentityKey, showEditAddressModal]), () => {
+      const scope = addressEditorScopeRef.current;
+      return () => showEditAddressModal && isCurrentLegacyAddressEntry()
+        && scope !== null && addressEditorScopeRef.current === scope && scope.isCurrent();
+    }, addressModalEpoch);
+  const [, setAddressCommittedRender] = useState(0);
+  useEffect(() => {
+    // Recompute visibility once AFTER both committed operation predicates update.
+    // Event guards still reject every uncommitted/stale identity.
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) setAddressCommittedRender((value) => value + 1); });
+    return () => { cancelled = true; };
+  }, [addressEntryScope, addressEditorScopeKey]);
+  const cancelLegacyAddressEditor = () => {
+    if (!isCurrentLegacyAddressEditor()) return;
+    addressEditorScopeRef.current = null;
+    setShowEditAddressModal(false);
+    setEditAddressDraft("");
+    setSavingAddress(false);
+  };
+  const saveLegacyAddress = async () => {
+    const scope = addressEditorScopeRef.current;
+    if (!scope || !isCurrentLegacyAddressEditor() || addressSaveLockRef.current) return;
+    const customerAddress = editAddressDraft.trim();
+    addressSaveLockRef.current = true;
+    setSavingAddress(true);
+    try {
+      if (!await scope.verify()) return;
+      // Strictly legacy-only; a Company/customer-profile endpoint is not a fallback.
+      await jobMetaMutation.mutateAsync({ jobId: scope.jobId, customerAddress });
+      if (!await scope.verify()) return;
+      setSelectedJob((previous) => previous && previous.companyId === undefined
+        && previous.id === scope.jobId ? { ...previous, address: customerAddress } : previous);
+      setJobs((previous) => previous.map((job) => job.companyId === undefined
+        && job.id === scope.jobId ? { ...job, address: customerAddress } : job));
+      addressEditorScopeRef.current = null;
+      setShowEditAddressModal(false);
+      setEditAddressDraft("");
+      setSavingAddress(false);
+    } catch {
+      if (await scope.verify()) Alert.alert("Address update not confirmed",
+        "The address update could not be confirmed. Refresh the Job before trying again.");
+    } finally {
+      addressSaveLockRef.current = false;
+      if (scope.isCurrent()) setSavingAddress(false);
+    }
+  };
+  // HSC_LEGACY_ADDRESS_CONTROLLER_END
+
   const renderedLegacyReadAction = captureLegacyJobAction(false);
   const renderedChargeEpoch = chargeEpochRef.current;
   const renderedRefundEpoch = refundEpochRef.current;
@@ -1923,46 +2040,38 @@ export default function AdminScheduleScreen() {
    * schedule mutations remain only for legacy employee sessions; they must never
    * be used to move a bearer-scoped Company Job.
    */
+  const syncCompanyEditedJobRef = useRef<(
+    current: () => boolean, jobId: number, expected: JobSyncCompanyJobDetail,
+  ) => Promise<boolean>>(async () => false);
+  const pendingCalendarReviewRef = useRef<{ id: number; companyId: number } | null>(null);
   const persistCompanyCalendarChange = useCallback(async (previous: Job, next: Job) => {
-    const token = jobSyncSession?.token;
-    const jobId = Number(previous.id);
-    const companyDate = next.companyDate;
-    if (!token || !Number.isSafeInteger(jobId) || jobId <= 0 || !companyDate) {
-      throw new Error("This Company Job cannot be updated until the calendar refreshes.");
-    }
-
+    const session = jobSyncSession;
+    const jobId = positiveJobSyncId(previous.id);
     const boundary = companyFieldworkCalendarRef.current;
-    if (!boundary.isCurrent() || previous.companyId !== jobSyncSession?.company?.id || next.companyId !== previous.companyId) {
-      throw new Error("Company identity changed. Refresh before updating this Job.");
-    }
-    const previousAssignee = companyUserId(previous.assignedTo);
+    // This render-committed callback never recaptures a newer sheet identity.
+    const current = () => !jobSyncLoading && isCurrentCompanyJobOperation() && boundary.isCurrent();
     const nextAssignee = companyUserId(next.assignedTo);
-    const settings = await getJobSyncCompanySettings(token);
-    if (!boundary.isCurrent()) throw new Error("Company identity changed while refreshing the schedule.");
-    // New assignment is checked using current roster + fresh signed self opt-in,
-    // not a stale rendered owner lane. Existing assignments are never rewritten.
-    if (previousAssignee !== nextAssignee && nextAssignee !== null && !await boundary.verifyAssignment(`jobsync-${nextAssignee}`)) {
-      throw new Error("This member is not a currently verified field-assignment candidate. Refresh and select again.");
+    if (!session || !jobId || !current() || !previous.companyDate || !next.companyDate
+      || previous.companyId !== session.company?.id || next.companyId !== previous.companyId
+      || (previous.assignedUserId !== null && !positiveJobSyncId(previous.assignedUserId))
+      || (next.assignedTo && nextAssignee === null)) {
+      return { status: "blocked", message: "Refresh this Company Job before editing." } as const;
     }
-    if (!boundary.isCurrent()) throw new Error("Company identity changed before saving the schedule.");
-    const scheduledStartAt = companyCalendarInstant(companyDate, next.startHour, settings.timezone);
-    const scheduledEndAt = companyCalendarInstant(companyDate, next.endHour, settings.timezone);
-    if (!scheduledStartAt || !scheduledEndAt) {
-      throw new Error("The selected Company date or time is invalid.");
-    }
-
-    const scheduleChanged = previous.companyDate !== next.companyDate
-      || previous.startHour !== next.startHour
-      || previous.endHour !== next.endHour;
-    if (scheduleChanged) {
-      await updateJobSyncCompanyJobSchedule(token, jobId, { scheduledStartAt, scheduledEndAt });
-    }
-
-    if (previousAssignee !== nextAssignee) {
-      if (!boundary.isCurrent()) throw new Error("Company identity changed before reassignment.");
-      await updateJobSyncCompanyJobAssignment(token, jobId, nextAssignee);
-    }
-  }, [jobSyncSession?.token, jobSyncSession?.company?.id]);
+    const controller = createCompanyJobScheduleUpdateController({
+      session, isCurrent: current,
+      baseline: { id: jobId, companyId: previous.companyId!, updatedAt: previous.updatedAt ?? null,
+        assignedUserId: previous.assignedUserId!, date: previous.companyDate,
+        startHour: previous.startHour, endHour: previous.endHour },
+      verifyAssignment: boundary.verifyAssignment,
+      write: updateJobSyncCompanyJobSchedule,
+      onVerified: (detail) => syncCompanyEditedJobRef.current(current, jobId, detail),
+    });
+    pendingCalendarReviewRef.current = { id: jobId, companyId: previous.companyId! };
+    const result = await controller.save({ date: next.companyDate, startHour: next.startHour,
+      endHour: next.endHour, assignedUserId: nextAssignee });
+    if (current() && ["saved", "blocked", "conflict"].includes(result.status)) pendingCalendarReviewRef.current = null;
+    return current() ? result : { status: "stale", message: "Calendar editing was interrupted. Refresh and review." } as const;
+  }, [jobSyncSession, jobSyncLoading, isCurrentCompanyJobOperation]);
 
   // Blockers retain the existing modal/cards, but Company records never enter
   // the legacy city/name transport. DATE and decimal hours are wall-clock data.
@@ -2160,7 +2269,7 @@ export default function AdminScheduleScreen() {
   // Company sessions render the shared Company Job records only. Times are converted
   // from the API instants using the Company's configured timezone, never the device timezone.
   const companyCalendarReadEpochRef = useRef(0);
-  const syncCompanyJobs = async (originCurrent: () => boolean = () => true, acceptedJobId?: number): Promise<boolean> => {
+  const syncCompanyJobs = async (originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedEdit?: JobSyncCompanyJobDetail): Promise<boolean> => {
       const token = jobSyncSession?.token;
       const generation = calendarScopeRef.current.generation;
       const readEpoch = ++companyCalendarReadEpochRef.current;
@@ -2181,6 +2290,12 @@ export default function AdminScheduleScreen() {
           if (companySettings.id !== jobSyncSession?.company?.id) throw new Error("Company calendar settings could not be verified.");
           const companyTimezone = companySettings.timezone;
           setCompanyTimezone(companyTimezone);
+          if (expectedEdit) {
+            const row = serverJobs.find((job) => job.id === expectedEdit.id);
+            if (!row || row.assignedUserId !== expectedEdit.assignedUserId || row.updatedAt !== expectedEdit.updatedAt
+              || Date.parse(row.scheduledStartAt ?? "") !== Date.parse(expectedEdit.scheduledStartAt ?? "")
+              || Date.parse(row.scheduledEndAt ?? "") !== Date.parse(expectedEdit.scheduledEndAt ?? "")) return false;
+          }
           const mappedJobs = serverJobs.flatMap((job) => {
             if (job.status === "cancelled") return [];
             const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
@@ -2236,6 +2351,15 @@ export default function AdminScheduleScreen() {
           });
           if (!isCurrent()) return false;
           canonicalCalendarScopeRef.current = canonicalCalendarKey; setJobs(mappedJobs);
+          if (expectedEdit) {
+            const mapped = mappedJobs.find((job) => job.id === String(expectedEdit.id));
+            if (!mapped) return false;
+            setSelectedJob((previous) => previous?.id === mapped.id && previous.companyId === mapped.companyId
+              ? { ...previous, updatedAt: mapped.updatedAt, assignedUserId: mapped.assignedUserId,
+                assignedTo: mapped.assignedTo, detailerName: mapped.detailerName,
+                companyDate: mapped.companyDate, startHour: mapped.startHour, endHour: mapped.endHour,
+                dayIndex: mapped.dayIndex, weekOffset: mapped.weekOffset } : previous);
+          }
           return acceptedJobId === undefined || mappedJobs.some((job) => job.id === String(acceptedJobId) && job.companyId === jobSyncSession?.company?.id);
         } catch (error) {
           // Do not present a cached legacy schedule as current Company data.
@@ -2249,6 +2373,48 @@ export default function AdminScheduleScreen() {
           if (isCurrent()) setIsSyncing(false);
         }
   };
+  useLayoutEffect(() => {
+    syncCompanyEditedJobRef.current = async (current, id, expected) => {
+      const visible = await syncCompanyJobs(current, id, expected);
+      if (!visible || !current()) return false;
+      if (selectedJob?.id === String(id)) await companyJob.refresh();
+      return current();
+    };
+  });
+  const refreshCompanyCalendarReview = async () => {
+    const session = jobSyncSession;
+    const current = isCurrentCompanyJobOperation;
+    if (!session || !current()) return;
+    const selectedId = positiveJobSyncId(selectedJob?.id);
+    const recorded = pendingCalendarReviewRef.current;
+    const pending = recorded?.companyId === session.company?.id ? recorded
+      : selectedId && selectedJob?.companyId === session.company?.id
+        && companyJobScheduleWriteBlocked(session, selectedId)
+        ? { id: selectedId, companyId: session.company!.id } : null;
+    if (!pending) { await syncCompanyJobs(current); return; }
+    const review = createCompanyJobScheduleUpdateController({
+      session, isCurrent: current,
+      baseline: { id: pending.id, companyId: pending.companyId, updatedAt: null,
+        assignedUserId: null, date: "", startHour: 0, endHour: 0 },
+      verifyAssignment: async () => false,
+      write: updateJobSyncCompanyJobSchedule,
+      onVerified: (detail) => syncCompanyEditedJobRef.current(current, detail.id, detail),
+    });
+    const reviewed = await review.refresh();
+    if (!reviewed || !current()) return;
+    if (pendingCalendarReviewRef.current === pending) pendingCalendarReviewRef.current = null;
+    setCompanyCalendarError(null);
+  };
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      const pending = pendingCalendarReviewRef.current;
+      if (!cancelled && pending && pending.companyId === jobSyncSession?.company?.id && isCurrentCompanyJobOperation()) {
+        setCompanyCalendarError("Schedule save was interrupted or is awaiting confirmation. Refresh and review before editing again.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [jobSyncSession?.token, jobSyncSession?.company?.id, isCurrentCompanyJobOperation]);
   useEffect(() => {
     if (jobSyncLoading) return;
     if (isJobSyncCompany) {
@@ -2550,7 +2716,7 @@ export default function AdminScheduleScreen() {
   const persistJobs = useCallback((updated: Job[]) => {
     setJobs(updated);
     AsyncStorage.setItem(storageKeyRef.current, JSON.stringify(updated));
-  }, []);
+  }, [setJobs]);
 
   const openAdd = () => {
     if (companyJobMode) {
@@ -2794,8 +2960,7 @@ export default function AdminScheduleScreen() {
         endHour: newEndHour,
         companyDate: newDateStr,
       };
-      setJobs((current) => current.map((candidate) => candidate.id === job.id ? updated : candidate));
-      setSelectedJob(updated);
+      // Keep the originating selected Job/version until canonical save confirmation.
       setAdminEditingTime(false);
       await saveCompanyCalendarChange(job, updated);
       return;
@@ -2947,25 +3112,29 @@ export default function AdminScheduleScreen() {
   }, [selectedJob?.id, managementActionKey]);
 
   const saveCompanyCalendarChange = useCallback(async (previous: Job, next: Job) => {
-    try {
-      await persistCompanyCalendarChange(previous, next);
-      forceSync();
-    } catch (error) {
-      setJobs((current) => current.map((job) => job.id === previous.id ? previous : job));
-      setSelectedJob((current) => current?.id === previous.id ? previous : current);
-      const message = error instanceof Error ? error.message : "Home Service Connected could not save this calendar change.";
-      setCompanyCalendarError(message);
-      Alert.alert("Schedule not updated", message);
-      // If a two-step time-and-lane change only partially reached the server,
-      // replace the optimistic card with the backend's authoritative record.
-      forceSync();
+    const current = isCurrentCompanyJobOperation;
+    if (!current() || companyJobScheduleWriteBlocked(jobSyncSession, Number(previous.id))) return;
+    const result = await persistCompanyCalendarChange(previous, next);
+    if (!current()) return;
+    if (result.status === "saved") {
+      setCompanyCalendarError(null);
+      return;
     }
-  }, [forceSync, persistCompanyCalendarChange, setSelectedJob, setJobs]);
+    // Discard optimistic display only; never issue a rollback or blind retry PATCH.
+    setJobs((rows) => rows.map((job) => job.id === previous.id && job.companyId === previous.companyId ? previous : job));
+    setSelectedJob((job) => job?.id === previous.id && job.companyId === previous.companyId ? previous : job);
+    setCompanyCalendarError(result.message);
+    Alert.alert("Schedule save not confirmed", result.message);
+    try { await syncCompanyEditedJobRef.current(current, Number(previous.id),
+      await getJobSyncCompanyJobDetail(jobSyncSession!.token, Number(previous.id), previous.companyId!)); }
+    catch { /* Keep the honest error and explicit read-only review action. */ }
+    finally { if (current()) setCompanyCalendarError(result.message); }
+  }, [jobSyncSession, persistCompanyCalendarChange, isCurrentCompanyJobOperation, setSelectedJob, setJobs]);
 
   const handleMoveAdminJob = async (jobId: string, newStartHour: number, newLaneIdx?: number) => {
     const previous = jobs.find((job) => job.id === jobId);
     if (!previous) return;
-    if (calendarGestureLockRef.current) return;
+    if (calendarGestureLockRef.current || (isJobSyncCompany && companyJobScheduleWriteBlocked(jobSyncSession, Number(previous.id)))) return;
     calendarGestureLockRef.current = true;
     try {
     const isCurrentAction = renderedLegacyAction;
@@ -3033,7 +3202,7 @@ export default function AdminScheduleScreen() {
   const handleResizeAdminJob = async (jobId: string, newEndHour: number) => {
     const previous = jobs.find((job) => job.id === jobId);
     if (!previous) return;
-    if (calendarGestureLockRef.current) return;
+    if (calendarGestureLockRef.current || (isJobSyncCompany && companyJobScheduleWriteBlocked(jobSyncSession, Number(previous.id)))) return;
     calendarGestureLockRef.current = true;
     try {
     const isCurrentAction = renderedLegacyAction;
@@ -3222,6 +3391,10 @@ export default function AdminScheduleScreen() {
 	      {isJobSyncCompany && companyCalendarError ? (
 	        <View style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.warning + "18", borderBottomWidth: 1, borderBottomColor: colors.warning + "55" }}>
 	          <Text style={{ color: colors.warning, fontSize: 13, fontWeight: "600" }}>{companyCalendarError}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh and review Company calendar"
+            onPress={() => { void refreshCompanyCalendarReview(); }} style={{ paddingVertical: 8 }}>
+            <Text style={{ color: colors.warning, fontWeight: "600" }}>Refresh and review</Text>
+          </TouchableOpacity>
 	        </View>
 	      ) : null}
 
@@ -3480,13 +3653,17 @@ export default function AdminScheduleScreen() {
                       <Text style={{ color: jobSheetColors.muted, fontSize: 13, flex: 1 }}>📍 {selectedJob.address || "No address set"}</Text>
                       {selectedJob.address ? <Text style={{ color: jobSheetColors.primary, fontSize: 13, fontWeight: "600" }}>Navigate ›</Text> : null}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => { setEditAddressDraft(selectedJob.address || ""); setShowEditAddressModal(true); }}
-                      style={{ padding: 6, borderRadius: 8, backgroundColor: jobSheetColors.surface }}
-                    >
-                      <Text style={{ fontSize: 14 }}>✏️</Text>
-                    </TouchableOpacity>
+                    {!companyJobMode && isCurrentLegacyAddressEntry() && (
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit legacy Job address"
+                        onPress={openLegacyAddressEditor}
+                        style={{ padding: 6, borderRadius: 8, backgroundColor: jobSheetColors.surface }}>
+                        <Text style={{ fontSize: 14 }}>✏️</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
+                  {companyJobMode && <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginBottom: 8 }}>
+                    Service address editing is unavailable for Company Jobs. The saved Job address is shown above; changing a customer profile does not update this Job.
+                  </Text>}
                   <CustomerContactActions customerId={selectedJob.customerId} phone={selectedJob.phone} requireCompanyProfile={isJobSyncCompany} jobSheet />
                   {/* ── Location Photos ── */}
                   {!companyJobMode && <>
@@ -4477,7 +4654,7 @@ export default function AdminScheduleScreen() {
                     const alreadyPaid = selectedJob.payment?.total ?? 0;
                     // If any payment has been recorded, show remaining balance mode automatically
                     const remainingOnly = companyJobMode ? (selectedJob.paidTotal ?? 0) > 0 : alreadyPaid > 0.01;
-                    setInvoiceMethod("email");
+                    setInvoiceMethod("email");                    setInvoiceResend(false);                    setCompanyInvoiceStatus(null);
                     setInvoiceSentUrl(null);
                     setInvoiceRemainingOnly(remainingOnly);
                     setInvoiceOverrideContact(selectedJob.email ?? "");
@@ -4535,7 +4712,7 @@ export default function AdminScheduleScreen() {
                     <TouchableOpacity
                       onPress={() => {
                         if (!managementActionRef.current.mounted || !managementActionRef.current.focused || sheetEpochRef.current !== renderedSheetEpoch || invoiceSessionRef.current.key !== invoiceIdentityKey) return;
-                        setInvoiceMethod("email");
+                        setInvoiceMethod("email");                        setInvoiceResend(false);                        setCompanyInvoiceStatus(null);
                         setInvoiceSentUrl(null);
                         setInvoiceRemainingOnly(true);
                         setInvoiceOverrideContact(selectedJob.email ?? "");
@@ -4930,13 +5107,13 @@ export default function AdminScheduleScreen() {
                           if (!selectedJob) return;
                           const previous = selectedJob;
                           const next = { ...previous, detailerName: d.name, assignedTo: d.employeeId };
-                          setJobs((current) => current.map((job) => job.id === previous.id ? next : job));
-                          setSelectedJob(next);
                           setShowReassignPicker(false);
                           if (isJobSyncCompany) {
                             await saveCompanyCalendarChange(previous, next);
                             return;
                           }
+                          setJobs((current) => current.map((job) => job.id === previous.id ? next : job));
+                          setSelectedJob(next);
                           try {
                             await jobReassignMutation.mutateAsync({ jobId: previous.id, newAssignedTo: d.name });
                           } catch (err) {
@@ -4972,14 +5149,15 @@ export default function AdminScheduleScreen() {
           </Modal>
         )}
 
-        {showEditAddressModal && selectedJob && (
+        {showEditAddressModal && selectedJob && !companyJobMode && isCurrentLegacyAddressEditor() && (
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}>
             <View style={{ backgroundColor: jobSheetColors.surface, borderRadius: 16, padding: 24, width: "100%" }}>
               <Text style={{ fontSize: 17, fontWeight: "700", color: jobSheetColors.foreground, marginBottom: 6 }}>📍 Edit Address</Text>
-              <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginBottom: 16 }}>Changes will reflect on both admin and technician calendars immediately.</Text>
+              <Text style={{ fontSize: 13, color: jobSheetColors.muted, marginBottom: 16 }}>Edits apply to this legacy Job. Refresh calendars to confirm saved changes.</Text>
               <TextInput
                 value={editAddressDraft}
-                onChangeText={setEditAddressDraft}
+                accessibilityLabel="Legacy Job service address"
+                onChangeText={(value) => { if (isCurrentLegacyAddressEditor()) setEditAddressDraft(value); }}
                 placeholder="Enter full address"
                 placeholderTextColor={jobSheetColors.muted}
                 multiline
@@ -4987,26 +5165,14 @@ export default function AdminScheduleScreen() {
               />
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <TouchableOpacity
-                  onPress={() => setShowEditAddressModal(false)}
+                  onPress={cancelLegacyAddressEditor}
                   style={{ flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: jobSheetColors.border, alignItems: "center" }}
                 >
                   <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={async () => {
-                    if (!selectedJob || savingAddress) return;
-                    setSavingAddress(true);
-                    try {
-                      await jobMetaMutation.mutateAsync({ jobId: selectedJob.id, customerAddress: editAddressDraft.trim() });
-                      // Update local state so the address shows immediately without a refetch
-                      setSelectedJob((prev: any) => prev ? { ...prev, address: editAddressDraft.trim() } : prev);
-                      setShowEditAddressModal(false);
-                    } catch (e) {
-                      Alert.alert("Error", "Failed to update address. Please try again.");
-                    } finally {
-                      setSavingAddress(false);
-                    }
-                  }}
+                  onPress={saveLegacyAddress}
+                  disabled={savingAddress}
                   style={{ flex: 1, padding: 14, borderRadius: 10, backgroundColor: jobSheetColors.primary, alignItems: "center", opacity: savingAddress ? 0.6 : 1 }}
                 >
                   <Text style={{ color: "#fff", fontWeight: "700" }}>{savingAddress ? "Saving..." : "Save Address"}</Text>
@@ -5525,7 +5691,8 @@ export default function AdminScheduleScreen() {
                     {(["email", "sms"] as const).map(m => (
                       <TouchableOpacity
                         key={m}
-                        onPress={() => setInvoiceMethod(m)}
+                        disabled={invoiceSending}
+                        onPress={() => { if (!invoiceLockRef.current && isCurrentInvoice()) setInvoiceMethod(m); }}
                         style={[
                           { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 14, borderWidth: 2 },
                           invoiceMethod === m
@@ -5541,6 +5708,17 @@ export default function AdminScheduleScreen() {
                     ))}
                   </View>
 
+                  {companyJobMode && <View style={{ marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Text style={{ color: jobSheetColors.foreground, fontWeight: "600" }}>Explicitly resend invoice</Text>
+                      <Switch value={invoiceResend} disabled={invoiceSending}
+                        accessibilityLabel="Explicitly resend Company invoice"
+                        onValueChange={(value) => { if (!invoiceLockRef.current && isCurrentInvoice()) setInvoiceResend(value); }} />
+                    </View>
+                    <Text style={{ color: jobSheetColors.muted, fontSize: 12, marginTop: 4 }}>
+                      Off may reuse the initial request. On requests a new send to the customer contact on file; delivery is not guaranteed.
+                    </Text>
+                  </View>}
                   {/* Contact info — editable */}
                   {companyJobMode ? <Text style={{ color: jobSheetColors.muted, marginBottom: 20 }}>The Company backend selects the customer contact, invoice amount and remaining balance. Mobile contact/amount overrides are unavailable.</Text> : <View style={{ marginBottom: 20 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
@@ -5579,16 +5757,16 @@ export default function AdminScheduleScreen() {
                         setInvoiceSending(true);
                         setInvoiceSentUrl(null);
                         try {
-                          const fresh = await getJobSyncMobileSession(token);
+                          const invoiceIntent = captureCompanyJobInvoiceIntent(jobSyncSession, selectedJob,
+                            createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend));
+                          const fresh = await getJobSyncMobileSession(invoiceIntent.token);
                           if (!isCurrentInvoice()) return;
-                          if (fresh.portal !== "company" || fresh.token !== token || fresh.company?.id !== jobSyncSession!.company!.id
-                            || fresh.user.id !== jobSyncSession!.user.id || fresh.user.role !== jobSyncSession!.user.role
-                            || !["owner", "dispatcher"].includes(fresh.user.role)) throw new Error("Signed Company identity changed. Reopen the Job before sending.");
-                          const detail = await getJobSyncCompanyJobDetail(token, jobId, jobSyncSession!.company!.id);
+                          assertCompanyJobInvoiceSession(invoiceIntent, fresh);
+                          const detail = await getJobSyncCompanyJobDetail(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.companyId);
                           if (!isCurrentInvoice()) return;
-                          if (detail.id !== jobId || detail.companyId !== fresh.company?.id) throw new Error("The originating Company Job is unavailable.");
+                          assertCompanyJobInvoiceJob(invoiceIntent, detail);
                           if (!isCurrentInvoice()) return;
-                          const data = await sendJobSyncCompanyJobInvoice(token, jobId, { method: invoiceMethod });
+                          const data = await sendJobSyncCompanyJobInvoice(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.options);
                           if (isCurrentInvoice()) {
                             setCompanyInvoiceStatus(typeof data.communicationState === "string" ? data.communicationState : typeof data.status === "string" ? data.status : null);
                             setInvoiceSentUrl(data.publicUrl);
@@ -5638,7 +5816,7 @@ export default function AdminScheduleScreen() {
                     style={{ backgroundColor: invoiceSending ? "#aaa" : "#0a7ea4", borderRadius: 50, paddingVertical: 16, alignItems: "center" }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                      {invoiceSending ? "Sending…" : invoiceRemainingOnly ? `Send Remaining Balance via ${invoiceMethod === "email" ? "Email" : "Text"}` : `Send Invoice via ${invoiceMethod === "email" ? "Email" : "Text"}`}
+                      {invoiceSending ? "Sending…" : companyJobMode && invoiceResend ? `Request Invoice Resend via ${invoiceMethod === "email" ? "Email" : "Text"}` : invoiceRemainingOnly ? `Send Remaining Balance via ${invoiceMethod === "email" ? "Email" : "Text"}` : `Send Invoice via ${invoiceMethod === "email" ? "Email" : "Text"}`}
                     </Text>
                   </TouchableOpacity>
                 </>

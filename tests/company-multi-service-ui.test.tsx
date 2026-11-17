@@ -223,12 +223,58 @@ describe("multi-service compact sheet — actual React, real durable controller,
     const count = mocks.quote.mock.calls.length; await input("Service 1 quantity", "9"); await press("Refresh saved Job without resending");
     expect(node("Service 1 quantity").nativeProps.value).toBe("1"); expect(mocks.create).toHaveBeenCalledTimes(1); expect(mocks.quote).toHaveBeenCalledTimes(count); expect(props.onCreated).not.toHaveBeenCalled();
   });
-  it("retains customer/time/assignment/note modes and disabled notification guard", async () => {
+  it("retains customer/time/assignment/note modes with available default ON and explicit booking-confirmation OFF capture", async () => {
     await ready(); await press("Verified member"); await press("More Details"); await input("Service notes", "Keep note"); await input("Private notes", "Keep private");
     await press("New Customer"); expect(node("Save Company Job").nativeProps.disabled).toBe(true); expect(node("First name (required)").nativeProps.value).toBe("");
     await input("First name (required)", "New"); await input("Last name (required)", "Customer"); expect(node("Save Company Job").nativeProps.disabled).toBe(false);
     expect(node("Service 1 quantity").nativeProps.value).toBe("1"); expect(node("Service notes").nativeProps.value).toBe("Keep note"); expect(node("Private notes").nativeProps.value).toBe("Keep private");
-    expect(node("Verified member").nativeProps.accessibilityState.selected).toBe(true); expect(node("Notify customer unavailable").nativeProps.disabled).toBe(true);
+    expect(node("Verified member").nativeProps.accessibilityState.selected).toBe(true);
+    expect(all().some((item) => item.tagName === "NATIVE-TEXT" && item.textContent === "Notify customer")).toBe(true);
+    expect(node("Notify customer").nativeProps).toMatchObject({ accessibilityRole: "switch", disabled: false, accessibilityState: { checked: true, disabled: false } });
+    const oldSave = node("Save Company Job").nativeProps.onPress; const quoteCalls = mocks.quote.mock.calls.length;
+    await press("Notify customer"); expect(node("Notify customer").nativeProps.accessibilityState.checked).toBe(false);
+    await act(async () => oldSave()); expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.quote).toHaveBeenCalledTimes(quoteCalls);
+    expect(byId("company-job-server-quote")!.textContent).toContain("Final quote total $315.24");
+    mocks.customer.mockResolvedValueOnce({ id: 77, companyId: 9, firstName: "New", lastName: "Customer" });
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledOnce();
+    const request = mocks.create.mock.calls[0][2];
+    expect(request).toMatchObject({ notifyCustomer: false, newCustomer: { firstName: "New", lastName: "Customer" }, assignedUserId: 50,
+      lineItems: [{ priceBookItemId: 31, quantity: 1 }], serviceNotes: "Keep note", privateNotes: "Keep private",
+      scheduledStartAt: "2026-12-01T15:00:00.000Z", scheduledEndAt: "2026-12-01T16:00:00.000Z", operationKey: expect.stringMatching(/^hsc-job-test-key-/) });
+    expect(request).not.toHaveProperty("customerId"); expect(Object.isFrozen(request)).toBe(true);
+    expect(mocks.customer).toHaveBeenLastCalledWith(props.session!.token, 77, 9);
+    expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 315.24 }), "America/Chicago");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("captures untouched default ON explicitly and resets ON for the next opened sheet", async () => {
+    await ready(); expect(node("Notify customer").nativeProps.accessibilityState.checked).toBe(true);
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.create.mock.calls[0][2].notifyCustomer).toBe(true);
+    await render({ visible: false }); await render({ visible: true, session: actor() });
+    expect(node("Notify customer").nativeProps).toMatchObject({ disabled: false, accessibilityState: { checked: true, disabled: false } });
+    await press("Notify customer"); expect(node("Notify customer").nativeProps.accessibilityState.checked).toBe(false);
+    await render({ visible: false }); await render({ visible: true, session: actor() });
+    expect(node("Notify customer").nativeProps.accessibilityState.checked).toBe(true);
+    expect(mocks.create).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("locks explicit OFF through pending saved-operation recovery without another POST or draft quote", async () => {
+    await ready(); await press("Notify customer"); const retainedToggle = node("Notify customer").nativeProps.onPress;
+    const save = mocks.create.getMockImplementation()!;
+    mocks.create.mockImplementationOnce(async (...args) => { await save(...args); throw new Error("Lost saved response"); });
+    mocks.operation.mockImplementationOnce(async (_token, _companyId, key) => ({ key, state: "pending", jobId: null,
+      rejectionCode: null, rejectionMessage: null, createdAt: null, updatedAt: null }));
+    await press("Save Company Job"); expect(mocks.create).toHaveBeenCalledOnce();
+    const request = mocks.create.mock.calls[0][2]; expect(request.notifyCustomer).toBe(false); expect(Object.isFrozen(request)).toBe(true);
+    expect(node("Notify customer").nativeProps).toMatchObject({ disabled: true, accessibilityState: { checked: false, disabled: true } });
+    await act(async () => retainedToggle()); expect(node("Notify customer").nativeProps.accessibilityState.checked).toBe(false);
+    expect(byId("company-job-server-quote")).toBeUndefined(); expect(props.onCreated).not.toHaveBeenCalled();
+    const quoteCalls = mocks.quote.mock.calls.length;
+    await press("Refresh saved Job without resending");
+    expect(mocks.operation).toHaveBeenCalledTimes(2);
+    for (const [, , key] of mocks.operation.mock.calls) expect(key).toBe(request.operationKey);
+    expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.quote).toHaveBeenCalledTimes(quoteCalls);
+    expect(request.notifyCustomer).toBe(false); expect(byId("company-job-server-quote")).toBeUndefined();
+    expect(props.onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 84, amount: 315.24 }), "America/Chicago");
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("bounds the draft to 50 unique lines without hardcoded catalog choices", async () => {
     mocks.catalog = Array.from({ length: 51 }, (_, index) => service(100 + index));

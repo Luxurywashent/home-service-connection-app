@@ -255,7 +255,6 @@ describe("Company private notes — actual React visibility, no native-device cl
     "actor user",
     "actor role",
     "actor token",
-    "unassigned technician",
   ])("does not expose private text for %s", async (kind) => {
     let actor = props.job.actor!;
     let signed = props.session!;
@@ -277,11 +276,6 @@ describe("Company private notes — actual React visibility, no native-device cl
     if (kind === "actor role")
       actor = { ...actor, user: { ...actor.user, role: "dispatcher" } };
     if (kind === "actor token") actor = { ...actor, token: "other-token" };
-    if (kind === "unassigned technician")
-      signed = actor = {
-        ...actor,
-        user: { ...actor.user, role: "technician" },
-      };
     job = {
       ...job,
       actor: kind === "missing actor" ? null : actor,
@@ -289,6 +283,25 @@ describe("Company private notes — actual React visibility, no native-device cl
     await render({ session: signed, job, jobId });
     expect(container.textContent).not.toContain("Internal access instruction");
   });
+  it.each([null, 999])(
+    "shows same-Company technician notes read-only with assignee %s",
+    async (assignedUserId) => {
+      const actor = {
+        ...props.session!,
+        user: { ...props.session!.user, role: "technician" as const },
+      };
+      await render({
+        session: actor,
+        job: { ...props.job, actor, detail: { ...detail, assignedUserId } },
+      });
+      expect(body()).toBe("Internal access instruction");
+      expect(
+        all().some((node) =>
+          /Save|Edit/.test(node.nativeProps?.accessibilityLabel ?? ""),
+        ),
+      ).toBe(false);
+    },
+  );
   it.each(["loading", "pending", "error"] as const)(
     "hides previously returned text during %s",
     async (field) => {
@@ -508,10 +521,10 @@ describe("Company private notes — actual React visibility, no native-device cl
 });
 
 describe("exact local backend contract evidence and private-only normalization", () => {
-  it.each(["002e0b8f", "a07b8077"])(
-    "verifies read storage, protected Company authority, route gap and billing boundary at %s",
+  it.each(["66141c98"])(
+    "verifies read storage, protected Company authority, private-only route and billing boundary at %s",
     (snapshot) => {
-      const base = `/home/ubuntu/hsc-mobile-four-repairs-20261116/backend-source-${snapshot}`;
+      const base = `/home/ubuntu/hsc-mobile-release-readiness-20261117/backend-source-${snapshot}`;
       const mobile = readFileSync(`${base}/server/mobileOperations.ts`, "utf8");
       const service = readFileSync(`${base}/server/jobService.ts`, "utf8");
       const router = readFileSync(
@@ -521,8 +534,8 @@ describe("exact local backend contract evidence and private-only normalization",
       const context = readFileSync(`${base}/server/companyContext.ts`, "utf8");
       const auth = readFileSync(`${base}/server/mobileAuth.ts`, "utf8");
       expect(mobile).toContain("app.get(`${BASE}/jobs/:jobId`, jobDetail)");
-      expect(mobile).not.toMatch(
-        /app\.(patch|put|post)\([^\n]*(?:\/notes|\/private-notes)/,
+      expect(mobile).toContain(
+        "app.patch(`${BASE}/company/jobs/:jobId/private-notes`, updatePrivateJobNotes)",
       );
       expect(service).toContain(
         "private_notes: (job as { internal_notes?: unknown }).internal_notes ?? null",
@@ -535,6 +548,12 @@ describe("exact local backend contract evidence and private-only normalization",
       );
       expect(router).toContain(
         'updateNotes: tenantProcedure(["owner", "dispatcher"])',
+      );
+      expect(service).toContain(
+        "technicianScopeSql(company, { allowUnassigned: true })",
+      );
+      expect(context).toContain(
+        'company.role !== "technician" || options.allowUnassigned',
       );
       expect(context).toContain('clause: " AND j.assigned_user_id = ?"');
       expect(auth).toContain('claims.accountType !== "company"');

@@ -84,7 +84,7 @@ export function companyJobPrivateNotesScope(
   ]);
 }
 
-/** Backend getJob reads are tenant-scoped; technicians may read only their assigned Job. */
+/** Current Company Job detail authority includes assigned, unassigned and other-assignee technicians. */
 export function canReadCompanyJobPrivateNotes(
   session: JobSyncNativeSession | null,
   jobId: number | null,
@@ -105,9 +105,7 @@ export function canReadCompanyJobPrivateNotes(
     !job.pending &&
     !job.error &&
     detail?.id === jobId &&
-    detail?.companyId === session?.company?.id &&
-    (session?.user.role !== "technician" ||
-      detail?.assignedUserId === session.user.id),
+    detail?.companyId === session?.company?.id,
   );
 }
 

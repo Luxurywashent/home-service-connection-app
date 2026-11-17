@@ -99,10 +99,13 @@ describe("Company Job tag controller — isolated canonical contract", () => {
     const f = fixture(); f.api.session.mockResolvedValue(session(role)); const c = makeController(f, session(role));
     await c.controller.refresh(); expect(c.state.tags).toEqual([]); expect(await c.controller.add("One")).toBe(true);
   });
-  it.each([null, 999])("denies technician with assignee %s even if detail read succeeded", async (assignedUserId) => {
+  it.each([null, 999])("allows same-Company technician with assignee %s and confirms add/remove", async (assignedUserId) => {
     const f = fixture(); f.api.session.mockResolvedValue(session("technician")); f.api.detail.mockResolvedValue(detail({ assignedUserId }));
     const c = makeController(f, session("technician")); await c.controller.refresh();
-    expect(c.state.tags).toBeNull(); expect(await c.controller.add("One")).toBe(false); expect(f.api.add).not.toHaveBeenCalled();
+    expect(c.state.tags).toEqual([]); expect(await c.controller.add("One")).toBe(true);
+    expect(c.state.tags).toEqual([tag(100, "One")]); expect(f.api.add).toHaveBeenCalledTimes(1);
+    expect(await c.controller.remove(100)).toBe(true); expect(c.state.tags).toEqual([]);
+    expect(f.api.remove).toHaveBeenCalledTimes(1); expect(c.state.reviewRequired).toBe(false);
   });
   it("rejects platform/unsupported roles and unsafe Job IDs without transport reads", async () => {
     const platform = session(); platform.portal = "platform";
@@ -126,15 +129,18 @@ describe("Company Job tag controller — isolated canonical contract", () => {
     const c = makeController(); await c.controller.refresh(); c.f.api.detail.mockResolvedValue(detail(patch));
     expect(await c.controller.add("One")).toBe(false); expect(c.state.tags).toBeNull(); expect(c.f.api.add).not.toHaveBeenCalled();
   });
-  it("rechecks assignment immediately before mutation and after acknowledgment", async () => {
+  it("refreshes same-Company detail before mutation and accepts assignment changes after acknowledgment", async () => {
     const f = fixture(); f.api.session.mockResolvedValue(session("technician")); const c = makeController(f, session("technician"));
     await c.controller.refresh(); f.api.detail.mockResolvedValue(detail({ assignedUserId: null }));
-    expect(await c.controller.add("One")).toBe(false); expect(f.api.add).not.toHaveBeenCalled();
-    f.api.detail.mockResolvedValue(detail()); await c.controller.refresh();
+    expect(await c.controller.add("One")).toBe(true); expect(f.api.add).toHaveBeenCalledTimes(1);
+    expect(c.state.detail?.assignedUserId).toBeNull();
     f.api.add.mockImplementationOnce(async (_token, jobId, input) => {
-      const added = tag(100, input.name, jobId); f.saved.push(added); f.api.detail.mockResolvedValue(detail({ assignedUserId: null })); return added;
+      const added = tag(101, input.name, jobId); f.saved.push(added); f.api.detail.mockResolvedValue(detail({ assignedUserId: 999 })); return added;
     });
-    expect(await c.controller.add("One")).toBe(false); expect(c.state.tags).toBeNull(); expect(c.state.reviewRequired).toBe(true);
+    expect(await c.controller.add("Two")).toBe(true); expect(f.api.add).toHaveBeenCalledTimes(2);
+    expect(c.state.tags).toEqual([tag(100, "One"), tag(101, "Two")]);
+    expect(c.state.detail?.assignedUserId).toBe(999); expect(c.state.reviewRequired).toBe(false);
+    expect(f.api.detail).toHaveBeenCalledTimes(5);
   });
   it("preserves multiple canonical tags, server order and SQL/null timestamps; removes only one ID", async () => {
     const f = fixture([tag(3, "Zulu"), tag(1, "Alpha")]); const c = makeController(f); await c.controller.refresh();
@@ -226,8 +232,9 @@ describe("Company Job tag controller — isolated canonical contract", () => {
     const first = c.controller.refresh(); await c.controller.refresh(); expect(c.f.api.list).toHaveBeenCalledTimes(1);
     const count = c.states.length; c.controller.dispose(); wait.resolve([tag()]); await first; expect(c.states).toHaveLength(count);
   });
-  it("policy does not infer assignment authority from broad detail success", () => {
-    expect(companyJobTagsBlockReason(session("technician"), session("technician"), detail({ assignedUserId: 999 }), 44)).toContain("assigned technician");
+  it("same-Company tag authority is not assignment authority or a tenant bypass", () => {
+    expect(companyJobTagsBlockReason(session("technician"), session("technician"), detail({ assignedUserId: 999 }), 44)).toBeNull();
+    expect(companyJobTagsBlockReason(session("technician"), session("technician"), detail({ companyId: 10 }), 44)).toContain("Company's Job");
   });
 });
 

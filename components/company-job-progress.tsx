@@ -21,7 +21,6 @@ function compactBlockHint(reason: string, status?: string) {
   if (reason.includes("fresh signed")) return "Refresh your Company session to continue.";
   if (reason.includes("identity") || reason.includes("current Company's Job")) return "Company identity changed. Refresh your session and job.";
   if (reason.includes("signed role")) return "This role cannot update progress.";
-  if (reason.includes("currently assigned")) return "Backend requires assignment. Ask a Company admin to update.";
   if (reason.includes("Job version")) return "Refresh this job before updating progress.";
   if (reason.includes("terminal")) return status === "completed" ? "Job finished." : "Job cancelled.";
   return "No progress action is available for this job.";

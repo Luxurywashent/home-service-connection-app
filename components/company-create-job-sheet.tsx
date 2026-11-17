@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useIsFocused } from "expo-router";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
@@ -121,9 +121,24 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
       onState: (next) => {
         if (!current()) return;
         setState(next);
-        if (next.phase === "succeeded" && !successCloseRequested && live.current.props.closeOnSuccess !== false) {
+        if (next.phase === "succeeded" && !successCloseRequested) {
+          // This form normally disappears on success. Present the saved-state
+          // feedback first; never throw a presentation error into Job recovery.
+          // Bind to the controller's immutable submitted intent, not this draft.
           successCloseRequested = true;
-          live.current.props.onClose();
+          const message = `${next.message}\n\n${next.bookingConfirmationMessage}`;
+          try {
+            if (Platform.OS === "web") {
+              if (typeof globalThis.alert !== "function") return; // Keep inline feedback visible.
+              globalThis.alert(message);
+            } else {
+              Alert.alert("Job saved", message, [{ text: "OK", onPress: () => {
+                if (current() && live.current.props.closeOnSuccess !== false) live.current.props.onClose();
+              } }], { cancelable: false });
+              return; // Do not dismiss the native sheet beneath a presenting Alert.
+            }
+          } catch { return; } // Keep the confirmed saved state visible; never recreate.
+          if (current() && live.current.props.closeOnSuccess !== false) live.current.props.onClose();
         }
       },
       onCreated: (detail, zone) => current() ? live.current.props.onCreated(detail, zone) : false,
@@ -409,8 +424,9 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
             <TouchableOpacity accessibilityRole="switch" accessibilityLabel="New Customer" accessibilityState={{ checked: customerMode === "new", disabled: locked }} disabled={locked} onPress={() => changeCustomerMode(customerMode === "new" ? "existing" : "new")} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: customerMode === "new" ? colors.primary : colors.border, alignItems: customerMode === "new" ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity>
             {customerMode === "new" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Existing Customer" disabled={locked} onPress={() => changeCustomerMode("existing")} style={styles.existingAction}><Text style={[styles.note, { color: colors.primary }]}>Find existing</Text></TouchableOpacity>}
           </View>
-          <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>{locked ? "Original request is locked; this draft cannot change it" : "Turn off to opt out for this Job"}</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer" accessibilityState={{ checked: notifyCustomer, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked && committedDraft.current === draftBinding) setNotifyCustomer((value) => !value); }} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: notifyCustomer ? colors.primary : colors.border, alignItems: notifyCustomer ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
+          <View style={[styles.toggleRow, { borderColor: colors.border }]}><View style={styles.flex}><Text style={[styles.selected, { color: colors.foreground }]}>Notify customer</Text><Text style={[styles.note, { color: colors.muted }]}>{locked ? "Original booking confirmation request is locked; this draft cannot change it" : "Booking confirmation only. Day-before and same-day reminders follow Company settings."}</Text></View><TouchableOpacity accessibilityRole="switch" accessibilityLabel="Notify customer" accessibilityState={{ checked: notifyCustomer, disabled: locked }} disabled={locked} onPress={() => { if (current() && !locked && committedDraft.current === draftBinding) setNotifyCustomer((value) => !value); }} style={styles.toggleTarget}><View style={[styles.toggleTrack, { backgroundColor: notifyCustomer ? colors.primary : colors.border, alignItems: notifyCustomer ? "flex-end" : "flex-start" }]}><View style={styles.toggleThumb} /></View></TouchableOpacity></View>
           {state.message && <Text accessibilityRole="alert" style={[styles.note, { color: ["error", "uncertain", "conflict", "rejected"].includes(state.phase) ? colors.error : colors.muted }]}>{state.message}</Text>}
+          {state.bookingConfirmationMessage && <Text accessibilityRole="alert" testID="company-booking-confirmation-feedback" style={[styles.note, { color: colors.muted }]}>{state.bookingConfirmationMessage}</Text>}
           {state.detailError && <Text accessibilityRole="alert" style={[styles.note, { color: colors.error }]}>{state.detailError}</Text>}
           {state.phase === "rejected" && <Text style={[styles.note, { color: colors.muted }]}>Review and correct the form, then save a new request.</Text>}
           {busy && <ActivityIndicator accessibilityLabel={state.phase === "restoring" ? "Checking previous creation request" : state.reconciling ? "Checking original Job status and calendar" : "Saving Company Job"} color={colors.primary} />}

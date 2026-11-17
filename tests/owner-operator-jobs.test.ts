@@ -133,8 +133,10 @@ describe("owner-operator Company canonical fieldwork", () => {
     expect(test.api.list).toHaveBeenCalledTimes(1);
     expect(test.state().success).toBeNull();
     expect(test.state().error).toContain(error.message);
-    expect(companyFieldworkBlockReason(session, test.state().detail)).toContain("assigned");
-    expect(await test.controller.advance("en_route")).toBe(false);
+    // Reassignment alone does not revoke exact 66141 Company field authority.
+    expect(companyFieldworkBlockReason(session, test.state().detail)).toBeNull();
+    // Reconciliation performs GET only; an invalid skipped target still cannot dispatch.
+    expect(await test.controller.advance("completed")).toBe(false);
     expect(test.api.status).toHaveBeenCalledTimes(1);
   });
   it("disables progress when failed acknowledgement cannot be reconciled", async () => {
@@ -360,7 +362,9 @@ describe("shared job screen integration boundaries", () => {
   it("preserves Job invoice and collection UI while Company invoice uses only canonical request", () => {
     const admin = source("app/(tabs)/admin-schedule.tsx");
     const branch = admin.slice(admin.indexOf("if (companyJobMode) {", admin.indexOf("{/* Send button */}")), admin.indexOf("setInvoiceSending(true);\n                      try", admin.indexOf("{/* Send button */}")));
-    expect(branch).toContain("sendJobSyncCompanyJobInvoice(token, jobId, { method: invoiceMethod })");
+    expect(branch).toContain("sendJobSyncCompanyJobInvoice(invoiceIntent.token, invoiceIntent.jobId, invoiceIntent.options)");
+    expect(branch).toContain("captureCompanyJobInvoiceIntent(jobSyncSession, selectedJob");
+    expect(branch).toContain("createCompanyJobInvoiceOptions(invoiceMethod, invoiceResend)");
     expect(branch).toContain("data.publicUrl");
     expect(branch).toContain("return; // Never fall back");
     expect(branch).not.toMatch(/overrideEmail|overridePhone|discountAmount|paymentUrl/);

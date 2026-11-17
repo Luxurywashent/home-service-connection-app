@@ -156,12 +156,15 @@ describe("Company Job Tags source React host — mocked/isolated, not native", (
     expect(container.textContent).not.toContain("Priority");
     expect(all().some((node) => node.nativeProps?.accessibilityRole === "alert")).toBe(true);
   });
-  it.each([null, 99])("honestly denies technician read/write for assignee %s, without legacy fallback", async (assignee) => {
+  it.each([null, 99])("allows same-Company technician tag read/write for assignee %s without legacy fallback", async (assignee) => {
     const actor = { ...props.session!, user: { ...props.session!.user, role: "technician" as const } };
     await render({ session: actor, model: { ...props.model, actor, detail: { ...props.model.detail!, assignedUserId: assignee } } });
-    expect(container.textContent).toContain("technicians must be assigned");
-    expect(container.textContent).not.toContain("Priority"); expect(find("Edit job tags")).toBeUndefined();
-    expect(props.model.add).not.toHaveBeenCalled(); expect(props.model.remove).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("technicians must be assigned");
+    expect(container.textContent).toContain("Priority"); expect(find("Edit job tags")).toBeDefined();
+    await edit("New tag"); await act(async () => get("Add job tag").onPress());
+    expect(props.model.add).toHaveBeenCalledWith("New tag");
+    await act(async () => get("Remove job tag Priority").onPress());
+    expect(props.model.remove).toHaveBeenCalledWith(31);
   });
   it("allows an assigned technician without calendar/payment/status gates", async () => {
     const actor = { ...props.session!, user: { ...props.session!.user, role: "technician" as const, calendarEligible: false, paymentCollectionEnabled: false } };

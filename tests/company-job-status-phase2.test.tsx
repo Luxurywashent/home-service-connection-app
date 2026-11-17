@@ -77,13 +77,13 @@ describe("Phase 2 verified Company status authority", () => {
     expect(isAssignedCompanyFieldActor(signed, detail())).toBe(false);
     expect(companyFieldworkBlockReason(signed, detail({ assignedUserId: null }))).toBeNull();
   });
-  it.each([41, 42, null, 0])("retains backend technician assignment restriction for assignee %s, without permission bypass", async (assignedUserId) => {
+  it.each([41, 42, null, 0])("uses verified current same-Company technician authority regardless of assignee %s", async (assignedUserId) => {
     const start = detail({ assignedUserId });
     const test = setup(actor("technician", false), { detail: vi.fn().mockResolvedValueOnce(start).mockResolvedValueOnce(start).mockResolvedValueOnce({ ...start, status: "en_route" }) });
     await test.controller.refresh();
-    expect(await test.controller.advance("en_route")).toBe(assignedUserId === 41);
-    expect(test.api.status).toHaveBeenCalledTimes(assignedUserId === 41 ? 1 : 0);
-    if (assignedUserId !== 41) expect(test.state().error).toContain("backend permission change");
+    expect(await test.controller.advance("en_route")).toBe(true);
+    expect(test.api.status).toHaveBeenCalledTimes(1);
+    expect(test.api.status).toHaveBeenCalledWith(actor().token, 47, { status: "en_route", expectedUpdatedAt: version });
   });
   it.each(["developer", "sales", "customer_support", "operations"] as const)("denies non-Company role %s even with invented field opt-in", async (role) => {
     const test = setup(actor(role, true)); await test.controller.refresh();
@@ -147,8 +147,17 @@ describe("Phase 2 transitions, fresh readback and calendar callback", () => {
     readback.resolve(detail({ status: "en_route" })); expect(await work).toBe(true);
     expect(test.api.status).toHaveBeenCalledOnce(); expect(test.onList).toHaveBeenCalledOnce();
   });
-  it.each(["reassigned", "terminal", "wrong Job", "cross Company", "offline"])("fresh technician %s check fails closed before any write", async (change) => {
-    const fresh = detail(); if (change === "reassigned") fresh.assignedUserId = 42;
+  it("fresh same-Company reassignment preserves authorized progress with canonical readback", async () => {
+    const fresh = detail({ assignedUserId: 42 });
+    const test = setup(actor(), { detail: vi.fn().mockResolvedValueOnce(detail()).mockResolvedValueOnce(fresh)
+      .mockResolvedValueOnce({ ...fresh, status: "en_route" }) });
+    await test.controller.refresh();
+    expect(await test.controller.advance("en_route")).toBe(true);
+    expect(test.api.status).toHaveBeenCalledTimes(1);
+    expect(test.state().detail?.assignedUserId).toBe(42);
+  });
+  it.each(["terminal", "wrong Job", "cross Company", "offline"])("fresh technician %s check fails closed before any write", async (change) => {
+    const fresh = detail();
     if (change === "terminal") fresh.status = "completed";
     if (change === "wrong Job") fresh.id = 48;
     if (change === "cross Company") fresh.companyId = 10;
@@ -193,7 +202,7 @@ function backendFunction(source: string, name: string, context: Record<string, u
   const code = ts.transpileModule(node.getText(ast).replace(/^export\s+/, ""), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   return new Function(...Object.keys(context), `${code}; return ${name};`)(...Object.values(context));
 }
-describe("both pinned backend actual authority (read-only production function extraction)", () => {
+describe("historical pinned backend authority only — not current66141 acceptance (read-only function extraction)", () => {
   it.each(["002e0b8f", "a07b8077"])("checkpoint %s grants managers but denies unassigned technician via SQL scope", async (checkpoint) => {
     const base = `/home/ubuntu/hsc-mobile-four-repairs-20261116/backend-source-${checkpoint}/server/`;
     const contextSource = readFileSync(`${base}companyContext.ts`, "utf8");
@@ -245,10 +254,13 @@ describe("Phase 2 circular progress UI and signed confirmation lifecycle", () =>
     expect(button("ARRIVED").nativeProps.disabled).toBe(true); expect(button("FINISH").nativeProps.disabled).toBe(true);
     await act(async () => button("ON MY WAY").nativeProps.onPress()); expect(job.advance).toHaveBeenCalledWith("en_route");
   });
-  it("keeps denied unassigned technician controls safe with actionable backend/admin feedback", async () => {
+  it("permits the authorized unassigned technician's next transition without obsolete assignment feedback", async () => {
     const signed = actor(); const job = progressJob(signed, detail({ assignedUserId: null })); await render(signed, job);
-    expect(container.textContent).toContain("Backend requires assignment. Ask a Company admin to update.");
-    await act(async () => button("ON MY WAY").nativeProps.onPress()); expect(job.advance).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("Backend requires assignment");
+    expect(button("ON MY WAY").nativeProps.disabled).toBe(false);
+    expect(button("ARRIVED").nativeProps.disabled).toBe(true); expect(button("FINISH").nativeProps.disabled).toBe(true);
+    await act(async () => button("ON MY WAY").nativeProps.onPress()); expect(job.advance).toHaveBeenCalledTimes(1);
+    expect(job.advance).toHaveBeenCalledWith("en_route");
   });
   it("clarifies Arrived is Start in accessibility and confirmation, preserving the existing label", async () => {
     const signed = actor("owner", false); const job = progressJob(signed, detail({ status: "en_route", assignedUserId: null })); await render(signed, job);
