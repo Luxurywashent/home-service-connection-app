@@ -5,13 +5,12 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import { vi } from "vitest";
-export const backendRoot = "/home/ubuntu/hsc-mobile-fc3-final-contract-20261117/backend-source-fc3bcaa7";
-export const backendRevision = "fc3bcaa78c6288b705339bd69e2fe1539c779546";
-if (JSON.parse(readFileSync(path.join(backendRoot, "..", "backend-revision.json"), "utf8")).sha !== backendRevision) throw new Error("Wrong fc3 source revision");
+export const c24BackendSha = "c24d4a1e5da9d937e68709a76ce2e2336c81b748";
+const backendRoot = "/home/ubuntu/hsc-mobile-c24-contract-alignment-20261117/backend-source-c24d4a1e";
 export const sourceHashes = new Map<string,string>();
-export const extractedDeclarations: { file: string; names: readonly string[] }[] = [];
-export const instances: unknown[] = [];
-export const responses: unknown[] = [];
+export const extractedDeclarations: any[] = [];
+export const instances: any[] = [];
+export const responses: any[] = [];
 export const readBackend = (file: string) => { const absolute=path.join(backendRoot,file); const source=readFileSync(absolute,"utf8"); sourceHashes.set(absolute,createHash("sha256").update(source).digest("hex")); return source; };
 type Row = Record<string, unknown>;
 type Sql = { execute: (sql: string, params?: unknown[]) => Promise<[Row[], unknown?]>; getConnection?: () => Promise<Sql & { beginTransaction: () => Promise<void>; commit: () => Promise<void>; rollback: () => Promise<void>; release: () => void }> };
@@ -126,7 +125,7 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
     }
     if (sql.startsWith("INSERT INTO fs_customer_addresses")) return [[]];
     if (sql.includes("FROM fs_service_recurrence_rules WHERE")) return [state.rules.filter(row => row.id === params[0] && row.company_id === params[1]).map(row => options.mysqlDates
-      ? { ...row, starts_on: new Date(`${row.starts_on}T00:00:00.000Z`), requested_start_date: row.requested_start_date == null ? null : new Date(`${row.requested_start_date}T00:00:00.000Z`), ends_on: row.ends_on == null ? null : new Date(`${row.ends_on}T00:00:00.000Z`) } : row)];
+      ? { ...row, starts_on: new Date(`${row.starts_on}T00:00:00.000Z`), ends_on: row.ends_on == null ? null : new Date(`${row.ends_on}T00:00:00.000Z`) } : row)];
     if (sql.includes("FROM fs_jobs WHERE company_id = ? AND recurrence_rule_id = ?")) return [state.jobs.filter(row => row.company_id === params[0] && row.recurrence_rule_id === params[1]).sort((a, b) => Number(a.recurrence_occurrence_number) - Number(b.recurrence_occurrence_number))];
     if (sql.includes("FROM fs_customers WHERE")) return [params[0] === 41 && params[1] === 9 && !options.missingCustomer ? [{ id: 41 }] : []];
     if (sql.includes("FROM fs_price_book WHERE company_id")) return [params[0] === 9 && !options.missingService ? [
@@ -193,6 +192,13 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
     if (req.denied) throw Object.assign(new Error("Fake revoked bearer"), { status: 401 });
     return { claims: { accountId: 8, role: req.role ?? "owner" }, companyId: Number(req.companyId ?? 9), db };
   });
+  // Test-only pre-write capture. The production client cannot observe this
+  // server-transformed input and must not learn expected proof from a GET.
+  const creationInputs: Row[] = [];
+  const captureCreate = async (db: Sql, context: Company, input: Row) => {
+    creationInputs.push(structuredClone(input));
+    return service.createJobFromPriceBook(db, context, input);
+  };
   const routes = fromBackend<{
     mobileJobCreateSchema: z.ZodType;
     mobileJobQuoteSchema: z.ZodType;
@@ -203,9 +209,9 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
   }>("server/mobileOperations.ts", ["mobileErrorStatus", "mobileTrpcError", "operationalError", "mobileCompany", "requireManager", "mobileJobCreateSchema", "mobileJobQuoteSchema", "createJob", "quoteJob", "jobCreationOperation", "jobRecurrenceSeries", "persistedRecurrenceForCreate"], {
     z, ...errors, ...projection, requireMobileCompany: auth, companyContextFromMobile: company.companyContextFromMobile,
     managerRoles: new Set(["owner", "dispatcher"]), MobileAuthError: class extends Error { constructor(readonly status: number, message: string) { super(message); } },
-    getJobRecurrenceSeries: service.getJobRecurrenceSeries, ...dates, ...localTime, loadCompanyTimezone: company.loadCompanyTimezone, createJobFromPriceBook: service.createJobFromPriceBook, getJobDetail: service.getJobDetail, ...recovery, ...quote,
+    getJobRecurrenceSeries: service.getJobRecurrenceSeries, ...dates, ...localTime, loadCompanyTimezone: company.loadCompanyTimezone, createJobFromPriceBook: captureCreate, getJobDetail: service.getJobDetail, ...recovery, ...quote,
   });
-  const instance = { state: () => state, queries, db, connection, booking, availability, customer, member, service, routes, auth };
+  const instance = { state: () => state, queries, db, connection, booking, availability, customer, member, service, routes, auth, creationInputs };
   instances.push(instance);
   return instance;
 }

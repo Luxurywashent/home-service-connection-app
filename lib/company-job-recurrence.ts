@@ -8,7 +8,7 @@ export type CompanyJobRecurrenceInput = {
   ordinal?: 1 | 2 | 3 | 4 | -1;
   startDate: string;
 };
-export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: the backend is not deployed and the recurrence migration is not verified. The fc3 source persists original start-date provenance, but canonical GET has a subtotal mismatch and does not expose operation payload binding or snapshot-bound sibling pricing. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
+export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: coordinated backend deployment, recurrence migration and production contract verification are not confirmed. Source-only c24 compatibility is not production activation. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
 const invalid = () => new Error("Choose a valid recurrence, term, Company start date, weekday and monthly occurrence.");
 function plain(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -197,9 +197,8 @@ export function verifyCompanyJobSavedSeries(value: unknown, expected: {
     jobId: expected.jobId, operationKey: expected.operationKey, recurrence });
 }
 
-/** Exact unwrapped getJobRecurrenceSeries DTO in fc3bcaa7. Historical b8/final
- * DTOs omit requestedStartDate; absence stays absent and cannot prove fc3 intent.
- * Nullable provenance stays null. Never substitute CREATE/request/settings data. */
+/** Historical DTO plus additive c24 fields. Missing/null evidence stays missing/null;
+ * historical reads are never a current-source completeness certificate. */
 export type CompanyJobDurableRecurrenceReadback = {
   readonly companyId: number;
   readonly customerId: number;
@@ -207,12 +206,16 @@ export type CompanyJobDurableRecurrenceReadback = {
   readonly recurrence: NonNullable<CompanyJobRecurrenceReadback["recurrence"]> & {
     readonly operationKey: string | null;
     readonly requestedTerm: CompanyJobRecurrenceInput["term"] | null;
-    readonly requestedStartDate?: string | null;
     readonly creationTimezone: string | null;
+    readonly requestedStartDate?: string | null;
+    readonly operationPayloadFingerprint?: string | null;
     readonly anchorJobId: number | null;
     readonly updatedAt: string | null;
   };
-  readonly pricing: { readonly subtotal: number; readonly discount: number; readonly total: number; readonly durationMinutes: number | null };
+  readonly pricing: { readonly subtotal: number; readonly discount: number; readonly total: number; readonly durationMinutes: number | null;
+    readonly tax?: number | null; readonly taxRateBps?: number | null;
+    readonly discountKind?: "flat" | "percent" | null; readonly discountCode?: string | null;
+    readonly lineItems?: readonly CompanyJobC24FinancialLine[] };
   readonly verification: {
     readonly complete: boolean;
     readonly expectedOccurrenceCount: number;
@@ -221,6 +224,8 @@ export type CompanyJobDurableRecurrenceReadback = {
     readonly consistentSnapshot: boolean;
     readonly ruleUpdatedAt: string | null;
     readonly occurrenceUpdatedAt: string | null;
+    readonly operationBound?: boolean;
+    readonly financialSnapshotVersion?: string;
   };
   readonly occurrences: readonly (CompanyJobRecurrenceReadback["occurrences"][number] & { readonly customerId: number | null })[];
 };
@@ -230,15 +235,15 @@ const timestamp = (value: unknown) => value === null || instant(value);
 /** Only exact recurring JSON is accepted. A null recurrence (single Job) cannot
  * become series evidence. The older raw normalizer remains unchanged for callers. */
 export function normalizeCompanyJobDurableRecurrenceReadback(value: unknown, requestedJobId: number): CompanyJobDurableRecurrenceReadback {
+  if (plain(value) && ownData(value, ["companyId", "customerId", "jobId", "recurrence", "pricing", "verification", "occurrences"])
+    && plain(value.recurrence) && Object.hasOwn(value.recurrence, "operationPayloadFingerprint")) {
+    return normalizeCompanyJobC24RecurrenceReadback(value, requestedJobId);
+  }
   if (!exactReadbackFields(value, ["companyId", "customerId", "jobId", "recurrence", "pricing", "verification", "occurrences"])
     || !positive(value.companyId) || !positive(value.customerId) || value.jobId !== requestedJobId || !positive(requestedJobId)
-    || !exactReadbackFields(value.recurrence, ["ruleId", "operationKey", "requestedTerm", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt",
-      ...(plain(value.recurrence) && Object.hasOwn(value.recurrence, "requestedStartDate") ? ["requestedStartDate"] : [])])
+    || !exactReadbackFields(value.recurrence, ["ruleId", "operationKey", "requestedTerm", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt"])
     || !dense(value.occurrences) || !value.occurrences.length) throw durableFailure();
   const rule = value.recurrence;
-  if (Object.hasOwn(rule, "requestedStartDate") && rule.requestedStartDate !== null) {
-    try { dateOnly(rule.requestedStartDate); } catch { throw durableFailure(); }
-  }
   if ((rule.operationKey !== null && (typeof rule.operationKey !== "string" || rule.operationKey !== rule.operationKey.trim() || rule.operationKey.length < 8 || rule.operationKey.length > 128 || /[\u0000-\u001f\u007f]/.test(rule.operationKey)))
     || (rule.requestedTerm !== null && !companyJobRecurrenceTerms.includes(rule.requestedTerm as CompanyJobRecurrenceInput["term"]))
     || (rule.anchorJobId !== null && !positive(rule.anchorJobId)) || !timestamp(rule.updatedAt)
@@ -267,7 +272,6 @@ export function normalizeCompanyJobDurableRecurrenceReadback(value: unknown, req
   return Object.freeze({ companyId: value.companyId, customerId: value.customerId, jobId: requestedJobId,
     recurrence: Object.freeze({ ...base.recurrence!, operationKey: rule.operationKey as string | null,
       requestedTerm: rule.requestedTerm as CompanyJobRecurrenceInput["term"] | null, creationTimezone: rule.creationTimezone as string | null,
-      ...(Object.hasOwn(rule, "requestedStartDate") ? { requestedStartDate: rule.requestedStartDate as string | null } : {}),
       anchorJobId: rule.anchorJobId as number | null, updatedAt: rule.updatedAt as string | null }),
     pricing: Object.freeze({ ...pricing }) as CompanyJobDurableRecurrenceReadback["pricing"],
     verification: Object.freeze({ ...verification, missingOccurrenceNumbers: Object.freeze([...verification.missingOccurrenceNumbers]) }) as CompanyJobDurableRecurrenceReadback["verification"],
@@ -278,18 +282,19 @@ export type CompanyJobDurableRecurrenceExpected = {
   companyId: number; customerId: number; jobId: number; operationKey: string;
   recurrence: CompanyJobRecurrenceInput; timezone: string; scheduledStartAt: string;
   ruleId?: number;
-  pricing: { subtotalAmount: number; discountAmount: number; totalAmount: number };
+  /** Independently hashed original payload, NEVER learned from the GET fingerprint. */
+  operationPayloadFingerprint?: string;
+  pricing: { subtotalAmount: number; discountAmount: number; totalAmount: number;
+    taxAmount?: number | null; taxRateBps?: number | null; discountKind?: "flat" | "percent" | null; discountCode?: string | null;
+    lineItems?: readonly { id: number; priceBookItemId: number | null; name: string; quantity: number; unitPrice: number; lineTotal: number; sortOrder: number }[] };
 };
-/** Verify actual fc3 facts, including the separately persisted requested date.
- * The current DTO still lacks an operation payload fingerprint and financial
- * snapshot binding. Those omissions cannot be filled from request/CREATE.
- * Historical source DTOs remain readable but are never current-source proof. */
-export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurableRecurrenceReadback, expected: CompanyJobDurableRecurrenceExpected): never {
+/** Verify every available source fact before diagnosing missing authority. This
+ * candidate CANNOT certify original requested startDate or snapshot-bound sibling
+ * pricing. Its operation GET omits the payload fingerprint; startsOn collapses
+ * distinct original start dates. There is deliberately no request-filled success. */
+export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurableRecurrenceReadback, expected: CompanyJobDurableRecurrenceExpected): CompanyJobSavedSeries {
+  if (Object.hasOwn(value.recurrence, "operationPayloadFingerprint")) return verifyCompanyJobC24RecurrenceReadback(value, expected);
   const request = normalizeCompanyJobRecurrence(expected.recurrence), rule = value.recurrence, proof = value.verification;
-  const currentSource = Object.hasOwn(rule, "requestedStartDate");
-  if (currentSource && rule.requestedStartDate !== request.startDate) throw new Error("The canonical recurrence requestedStartDate is missing or does not match the immutable original date. The original request remains locked; do not resend.");
-  if (currentSource && (value.pricing.subtotal !== expected.pricing.subtotalAmount || value.pricing.discount !== expected.pricing.discountAmount
-    || value.pricing.total !== expected.pricing.totalAmount)) throw new Error("The fc3 canonical recurrence financial totals do not match saved Job detail (GET reads camel-case subtotal/discount from getJob's snake-case storage). The original request remains locked; do not resend.");
   const cadence = request.type === "monthly_date" ? "monthly_day" : request.type === "monthly_ordinal" ? "monthly_weekday" : request.type;
   if (value.companyId !== expected.companyId || value.customerId !== expected.customerId || value.jobId !== expected.jobId
     || rule.anchorJobId !== expected.jobId || rule.operationKey !== expected.operationKey || rule.requestedTerm !== request.term
@@ -326,7 +331,6 @@ export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurab
     latest = row.updatedAt > latest ? row.updatedAt : latest;
   }
   if (latest !== proof.occurrenceUpdatedAt) throw durableFailure();
-  if (currentSource) throw new Error("The fc3 canonical GET does not expose the saved operation payload fingerprint or a snapshot binding sibling financials/line items. Persisted requestedStartDate is present but is not full original-operation and pricing proof. The original request remains locked; do not resend.");
   throw new Error("The backend does not persist or expose the original recurrence startDate / operation payload binding, and its snapshot does not bind sibling pricing. The original request remains locked; do not resend.");
 }
 /** Calendar target dates from canonical occurrence instants, never from the
@@ -340,4 +344,168 @@ export function companyJobRecurrenceCalendarDates(series: Pick<CompanyJobRecurre
     const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
     return `${read("year")}-${read("month")}-${read("day")}`;
   }))]);
+}
+
+/** Exact c24 financial snapshot line (persisted line IDs are deliberately omitted by the server). */
+export type CompanyJobC24FinancialLine = {
+  readonly priceBookItemId: number | null; readonly name: string; readonly quantity: number;
+  readonly unitPrice: number; readonly totalPrice: number; readonly sortOrder: number;
+};
+type C24FinancialRow = {
+  readonly id: number; readonly subtotal: number | null; readonly discount: number | null;
+  readonly tax: number | null; readonly taxRateBps: number | null;
+  readonly discountKind: "flat" | "percent" | null; readonly discountCode: string | null;
+  readonly total: number | null; readonly lines: readonly CompanyJobC24FinancialLine[];
+};
+const c24RuleFields = ["ruleId", "operationKey", "operationPayloadFingerprint", "requestedTerm", "requestedStartDate", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt"] as const;
+const c24PricingFields = ["subtotal", "discount", "tax", "taxRateBps", "discountKind", "discountCode", "total", "durationMinutes", "lineItems"] as const;
+const c24VerificationFields = ["complete", "expectedOccurrenceCount", "actualOccurrenceCount", "missingOccurrenceNumbers", "consistentSnapshot", "operationBound", "financialSnapshotVersion", "ruleUpdatedAt", "occurrenceUpdatedAt"] as const;
+const nullableMoney = (value: unknown) => value === null || nonnegative(value);
+const c24Kind = (value: unknown) => value === null || value === "flat" || value === "percent";
+// Empty code is a valid persisted result for an explicitly blank requested code.
+const c24Code = (value: unknown) => value === null || (typeof value === "string" && value === value.trim() && value.length <= 80);
+const fingerprint = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+function c24Lines(value: unknown): readonly CompanyJobC24FinancialLine[] {
+  if (!dense(value) || value.length > 50) throw durableFailure();
+  const lines = value.map((line, index) => {
+    if (!exactReadbackFields(line, ["priceBookItemId", "name", "quantity", "unitPrice", "totalPrice", "sortOrder"])
+      || (line.priceBookItemId !== null && !positive(line.priceBookItemId)) || typeof line.name !== "string" || !line.name.trim()
+      || !nullableInteger(line.quantity, 1, 100) || line.quantity === null || !nonnegative(line.unitPrice)
+      || !nonnegative(line.totalPrice) || line.sortOrder !== index) throw durableFailure();
+    return Object.freeze({ ...line }) as CompanyJobC24FinancialLine;
+  });
+  return Object.freeze(lines);
+}
+function c24Snapshot(value: unknown): readonly C24FinancialRow[] {
+  if (typeof value !== "string" || !value.length || value.length > 2_000_000) throw durableFailure();
+  let parsed: unknown;
+  try { parsed = JSON.parse(value); } catch { throw durableFailure(); }
+  if (!dense(parsed) || !parsed.length) throw durableFailure();
+  const ids = new Set<number>();
+  return Object.freeze(parsed.map(row => {
+    if (!exactReadbackFields(row, ["id", "subtotal", "discount", "tax", "taxRateBps", "discountKind", "discountCode", "total", "lines"])
+      || !positive(row.id) || ids.has(row.id) || ![row.subtotal, row.discount, row.tax, row.total].every(nullableMoney)
+      || !nullableInteger(row.taxRateBps, 0, 10_000) || !c24Kind(row.discountKind) || !c24Code(row.discountCode)) throw durableFailure();
+    ids.add(row.id);
+    return Object.freeze({ ...row, lines: c24Lines(row.lines) }) as C24FinancialRow;
+  }));
+}
+/** Accept ONLY the actual c24 recurring DTO. Projection to the historical parser
+ * validates shared fields; it never supplies missing evidence from a request. */
+export function normalizeCompanyJobC24RecurrenceReadback(value: unknown, requestedJobId: number): CompanyJobDurableRecurrenceReadback {
+  if (!exactReadbackFields(value, ["companyId", "customerId", "jobId", "recurrence", "pricing", "verification", "occurrences"])
+    || !exactReadbackFields(value.recurrence, c24RuleFields) || !exactReadbackFields(value.pricing, c24PricingFields)
+    || !exactReadbackFields(value.verification, c24VerificationFields)) throw durableFailure();
+  const rule = value.recurrence, pricing = value.pricing, proof = value.verification;
+  if (rule.requestedStartDate !== null) {
+    try { dateOnly(rule.requestedStartDate); } catch { throw durableFailure(); }
+  }
+  if ((rule.operationPayloadFingerprint !== null && !fingerprint(rule.operationPayloadFingerprint))
+    || !nullableMoney(pricing.tax) || !nullableInteger(pricing.taxRateBps, 0, 10_000)
+    || !c24Kind(pricing.discountKind) || !c24Code(pricing.discountCode)
+    || typeof proof.operationBound !== "boolean") throw durableFailure();
+  const lines = c24Lines(pricing.lineItems);
+  c24Snapshot(proof.financialSnapshotVersion);
+  const project = (row: Record<string, unknown>, fields: readonly string[]) => Object.fromEntries(fields.map(field => [field, row[field]]));
+  const base = normalizeCompanyJobDurableRecurrenceReadback({ ...value,
+    recurrence: project(rule, c24RuleFields.filter(field => field !== "operationPayloadFingerprint" && field !== "requestedStartDate")),
+    pricing: project(pricing, ["subtotal", "discount", "total", "durationMinutes"]),
+    verification: project(proof, c24VerificationFields.filter(field => field !== "operationBound" && field !== "financialSnapshotVersion")),
+  }, requestedJobId);
+  return Object.freeze({ ...base,
+    recurrence: Object.freeze({ ...base.recurrence, requestedStartDate: rule.requestedStartDate as string | null,
+      operationPayloadFingerprint: rule.operationPayloadFingerprint as string | null }),
+    pricing: Object.freeze({ ...base.pricing, tax: pricing.tax as number | null, taxRateBps: pricing.taxRateBps as number | null,
+      discountKind: pricing.discountKind as "flat" | "percent" | null, discountCode: pricing.discountCode as string | null, lineItems: lines }),
+    verification: Object.freeze({ ...base.verification, operationBound: proof.operationBound,
+      financialSnapshotVersion: proof.financialSnapshotVersion as string }),
+  });
+}
+function c24NextDate(current: string, request: CompanyJobRecurrenceInput): string {
+  const date = dateOnly(current);
+  if (request.type === "weekly" || request.type === "biweekly") {
+    date.setUTCDate(date.getUTCDate() + (request.type === "weekly" ? 7 : 14));
+    return date.toISOString().slice(0, 10);
+  }
+  if (request.type === "monthly_date") {
+    const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 2, 0));
+    next.setUTCDate(Math.min(dateOnly(request.startDate).getUTCDate(), next.getUTCDate()));
+    return next.toISOString().slice(0, 10);
+  }
+  return companyJobRecurrenceFirstDate({ ...request, startDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString().slice(0, 10) });
+}
+/** All persisted source facts are checked even when independent original-operation
+ * binding is unavailable. An observed GET hash must NEVER be its own expectation.
+ * c24 hashes the server-transformed PriceBookJobInput, not the raw mobile payload.
+ * No duplicate backend transformation or request-filled proof is performed here. */
+export function verifyCompanyJobC24RecurrenceReadback(raw: CompanyJobDurableRecurrenceReadback, expected: CompanyJobDurableRecurrenceExpected): CompanyJobSavedSeries {
+  const value = normalizeCompanyJobC24RecurrenceReadback(raw, expected.jobId);
+  const request = normalizeCompanyJobRecurrence(expected.recurrence), rule = value.recurrence, proof = value.verification;
+  if (rule.requestedStartDate !== request.startDate) throw new Error("The canonical recurrence requestedStartDate is missing or does not match the immutable original date. The original request remains locked; do not resend.");
+  const cadence = request.type === "monthly_date" ? "monthly_day" : request.type === "monthly_ordinal" ? "monthly_weekday" : request.type;
+  if (value.companyId !== expected.companyId || value.customerId !== expected.customerId || value.jobId !== expected.jobId
+    || rule.anchorJobId !== expected.jobId || rule.operationKey !== expected.operationKey || rule.requestedTerm !== request.term
+    || rule.creationTimezone !== expected.timezone || (expected.ruleId !== undefined && rule.ruleId !== expected.ruleId)
+    || rule.cadence !== cadence || rule.startsOn !== companyJobRecurrenceFirstDate(request)
+    || rule.weekday !== (request.dayOfWeek ?? null) || rule.ordinalWeek !== (request.ordinal === -1 ? 5 : request.ordinal ?? null)
+    || rule.dayOfMonth !== (request.type === "monthly_date" ? dateOnly(request.startDate).getUTCDate() : null)
+    || !rule.isActive || rule.cancelledFromOccurrenceNumber !== null || proof.operationBound !== true
+    || !proof.complete || !proof.consistentSnapshot || !positive(proof.expectedOccurrenceCount)
+    || proof.expectedOccurrenceCount !== value.occurrences.length || proof.actualOccurrenceCount !== value.occurrences.length
+    || proof.missingOccurrenceNumbers.length || rule.updatedAt === null || rule.updatedAt !== proof.ruleUpdatedAt || proof.occurrenceUpdatedAt === null
+    || value.pricing.durationMinutes !== rule.durationMinutes || !fingerprint(rule.operationPayloadFingerprint)) throw durableFailure();
+  if (request.term === "never_ends") {
+    if (rule.endsOn !== null || proof.expectedOccurrenceCount !== 13) throw durableFailure();
+  } else {
+    const start = dateOnly(rule.startsOn), months = { "1_month": 1, "3_months": 3, "6_months": 6, "1_year": 12 }[request.term];
+    const last = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months + 1, 0));
+    last.setUTCDate(Math.min(start.getUTCDate(), last.getUTCDate()));
+    if (rule.endsOn !== last.toISOString().slice(0, 10)) throw durableFailure();
+  }
+  const savedLines = expected.pricing.lineItems;
+  if (!savedLines || !savedLines.length || expected.pricing.taxAmount === undefined || expected.pricing.taxRateBps === undefined
+    || expected.pricing.discountKind === undefined || expected.pricing.discountCode === undefined) throw durableFailure();
+  const financial = {
+    subtotal: expected.pricing.subtotalAmount, discount: expected.pricing.discountAmount, tax: expected.pricing.taxAmount,
+    taxRateBps: expected.pricing.taxRateBps, discountKind: expected.pricing.discountKind, discountCode: expected.pricing.discountCode,
+    total: expected.pricing.totalAmount, lines: savedLines.map(line => ({ priceBookItemId: line.priceBookItemId, name: line.name,
+      quantity: line.quantity, unitPrice: line.unitPrice, totalPrice: line.lineTotal, sortOrder: line.sortOrder })),
+  };
+  if (![financial.subtotal, financial.discount, financial.tax, financial.total].every(nonnegative) || financial.taxRateBps === null
+    || JSON.stringify({ ...financial, lines: value.pricing.lineItems }) !== JSON.stringify(financial)
+    || value.pricing.subtotal !== financial.subtotal || value.pricing.discount !== financial.discount || value.pricing.tax !== financial.tax
+    || value.pricing.taxRateBps !== financial.taxRateBps || value.pricing.discountKind !== financial.discountKind
+    || value.pricing.discountCode !== financial.discountCode || value.pricing.total !== financial.total) throw durableFailure();
+  const snapshot = c24Snapshot(proof.financialSnapshotVersion);
+  if (snapshot.length !== value.occurrences.length) throw durableFailure();
+  const wall = new Intl.DateTimeFormat("en-US", { timeZone: expected.timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  let latest = "", previousDate = "";
+  for (let index = 0; index < value.occurrences.length; index++) {
+    const row = value.occurrences[index], financialRow = snapshot[index];
+    const { id: snapshotId, ...rowFinancial } = financialRow;
+    if (row.occurrenceNumber !== index || row.customerId !== expected.customerId || row.status !== "scheduled" || row.updatedAt === null
+      || row.scheduledStartAt === null || row.scheduledEndAt === null || snapshotId !== row.jobId
+      || JSON.stringify(rowFinancial) !== JSON.stringify(financial)
+      || Date.parse(row.scheduledEndAt) - Date.parse(row.scheduledStartAt) !== rule.durationMinutes * 60_000
+      || (index === 0 && (row.jobId !== expected.jobId || Date.parse(row.scheduledStartAt) !== Date.parse(expected.scheduledStartAt)))) throw durableFailure();
+    const parts = wall.formatToParts(new Date(row.scheduledStartAt));
+    const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    const localDate = `${read("year")}-${read("month")}-${read("day")}`;
+    if (`${read("hour")}:${read("minute")}` !== rule.startTime
+      || localDate !== (index === 0 ? rule.startsOn : c24NextDate(previousDate, request))) throw durableFailure();
+    previousDate = localDate;
+    latest = row.updatedAt > latest ? row.updatedAt : latest;
+  }
+  if (latest !== proof.occurrenceUpdatedAt || (rule.endsOn !== null
+    && (previousDate > rule.endsOn || c24NextDate(previousDate, request) <= rule.endsOn))) throw durableFailure();
+  if (!fingerprint(expected.operationPayloadFingerprint)) throw new Error("The c24 GET persists a server-transformed operation fingerprint, but this mobile recovery record has no independently comparable original fingerprint. Original assignment, service rate and discount-value intent cannot be proven from current financial rows or the GET hash itself. The original request remains locked; do not resend.");
+  if (rule.operationPayloadFingerprint !== expected.operationPayloadFingerprint) throw durableFailure();
+  // Only validated persisted dates/IDs become callback evidence. No series is generated.
+  return Object.freeze({ companyId: value.companyId, customerId: value.customerId, jobId: value.jobId,
+    operationKey: rule.operationKey!, recurrence: Object.freeze({ type: request.type, term: rule.requestedTerm!, startDate: rule.requestedStartDate!,
+      ...(rule.weekday !== null ? { dayOfWeek: rule.weekday } : {}), ...(rule.ordinalWeek !== null ? { ordinal: (rule.ordinalWeek === 5 ? -1 : rule.ordinalWeek) as CompanyJobRecurrenceInput["ordinal"] } : {}) }),
+    ruleId: rule.ruleId, term: rule.requestedTerm!, timezone: rule.creationTimezone!, count: proof.actualOccurrenceCount,
+    neverEnds: rule.requestedTerm === "never_ends", occurrenceJobIds: Object.freeze(value.occurrences.map(row => row.jobId)) as number[],
+    occurrences: Object.freeze(value.occurrences.map(row => Object.freeze({ id: row.jobId, occurrenceNumber: row.occurrenceNumber!,
+      scheduledStartAt: row.scheduledStartAt!, scheduledEndAt: row.scheduledEndAt! }))) as CompanyJobRecurrenceOccurrence[] });
 }

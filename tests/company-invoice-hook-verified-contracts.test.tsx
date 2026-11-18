@@ -1,4 +1,4 @@
-// Connected React + real invoice controller/protected journal + pinned fc3 backend declarations.
+// Connected React + real invoice controller/protected journal + pinned 164b backend declarations.
 // No release mutation, application HTTP, payment provider, or production storage is permitted.
 import React, { act, useLayoutEffect } from "react";
 import { randomUUID } from "node:crypto";
@@ -27,7 +27,7 @@ import {
   createCompanyJobInvoiceOptions,
 } from "../lib/company-job-invoice-intent";
 import { companyInvoiceOperationReleaseReady } from "../lib/company-verified-contract-release";
-import { invoiceFc3Harness } from "./fixtures/company-invoice-fc3-source";
+import { invoice164bHarness } from "./fixtures/company-invoice-164b-source";
 
 const mocks = vi.hoisted(() => ({
   appState: "active",
@@ -126,7 +126,7 @@ function nativeFixture(data = new Map<string, string>()) {
     }),
   };
 }
-function isolated(h = invoiceFc3Harness(), native = nativeFixture()) {
+function isolated(h = invoice164bHarness(), native = nativeFixture()) {
   const transport = {
     send: vi.fn(
       async (
@@ -485,7 +485,7 @@ describe("connected invoice hook: release, authority, and exact GET/POST identit
     expect(mocks.detail).toHaveBeenCalledTimes(2);
     expect(f.h.provider.send).toHaveBeenCalledTimes(1);
   });
-  it("backend default-key collision is held without exposing foreign recipient or identity", async () => {
+  it("backend default-key collision displays GET recipient, never the requested alternate", async () => {
     const f = isolated();
     await f.h.send({
       operationKey: "job-invoice",
@@ -498,12 +498,13 @@ describe("connected invoice hook: release, authority, and exact GET/POST identit
     const outcome = await invoke(probe.value.send);
     expect(outcome).toMatchObject({
       state: "conflict",
-      actualRecipient: null, communicationId: null, lookup: null, isDelivered: false,
+      actualRecipient: "persisted@example.test",
     });
     expect(probe.value.canSend).toBe(false);
     expect(f.transport.send).not.toHaveBeenCalled();
-    expect((await f.native.store.read(9, 42, 12))?.lookup).toBeNull();
-    expect(probe.value.canPrepareResend).toBe(false);
+    expect((await f.native.store.read(9, 42, 12))?.lookup?.recipientEmail).toBe(
+      "persisted@example.test",
+    );
   });
   it.each(["token", "company", "user", "role", "portal"])(
     "fresh signed %s mismatch blocks journal and invoice transport",
@@ -661,8 +662,8 @@ describe("connected invoice hook: terminal GET, explicit key capture, restart, a
     async (mode) => {
       const f = isolated(
         mode === "actual_unavailable"
-          ? invoiceFc3Harness("owner", 9, true, { lookupUnavailable: true })
-          : invoiceFc3Harness(),
+          ? invoice164bHarness("owner", 9, true, { lookupUnavailable: true })
+          : invoice164bHarness(),
       );
       if (mode === "route_missing")
         f.transport.lookup.mockRejectedValue(

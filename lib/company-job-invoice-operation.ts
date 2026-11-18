@@ -7,7 +7,7 @@ import {
 } from "./company-job-invoice-intent";
 
 export const COMPANY_INVOICE_OPERATION_REVISION =
-  "fc3bcaa78c6288b705339bd69e2fe1539c779546";
+  "c24d4a1e5da9d937e68709a76ce2e2336c81b748";
 export const COMPANY_INVOICE_OPERATION_STATES = [
   "queued",
   "provider_started",
@@ -101,7 +101,7 @@ export class CompanyInvoiceOperationConflictError extends Error {
     this.name = "CompanyInvoiceOperationConflictError";
   }
 }
-/** fc3 emits HTTP409/CONFLICT; an API adapter may use OPERATION_CONFLICT. */
+/** c24 emits HTTP409/CONFLICT; a typed adapter may use OPERATION_CONFLICT. */
 export function isCompanyInvoiceOperationConflict(error: unknown): boolean {
   if (error instanceof CompanyInvoiceOperationConflictError) return true;
   if (!error || typeof error !== "object") return false;

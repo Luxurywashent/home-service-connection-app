@@ -84,16 +84,20 @@ function result(
   state: CompanyInvoiceOperationResult["state"],
   record: CompanyInvoiceOperationRecord | null = null,
 ): CompanyInvoiceOperationResult {
+  const anchored =
+    record?.receiptIdentity != null &&
+    state !== "conflict" &&
+    state !== "stale";
   return Object.freeze({
     state,
     operationKey: record?.operationKey ?? null,
     // A conflict is not proof that either identity belongs to this request.
     // Keep any old journal proof internally, but never expose it as this send.
-    actualRecipient:
-      state === "conflict" ? null : (record?.lookup?.recipientEmail ?? null),
-    communicationId:
-      state === "conflict" ? null : (record?.lookup?.communicationId ?? null),
-    lookup: state === "conflict" ? null : (record?.lookup ?? null),
+    actualRecipient: anchored ? (record?.lookup?.recipientEmail ?? null) : null,
+    communicationId: anchored
+      ? (record?.lookup?.communicationId ?? null)
+      : null,
+    lookup: anchored ? (record?.lookup ?? null) : null,
     isDelivered:
       state === "completed" && record?.lookup?.status === "delivered",
     message:
@@ -131,7 +135,7 @@ export function createCompanyInvoiceOperationController(
     const check = () => {
       if (!isCurrent(intent)) throw new StaleInvoiceCallback();
     };
-    check(); // Scope captured/checked before operation-key generation or storage.
+    if (!isCurrent(intent)) return result("stale");
     let api: CompanyInvoiceOperationTransport | null;
     try {
       api = transport();
@@ -194,7 +198,7 @@ export function createCompanyInvoiceOperationController(
       }
       if (original.phase === "conflict") return result("conflict", record);
       // A successful echoed POST key with no corresponding persisted GET key
-      // cannot authorize the receipt's communication (including fc3 insert races).
+      // cannot authorize the receipt's communication, even after c24's repair.
       if (
         lookup.status === "not_found" &&
         original.receiptIdentity !== null &&
@@ -218,6 +222,12 @@ export function createCompanyInvoiceOperationController(
             lookup.communicationId ||
             original.receiptIdentity.recipientEmail !== lookup.recipientEmail));
       if (mismatch) return await holdConflict();
+      // c24 GET omits customer_id and intent_kind. An uncertain POST with no
+      // acknowledgment cannot prove which same-key intent won a race (including
+      // a lost 409). A legacy GET-only journal is not immutable intent proof.
+      // Keep the journal and GET-only hold;
+      // never manufacture immutable intent proof from this mobile request.
+      if (!original.receiptIdentity) return result("uncertain", record);
       await persist(
         updateCompanyInvoiceOperationRecord(original, {
           phase: "verified",
@@ -233,8 +243,28 @@ export function createCompanyInvoiceOperationController(
     try {
       record = await store.read(intent.companyId, intent.userId, intent.jobId);
       check();
+      if (
+        record &&
+        (record.companyId !== intent.companyId ||
+          record.userId !== intent.userId ||
+          record.jobId !== intent.jobId)
+      )
+        return result("conflict");
       if (record && record.role !== intent.role)
         return result("conflict", record);
+      if (
+        record &&
+        explicitKey !== null &&
+        ((mode === "recover" && explicitKey !== record.operationKey) ||
+          (explicitKey === record.operationKey &&
+            (record.resend !== intent.options.resend ||
+              record.requestedRecipient !==
+                (intent.options.recipientEmail ?? null))) ||
+          (mode === "send" &&
+            !intent.options.resend &&
+            explicitKey !== record.operationKey))
+      )
+        return await holdConflict();
       if (mode === "recover") return await recoverRecord();
       // A new resend requires an explicit key captured ONCE by the user's
       // authorized new-resend action. Never generate one inside Send: a restarted
@@ -284,12 +314,13 @@ export function createCompanyInvoiceOperationController(
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
         check();
+        if (record!.phase === "conflict") return result("conflict", record);
         if (isCompanyInvoiceOperationConflict(error))
           return await holdConflict();
         return result("temporarily_unavailable", record);
       }
       // A newly prepared local pointer cannot claim a pre-existing operation,
-      // even when its recipient matches: fc3 GET omits requested intent-kind.
+      // even when its recipient matches: c24 GET omits Customer and intent-kind.
       if (before.status === "temporarily_unavailable")
         return result("temporarily_unavailable", record);
       if (before.status !== "not_found") return await holdConflict();
@@ -326,8 +357,8 @@ export function createCompanyInvoiceOperationController(
           },
         }),
       );
-      // fc3 rejects different-key active collisions, but same-key reuse and the
-      // duplicate-insert race still require independent GET identity agreement.
+      // c24 repairs direct and unique-INSERT collisions. An acknowledgment still
+      // requires independent GET key, communication ID and recipient agreement.
       return await recoverRecord();
     } catch (error) {
       if (error instanceof StaleInvoiceCallback) return result("stale", record);

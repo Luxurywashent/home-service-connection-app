@@ -66,10 +66,10 @@ export type CompanyCreateJobTransport = {
   /** Required for lines/discount intent. Legacy single-service transports remain compatible. */
   quote?: typeof quoteJobSyncCompanyJob;
   /** Retained collaborator signature for compatibility, NOT an authorization.
-   * Current fc3 GET lacks operation-fingerprint / sibling-financial snapshot proof;
+   * 0fbd raw GET lacks durable original-intent/timezone/anchor/snapshot proof;
    * a request-populated semantic projection cannot enable Save or recovery unlock. */
   series?: (token: string, companyId: number, jobId: number, operationKey: string) => Promise<CompanyJobSavedSeries>;
-  /** Exact UNWRAPPED fc3 GET JSON. No request/CREATE enrichment. */
+  /** Exact UNWRAPPED final-archive GET JSON. No request/CREATE enrichment. */
   recurrenceReadback?: (token: string, companyId: number, jobId: number) => Promise<unknown>;
   /** Source-only integration host, never production eligibility. Requires an
    * explicit controller transport AND store; cannot activate default transport. */
@@ -428,10 +428,11 @@ export function createCompanyJobController(input: {
       const second = normalizeCompanyJobDurableRecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
       if (!current()) return false;
       if (!exactNested(first, second)) throw new Error("The recurring snapshot changed during readback. The original request remains locked.");
-      // fc3 now preserves requestedStartDate. Verify it separately from startsOn;
-      // current-source financial and fingerprint/snapshot gaps remain GET-only
-      // holds, never a request-filled savedSeries or permission to remove intent.
-      verifyCompanyJobDurableRecurrenceReadback(second, { companyId: record.companyId, customerId: detail.customerId,
+      // c24 covers persisted original date and sibling financials. The current
+      // storage still has no independently comparable server-input fingerprint;
+      // the GET hash must never be echoed into its own expected proof. This
+      // deliberately keeps real creation/recovery locked on that exact gap.
+      attempt.series = verifyCompanyJobDurableRecurrenceReadback(second, { companyId: record.companyId, customerId: detail.customerId,
         jobId: record.jobId, operationKey: record.operationKey, recurrence: payload.recurrence, timezone: record.timezone,
         scheduledStartAt: payload.scheduledStartAt, ruleId: attempt.record?.recurrenceRuleId, pricing: detail.pricing });
     }

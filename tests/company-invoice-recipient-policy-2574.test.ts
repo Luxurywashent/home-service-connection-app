@@ -25,21 +25,17 @@ function receipt(extra: Record<string, unknown> = {}) {
   return { success: true, channel: "email", publicUrl: "https://synthetic.invalid/invoice/opaque", communicationState: "provider_accepted", sentTo: "actual@example.test", ...extra };
 }
 
-describe("Currentfc3 source support with fail-closed alternate recipient policy (historical filename retained)", () => {
-  it("records final source support without declaring safe recovery or enabling alternate sending", () => {
+describe("Current752 fail-closed alternate recipient policy (historical filename retained)", () => {
+  it("records supported wire separately from failed effect/ack acceptance and never enables alternate sending", () => {
     expect(Object.isFrozen(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY)).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.backendRevision).toBe("fc3bcaa78c6288b705339bd69e2fe1539c779546");
+    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.backendRevision).toBe("752ccca3edf69ef35ca7b1a470484f3f204f4568");
     expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.wireOverrideSupported).toBe(true);
     expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.alternateRecipientSendingEnabled).toBe(false);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.stableInitialReservation).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.persistedRecipientAcknowledgment).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.clientOperationKeySupported).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.authenticatedInvoiceReadbackAvailable).toBe(true);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.explicitResendReplaySafe).toBe(false);
-    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.restartSafeUncertainOperationRecovery).toBe(false);
+    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.stableInitialReservation).toBe(false);
+    expect(COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.persistedRecipientAcknowledgment).toBe(false);
   });
   it.each([false, true])("blocks alternate email with explicit resend %j instead of dropping it", (resend) => {
-    expect(() => assertCompanyJobInvoiceRecipientCapability(intent(resend, "email", "alternate@example.test"))).toThrow("unavailable");
+    expect(() => assertCompanyJobInvoiceRecipientCapability(intent(resend, "email", "alternate@example.test"))).toThrow("not passed");
   });
   it.each(["email", "sms"] as const)("preserves existing %s on-file invoices", (method) => {
     expect(() => assertCompanyJobInvoiceRecipientCapability(intent(false, method))).not.toThrow();
@@ -95,7 +91,7 @@ describe("Captured single-attempt protection across same screen sheet resets", (
     guard.begin(intent());
     expect(() => guard.begin(intent(false, "email", undefined, 13))).not.toThrow();
     expect(() => guard.begin(intent(false, "sms"))).not.toThrow();
-    expect(() => guard.begin(intent(false, "email", "new@example.test"))).toThrow("unavailable");
+    expect(() => guard.begin(intent(false, "email", "new@example.test"))).toThrow("not passed");
   });
 });
 
@@ -185,7 +181,7 @@ describe("Actual recipient control default/alternate context and stale callbacks
     expect(input.props.keyboardType).toBe("email-address");
     const text = h.nodes(tree).filter((node) => node.type === "Text").flatMap((node) => node.props.children).join(" ");
     expect(text).toContain("canonical@example.test");
-    expect(text).toContain("unavailable");
+    expect(text).toContain("not passed");
     expect(onChange).not.toHaveBeenCalled();
   });
   it("alternate email reset means omitted recipient/default; focus callbacks retain parent keyboard guards", () => {

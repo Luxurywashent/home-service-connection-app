@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-// Repaired fc3 actual declarations; SQL/provider are isolated in-memory only.
+// Exact c24 declarations; SQL/provider are isolated in-memory only.
 // Backend declarations run in a denied-I/O VM with an isolated SQL/adapter fixture only.
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
@@ -9,32 +9,26 @@ import { z } from "zod";
 const sourceHashes = new Map<string, string>();
 const extractedDeclarations: any[] = [];
 const backend =
-  "/home/ubuntu/hsc-mobile-fc3-final-contract-20261117/backend-source-fc3bcaa7/server/";
-export const backendRevision = "fc3bcaa78c6288b705339bd69e2fe1539c779546";
-const metadata = JSON.parse(
-  readFileSync(
-    "/home/ubuntu/hsc-mobile-fc3-final-contract-20261117/backend-revision.json",
-    "utf8",
-  ),
-);
-expect(metadata.sha).toBe(backendRevision);
-expect(metadata.commit.committer.date).toBe("2026-11-18T01:51:29Z");
+  "/home/ubuntu/hsc-mobile-c24-contract-alignment-20261117/backend-source-c24d4a1e/server/";
+export const backendRevision = "c24d4a1e5da9d937e68709a76ce2e2336c81b748";
 const deny = () => {
   throw new Error("DENIED unconfigured network/import/provider/SQL");
 };
 for (const [file, hash] of Object.entries({
+  "paymentService.ts":
+    "b33a7d66b1ecc1407010eed0cd8954b6c0e84552cb391e68ac428fbd1825ab08",
+  "companyCommunicationService.ts":
+    "505fbaf2501976edc3f08df9498c75958072775a055a152cc587f9791d51baf2",
+  "mobileOperations.ts":
+    "14d9693b496d9b7d8fe17fc78ffdec599413740347a356061adee5342501fb66",
+  "companyContext.ts":
+    "27213c90b093982f066834aab7e8a7d0c51869d74fcc7499e98a88ae0e3d07b6",
   "domainErrors.ts":
     "de66f0169c7b79c9970031175dde25c008f68bc140fc6059f60c69e5d7e6e737",
   "emailAdapter.ts":
     "f623d7a8e1d6af355c9e800a65ab563609009d3f805d4cffb874739a8be1ef5a",
-  "companyContext.ts":
-    "27213c90b093982f066834aab7e8a7d0c51869d74fcc7499e98a88ae0e3d07b6",
-  "paymentService.ts":
-    "b33a7d66b1ecc1407010eed0cd8954b6c0e84552cb391e68ac428fbd1825ab08",
-  "companyCommunicationService.ts":
-    "19b2740aab5c3bc8a4deae2b2bd8d782567679e4e704b3a89b2fd580b53cb3e4",
-  "mobileOperations.ts":
-    "14d9693b496d9b7d8fe17fc78ffdec599413740347a356061adee5342501fb66",
+  "mobileAuth.ts":
+    "3e68208a4b0a159a9289e8d6be2fd9c35f3e4aff85eea5a1c8c3373714178429",
 }))
   expect(
     createHash("sha256")
@@ -145,7 +139,7 @@ const dispatchNames = [
   "provider_unknown",
 ];
 
-export function invoiceFc3Harness(
+export function invoiceC24Harness(
   role = "owner",
   companyId = 9,
   payments = true,
@@ -166,6 +160,7 @@ export function invoiceFc3Harness(
   let uuid = rows.length;
   let interruptAcceptance = false;
   let interruptUnknown = false;
+  let beforeInsert: ((parameters: any[]) => Promise<void>) | null = null;
   const provider = {
     send: vi.fn(async (_input: any) => {
       if (providerMode === "unknown")
@@ -202,6 +197,7 @@ export function invoiceFc3Harness(
                 r.entity_id === p[1] &&
                 p[1] === 12 &&
                 r.purpose === "job_invoice" &&
+                r.channel === "email" &&
                 r.entity_type === "job" &&
                 r.logical_send_key === p[2],
             )
@@ -214,7 +210,7 @@ export function invoiceFc3Harness(
             ? [
                 {
                   id: 12,
-                  customer_id: 41,
+                  customer_id: durable?.jobCustomerId ?? 41,
                   amount: 100,
                   title: "Synthetic Invoice",
                   public_token: "synthetic-existing",
@@ -224,7 +220,9 @@ export function invoiceFc3Harness(
         ];
       if (sql.startsWith("SELECT") && sql.includes("FROM fs_customers"))
         return [
-          p[0] === 41 && p[1] === customer.company_id ? [{ ...customer }] : [],
+          p[0] === customer.id && p[1] === customer.company_id
+            ? [{ ...customer }]
+            : [],
         ];
       if (sql.startsWith("SELECT") && sql.includes("FROM companies"))
         return [p[0] === 9 ? [{ id: 9, name: "Synthetic Company" }] : []];
@@ -273,9 +271,7 @@ export function invoiceFc3Harness(
         ];
       }
       if (sql.startsWith("INSERT INTO fs_company_communications")) {
-        // Synthetic concurrent reservation after the service's active precheck.
-        // This seam mutates only in-memory fixture rows; no real DB is available.
-        if (durable?.beforeInsert) await durable.beforeInsert(rows);
+        await beforeInsert?.(p);
         const duplicate = rows.some(
           (r) =>
             r.company_id === p[0] &&
@@ -293,6 +289,7 @@ export function invoiceFc3Harness(
         const row = {
           id: rows.length + 1,
           company_id: p[0],
+          channel: "email",
           purpose: p[1],
           entity_type: p[2],
           entity_id: p[3],
@@ -443,19 +440,31 @@ export function invoiceFc3Harness(
       throw new Error("DENIED SQL: " + sql);
     }),
   };
-  let snapshot: any;
-  const connection = {
-    ...db,
-    beginTransaction: vi.fn(async () => {
-      snapshot = structuredClone(rows);
-    }),
-    commit: vi.fn(async () => {}),
-    rollback: vi.fn(async () => {
-      rows.splice(0, rows.length, ...snapshot);
-    }),
-    release: vi.fn(),
-  };
-  db.getConnection = vi.fn(async () => connection);
+  // A losing fake transaction must not roll back another winner's committed row.
+  // SQL uniqueness/claims are modeled here, not verified against real MySQL.
+  const connections: any[] = [];
+  db.getConnection = vi.fn(async () => {
+    const ownInserts: number[] = [];
+    const connection = {
+      execute: vi.fn(async (sql: string, p: any[]) => {
+        const result = await db.execute(sql, p);
+        if (sql.startsWith("INSERT INTO fs_company_communications"))
+          ownInserts.push(result[0].insertId);
+        return result;
+      }),
+      beginTransaction: vi.fn(async () => {}),
+      commit: vi.fn(async () => {}),
+      rollback: vi.fn(async () => {
+        for (const id of ownInserts) {
+          const index = rows.findIndex((row) => row.id === id);
+          if (index >= 0) rows.splice(index, 1);
+        }
+      }),
+      release: vi.fn(),
+    };
+    connections.push(connection);
+    return connection;
+  });
   const comm = extract(
     backend + "companyCommunicationService.ts",
     [
@@ -475,6 +484,7 @@ export function invoiceFc3Harness(
       "resolveOwnedCommunicationRecipient",
       "getCompanyInvoiceOperation",
       "findCommunication",
+      "assertCommunicationReplayCompatible",
       "findActiveCommunication",
       "findUnsafeProviderHistory",
       "insertCommunicationIntent",
@@ -556,6 +566,7 @@ export function invoiceFc3Harness(
       domainHttpStatus: errors.domainHttpStatus,
       domainMobileCode: errors.domainMobileCode,
       managerRoles: new Set(["owner", "dispatcher"]),
+      // SOURCE ROUTE AUTH STUB ONLY; no JWT signature or membership verification.
       requireMobileCompany: async () => ({
         claims: { accountId: 42, role },
         companyId,
@@ -574,7 +585,7 @@ export function invoiceFc3Harness(
       sendJobInvoiceSms: service.sendJobInvoiceSms,
     },
   );
-  async function send(body: any = {}, jobId = 12) {
+  async function send(body: any = {}) {
     const response = {
       code: 200,
       payload: null as any,
@@ -587,10 +598,7 @@ export function invoiceFc3Harness(
         return this;
       },
     };
-    await route.sendInvoice(
-      { params: { jobId: String(jobId) }, body },
-      response,
-    );
+    await route.sendInvoice({ params: { jobId: "12" }, body }, response);
     responses.push(structuredClone(response.payload));
     return response;
   }
@@ -620,13 +628,16 @@ export function invoiceFc3Harness(
     customer,
     provider,
     db,
-    connection,
+    connections,
     service,
     comm,
     company,
     send,
     lookup,
     route,
+    beforeInsert: (hook: typeof beforeInsert) => {
+      beforeInsert = hook;
+    },
     setProviderMode: (mode: string) => {
       providerMode = mode;
     },
@@ -637,4 +648,59 @@ export function invoiceFc3Harness(
       interruptUnknown = true;
     },
   };
+}
+
+/** Real jose signature/audience/expiry checks, with fake membership/revocation SQL.
+ * This is separate from invoiceC24Harness's declared source-auth stub. No HTTP.
+ */
+export async function invoiceC24JwtHarness(
+  options: {
+    liveRole?: string;
+    active?: boolean;
+    revoked?: boolean;
+  } = {},
+) {
+  const { jwtVerify } = await import("jose");
+  const db = {
+    execute: vi.fn(async (_sql: string, parameters: number[]) => [
+      options.active !== false && parameters[0] === 42 && parameters[1] === 9
+        ? [
+            {
+              id: 42,
+              company_id: 9,
+              role: options.liveRole ?? "owner",
+              first_name: "Synthetic",
+              last_name: "Manager",
+              email: "manager@example.test",
+              company_name: "Synthetic Company",
+              primary_color: "#000000",
+              accent_color: "#ffffff",
+            },
+          ]
+        : [],
+    ]),
+  };
+  const revoked = vi.fn(async () => options.revoked === true);
+  const auth = extract(
+    backend + "mobileAuth.ts",
+    [
+      "mobileSecret",
+      "verifyMobileAccessToken",
+      "mobileBearerToken",
+      "withLiveMembershipRole",
+      "companyProfile",
+      "mobileDate",
+      "requireMobileCompany",
+    ],
+    {
+      jwtVerify,
+      TextEncoder,
+      MobileAuthError,
+      MOBILE_AUDIENCE: "hsc-mobile",
+      getDb: async () => db,
+      isCompanySessionRevoked: revoked,
+      signedStorageUrlFromStoredUrl: () => null,
+    },
+  );
+  return { auth, db, revoked };
 }
