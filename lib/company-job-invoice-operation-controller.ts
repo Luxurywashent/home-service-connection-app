@@ -4,6 +4,7 @@ import {
   companyInvoiceOperationBody,
   companyInvoiceOperationTerminal,
   normalizeCompanyInvoiceOperationLookup,
+  isCompanyInvoiceOperationConflict,
   normalizeCompanyInvoiceOperationReceipt,
   normalizeCompanyInvoiceOperationKey,
   type CompanyInvoiceOperationBody,
@@ -86,12 +87,13 @@ function result(
   return Object.freeze({
     state,
     operationKey: record?.operationKey ?? null,
-    actualRecipient: record?.lookup?.recipientEmail ?? null,
+    // A conflict is not proof that either identity belongs to this request.
+    // Keep any old journal proof internally, but never expose it as this send.
+    actualRecipient:
+      state === "conflict" ? null : (record?.lookup?.recipientEmail ?? null),
     communicationId:
-      record?.lookup?.communicationId ??
-      record?.receiptIdentity?.communicationId ??
-      null,
-    lookup: record?.lookup ?? null,
+      state === "conflict" ? null : (record?.lookup?.communicationId ?? null),
+    lookup: state === "conflict" ? null : (record?.lookup ?? null),
     isDelivered:
       state === "completed" && record?.lookup?.status === "delivered",
     message:
@@ -151,6 +153,13 @@ export function createCompanyInvoiceOperationController(
       record = next;
       check();
     }
+    async function holdConflict(): Promise<CompanyInvoiceOperationResult> {
+      if (record && record.phase !== "conflict")
+        await persist(
+          updateCompanyInvoiceOperationRecord(record, { phase: "conflict" }),
+        );
+      return result("conflict", record);
+    }
     async function recoverRecord(): Promise<CompanyInvoiceOperationResult> {
       if (!record) return result("not_found");
       const original = record;
@@ -165,6 +174,10 @@ export function createCompanyInvoiceOperationController(
         check();
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
+        check();
+        if (isCompanyInvoiceOperationConflict(error))
+          return await holdConflict();
+        if (original.phase === "conflict") return result("conflict", record);
         return result("temporarily_unavailable", record);
       }
       let lookup: CompanyInvoiceOperationLookup;
@@ -173,16 +186,28 @@ export function createCompanyInvoiceOperationController(
           raw,
           original.operationKey,
         );
-      } catch {
+      } catch (error) {
+        if (isCompanyInvoiceOperationConflict(error))
+          return await holdConflict();
+        if (original.phase === "conflict") return result("conflict", record);
         return result("uncertain", record);
       }
+      if (original.phase === "conflict") return result("conflict", record);
+      // A successful echoed POST key with no corresponding persisted GET key
+      // cannot authorize the receipt's communication (including fc3 insert races).
+      if (
+        lookup.status === "not_found" &&
+        original.receiptIdentity !== null &&
+        original.lookup === null
+      )
+        return await holdConflict();
       if (
         lookup.status === "temporarily_unavailable" ||
         lookup.status === "not_found"
       )
         return result(lookup.status, record);
       const mismatch =
-        original.phase === "conflict" ||
+        original.phase === "prepared" ||
         (original.requestedRecipient !== null &&
           original.requestedRecipient !== lookup.recipientEmail) ||
         (original.lookup?.communicationId != null &&
@@ -192,22 +217,7 @@ export function createCompanyInvoiceOperationController(
           (original.receiptIdentity.communicationId !==
             lookup.communicationId ||
             original.receiptIdentity.recipientEmail !== lookup.recipientEmail));
-      if (mismatch) {
-        // Keep previously confirmed identity immutable if the backend contradicts
-        // it. The result exposes new GET identity, but no send is authorized.
-        const conflict = updateCompanyInvoiceOperationRecord(original, {
-          phase: "conflict",
-          lookup: original.lookup?.communicationId ? original.lookup : lookup,
-        });
-        await persist(conflict);
-        return Object.freeze({
-          ...result("conflict", record),
-          actualRecipient: lookup.recipientEmail,
-          communicationId: lookup.communicationId,
-          lookup,
-          isDelivered: false,
-        });
-      }
+      if (mismatch) return await holdConflict();
       await persist(
         updateCompanyInvoiceOperationRecord(original, {
           phase: "verified",
@@ -233,6 +243,15 @@ export function createCompanyInvoiceOperationController(
         return record ? await recoverRecord() : result("uncertain");
       const desiredKey = explicitKey ?? "job-invoice";
       if (record) {
+        // GET has no intent-kind proof. A reused key cannot become a different
+        // send/resend or recipient choice, even if the recipient stayed the same.
+        if (
+          record.operationKey === desiredKey &&
+          (record.resend !== intent.options.resend ||
+            record.requestedRecipient !==
+              (intent.options.recipientEmail ?? null))
+        )
+          return await holdConflict();
         const recovered = await recoverRecord();
         check();
         // Existing initial, same captured resend, any uncertain/unknown or
@@ -264,9 +283,16 @@ export function createCompanyInvoiceOperationController(
         check();
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
+        check();
+        if (isCompanyInvoiceOperationConflict(error))
+          return await holdConflict();
         return result("temporarily_unavailable", record);
       }
-      if (before.status !== "not_found") return await recoverRecord();
+      // A newly prepared local pointer cannot claim a pre-existing operation,
+      // even when its recipient matches: fc3 GET omits requested intent-kind.
+      if (before.status === "temporarily_unavailable")
+        return result("temporarily_unavailable", record);
+      if (before.status !== "not_found") return await holdConflict();
       await persist(
         updateCompanyInvoiceOperationRecord(record!, { phase: "uncertain" }),
       );
@@ -282,8 +308,16 @@ export function createCompanyInvoiceOperationController(
         receipt = normalizeCompanyInvoiceOperationReceipt(raw, desiredKey);
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
+        check();
+        if (isCompanyInvoiceOperationConflict(error))
+          return await holdConflict();
         return result("uncertain", record); // No automatic resend or POST-as-status.
       }
+      if (
+        record!.requestedRecipient !== null &&
+        receipt.recipientEmail !== record!.requestedRecipient
+      )
+        return await holdConflict();
       await persist(
         updateCompanyInvoiceOperationRecord(record!, {
           receiptIdentity: {
@@ -292,8 +326,8 @@ export function createCompanyInvoiceOperationController(
           },
         }),
       );
-      // 164b may reuse another ACTIVE key and echo the requested key in POST.
-      // Independent GET matching key + communication + actual recipient required.
+      // fc3 rejects different-key active collisions, but same-key reuse and the
+      // duplicate-insert race still require independent GET identity agreement.
       return await recoverRecord();
     } catch (error) {
       if (error instanceof StaleInvoiceCallback) return result("stale", record);

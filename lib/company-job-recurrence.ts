@@ -8,7 +8,7 @@ export type CompanyJobRecurrenceInput = {
   ordinal?: 1 | 2 | 3 | 4 | -1;
   startDate: string;
 };
-export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: the backend is not deployed and the recurrence migration is not verified. The actual mobile creation path also omits recurrence provenance; canonical GET cannot prove the original start date / operation payload or snapshot-bound sibling pricing. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
+export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: the backend is not deployed and the recurrence migration is not verified. The fc3 source persists original start-date provenance, but canonical GET has a subtotal mismatch and does not expose operation payload binding or snapshot-bound sibling pricing. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
 const invalid = () => new Error("Choose a valid recurrence, term, Company start date, weekday and monthly occurrence.");
 function plain(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -197,7 +197,8 @@ export function verifyCompanyJobSavedSeries(value: unknown, expected: {
     jobId: expected.jobId, operationKey: expected.operationKey, recurrence });
 }
 
-/** Exact unwrapped getJobRecurrenceSeries DTO in b8fe61b1 / final 164b0673.
+/** Exact unwrapped getJobRecurrenceSeries DTO in fc3bcaa7. Historical b8/final
+ * DTOs omit requestedStartDate; absence stays absent and cannot prove fc3 intent.
  * Nullable provenance stays null. Never substitute CREATE/request/settings data. */
 export type CompanyJobDurableRecurrenceReadback = {
   readonly companyId: number;
@@ -206,6 +207,7 @@ export type CompanyJobDurableRecurrenceReadback = {
   readonly recurrence: NonNullable<CompanyJobRecurrenceReadback["recurrence"]> & {
     readonly operationKey: string | null;
     readonly requestedTerm: CompanyJobRecurrenceInput["term"] | null;
+    readonly requestedStartDate?: string | null;
     readonly creationTimezone: string | null;
     readonly anchorJobId: number | null;
     readonly updatedAt: string | null;
@@ -230,9 +232,13 @@ const timestamp = (value: unknown) => value === null || instant(value);
 export function normalizeCompanyJobDurableRecurrenceReadback(value: unknown, requestedJobId: number): CompanyJobDurableRecurrenceReadback {
   if (!exactReadbackFields(value, ["companyId", "customerId", "jobId", "recurrence", "pricing", "verification", "occurrences"])
     || !positive(value.companyId) || !positive(value.customerId) || value.jobId !== requestedJobId || !positive(requestedJobId)
-    || !exactReadbackFields(value.recurrence, ["ruleId", "operationKey", "requestedTerm", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt"])
+    || !exactReadbackFields(value.recurrence, ["ruleId", "operationKey", "requestedTerm", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt",
+      ...(plain(value.recurrence) && Object.hasOwn(value.recurrence, "requestedStartDate") ? ["requestedStartDate"] : [])])
     || !dense(value.occurrences) || !value.occurrences.length) throw durableFailure();
   const rule = value.recurrence;
+  if (Object.hasOwn(rule, "requestedStartDate") && rule.requestedStartDate !== null) {
+    try { dateOnly(rule.requestedStartDate); } catch { throw durableFailure(); }
+  }
   if ((rule.operationKey !== null && (typeof rule.operationKey !== "string" || rule.operationKey !== rule.operationKey.trim() || rule.operationKey.length < 8 || rule.operationKey.length > 128 || /[\u0000-\u001f\u007f]/.test(rule.operationKey)))
     || (rule.requestedTerm !== null && !companyJobRecurrenceTerms.includes(rule.requestedTerm as CompanyJobRecurrenceInput["term"]))
     || (rule.anchorJobId !== null && !positive(rule.anchorJobId)) || !timestamp(rule.updatedAt)
@@ -261,6 +267,7 @@ export function normalizeCompanyJobDurableRecurrenceReadback(value: unknown, req
   return Object.freeze({ companyId: value.companyId, customerId: value.customerId, jobId: requestedJobId,
     recurrence: Object.freeze({ ...base.recurrence!, operationKey: rule.operationKey as string | null,
       requestedTerm: rule.requestedTerm as CompanyJobRecurrenceInput["term"] | null, creationTimezone: rule.creationTimezone as string | null,
+      ...(Object.hasOwn(rule, "requestedStartDate") ? { requestedStartDate: rule.requestedStartDate as string | null } : {}),
       anchorJobId: rule.anchorJobId as number | null, updatedAt: rule.updatedAt as string | null }),
     pricing: Object.freeze({ ...pricing }) as CompanyJobDurableRecurrenceReadback["pricing"],
     verification: Object.freeze({ ...verification, missingOccurrenceNumbers: Object.freeze([...verification.missingOccurrenceNumbers]) }) as CompanyJobDurableRecurrenceReadback["verification"],
@@ -273,12 +280,16 @@ export type CompanyJobDurableRecurrenceExpected = {
   ruleId?: number;
   pricing: { subtotalAmount: number; discountAmount: number; totalAmount: number };
 };
-/** Verify every available source fact before diagnosing missing authority. This
- * candidate CANNOT certify original requested startDate or snapshot-bound sibling
- * pricing. Its operation GET omits the payload fingerprint; startsOn collapses
- * distinct original start dates. There is deliberately no request-filled success. */
+/** Verify actual fc3 facts, including the separately persisted requested date.
+ * The current DTO still lacks an operation payload fingerprint and financial
+ * snapshot binding. Those omissions cannot be filled from request/CREATE.
+ * Historical source DTOs remain readable but are never current-source proof. */
 export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurableRecurrenceReadback, expected: CompanyJobDurableRecurrenceExpected): never {
   const request = normalizeCompanyJobRecurrence(expected.recurrence), rule = value.recurrence, proof = value.verification;
+  const currentSource = Object.hasOwn(rule, "requestedStartDate");
+  if (currentSource && rule.requestedStartDate !== request.startDate) throw new Error("The canonical recurrence requestedStartDate is missing or does not match the immutable original date. The original request remains locked; do not resend.");
+  if (currentSource && (value.pricing.subtotal !== expected.pricing.subtotalAmount || value.pricing.discount !== expected.pricing.discountAmount
+    || value.pricing.total !== expected.pricing.totalAmount)) throw new Error("The fc3 canonical recurrence financial totals do not match saved Job detail (GET reads camel-case subtotal/discount from getJob's snake-case storage). The original request remains locked; do not resend.");
   const cadence = request.type === "monthly_date" ? "monthly_day" : request.type === "monthly_ordinal" ? "monthly_weekday" : request.type;
   if (value.companyId !== expected.companyId || value.customerId !== expected.customerId || value.jobId !== expected.jobId
     || rule.anchorJobId !== expected.jobId || rule.operationKey !== expected.operationKey || rule.requestedTerm !== request.term
@@ -315,6 +326,7 @@ export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurab
     latest = row.updatedAt > latest ? row.updatedAt : latest;
   }
   if (latest !== proof.occurrenceUpdatedAt) throw durableFailure();
+  if (currentSource) throw new Error("The fc3 canonical GET does not expose the saved operation payload fingerprint or a snapshot binding sibling financials/line items. Persisted requestedStartDate is present but is not full original-operation and pricing proof. The original request remains locked; do not resend.");
   throw new Error("The backend does not persist or expose the original recurrence startDate / operation payload binding, and its snapshot does not bind sibling pricing. The original request remains locked; do not resend.");
 }
 /** Calendar target dates from canonical occurrence instants, never from the

@@ -9,8 +9,8 @@ import {
 describe("unpublished Company contracts remain unavailable to production", () => {
   it("records exact source checkpoints without declaring deployment or migration", () => {
     expect(Object.isFrozen(COMPANY_VERIFIED_CONTRACT_RELEASE)).toBe(true);
-    expect(COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceBackendRevision).toBe("b8fe61b18692b49aba81431e84afd4f2e0afbb48");
-    expect(COMPANY_VERIFIED_CONTRACT_RELEASE.invoiceBackendRevision).toBe("164b0673");
+    expect(COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceBackendRevision).toBe("fc3bcaa78c6288b705339bd69e2fe1539c779546");
+    expect(COMPANY_VERIFIED_CONTRACT_RELEASE.invoiceBackendRevision).toBe("fc3bcaa78c6288b705339bd69e2fe1539c779546");
     expect(COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceDeployed).toBe(false);
     expect(COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceMigrationVerified).toBe(false);
     expect(COMPANY_VERIFIED_CONTRACT_RELEASE.invoiceOperationsDeployed).toBe(false);

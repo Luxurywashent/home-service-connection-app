@@ -3,21 +3,21 @@ import {
   type CompanyJobInvoiceIntent,
 } from "./company-job-invoice-intent";
 
-/** Exact0fbd source/isolated-fixture findings; not a live advertised capability. */
+/** Exact fc3 source findings; source support is not production-release authority. */
 export const COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY = Object.freeze({
-  backendRevision: "0fbd3b673eaadb0a1e646c2003b806d439c87088",
+  backendRevision: "fc3bcaa78c6288b705339bd69e2fe1539c779546",
   wireOverrideSupported: true,
   stableInitialReservation: true,
   persistedRecipientAcknowledgment: true,
   durableCommunicationIdentity: true,
   providerUnknownHeldWithoutAutomaticResend: true,
-  clientOperationKeySupported: false,
+  clientOperationKeySupported: true,
   explicitResendReplaySafe: false,
-  authenticatedInvoiceReadbackAvailable: false,
+  authenticatedInvoiceReadbackAvailable: true,
   restartSafeUncertainOperationRecovery: false,
   alternateRecipientSendingEnabled: false,
   reason:
-    "Alternate-recipient sending is unavailable: initial-send reuse and persisted-recipient acknowledgments are verified, but this backend has no authenticated mobile invoice/communication readback or client operation key. An explicit resend gets a new server identity on each POST, so a lost response cannot be safely reconciled after an app restart. Do not retry or resend an uncertain request; review it with a Company manager in the web communication history. Blank still uses the contact on file.",
+    "Alternate-recipient sending is unavailable pending verified backend deployment. The final source supports operation keys and authenticated lookup, but concurrent reservation collisions and missing intent proof still prevent fully verified recovery. Do not retry or resend an uncertain request; review it with a Company manager in the web communication history. Blank still uses the contact on file.",
 });
 
 /** Preserve existing on-file invoices; never silently discard an override. */
@@ -87,7 +87,7 @@ export function validateCompanyJobInvoiceRecipientReceipt(
       "The backend did not acknowledge a valid invoice recipient. Review communication history before another attempt.",
     );
   }
-  // Exact0fbd proves persisted-recipient agreement, but this compatibility
+  // The final source supports persisted-recipient agreement, but this compatibility
   // projection does not attest the responding server revision or retain its
   // communication ID. Do not certify an unpinned runtime receipt from those
   // source-only findings. Reuse may retain a DIFFERENT persisted recipient.

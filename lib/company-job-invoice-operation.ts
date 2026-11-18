@@ -7,7 +7,7 @@ import {
 } from "./company-job-invoice-intent";
 
 export const COMPANY_INVOICE_OPERATION_REVISION =
-  "164b06736f041f4d4a814bacd822d75c5c900301";
+  "fc3bcaa78c6288b705339bd69e2fe1539c779546";
 export const COMPANY_INVOICE_OPERATION_STATES = [
   "queued",
   "provider_started",
@@ -92,6 +92,25 @@ const keySchema = z
   .regex(/^[A-Za-z0-9:_-]+$/);
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const messageId = z.string().min(1).max(256).nullable();
+/** Identity failures never carry the unrelated communication's data or message. */
+export class CompanyInvoiceOperationConflictError extends Error {
+  constructor() {
+    super(
+      "Invoice operation identity conflicts with this request. Keep the original key and recover with GET only.",
+    );
+    this.name = "CompanyInvoiceOperationConflictError";
+  }
+}
+/** fc3 emits HTTP409/CONFLICT; an API adapter may use OPERATION_CONFLICT. */
+export function isCompanyInvoiceOperationConflict(error: unknown): boolean {
+  if (error instanceof CompanyInvoiceOperationConflictError) return true;
+  if (!error || typeof error !== "object") return false;
+  const value = error as { status?: unknown; code?: unknown };
+  return (
+    value.status === 409 &&
+    (value.code === "CONFLICT" || value.code === "OPERATION_CONFLICT")
+  );
+}
 const lookupSchema = z
   .object({
     operationKey: keySchema,
@@ -121,11 +140,17 @@ export function normalizeCompanyInvoiceOperationLookup(
   operationKey: string,
 ): CompanyInvoiceOperationLookup {
   const parsed = lookupSchema.safeParse(value);
+  const expectedKey = normalizeCompanyInvoiceOperationKey(operationKey);
+  // Check a foreign key even when unexpected populated fields make strict DTO
+  // parsing fail. Never allow the caller to adopt that communication identity.
   if (
-    !parsed.success ||
-    parsed.data.operationKey !==
-      normalizeCompanyInvoiceOperationKey(operationKey)
-  ) {
+    value &&
+    typeof value === "object" &&
+    "operationKey" in value &&
+    value.operationKey !== expectedKey
+  )
+    throw new CompanyInvoiceOperationConflictError();
+  if (!parsed.success) {
     throw new Error(
       "The invoice operation lookup identity could not be verified. Do not send again.",
     );
@@ -145,9 +170,7 @@ export function normalizeCompanyInvoiceOperationLookup(
         data.attemptCount,
       ].some((field) => field !== null)
     ) {
-      throw new Error(
-        "An absent invoice operation returned conflicting persisted identity.",
-      );
+      throw new CompanyInvoiceOperationConflictError();
     }
   } else {
     if (
@@ -213,11 +236,15 @@ export function normalizeCompanyInvoiceOperationReceipt(
     })
     .strict()
     .safeParse(value);
+  const expectedKey = normalizeCompanyInvoiceOperationKey(operationKey);
   if (
-    !parsed.success ||
-    parsed.data.operationKey !==
-      normalizeCompanyInvoiceOperationKey(operationKey)
-  ) {
+    value &&
+    typeof value === "object" &&
+    "operationKey" in value &&
+    value.operationKey !== expectedKey
+  )
+    throw new CompanyInvoiceOperationConflictError();
+  if (!parsed.success) {
     throw new Error(
       "The backend did not confirm this invoice operation acknowledgment. Recover with GET only.",
     );

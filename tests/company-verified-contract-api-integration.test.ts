@@ -31,8 +31,8 @@ import {
   authority,
   fixture,
   response,
-} from "./recurrence-fixtures/verified-source-fixture";
-import { invoice164bHarness } from "./fixtures/company-invoice-164b-source";
+} from "./recurrence-fixtures/fc3-source-fixture";
+import { invoiceFc3Harness } from "./fixtures/company-invoice-fc3-source";
 
 const gate = vi.hoisted(() => ({ isolatedPositive: false }));
 vi.mock("../lib/company-verified-contract-release", async (original) => {
@@ -155,7 +155,7 @@ function recurrenceHttp(fake = fixture()) {
   vi.stubGlobal("fetch", http);
   return { fake, http, rawResponses };
 }
-function invoiceHttp(h = invoice164bHarness()) {
+function invoiceHttp(h = invoiceFc3Harness()) {
   const rawResponses: Row[] = [];
   const http = vi.fn(
     async (url: string | URL | Request, init?: RequestInit) => {
@@ -391,7 +391,7 @@ describe("actual shared CREATE payload and raw receipt integration, no downgrade
     expect(result.recurrence).not.toHaveProperty("operationKey");
     expect(result).not.toHaveProperty("savedSeries");
     expect(h.http).toHaveBeenCalledTimes(1);
-    expect(h.fake.state().rules[0]).not.toHaveProperty("operation_key");
+    expect(h.fake.state().rules[0]).toMatchObject({ operation_key: recurring.operationKey, requested_start_date: recurrence.startDate, creation_timezone: "America/Chicago" });
   });
   it.each(["no-operation-key", "manual-end", "unknown-recurrence-field"])(
     "isolated recurring %s is rejected before POST",
@@ -449,7 +449,7 @@ describe("actual shared CREATE payload and raw receipt integration, no downgrade
 });
 
 describe("exact recurrence GET returns incomplete canonical facts without manufacturing authority", () => {
-  it("normalizes the exact unwrapped raw response, retaining null provenance and the backend pricing defect", async () => {
+  it("normalizes the exact unwrapped raw response, retaining actual requested-date provenance and the backend pricing defect", async () => {
     gate.isolatedPositive = true;
     const h = recurrenceHttp();
     await shared.createJobSyncCompanyJob(token, 9, recurring);
@@ -464,9 +464,11 @@ describe("exact recurrence GET returns incomplete canonical facts without manufa
     ackHeaders(request(h.http, 1).init, "GET");
     expect(read).toEqual(h.rawResponses[1]);
     expect(read.recurrence).toMatchObject({
-      operationKey: null,
-      requestedTerm: null,
-      creationTimezone: null,
+      operationKey: base.operationKey,
+      requestedTerm: recurrence.term,
+      requestedStartDate: recurrence.startDate,
+      startsOn: "2026-12-01",
+      creationTimezone: "America/Chicago",
       anchorJobId: 501,
     });
     expect(read.recurrence).not.toHaveProperty("startDate");
@@ -505,7 +507,7 @@ describe("exact recurrence GET returns incomplete canonical facts without manufa
       missingOccurrenceNumbers: [1],
     });
     expect(read.occurrences[1].customerId).toBe(42);
-    expect(read.recurrence.operationKey).toBeNull();
+    expect(read.recurrence.operationKey).toBe(base.operationKey);
   });
   it.each(["wrapped", "unknown-field", "invalid-row-time", "wrong-company"])(
     "raw recurrence %s is rejected with only one GET",
@@ -633,7 +635,7 @@ describe("new shared invoice operation transport against exact 164b raw POST/GET
       gate.isolatedPositive = true;
       const f = invoiceHttp(
         kind === "temporarily_unavailable"
-          ? invoice164bHarness("owner", 9, true, { lookupUnavailable: true })
+          ? invoiceFc3Harness("owner", 9, true, { lookupUnavailable: true })
           : undefined,
       );
       if (kind === "unknown") {
