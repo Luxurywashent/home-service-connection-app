@@ -1546,11 +1546,12 @@ export default function AdminScheduleScreen() {
   const [showReassignPicker, setShowReassignPicker] = useState(false);
   const [showCheckout, setShowCheckoutState] = useState(false);
   const [showInvoiceSheet, setShowInvoiceSheetState] = useState(false);
+  const [invoiceKeyboardGeneration, setInvoiceKeyboardGeneration] = useState(0);
   // Synchronous epochs also invalidate callbacks closed/reopened before React commits.
   const sheetEpochRef = useRef(0);
   const invoiceEpochRef = useRef(0);
   const checkoutEpochRef = useRef(0);
-  const setShowInvoiceSheet = (visible: boolean) => { invoiceEpochRef.current++; setShowInvoiceSheetState(visible); };
+  const setShowInvoiceSheet = (visible: boolean) => { invoiceEpochRef.current++; setInvoiceKeyboardGeneration(value => value + 1); setShowInvoiceSheetState(visible); };
   const setShowCheckout = (visible: boolean) => { checkoutEpochRef.current++; setShowCheckoutState(visible); };
   // ── Charge Card on File state ──
   const [showChargeModal, setShowChargeModalState] = useState(false);
@@ -1895,7 +1896,7 @@ export default function AdminScheduleScreen() {
   const isCurrentCompanyPrivateNotes = isCurrentCompanyJobOperation;
   const { attachScrollRef: detailScrollRef, relatedRef: detailTagRef,
     scrollProps: detailScrollProps, onInputFocus: detailInputFocus, onInputBlur: detailInputBlur } = useCompanyJobKeyboard({
-    active: Boolean(selectedJob), isCurrent: companyJobMode ? isCurrentCompanyJobOperation : renderedLegacyAction,
+    active: Boolean(selectedJob) && !showInvoiceSheet, isCurrent: companyJobMode ? isCurrentCompanyJobOperation : renderedLegacyAction,
     scopeKey: companyJobMode ? companyJobOperationScope : managementActionKey,
   });
   const isCurrentInvoice = () => managementActionRef.current.mounted && managementActionRef.current.focused
@@ -1906,6 +1907,11 @@ export default function AdminScheduleScreen() {
   const invoiceLifecycleEpoch = useCompanyJobOperationEpoch();
   const renderedInvoiceLifecycleEpoch = useSyncExternalStore(invoiceLifecycleEpoch.subscribe,
     invoiceLifecycleEpoch.getSnapshot, invoiceLifecycleEpoch.getSnapshot);
+  const { attachScrollRef: invoiceScrollRef, scrollProps: invoiceScrollProps,
+    onInputFocus: invoiceInputFocus, onInputBlur: invoiceInputBlur } = useCompanyJobKeyboard({
+    active: companyJobMode && Boolean(selectedJob) && showInvoiceSheet, isCurrent: isCurrentInvoice,
+    scopeKey: JSON.stringify([invoiceIdentityKey, invoiceKeyboardGeneration, companyJobOperationScope, renderedInvoiceLifecycleEpoch]),
+  });
   useEffect(() => {
     const subscription = AppState.addEventListener("change", next => {
       if (next !== "active") invoiceLifecycleEpoch.invalidate();
@@ -5718,8 +5724,10 @@ export default function AdminScheduleScreen() {
 
         {/* Invoice Sheet — rendered inside the job detail Modal so it layers on top correctly */}
         {showInvoiceSheet && selectedJob && (
-          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-            <View style={{ backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 }}>
+          <CompanyJobKeyboardBoundary active={companyJobMode && showInvoiceSheet} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: jobSheetColors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "100%", flexShrink: 1, overflow: "hidden" }}>
+              <ScrollView ref={invoiceScrollRef} {...invoiceScrollProps} style={{ flexShrink: 1 }} contentContainerStyle={{ padding: 24, paddingBottom: 40 }}
+                automaticallyAdjustKeyboardInsets={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
               {/* Header */}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: jobSheetColors.foreground }}>📧 Send Invoice</Text>
@@ -5828,7 +5836,7 @@ export default function AdminScheduleScreen() {
                   {companyJobMode ? <CompanyJobInvoiceRecipient method={invoiceMethod} value={companyInvoiceRecipientEmail}
                     onChange={setCompanyInvoiceRecipientEmail} defaultEmail={companyJob.detail?.customerEmail ?? null}
                     disabled={invoiceSending || companyInvoiceOperation.busy || jobSyncLoading} isCurrent={() => !invoiceLockRef.current && !companyInvoiceOperation.busy && isCurrentInvoice()}
-                    onInputFocus={detailInputFocus} onInputBlur={detailInputBlur}
+                    onInputFocus={invoiceInputFocus} onInputBlur={invoiceInputBlur}
                     sendingUnavailableReason={companyInvoiceOperationReleaseReady() ? null : COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.reason} /> : <View style={{ marginBottom: 20 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
                       {invoiceMethod === "email" ? "Send to Email" : "Send to Phone"}
@@ -5961,8 +5969,9 @@ export default function AdminScheduleScreen() {
                   </TouchableOpacity>
                 </>
               )}
+              </ScrollView>
             </View>
-          </View>
+          </CompanyJobKeyboardBoundary>
         )}
 
         {/* Photo Preview overlay — full-screen tap-to-close */}

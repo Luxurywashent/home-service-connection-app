@@ -2,9 +2,13 @@
  * Source/fixture verification is not deployment or migration verification.
  * These contracts are intentionally unavailable to the production application
  * until a separately authorized coordinated backend/mobile release confirms
- * both publication and the required recurrence migration. No environment flag,
- * server response, recipient edit, or repeated tap activates this gate.
+ * both publication and the required recurrence migration. The owner authorized
+ * the pinned internal device build below after production schema verification.
+ * This availability setting adds no Company permissions and never enables payments.
  */
+const controlledDeviceTesting = process.env.EXPO_PUBLIC_HSC_CONTROLLED_DEVICE_TESTING
+  === "80c059cd:b29f99b5:20261118";
+
 export const COMPANY_VERIFIED_CONTRACT_RELEASE = Object.freeze({
   recurrenceBackendRevision: "b29f99b5ea9581a1c5a62271cc5bd979f83df345",
   invoiceBackendRevision: "b29f99b5ea9581a1c5a62271cc5bd979f83df345",
@@ -14,12 +18,12 @@ export const COMPANY_VERIFIED_CONTRACT_RELEASE = Object.freeze({
 });
 
 export function companyRecurrenceReleaseReady(): boolean {
-  return COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceDeployed
-    && COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceMigrationVerified;
+  return controlledDeviceTesting || (COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceDeployed
+    && COMPANY_VERIFIED_CONTRACT_RELEASE.recurrenceMigrationVerified);
 }
 
 export function companyInvoiceOperationReleaseReady(): boolean {
-  return COMPANY_VERIFIED_CONTRACT_RELEASE.invoiceOperationsDeployed;
+  return controlledDeviceTesting || COMPANY_VERIFIED_CONTRACT_RELEASE.invoiceOperationsDeployed;
 }
 
 export function assertCompanyVerifiedContractRelease(kind: "recurrence" | "invoice") {

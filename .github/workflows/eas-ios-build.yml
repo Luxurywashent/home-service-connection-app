@@ -30,12 +30,22 @@ on:
         default: false
         type: boolean
 
+      controlled_device_testing:
+        description: Use the pinned owner-authorized internal device testing contracts
+        required: false
+        default: false
+        type: boolean
+      submission_build_id:
+        description: Finished iOS archive to upload ONLY to existing private TestFlight
+        required: false
+        type: string
+
 permissions:
   contents: read
 
 jobs:
   status:
-    if: ${{ inputs.status_build_id != '' }}
+    if: ${{ inputs.status_build_id != '' && inputs.submission_build_id == '' }}
     name: Monitor private Expo build
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -81,8 +91,17 @@ jobs:
           echo "EAS build did not reach a terminal status before the monitor timeout." >&2
           exit 1
 
+      - name: Preserve final EAS metadata
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-build-status-${{ inputs.status_build_id }}
+          path: eas-build.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   build:
-    if: ${{ inputs.status_build_id == '' }}
+    if: ${{ inputs.status_build_id == '' && inputs.submission_build_id == '' }}
     name: Create Expo mobile build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -106,6 +125,31 @@ jobs:
         run: |
           npx expo install --check
           npx expo-doctor
+
+      - name: Configure private device artifact only
+        if: ${{ inputs.controlled_device_testing }}
+        env:
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          BUILD_PROFILE: ${{ inputs.profile }}
+        run: |
+          node - <<'JS'
+          const fs = require('fs');
+          const e = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          const platform = process.env.BUILD_PLATFORM;
+          const profile = process.env.BUILD_PROFILE;
+          if ((platform === 'ios' && profile !== 'testflight') || (platform === 'android' && profile !== 'preview')) throw Error('Private device testing permits only TestFlight iOS and internal Android APK');
+          const base = e.build.production;
+          e.build[profile] = {
+            ...base,
+            ...e.build[profile],
+            autoIncrement: true,
+            credentialsSource: 'remote',
+            env: { ...base.env, ...e.build[profile].env, EXPO_PUBLIC_HSC_CONTROLLED_DEVICE_TESTING: '80c059cd:b29f99b5:20261118' },
+            ...(platform === 'android' ? { distribution: 'internal', android: { buildType: 'apk' } } : {})
+          };
+          for (const name of ['EXPO_PUBLIC_API_BASE_URL','EXPO_PUBLIC_JOBSYNC_API_BASE_URL']) if (e.build[profile].env[name] !== 'https://jobwash-veysiubh.manus.space') throw Error('Unexpected production API');
+          fs.writeFileSync('eas.json', JSON.stringify(e,null,2)+'\n');
+          JS
 
       - name: Verify Android upload certificate
         if: ${{ inputs.platform == 'android' }}
@@ -134,4 +178,56 @@ jobs:
             --profile "$BUILD_PROFILE" \
             --non-interactive \
             "${signing_args[@]}" \
-            --no-wait
+            --no-wait --json > eas-created.json
+          node - <<'JS'
+          const fs = require('fs');
+          const raw = JSON.parse(fs.readFileSync('eas-created.json','utf8'));
+          const builds = Array.isArray(raw) ? raw : [raw];
+          if (builds.length !== 1 || !builds[0].id) throw Error('Expected exactly one EAS build');
+          fs.writeFileSync('eas-build.json', JSON.stringify(builds[0],null,2)+'\n');
+          console.log(JSON.stringify({id: builds[0].id, platform: builds[0].platform, appVersion: builds[0].appVersion, appBuildVersion: builds[0].appBuildVersion}));
+          JS
+      - name: Preserve private build metadata
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-build-metadata-${{ inputs.platform }}
+          path: eas-build.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  submit:
+    if: ${{ inputs.submission_build_id != '' && inputs.platform == 'ios' && inputs.controlled_device_testing && inputs.profile == 'testflight' }}
+    name: Upload exact archive to existing private TestFlight only
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify finished archive and restricted destination
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ inputs.submission_build_id }}
+        run: |
+          test -n "$EXPO_TOKEN"
+          [[ "$BUILD_ID" =~ ^[a-f0-9-]{36}$ ]]
+          npx eas-cli@latest build:view "$BUILD_ID" --json > submission-build.json
+          node - <<'JS'
+          const fs = require('fs'); const b = JSON.parse(fs.readFileSync('submission-build.json','utf8'));
+          if (b.id !== process.env.BUILD_ID || String(b.status).toLowerCase() !== 'finished' || String(b.platform).toLowerCase() !== 'ios') throw Error('Expected finished iOS archive');
+          if (b.app?.id !== 'e6614385-618a-460d-a650-06ae63b97563' || b.appIdentifier !== 'com.homeserviceconnection.mobile' || b.appVersion !== '1.0.1') throw Error('Unexpected original app identity/version');
+          if (b.distribution && String(b.distribution).toLowerCase() !== 'store') throw Error('Only store-signed TestFlight archive');
+          const e = JSON.parse(fs.readFileSync('eas.json','utf8'));
+          e.submit.testflight = { extends: 'production', ios: { ascAppId: '6800959195' } };
+          fs.writeFileSync('eas.json',JSON.stringify(e,null,2)+'\n');
+          JS
+      - name: Upload to TestFlight; never review or release
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ inputs.submission_build_id }}
+        run: npx eas-cli@latest submit --platform ios --profile testflight --id "$BUILD_ID" --non-interactive
