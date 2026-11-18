@@ -7,7 +7,7 @@ import {
 } from "./company-job-invoice-intent";
 
 export const COMPANY_INVOICE_OPERATION_REVISION =
-  "c24d4a1e5da9d937e68709a76ce2e2336c81b748";
+  "b29f99b5ea9581a1c5a62271cc5bd979f83df345";
 export const COMPANY_INVOICE_OPERATION_STATES = [
   "queued",
   "provider_started",
@@ -41,6 +41,11 @@ export const COMPANY_INVOICE_PROVIDER_STATES = [
 export type CompanyInvoiceOperationStatus =
   (typeof COMPANY_INVOICE_OPERATION_STATES)[number];
 export type CompanyInvoiceOperationLookup = Readonly<{
+  /** Optional only to preserve legacy journal types; b29 wire requires all four. */
+  companyId?: number;
+  jobId?: number;
+  customerId?: number | null;
+  intentKind?: "initial" | "resend" | "retry" | null;
   operationKey: string;
   communicationId: number | null;
   recipientEmail: string | null;
@@ -79,11 +84,28 @@ export type CompanyInvoiceOperationContext = Readonly<{
   lifetime: CompanyInvoiceOperationLifetime;
   /** Optional explicitly captured key. Never replace a stored uncertain key. */
   operationKey?: string;
+  /** Fresh scoped canonical Customer BEFORE first POST; ignored as recovery expectation. */
+  originalCustomerId?: number;
+  /** Fresh on-file email BEFORE first POST when no explicit override is supplied. */
+  onFileRecipientEmail?: string;
+}>;
+export type CompanyInvoiceOperationOriginalEvidence = Readonly<{
+  customerId: number;
+  recipientEmail: string;
+  intentKind: "initial" | "resend";
+}>;
+export type CompanyInvoiceOperationLookupExpectation = Readonly<{
+  companyId: number;
+  jobId: number;
+  customerId?: number;
+  recipientEmail?: string;
+  intentKind?: "initial" | "resend";
 }>;
 export type CompanyInvoiceOperationIntent = CompanyJobInvoiceIntent &
   Readonly<{
     lifetime: CompanyInvoiceOperationLifetime;
     operationKey: string | null;
+    originalEvidence?: CompanyInvoiceOperationOriginalEvidence;
   }>;
 const keySchema = z
   .string()
@@ -92,26 +114,7 @@ const keySchema = z
   .regex(/^[A-Za-z0-9:_-]+$/);
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const messageId = z.string().min(1).max(256).nullable();
-/** Identity failures never carry the unrelated communication's data or message. */
-export class CompanyInvoiceOperationConflictError extends Error {
-  constructor() {
-    super(
-      "Invoice operation identity conflicts with this request. Keep the original key and recover with GET only.",
-    );
-    this.name = "CompanyInvoiceOperationConflictError";
-  }
-}
-/** c24 emits HTTP409/CONFLICT; a typed adapter may use OPERATION_CONFLICT. */
-export function isCompanyInvoiceOperationConflict(error: unknown): boolean {
-  if (error instanceof CompanyInvoiceOperationConflictError) return true;
-  if (!error || typeof error !== "object") return false;
-  const value = error as { status?: unknown; code?: unknown };
-  return (
-    value.status === 409 &&
-    (value.code === "CONFLICT" || value.code === "OPERATION_CONFLICT")
-  );
-}
-const lookupSchema = z
+const legacyLookupSchema = z
   .object({
     operationKey: keySchema,
     communicationId: id.nullable(),
@@ -128,6 +131,28 @@ const lookupSchema = z
       .nullable(),
   })
   .strict();
+const lookupSchema = legacyLookupSchema.extend({
+  companyId: id,
+  jobId: id,
+  customerId: id.nullable(),
+  intentKind: z.enum(["initial", "resend", "retry"]).nullable(),
+});
+class InvoiceOperationConflict extends Error {
+  readonly code = "CONFLICT";
+}
+export function isCompanyInvoiceOperationConflict(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const error = value as {
+    status?: unknown;
+    code?: unknown;
+    error?: { code?: unknown };
+  };
+  return (
+    error.status === 409 ||
+    error.code === "CONFLICT" ||
+    error.error?.code === "CONFLICT"
+  );
+}
 export function normalizeCompanyInvoiceOperationKey(value: unknown): string {
   const parsed = keySchema.safeParse(value);
   if (!parsed.success)
@@ -138,24 +163,71 @@ export function normalizeCompanyInvoiceOperationKey(value: unknown): string {
 export function normalizeCompanyInvoiceOperationLookup(
   value: unknown,
   operationKey: string,
+  expected?: CompanyInvoiceOperationLookupExpectation,
 ): CompanyInvoiceOperationLookup {
+  if (isCompanyInvoiceOperationConflict(value))
+    throw new InvoiceOperationConflict(
+      "Invoice operation identity conflicts. Do not send again.",
+    );
   const parsed = lookupSchema.safeParse(value);
-  const expectedKey = normalizeCompanyInvoiceOperationKey(operationKey);
-  // Check a foreign key even when unexpected populated fields make strict DTO
-  // parsing fail. Never allow the caller to adopt that communication identity.
-  if (
-    value &&
-    typeof value === "object" &&
-    "operationKey" in value &&
-    value.operationKey !== expectedKey
-  )
-    throw new CompanyInvoiceOperationConflictError();
   if (!parsed.success) {
     throw new Error(
       "The invoice operation lookup identity could not be verified. Do not send again.",
     );
   }
   const data = parsed.data;
+  if (
+    data.operationKey !== normalizeCompanyInvoiceOperationKey(operationKey) ||
+    (expected &&
+      (data.companyId !== expected.companyId || data.jobId !== expected.jobId))
+  )
+    throw new InvoiceOperationConflict(
+      "The persisted invoice operation scope or key conflicts.",
+    );
+  const lookup = normalizePersistedLookupState(data);
+  if (!["not_found", "temporarily_unavailable"].includes(data.status)) {
+    if (!data.customerId || !data.intentKind)
+      throw new Error(
+        "The backend did not confirm original Customer and send intent.",
+      );
+    if (
+      expected &&
+      ((expected.customerId !== undefined &&
+        data.customerId !== expected.customerId) ||
+        (expected.intentKind !== undefined &&
+          data.intentKind !== expected.intentKind) ||
+        (expected.recipientEmail !== undefined &&
+          lookup.recipientEmail !== expected.recipientEmail))
+    )
+      throw new InvoiceOperationConflict(
+        "The persisted original invoice intent conflicts.",
+      );
+  } else if (data.customerId !== null || data.intentKind !== null) {
+    throw new InvoiceOperationConflict(
+      "An absent invoice operation returned original intent.",
+    );
+  }
+  return lookup;
+}
+/** Storage-only decoder: never use old eight-field evidence as current GET proof. */
+export function normalizeLegacyCompanyInvoiceOperationLookup(
+  value: unknown,
+  operationKey: string,
+): CompanyInvoiceOperationLookup {
+  const parsed = legacyLookupSchema.safeParse(value);
+  if (
+    !parsed.success ||
+    parsed.data.operationKey !==
+      normalizeCompanyInvoiceOperationKey(operationKey)
+  )
+    throw new Error(
+      "Legacy invoice recovery journal could not be verified. Keep held.",
+    );
+  return normalizePersistedLookupState(parsed.data);
+}
+function normalizePersistedLookupState<T extends CompanyInvoiceOperationLookup>(
+  data: T,
+): T {
   if (
     data.status === "not_found" ||
     data.status === "temporarily_unavailable"
@@ -170,7 +242,9 @@ export function normalizeCompanyInvoiceOperationLookup(
         data.attemptCount,
       ].some((field) => field !== null)
     ) {
-      throw new CompanyInvoiceOperationConflictError();
+      throw new Error(
+        "An absent invoice operation returned conflicting persisted identity.",
+      );
     }
   } else {
     if (
@@ -236,20 +310,16 @@ export function normalizeCompanyInvoiceOperationReceipt(
     })
     .strict()
     .safeParse(value);
-  const expectedKey = normalizeCompanyInvoiceOperationKey(operationKey);
-  if (
-    value &&
-    typeof value === "object" &&
-    "operationKey" in value &&
-    value.operationKey !== expectedKey
-  )
-    throw new CompanyInvoiceOperationConflictError();
   if (!parsed.success) {
     throw new Error(
       "The backend did not confirm this invoice operation acknowledgment. Recover with GET only.",
     );
   }
   const data = parsed.data;
+  if (data.operationKey !== normalizeCompanyInvoiceOperationKey(operationKey))
+    throw new InvoiceOperationConflict(
+      "The invoice acknowledgment belongs to a different operation key.",
+    );
   if (new URL(data.publicUrl).protocol !== "https:")
     throw new Error("Invoice acknowledgment link is invalid.");
   return Object.freeze({
@@ -284,9 +354,29 @@ export function captureCompanyInvoiceOperationIntent(
       "A current mounted invoice sheet and focus lifetime are required.",
     );
   }
+  let originalEvidence: CompanyInvoiceOperationOriginalEvidence | undefined;
+  if (context.originalCustomerId !== undefined) {
+    if (!id.safeParse(context.originalCustomerId).success)
+      throw new Error(
+        "A fresh originating Company Customer is required before invoice dispatch.",
+      );
+    const recipientEmail =
+      intent.options.recipientEmail ??
+      normalizeCompanyJobInvoiceRecipientEmail(context.onFileRecipientEmail);
+    if (!recipientEmail)
+      throw new Error(
+        "Capture the original on-file invoice recipient before dispatch.",
+      );
+    originalEvidence = Object.freeze({
+      customerId: context.originalCustomerId,
+      recipientEmail,
+      intentKind: intent.options.resend ? "resend" : "initial",
+    });
+  }
   return Object.freeze({
     ...intent,
     lifetime: Object.freeze({ ...context.lifetime }),
+    ...(originalEvidence ? { originalEvidence } : {}),
     operationKey:
       context.operationKey === undefined
         ? null

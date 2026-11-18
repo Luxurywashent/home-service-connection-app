@@ -3,10 +3,9 @@ import {
   captureCompanyInvoiceOperationIntent,
   companyInvoiceOperationBody,
   companyInvoiceOperationTerminal,
-  normalizeCompanyInvoiceOperationLookup,
   isCompanyInvoiceOperationConflict,
+  normalizeCompanyInvoiceOperationLookup,
   normalizeCompanyInvoiceOperationReceipt,
-  normalizeCompanyInvoiceOperationKey,
   type CompanyInvoiceOperationBody,
   type CompanyInvoiceOperationContext,
   type CompanyInvoiceOperationIntent,
@@ -67,9 +66,9 @@ const messages = {
   temporarily_unavailable:
     "Invoice status is temporarily unavailable. Keep this operation key and recover with GET only.",
   uncertain:
-    "The invoice outcome is uncertain. Do not send again; recover this operation with GET only.",
+    "The original invoice intent or outcome cannot be verified. Keep this journal and recover with GET only; do not send again.",
   conflict:
-    "Persisted invoice recipient or communication identity conflicts with this request. Do not send again; review Company communication history.",
+    "Persisted invoice scope, original intent or communication identity conflicts with this request. Do not send again; review Company communication history.",
   completed:
     "The persisted invoice operation was accepted by the provider. This is not proof of delivery.",
   failed:
@@ -85,32 +84,30 @@ function result(
   record: CompanyInvoiceOperationRecord | null = null,
 ): CompanyInvoiceOperationResult {
   const anchored =
-    record?.receiptIdentity != null &&
-    state !== "conflict" &&
-    state !== "stale";
+    record?.originalEvidence != null &&
+    record.phase === "verified" &&
+    ["completed", "failed", "queued", "provider_started", "unknown"].includes(
+      state,
+    );
+  const lookup = anchored ? (record?.lookup ?? null) : null;
+  const delivered = state === "completed" && lookup?.status === "delivered";
   return Object.freeze({
     state,
-    operationKey: record?.operationKey ?? null,
-    // A conflict is not proof that either identity belongs to this request.
-    // Keep any old journal proof internally, but never expose it as this send.
-    actualRecipient: anchored ? (record?.lookup?.recipientEmail ?? null) : null,
-    communicationId: anchored
-      ? (record?.lookup?.communicationId ?? null)
-      : null,
-    lookup: anchored ? (record?.lookup ?? null) : null,
-    isDelivered:
-      state === "completed" && record?.lookup?.status === "delivered",
-    message:
-      record?.lookup?.status === "delivered" && state === "completed"
-        ? "The backend confirmed invoice delivery to the persisted recipient."
-        : messages[state],
+    operationKey: state === "stale" ? null : (record?.operationKey ?? null),
+    actualRecipient: lookup?.recipientEmail ?? null,
+    communicationId: lookup?.communicationId ?? null,
+    lookup,
+    isDelivered: delivered,
+    message: delivered
+      ? "The backend confirmed invoice delivery to the persisted recipient."
+      : messages[state],
   });
 }
 class StaleInvoiceCallback extends Error {}
 /**
- * Keep at manager-screen lifetime. Every async continuation rejects a stale
- * layout-committed token/Company/user/role/Job/sheet/focus capture. No POST retry
- * exists, even after a not_found lookup or process restart of a prepared record.
+ * Manager-screen lifetime lock. No POST retry exists, including after a restart,
+ * prepared journal, unavailable/not_found/unknown lookup or acknowledgment loss.
+ * b29 original evidence comes from the protected journal, NEVER current Customer.
  */
 export function createCompanyInvoiceOperationController(
   options: CompanyInvoiceOperationControllerOptions = {},
@@ -128,10 +125,7 @@ export function createCompanyInvoiceOperationController(
     mode: "send" | "recover",
   ): Promise<CompanyInvoiceOperationResult> {
     const intent = captureCompanyInvoiceOperationIntent(context);
-    const explicitKey =
-      context.operationKey === undefined
-        ? null
-        : normalizeCompanyInvoiceOperationKey(context.operationKey);
+    const explicitKey = intent.operationKey;
     const check = () => {
       if (!isCurrent(intent)) throw new StaleInvoiceCallback();
     };
@@ -149,8 +143,7 @@ export function createCompanyInvoiceOperationController(
     let record: CompanyInvoiceOperationRecord | null = null;
     async function persist(next: CompanyInvoiceOperationRecord) {
       check();
-      const previous = record;
-      if (!(await store.compareAndSwap(previous, next)))
+      if (!(await store.compareAndSwap(record, next)))
         throw new Error(
           "Invoice recovery identity changed concurrently. Do not send again.",
         );
@@ -158,7 +151,7 @@ export function createCompanyInvoiceOperationController(
       check();
     }
     async function holdConflict(): Promise<CompanyInvoiceOperationResult> {
-      if (record && record.phase !== "conflict")
+      if (record?.originalEvidence && record.phase !== "conflict")
         await persist(
           updateCompanyInvoiceOperationRecord(record, { phase: "conflict" }),
         );
@@ -167,12 +160,13 @@ export function createCompanyInvoiceOperationController(
     async function recoverRecord(): Promise<CompanyInvoiceOperationResult> {
       if (!record) return result("not_found");
       const original = record;
+      let lookup: CompanyInvoiceOperationLookup;
       let raw: unknown;
       try {
         check();
         raw = await api!.lookup(
           intent.token,
-          intent.jobId,
+          original.jobId,
           original.operationKey,
         );
         check();
@@ -184,33 +178,34 @@ export function createCompanyInvoiceOperationController(
         if (original.phase === "conflict") return result("conflict", record);
         return result("temporarily_unavailable", record);
       }
-      let lookup: CompanyInvoiceOperationLookup;
       try {
         lookup = normalizeCompanyInvoiceOperationLookup(
           raw,
           original.operationKey,
+          {
+            companyId: original.companyId,
+            jobId: original.jobId,
+            ...(original.originalEvidence ?? {}),
+          },
         );
       } catch (error) {
+        if (error instanceof StaleInvoiceCallback) throw error;
+        check();
         if (isCompanyInvoiceOperationConflict(error))
           return await holdConflict();
         if (original.phase === "conflict") return result("conflict", record);
         return result("uncertain", record);
       }
       if (original.phase === "conflict") return result("conflict", record);
-      // A successful echoed POST key with no corresponding persisted GET key
-      // cannot authorize the receipt's communication, even after c24's repair.
       if (
-        lookup.status === "not_found" &&
-        original.receiptIdentity !== null &&
-        original.lookup === null
-      )
-        return await holdConflict();
-      if (
-        lookup.status === "temporarily_unavailable" ||
-        lookup.status === "not_found"
+        lookup.status === "not_found" ||
+        lookup.status === "temporarily_unavailable"
       )
         return result(lookup.status, record);
-      const mismatch =
+      if (!original.originalEvidence) return result("uncertain", record);
+      // A prepared pointer never reached our dispatch marker; it cannot adopt a
+      // pre-existing winner, even with the same recipient and original intent.
+      if (
         original.phase === "prepared" ||
         (original.requestedRecipient !== null &&
           original.requestedRecipient !== lookup.recipientEmail) ||
@@ -220,25 +215,23 @@ export function createCompanyInvoiceOperationController(
         (original.receiptIdentity !== null &&
           (original.receiptIdentity.communicationId !==
             lookup.communicationId ||
-            original.receiptIdentity.recipientEmail !== lookup.recipientEmail));
-      if (mismatch) return await holdConflict();
-      // c24 GET omits customer_id and intent_kind. An uncertain POST with no
-      // acknowledgment cannot prove which same-key intent won a race (including
-      // a lost 409). A legacy GET-only journal is not immutable intent proof.
-      // Keep the journal and GET-only hold;
-      // never manufacture immutable intent proof from this mobile request.
-      if (!original.receiptIdentity) return result("uncertain", record);
+            original.receiptIdentity.recipientEmail !== lookup.recipientEmail))
+      )
+        return await holdConflict();
+      // Historical journals cannot acquire missing original Customer/intent from
+      // current detail or GET. Retain them unchanged and read-only held.
       await persist(
         updateCompanyInvoiceOperationRecord(original, {
           phase: "verified",
           lookup,
         }),
       );
-      const state =
+      return result(
         lookup.status === "provider_accepted" || lookup.status === "delivered"
           ? "completed"
-          : lookup.status;
-      return result(state, record);
+          : lookup.status,
+        record,
+      );
     }
     try {
       record = await store.read(intent.companyId, intent.userId, intent.jobId);
@@ -266,15 +259,10 @@ export function createCompanyInvoiceOperationController(
       )
         return await holdConflict();
       if (mode === "recover") return await recoverRecord();
-      // A new resend requires an explicit key captured ONCE by the user's
-      // authorized new-resend action. Never generate one inside Send: a restarted
-      // callback must reconcile the stored operation, not invent another resend.
       if (intent.options.resend && explicitKey === null)
         return record ? await recoverRecord() : result("uncertain");
       const desiredKey = explicitKey ?? "job-invoice";
       if (record) {
-        // GET has no intent-kind proof. A reused key cannot become a different
-        // send/resend or recipient choice, even if the recipient stayed the same.
         if (
           record.operationKey === desiredKey &&
           (record.resend !== intent.options.resend ||
@@ -284,50 +272,45 @@ export function createCompanyInvoiceOperationController(
           return await holdConflict();
         const recovered = await recoverRecord();
         check();
-        // Existing initial, same captured resend, any uncertain/unknown or
-        // recipient conflict are GET-only. Never clear a pointer on not_found.
         if (
           !intent.options.resend ||
           record.operationKey === desiredKey ||
-          recovered.state === "conflict" ||
+          !record.originalEvidence ||
           !record.lookup ||
           !companyInvoiceOperationTerminal(record.lookup) ||
           !["completed", "failed"].includes(recovered.state)
         )
           return recovered;
       } else if (intent.options.resend) {
-        return result("uncertain"); // No local prior verified operation to authorize a new resend.
+        return result("uncertain");
       }
-      const prepared = newCompanyInvoiceOperationRecord(intent, desiredKey);
-      await persist(prepared);
-      // Initial preflight also detects earlier legacy/default operation with this
-      // key. Only a brand-new explicitly authorized operation can write after
-      // absence; recovery of a prepared/uncertain pointer never takes this path.
+      // Missing fresh original Customer/effective recipient must never create an
+      // unanchored journal or submit POST. Existing legacy workflows are separate.
+      if (!intent.originalEvidence) return result("uncertain", record);
+      await persist(newCompanyInvoiceOperationRecord(intent, desiredKey));
       let before: CompanyInvoiceOperationLookup;
       try {
         check();
-        before = normalizeCompanyInvoiceOperationLookup(
-          await api.lookup(intent.token, intent.jobId, desiredKey),
-          desiredKey,
-        );
+        const raw = await api.lookup(intent.token, intent.jobId, desiredKey);
         check();
+        before = normalizeCompanyInvoiceOperationLookup(raw, desiredKey, {
+          companyId: intent.companyId,
+          jobId: intent.jobId,
+        });
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
         check();
-        if (record!.phase === "conflict") return result("conflict", record);
         if (isCompanyInvoiceOperationConflict(error))
           return await holdConflict();
         return result("temporarily_unavailable", record);
       }
-      // A newly prepared local pointer cannot claim a pre-existing operation,
-      // even when its recipient matches: c24 GET omits Customer and intent-kind.
       if (before.status === "temporarily_unavailable")
         return result("temporarily_unavailable", record);
       if (before.status !== "not_found") return await holdConflict();
       await persist(
         updateCompanyInvoiceOperationRecord(record!, { phase: "uncertain" }),
       );
-      check(); // The durable uncertain marker is committed BEFORE dispatch.
+      check(); // Original immutable evidence + dispatch marker durable BEFORE POST.
       let receipt;
       try {
         const raw = await api.send(
@@ -336,18 +319,16 @@ export function createCompanyInvoiceOperationController(
           companyInvoiceOperationBody(intent, desiredKey),
         );
         check();
+        if (isCompanyInvoiceOperationConflict(raw)) return await holdConflict();
         receipt = normalizeCompanyInvoiceOperationReceipt(raw, desiredKey);
       } catch (error) {
         if (error instanceof StaleInvoiceCallback) throw error;
         check();
         if (isCompanyInvoiceOperationConflict(error))
           return await holdConflict();
-        return result("uncertain", record); // No automatic resend or POST-as-status.
+        return result("uncertain", record);
       }
-      if (
-        record!.requestedRecipient !== null &&
-        receipt.recipientEmail !== record!.requestedRecipient
-      )
+      if (receipt.recipientEmail !== record!.originalEvidence!.recipientEmail)
         return await holdConflict();
       await persist(
         updateCompanyInvoiceOperationRecord(record!, {
@@ -357,11 +338,9 @@ export function createCompanyInvoiceOperationController(
           },
         }),
       );
-      // c24 repairs direct and unique-INSERT collisions. An acknowledgment still
-      // requires independent GET key, communication ID and recipient agreement.
       return await recoverRecord();
     } catch (error) {
-      if (error instanceof StaleInvoiceCallback) return result("stale", record);
+      if (error instanceof StaleInvoiceCallback) return result("stale");
       throw error;
     } finally {
       active.delete(actor);

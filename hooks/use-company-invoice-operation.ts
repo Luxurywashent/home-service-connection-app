@@ -81,7 +81,15 @@ export function useCompanyInvoiceOperation(input: {
       const detail = await getJobSyncCompanyJobDetail(captured.intent.token, captured.intent.jobId, captured.intent.companyId);
       if (!current(captured.intent)) return null;
       assertCompanyJobInvoiceJob(captured.intent, detail);
-      const next = await controller[mode](captured.context, current);
+      if (mode === "send" && (!Number.isSafeInteger(detail.customerId) || (detail.customerId ?? 0) <= 0)) {
+        throw new Error("The originating Company Customer could not be verified. Nothing was submitted.");
+      }
+      // Capture before journal/POST. GET-only recovery uses the journal's original
+      // Customer/recipient/kind, never the mutable current customer profile.
+      const operationContext = mode === "send" ? Object.freeze({ ...captured.context,
+        originalCustomerId: detail.customerId!,
+        ...(typeof detail.customerEmail === "string" ? { onFileRecipientEmail: detail.customerEmail } : {}) }) : captured.context;
+      const next = await controller[mode](operationContext, current);
       if (!current(captured.intent) || next.state === "stale") return null;
       setPublished({ scope, value: next });
       return next;

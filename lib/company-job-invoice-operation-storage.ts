@@ -5,8 +5,10 @@ import { z } from "zod";
 import {
   normalizeCompanyInvoiceOperationKey,
   normalizeCompanyInvoiceOperationLookup,
+  normalizeLegacyCompanyInvoiceOperationLookup,
   type CompanyInvoiceOperationLookup,
   type CompanyInvoiceOperationIntent,
+  type CompanyInvoiceOperationOriginalEvidence,
 } from "./company-job-invoice-operation";
 
 export type CompanyInvoiceOperationRecord = Readonly<{
@@ -19,6 +21,8 @@ export type CompanyInvoiceOperationRecord = Readonly<{
   operationKey: string;
   resend: boolean;
   requestedRecipient: string | null;
+  /** Optional for read-only legacy hold. New evidence is captured BEFORE first POST. */
+  originalEvidence?: CompanyInvoiceOperationOriginalEvidence;
   phase: "prepared" | "uncertain" | "verified" | "conflict";
   lookup: CompanyInvoiceOperationLookup | null;
   /** POST identity must agree with GET even if the response was reused. */
@@ -73,6 +77,14 @@ const schema = z
     operationKey: z.string(),
     resend: z.boolean(),
     requestedRecipient: z.string().email().max(320).nullable(),
+    originalEvidence: z
+      .object({
+        customerId: id,
+        recipientEmail: z.string().email().max(320),
+        intentKind: z.enum(["initial", "resend"]),
+      })
+      .strict()
+      .optional(),
     phase: z.enum(["prepared", "uncertain", "verified", "conflict"]),
     lookup: z.unknown(),
     receiptIdentity: z
@@ -96,10 +108,35 @@ export function copyCompanyInvoiceOperationRecord(
     data.requestedRecipient !== data.requestedRecipient.toLowerCase()
   )
     throw corrupt();
+  if (
+    data.originalEvidence &&
+    (data.originalEvidence.recipientEmail !==
+      data.originalEvidence.recipientEmail.toLowerCase() ||
+      data.originalEvidence.intentKind !==
+        (data.resend ? "resend" : "initial") ||
+      (data.requestedRecipient !== null &&
+        data.requestedRecipient !== data.originalEvidence.recipientEmail))
+  )
+    throw corrupt();
   const lookup =
     data.lookup === null
       ? null
-      : normalizeCompanyInvoiceOperationLookup(data.lookup, data.operationKey);
+      : data.lookup &&
+          typeof data.lookup === "object" &&
+          "companyId" in data.lookup
+        ? normalizeCompanyInvoiceOperationLookup(
+            data.lookup,
+            data.operationKey,
+            {
+              companyId: data.companyId,
+              jobId: data.jobId,
+              ...(data.originalEvidence ?? {}),
+            },
+          )
+        : normalizeLegacyCompanyInvoiceOperationLookup(
+            data.lookup,
+            data.operationKey,
+          );
   if (data.phase === "prepared" && (lookup || data.receiptIdentity))
     throw corrupt();
   if (
@@ -111,6 +148,9 @@ export function copyCompanyInvoiceOperationRecord(
   return Object.freeze({
     ...data,
     lookup,
+    ...(data.originalEvidence
+      ? { originalEvidence: Object.freeze({ ...data.originalEvidence }) }
+      : {}),
     receiptIdentity: data.receiptIdentity
       ? Object.freeze({ ...data.receiptIdentity })
       : null,
@@ -138,6 +178,9 @@ export function newCompanyInvoiceOperationRecord(
     operationKey,
     resend: intent.options.resend,
     requestedRecipient: intent.options.recipientEmail ?? null,
+    ...(intent.originalEvidence
+      ? { originalEvidence: intent.originalEvidence }
+      : {}),
     phase: "prepared",
     lookup: null,
     receiptIdentity: null,
@@ -195,6 +238,8 @@ function compatible(
   if (previous.operationKey !== next.operationKey) {
     if (
       previous.phase !== "verified" ||
+      !previous.originalEvidence ||
+      !next.originalEvidence ||
       !previous.lookup ||
       !["provider_accepted", "delivered", "failed"].includes(
         previous.lookup.status,
@@ -208,6 +253,8 @@ function compatible(
       previous.role !== next.role ||
       previous.resend !== next.resend ||
       previous.requestedRecipient !== next.requestedRecipient ||
+      JSON.stringify(previous.originalEvidence) !==
+        JSON.stringify(next.originalEvidence) ||
       next.phase === "prepared" ||
       (previous.phase === "conflict" && next.phase !== "conflict")
     )

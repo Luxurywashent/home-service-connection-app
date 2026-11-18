@@ -2,7 +2,7 @@ import type { CompanyJobScheduleMutation, CompanyJobScheduleWriter } from "./com
 import { z } from "zod";
 import { assertCompanyVerifiedContractRelease } from "./company-verified-contract-release";
 import { normalizeCompanyJobRecurrence, normalizeCompanyJobRecurrenceReceipt,
-  normalizeCompanyJobDurableRecurrenceReadback, type CompanyJobRecurrenceInput,
+  normalizeCompanyJobB29RecurrenceReadback, type CompanyJobRecurrenceInput,
   type CompanyJobRecurrenceReceipt } from "./company-job-recurrence";
 import { normalizeCompanyInvoiceOperationKey, normalizeCompanyInvoiceOperationLookup,
   normalizeCompanyInvoiceOperationReceipt, type CompanyInvoiceOperationBody } from "./company-job-invoice-operation";
@@ -538,6 +538,8 @@ export type JobSyncCompanyJobCreationOperation = {
   jobId: number | null;
   /** Optional authoritative metadata; Job detail remains the required readback. */
   customerId?: number;
+  /** Persisted b29 operation evidence; omission on older responses is not invented proof. */
+  payloadFingerprint?: string;
   rejectionCode: string | null;
   rejectionMessage: string | null;
   createdAt: string | null;
@@ -579,8 +581,10 @@ export async function getJobSyncCompanyJobCreationOperation(
   const operation = asRecord(payload?.operation);
   const invalid = () => new JobSyncApiError("Could not verify this Company's Job creation operation. Refresh before trying again.", null, "INVALID_RESPONSE");
   if (!payload || !hasOnlyCompanyOperationFields(payload, ["operation"]) || !operation
-    || !hasOnlyCompanyOperationFields(operation, ["key", "state", "jobId", "customerId", "rejectionCode", "rejectionMessage", "createdAt", "updatedAt"])
+    || !hasOnlyCompanyOperationFields(operation, ["key", "state", "jobId", "customerId", "payloadFingerprint", "rejectionCode", "rejectionMessage", "createdAt", "updatedAt"])
     || operation.key !== key || !["saved", "pending", "rejected", "unknown"].includes(operation.state as string)
+    || (Object.hasOwn(operation, "payloadFingerprint") && (operation.state === "unknown"
+      || typeof operation.payloadFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(operation.payloadFingerprint)))
     || (Object.hasOwn(operation, "customerId") && (operation.state !== "saved" || typeof operation.customerId !== "number" || positiveJobSyncId(operation.customerId) !== operation.customerId))
     || (operation.state === "saved"
       ? typeof operation.jobId !== "number" || !Number.isSafeInteger(operation.jobId) || operation.jobId <= 0
@@ -594,6 +598,7 @@ export async function getJobSyncCompanyJobCreationOperation(
   return {
     key, state: operation.state as JobSyncCompanyJobCreationOperation["state"], jobId: operation.jobId as number | null,
     ...(Object.hasOwn(operation, "customerId") ? { customerId: operation.customerId as number } : {}),
+    ...(Object.hasOwn(operation, "payloadFingerprint") ? { payloadFingerprint: operation.payloadFingerprint as string } : {}),
     rejectionCode: operation.rejectionCode as string | null | undefined ?? null,
     rejectionMessage: operation.rejectionMessage as string | null | undefined ?? null,
     createdAt: operation.createdAt as string | null | undefined ?? null,
@@ -724,7 +729,7 @@ export async function getJobSyncCompanyJobRecurrence(token: string, companyId: n
   requireJobSyncMutationToken(token); validCompanyJobId(jobId);
   if (typeof companyId !== "number" || positiveJobSyncId(companyId) !== companyId) throw new Error("A current Company session is required.");
   const raw = await requestJson(`${COMPANY_JOBS_PATH}/${jobId}/recurrence`, { method: "GET", headers: createJobSyncBearerHeaders(token) }, 200);
-  const recurrence = normalizeCompanyJobDurableRecurrenceReadback(raw, jobId);
+  const recurrence = normalizeCompanyJobB29RecurrenceReadback(raw, jobId);
   if (recurrence.companyId !== companyId) throw new JobSyncApiError("Recurring readback belongs to a different Company.", null, "INVALID_RESPONSE");
   return recurrence;
 }
@@ -750,7 +755,9 @@ export async function getJobSyncCompanyInvoiceOperation(token: string, jobId: nu
   requireJobSyncMutationToken(token); validCompanyJobId(jobId);
   const operationKey = normalizeCompanyInvoiceOperationKey(key);
   const raw = await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice-operation?operationKey=${encodeURIComponent(operationKey)}`, { method: "GET", headers: createJobSyncBearerHeaders(token) }, 200);
-  return normalizeCompanyInvoiceOperationLookup(raw, operationKey);
+  const operation = normalizeCompanyInvoiceOperationLookup(raw, operationKey);
+  if (operation.jobId !== jobId) throw new JobSyncApiError("Invoice readback belongs to a different Job.", null, "INVALID_RESPONSE");
+  return operation;
 }
 
 export type JobSyncCompanyJobScheduleInput = CompanyJobScheduleMutation;

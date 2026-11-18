@@ -5,14 +5,14 @@ import vm from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import { vi } from "vitest";
-export const c24BackendSha = "c24d4a1e5da9d937e68709a76ce2e2336c81b748";
-const backendRoot = "/home/ubuntu/hsc-mobile-c24-contract-alignment-20261117/backend-source-c24d4a1e";
+const backendRoot = "/home/ubuntu/hsc-mobile-b29-final-compatibility-20261117/backend-source-b29f99b5";
+// SOURCE-ONLY: every persisted row below is in memory, not live MySQL certification.
 export const sourceHashes = new Map<string,string>();
 export const extractedDeclarations: any[] = [];
 export const instances: any[] = [];
 export const responses: any[] = [];
 export const readBackend = (file: string) => { const absolute=path.join(backendRoot,file); const source=readFileSync(absolute,"utf8"); sourceHashes.set(absolute,createHash("sha256").update(source).digest("hex")); return source; };
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 type Sql = { execute: (sql: string, params?: unknown[]) => Promise<[Row[], unknown?]>; getConnection?: () => Promise<Sql & { beginTransaction: () => Promise<void>; commit: () => Promise<void>; rollback: () => Promise<void>; release: () => void }> };
 type Company = { companyId: number; userId: number; role: string; permissions: { canManageJobs: boolean }; timezone: string; name: string; memberId: string };
 type Slot = { date: string; scheduledStartAt: string; scheduledEndAt: string };
@@ -129,29 +129,33 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
     if (sql.includes("FROM fs_jobs WHERE company_id = ? AND recurrence_rule_id = ?")) return [state.jobs.filter(row => row.company_id === params[0] && row.recurrence_rule_id === params[1]).sort((a, b) => Number(a.recurrence_occurrence_number) - Number(b.recurrence_occurrence_number))];
     if (sql.includes("FROM fs_customers WHERE")) return [params[0] === 41 && params[1] === 9 && !options.missingCustomer ? [{ id: 41 }] : []];
     if (sql.includes("FROM fs_price_book WHERE company_id")) return [params[0] === 9 && !options.missingService ? [
-      { id: 71, name: "First", base_price: 100, default_duration_minutes: 60, is_taxable: 1 },
+      { id: 71, name: "First", base_price: 100, sedan_price: 120, default_duration_minutes: 60, is_taxable: 1 },
       { id: 72, name: "Second", base_price: 50, default_duration_minutes: 30, is_taxable: 0 },
     ].filter(row => params.slice(1).includes(row.id)) : []];
     if (sql.includes("FROM fs_price_book WHERE id")) return [params[1] === 9 && !options.missingService ? [{ id: params[0] }] : []];
     if (sql.includes("FROM fs_company_settings")) return [[{ default_tax_rate_bps: 500 }]];
-    if (sql.startsWith("INSERT INTO fs_jobs")) {
+    if (sql.startsWith("INSERT INTO fs_jobs") || sql.startsWith("INSERT INTO fs_service_recurrence_rules") || sql.startsWith("INSERT INTO fs_job_line_items")) {
+      const table = /INSERT INTO (\w+)/.exec(sql)![1];
       const columns = sql.slice(sql.indexOf("(") + 1, sql.indexOf(")")).split(",").map(value => value.trim());
-      const row: Row = { id: state.jobs.length + 501, updated_at: "2026-11-17T12:00:00.000Z" };
+      const tokens = /VALUES \((.*?)\)/.exec(sql)![1].split(",").map(value => value.trim());
+      if (tokens.length !== columns.length || tokens.filter(token => token === "?").length !== params.length) throw new Error("SQL insert column/parameter mismatch");
+      const target = table === "fs_jobs" ? state.jobs : table === "fs_service_recurrence_rules" ? state.rules : state.lineItems;
+      if (table === "fs_job_line_items") { lineCount += 1; if (lineCount === options.failLine) throw new Error("fake late service-line failure"); }
+      const row: Row = { id: (table === "fs_jobs" ? 501 : table === "fs_service_recurrence_rules" ? 301 : 601) + target.length, updated_at: "2026-11-17T12:00:00.000Z" };
+      if (table === "fs_service_recurrence_rules") Object.assign(row, { is_active: 1, cancelled_from_occurrence_number: null }); // DDL defaults only.
       let offset = 0;
-      for (const column of columns) row[column] = column === "status" ? "scheduled" : params[offset++];
-      state.jobs.push(row); return [{ insertId: row.id } as unknown as Row[]];
+      tokens.forEach((token, index) => {
+        if (token === "?") row[columns[index]] = params[offset++];
+        else if (token === "NULL") row[columns[index]] = null;
+        else if (/^'[^']*'$/.test(token)) row[columns[index]] = token.slice(1, -1);
+        else if (/^\d+$/.test(token)) row[columns[index]] = Number(token);
+        else throw new Error(`Unsupported SQL literal: ${token}`);
+      });
+      target.push(row); return [{ insertId: row.id } as unknown as Row[]];
     }
-    if (sql.startsWith("INSERT INTO fs_service_recurrence_rules")) {
-      const columns = sql.slice(sql.indexOf("(") + 1, sql.indexOf(")")).split(",").map(value => value.trim());
-      const row: Row = { id: 301, updated_at: "2026-11-17T12:00:00.000Z", is_active: 1, cancelled_from_occurrence_number: null };
-      let offset = 0;
-      for (const column of columns) row[column] = column === "job_id" ? null : params[offset++];
-      state.rules.push(row); return [{ insertId: 301 } as unknown as Row[]];
-    }
-    if (sql.startsWith("UPDATE fs_service_recurrence_rules")) { state.rules[0].job_id = params[0] as null; return [[]]; }
-    if (sql.startsWith("INSERT INTO fs_job_line_items")) {
-      lineCount += 1; if (lineCount === options.failLine) throw new Error("fake late service-line failure");
-      state.lineItems.push({ id: lineCount + 600, company_id: params[0], job_id: params[1], price_book_item_id: params[2], name: params[3], quantity: params[4], unit_price: params[5], total_price: params[6], sort_order: params[7] }); return [[]];
+    if (sql.startsWith("UPDATE fs_service_recurrence_rules SET job_id = ? WHERE id = ? AND company_id = ?")) {
+      const row = state.rules.find(row => row.id === params[1] && row.company_id === params[2]);
+      if (!row) throw new Error("Missing fake recurrence rule"); row.job_id = params[0]; return [[]];
     }
     if (sql.startsWith("INSERT INTO fs_job_events")) { state.events.push({ company_id: params[0], job_id: params[1] }); return [[]]; }
     if (sql.startsWith("INSERT INTO fs_job_assignments")) { state.assignments.push({ company_id: params[0], job_id: params[1], user_id: params[2] }); return [[]]; }
@@ -163,7 +167,9 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
     }
     if (sql.startsWith("SELECT price_book_item_id")) return [[{ price_book_item_id: 71 }]];
     if (sql.includes("FROM fs_job_line_items")) return [state.lineItems.filter(row => row.job_id === params[0] && row.company_id === params[1])];
-    if (sql.startsWith("SELECT")) return [[]];
+    // Explicit unrelated empty readbacks. No generic SELECT success fallback.
+    if (["FROM fs_job_events event", "FROM fs_job_events WHERE", "FROM fs_job_payments", "FROM fs_inventory_transactions", "FROM fs_job_photos", "FROM fs_job_site_inspections", "FROM fs_company_email_deliveries"].some(table => sql.includes(table))) return [[]];
+    if (sql.includes("FROM fs_jobs WHERE") && sql.includes("assigned_user_id")) return [[]];
     throw new Error(`Unhandled fake SQL (no real fallback): ${sql}`);
   });
   const connection = { execute, beginTransaction: vi.fn(async () => { snapshot = structuredClone(state); }), commit: vi.fn(async () => {}), rollback: vi.fn(async () => { state = structuredClone(snapshot); }), release: vi.fn() };
@@ -192,13 +198,6 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
     if (req.denied) throw Object.assign(new Error("Fake revoked bearer"), { status: 401 });
     return { claims: { accountId: 8, role: req.role ?? "owner" }, companyId: Number(req.companyId ?? 9), db };
   });
-  // Test-only pre-write capture. The production client cannot observe this
-  // server-transformed input and must not learn expected proof from a GET.
-  const creationInputs: Row[] = [];
-  const captureCreate = async (db: Sql, context: Company, input: Row) => {
-    creationInputs.push(structuredClone(input));
-    return service.createJobFromPriceBook(db, context, input);
-  };
   const routes = fromBackend<{
     mobileJobCreateSchema: z.ZodType;
     mobileJobQuoteSchema: z.ZodType;
@@ -209,9 +208,9 @@ export function fixture(options: { failLine?: number; availabilityConflictAt?: n
   }>("server/mobileOperations.ts", ["mobileErrorStatus", "mobileTrpcError", "operationalError", "mobileCompany", "requireManager", "mobileJobCreateSchema", "mobileJobQuoteSchema", "createJob", "quoteJob", "jobCreationOperation", "jobRecurrenceSeries", "persistedRecurrenceForCreate"], {
     z, ...errors, ...projection, requireMobileCompany: auth, companyContextFromMobile: company.companyContextFromMobile,
     managerRoles: new Set(["owner", "dispatcher"]), MobileAuthError: class extends Error { constructor(readonly status: number, message: string) { super(message); } },
-    getJobRecurrenceSeries: service.getJobRecurrenceSeries, ...dates, ...localTime, loadCompanyTimezone: company.loadCompanyTimezone, createJobFromPriceBook: captureCreate, getJobDetail: service.getJobDetail, ...recovery, ...quote,
+    getJobRecurrenceSeries: service.getJobRecurrenceSeries, ...dates, ...localTime, loadCompanyTimezone: company.loadCompanyTimezone, createJobFromPriceBook: service.createJobFromPriceBook, getJobDetail: service.getJobDetail, ...recovery, ...quote,
   });
-  const instance = { state: () => state, queries, db, connection, booking, availability, customer, member, service, routes, auth, creationInputs };
+  const instance = { state: () => state, queries, db, connection, booking, availability, customer, member, service, routes, auth };
   instances.push(instance);
   return instance;
 }

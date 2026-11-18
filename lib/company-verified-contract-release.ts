@@ -6,8 +6,8 @@
  * server response, recipient edit, or repeated tap activates this gate.
  */
 export const COMPANY_VERIFIED_CONTRACT_RELEASE = Object.freeze({
-  recurrenceBackendRevision: "c24d4a1e5da9d937e68709a76ce2e2336c81b748",
-  invoiceBackendRevision: "c24d4a1e5da9d937e68709a76ce2e2336c81b748",
+  recurrenceBackendRevision: "b29f99b5ea9581a1c5a62271cc5bd979f83df345",
+  invoiceBackendRevision: "b29f99b5ea9581a1c5a62271cc5bd979f83df345",
   recurrenceDeployed: false as boolean,
   recurrenceMigrationVerified: false as boolean,
   invoiceOperationsDeployed: false as boolean,

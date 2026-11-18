@@ -3,9 +3,9 @@ import {
   type CompanyJobInvoiceIntent,
 } from "./company-job-invoice-intent";
 
-/** Exact c24 source findings; not a deployed or production-enabled capability. */
+/** Exact b29 source/isolated-fixture findings; not a live advertised capability. */
 export const COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY = Object.freeze({
-  backendRevision: "c24d4a1e5da9d937e68709a76ce2e2336c81b748",
+  backendRevision: "b29f99b5ea9581a1c5a62271cc5bd979f83df345",
   wireOverrideSupported: true,
   stableInitialReservation: true,
   persistedRecipientAcknowledgment: true,
@@ -14,10 +14,14 @@ export const COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY = Object.freeze({
   clientOperationKeySupported: true,
   explicitResendReplaySafe: true,
   authenticatedInvoiceReadbackAvailable: true,
-  restartSafeUncertainOperationRecovery: false,
+  restartSafeUncertainOperationRecovery: true,
+  originalIntentReadbackAvailable: true,
+  recoveryRequiresImmutableOriginalEvidence: true,
+  legacyUnanchoredJournalsHeld: true,
+  smsRestartSafeRecovery: false,
   alternateRecipientSendingEnabled: false,
   reason:
-    "Alternate-recipient sending is unavailable: c24 source supports explicit email operation keys, persisted recipient/communication identity, and authenticated GET recovery, but deployment is not verified and GET omits immutable Customer and initial/resend intent proof. Unanchored or conflicting recovery stays held; never retry an uncertain POST or automatically create a resend key. SMS has no verified restart-safe operation recovery. Review communication history with a Company manager. Blank still uses the contact on file.",
+    "Alternate-recipient sending remains disabled pending separately authorized deployment and runtime verification. Pinned b29 source supports email operation keys and authenticated original Company/Job/Customer/recipient/initial-resend recovery only when the original intent was durably captured before POST. Legacy unanchored journals and unknown outcomes remain held, with no automatic resend. SMS has no verified restart-safe mobile recovery. Blank still uses the contact on file.",
 });
 
 /** Preserve existing on-file invoices; never silently discard an override. */

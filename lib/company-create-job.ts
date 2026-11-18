@@ -20,7 +20,8 @@ import {
 import { normalizeCompanyJobRecurrence, companyJobRecurrenceFirstDate,
   companyJobRecurrenceUnavailableMessage,
   type CompanyJobRecurrenceInput, type CompanyJobRecurrenceReceipt, type CompanyJobSavedSeries } from "./company-job-recurrence";
-import { normalizeCompanyJobDurableRecurrenceReadback, verifyCompanyJobDurableRecurrenceReadback } from "./company-job-recurrence";
+import { normalizeCompanyJobB29RecurrenceReadback, verifyCompanyJobB29RecurrenceReadback } from "./company-job-recurrence";
+import { captureCompanyJobB29OriginalIntent, companyJobB29IntentVersion } from "./company-job-recurrence-b29-intent";
 import { companyRecurrenceReleaseReady } from "./company-verified-contract-release";
 
 export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
@@ -157,7 +158,8 @@ function immutable(record: CompanyCreationRecord): CompanyCreationRecord {
   if (payload.lineItems) payload.lineItems = frozenLines(payload.lineItems);
   if (payload.discount) payload.discount = Object.freeze({ ...payload.discount });
   if (payload.recurrence) payload.recurrence = normalizeCompanyJobRecurrence(payload.recurrence);
-  return Object.freeze({ ...record, payload: Object.freeze(payload) });
+  return Object.freeze({ ...record, payload: Object.freeze(payload),
+    ...(record.recurrenceOriginalIntent ? { recurrenceOriginalIntent: Object.freeze({ ...record.recurrenceOriginalIntent }) } : {}) });
 }
 function frozenLines(lines: JobSyncCompanyJobLineInput[]): JobSyncCompanyJobLineInput[] {
   return Object.freeze(lines.map((line) => Object.freeze({ ...line }))) as JobSyncCompanyJobLineInput[];
@@ -290,6 +292,10 @@ export function createCompanyJobController(input: {
     }
     if (record.recurrenceRuleId !== undefined && (!positive(record.recurrenceRuleId)
       || !positive(record.jobId) || !record.payload.recurrence)) throw new Error(persistenceMessage);
+    if (record.recurrenceOriginalIntent !== undefined && (!record.payload.recurrence
+      || !exactNested(record.recurrenceOriginalIntent, { version: companyJobB29IntentVersion, payloadFingerprint: record.recurrenceOriginalIntent.payloadFingerprint })
+      || record.recurrenceOriginalIntent.version !== companyJobB29IntentVersion
+      || !/^[0-9a-f]{64}$/.test(record.recurrenceOriginalIntent.payloadFingerprint))) throw new Error(persistenceMessage);
     return immutable(record);
   };
   const hydrate = async () => {
@@ -355,11 +361,16 @@ export function createCompanyJobController(input: {
     if (!record?.jobId || !await fresh() || !current()) return false;
     if (record.payload.recurrence) {
       if (!recurrenceAvailable() || !api.operation) throw new Error(companyJobRecurrenceUnavailableMessage);
+      if (!record.recurrenceOriginalIntent) throw new Error("This legacy recurring request has no independently captured b29 original intent. Recovery remains locked; do not resend or adopt a GET fingerprint.");
+      const original = await captureCompanyJobB29OriginalIntent(record.companyId, record.operationKey, record.payload);
+      if (!current()) return false;
+      if (!exactNested(original, record.recurrenceOriginalIntent)) throw new Error("The protected original recurring intent changed. Recovery remains locked.");
       // A CREATE acknowledgment is not durable operation readback. Require the
       // origin Company's saved key/anchor GET even on the first successful POST.
       const operation = await api.operation(origin.token, record.companyId, record.operationKey);
       if (!current()) return false;
       if (operation.key !== record.operationKey || operation.state !== "saved" || operation.jobId !== record.jobId
+        || (operation as typeof operation & { payloadFingerprint?: string }).payloadFingerprint !== original.payloadFingerprint
         || (operation.customerId !== undefined && operation.customerId !== (record.resolvedCustomerId ?? record.payload.customerId))) throw new Error("The recurring operation identity could not be verified. The original request remains locked.");
       if (!await fresh() || !current()) return false;
     }
@@ -404,7 +415,7 @@ export function createCompanyJobController(input: {
     if (!await fresh() || !current()) return false;
     if (payload.recurrence) {
       if (!recurrenceAvailable()) throw new Error(companyJobRecurrenceUnavailableMessage);
-      const first = normalizeCompanyJobDurableRecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
+      const first = normalizeCompanyJobB29RecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
       if (!current()) return false;
       if (first.companyId !== record.companyId || first.customerId !== detail.customerId || first.recurrence.anchorJobId !== record.jobId) throw new Error("Recurring Company, customer or anchor identity did not match. The original request remains locked.");
       // Bind an observed rule ID durably, even when later authority is missing.
@@ -425,15 +436,14 @@ export function createCompanyJobController(input: {
           { ...detail.pricing, lineItems: detail.pricing.lineItems.map(({ id: _id, ...line }) => line) })) throw new Error("Recurring sibling pricing does not match the saved series. The original request remains locked.");
       }
       if (!await fresh() || !current()) return false;
-      const second = normalizeCompanyJobDurableRecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
+      const second = normalizeCompanyJobB29RecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
       if (!current()) return false;
       if (!exactNested(first, second)) throw new Error("The recurring snapshot changed during readback. The original request remains locked.");
-      // c24 covers persisted original date and sibling financials. The current
-      // storage still has no independently comparable server-input fingerprint;
-      // the GET hash must never be echoed into its own expected proof. This
-      // deliberately keeps real creation/recovery locked on that exact gap.
-      attempt.series = verifyCompanyJobDurableRecurrenceReadback(second, { companyId: record.companyId, customerId: detail.customerId,
+      // Candidate success applies only to this fully bound SQL fixture readback;
+      // production deployment/migration eligibility remains separately false.
+      attempt.series = verifyCompanyJobB29RecurrenceReadback(second, { companyId: record.companyId, customerId: detail.customerId,
         jobId: record.jobId, operationKey: record.operationKey, recurrence: payload.recurrence, timezone: record.timezone,
+        operationPayloadFingerprint: record.recurrenceOriginalIntent!.payloadFingerprint,
         scheduledStartAt: payload.scheduledStartAt, ruleId: attempt.record?.recurrenceRuleId, pricing: detail.pricing });
     }
     await ensureRecorded(attempt);
@@ -445,7 +455,8 @@ export function createCompanyJobController(input: {
     // Preserve the existing two-argument callback for all old single Jobs.
     const refreshed = attempt.series ? await input.onCreated(detail, settings.timezone, attempt.series) : await input.onCreated(detail, settings.timezone);
     if (!current() || refreshed === false || (attempt.series && refreshed !== true)) {
-      patch(attempt, { phase: "saved", jobId: record.jobId, message: savedMessage });
+      patch(attempt, { phase: "saved", jobId: record.jobId, message: savedMessage,
+        ...(attempt.series ? { savedSeries: attempt.series } : {}) });
       return false;
     }
     // Only a real awaited calendar callback success authorizes removal. A
@@ -480,6 +491,13 @@ export function createCompanyJobController(input: {
     if (operation.key !== record.operationKey || !["unknown", "pending", "saved", "rejected"].includes(operation.state)
       || (Object.hasOwn(operation, "customerId") && (operation.state !== "saved" || !positive(operation.customerId)))
       || (operation.state === "saved" ? !positive(operation.jobId) : operation.jobId !== null)) throw new Error("The Company creation status could not be verified. The original request remains locked.");
+    if (record.payload.recurrence && operation.state === "rejected") {
+      const original = record.recurrenceOriginalIntent;
+      if (!original || (operation as typeof operation & { payloadFingerprint?: string }).payloadFingerprint !== original.payloadFingerprint
+        || !exactNested(original, await captureCompanyJobB29OriginalIntent(record.companyId, record.operationKey, record.payload))) {
+        throw new Error("An unbound recurrence rejection cannot unlock the original request. Do not resend or adopt a GET fingerprint.");
+      }
+    }
     // A delayed status GET may outlive bearer revocation. Keep settlement to the
     // origin mandatory, but suppress metadata publication until a new signed
     // check below; callbacks always perform their own fresh authentication.
@@ -661,6 +679,12 @@ export function createCompanyJobController(input: {
       const now = new Date().toISOString();
       attempt.record = immutable({ version: 1, companyId: origin.company!.id, userId: origin.user.id, operationKey,
         payload, timezone: settings.timezone, phase: "prepared", jobId: null, createdAt: now, updatedAt: now });
+      if (payload.recurrence) {
+        // Capture before reservation/POST; failed hashing cannot produce a write.
+        const recurrenceOriginalIntent = await captureCompanyJobB29OriginalIntent(origin.company!.id, operationKey, attempt.record.payload);
+        attempt.record = immutable({ ...attempt.record, recurrenceOriginalIntent });
+        if (!current()) return false;
+      }
       if (previous) {
         previous.dirty = true;
         if (!await store.remove(origin.company!.id, origin.user.id, previous.record!.operationKey)) throw new Error(persistenceMessage);

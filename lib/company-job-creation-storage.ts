@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import { normalizeCompanyJobNewCustomer, normalizeCompanyJobLineItems, normalizeCompanyJobDiscount,
   type JobSyncCompanyJobCreateInput, type JobSyncCompanyJobCustomerSelector } from "./jobsync-mobile-api";
 import { normalizeCompanyJobRecurrence, type CompanyJobRecurrenceInput } from "./company-job-recurrence";
+import { companyJobB29IntentVersion, type CompanyJobB29OriginalIntent } from "./company-job-recurrence-b29-intent";
 
 export type CompanyCreationPayload = JobSyncCompanyJobCreateInput & { recurrence?: CompanyJobRecurrenceInput };
 
@@ -20,6 +21,9 @@ export type CompanyCreationRecord = {
   resolvedCustomerId?: number;
   /** First verified rule identity cannot change during GET-only recovery. */
   recurrenceRuleId?: number;
+  /** Captured BEFORE POST, never adopted from GET. Absent old v1 recurrence
+   * records remain readable but permanently unproven by the b29 candidate. */
+  recurrenceOriginalIntent?: CompanyJobB29OriginalIntent;
   rejectionCode?: string | null;
   rejectionMessage?: string | null;
   createdAt: string;
@@ -167,7 +171,7 @@ function canonicalNested(source: unknown, canonical: unknown): boolean {
 }
 function recordCopy(value: unknown, companyId?: number, userId?: number): CompanyCreationRecord {
   shape(value, ["version", "companyId", "userId", "operationKey", "payload", "timezone", "phase", "jobId", "createdAt", "updatedAt"],
-    ["rejectionCode", "rejectionMessage", "resolvedCustomerId", "recurrenceRuleId"]);
+    ["rejectionCode", "rejectionMessage", "resolvedCustomerId", "recurrenceRuleId", "recurrenceOriginalIntent"]);
   if (value.version !== 1 || !positive(value.companyId) || !positive(value.userId)
     || (companyId !== undefined && value.companyId !== companyId) || (userId !== undefined && value.userId !== userId)
     || !operation(value.operationKey) || typeof value.timezone !== "string" || !value.timezone.trim()
@@ -191,6 +195,13 @@ function recordCopy(value: unknown, companyId?: number, userId?: number): Compan
     if (!positive(value.recurrenceRuleId) || !positive(value.jobId) || !result.payload.recurrence) throw corrupt();
     result.recurrenceRuleId = value.recurrenceRuleId;
   }
+  if (Object.hasOwn(value, "recurrenceOriginalIntent")) {
+    const intent = value.recurrenceOriginalIntent;
+    shape(intent, ["version", "payloadFingerprint"]);
+    if (!result.payload.recurrence || intent.version !== companyJobB29IntentVersion
+      || typeof intent.payloadFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(intent.payloadFingerprint)) throw corrupt();
+    result.recurrenceOriginalIntent = Object.freeze({ version: companyJobB29IntentVersion, payloadFingerprint: intent.payloadFingerprint });
+  }
   for (const [key, limit] of [["rejectionCode", 128], ["rejectionMessage", 4000]] as const) {
     const field = value[key];
     if (field === undefined) continue;
@@ -210,6 +221,7 @@ function parse(value: string): unknown {
 function compatible(previous: CompanyCreationRecord, next: CompanyCreationRecord) {
   if (previous.createdAt !== next.createdAt || previous.timezone !== next.timezone
     || ascii(previous.payload) !== ascii(next.payload) || Date.parse(next.updatedAt) < Date.parse(previous.updatedAt)
+    || JSON.stringify(previous.recurrenceOriginalIntent) !== JSON.stringify(next.recurrenceOriginalIntent)
     || (previous.resolvedCustomerId !== undefined && next.resolvedCustomerId !== previous.resolvedCustomerId)
     || (previous.recurrenceRuleId !== undefined && next.recurrenceRuleId !== previous.recurrenceRuleId)
     || (previous.jobId !== null && (next.jobId !== previous.jobId || !["saved", "conflict"].includes(next.phase)))
