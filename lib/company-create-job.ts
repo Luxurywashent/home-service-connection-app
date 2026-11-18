@@ -1,7 +1,7 @@
 import {
   createJobSyncCompanyJob, getJobSyncCompanyJobDetail, getJobSyncCompanyJobs,
   getJobSyncCompanyCustomer, getJobSyncCompanySettings, getJobSyncMobileSession,
-  getHomeServiceConnectedPriceBook, getJobSyncCompanyJobCreationOperation,
+  getHomeServiceConnectedPriceBook, getJobSyncCompanyJobCreationOperation, getJobSyncCompanyJobRecurrence,
   normalizeCompanyJobNewCustomer, normalizeCompanyJobLineItems, normalizeCompanyJobDiscount, quoteJobSyncCompanyJob,
   normalizeCompanyJobQuote,
   type JobSyncCompanyJobLineInput, type JobSyncCompanyJobDiscountInput, type JobSyncCompanyJobQuoteInput,
@@ -20,6 +20,8 @@ import {
 import { normalizeCompanyJobRecurrence, companyJobRecurrenceFirstDate,
   companyJobRecurrenceUnavailableMessage,
   type CompanyJobRecurrenceInput, type CompanyJobRecurrenceReceipt, type CompanyJobSavedSeries } from "./company-job-recurrence";
+import { normalizeCompanyJobDurableRecurrenceReadback, verifyCompanyJobDurableRecurrenceReadback } from "./company-job-recurrence";
+import { companyRecurrenceReleaseReady } from "./company-verified-contract-release";
 
 export type CompanyCreateJobDraft = JobSyncCompanyJobCustomerSelector & {
   serviceId?: string;
@@ -67,12 +69,18 @@ export type CompanyCreateJobTransport = {
    * 0fbd raw GET lacks durable original-intent/timezone/anchor/snapshot proof;
    * a request-populated semantic projection cannot enable Save or recovery unlock. */
   series?: (token: string, companyId: number, jobId: number, operationKey: string) => Promise<CompanyJobSavedSeries>;
+  /** Exact UNWRAPPED final-archive GET JSON. No request/CREATE enrichment. */
+  recurrenceReadback?: (token: string, companyId: number, jobId: number) => Promise<unknown>;
+  /** Source-only integration host, never production eligibility. Requires an
+   * explicit controller transport AND store; cannot activate default transport. */
+  recurrenceEnvironment?: "isolated-fixture";
 };
 const transport: CompanyCreateJobTransport = {
   session: getJobSyncMobileSession, settings: (token) => getJobSyncCompanySettings(token, { requireTimezone: true }),
   priceBook: getHomeServiceConnectedPriceBook, customer: getJobSyncCompanyCustomer,
   create: createJobSyncCompanyJob, detail: getJobSyncCompanyJobDetail, jobs: getJobSyncCompanyJobs,
   operation: getJobSyncCompanyJobCreationOperation, quote: quoteJobSyncCompanyJob,
+  recurrenceReadback: getJobSyncCompanyJobRecurrence,
 };
 const ready = (): CompanyCreateJobState => ({ phase: "ready", message: null, jobId: null });
 const restoring = (): CompanyCreateJobState => ({ phase: "restoring", message: "Restoring this Company's previous Job request…", jobId: null });
@@ -215,6 +223,8 @@ export function createCompanyJobController(input: {
   // Even injected transports use secure production storage unless explicitly replaced.
   const store = input.store ?? companyCreationStore;
   const newKey = input.newOperationKey ?? newCompanyCreationOperationKey;
+  const isolatedRecurrence = Boolean(input.transport && input.store && api.recurrenceEnvironment === "isolated-fixture" && api.recurrenceReadback);
+  const recurrenceAvailable = () => Boolean(api.recurrenceReadback && (isolatedRecurrence || companyRecurrenceReleaseReady()));
   const origin = structuredSession(input.session);
   const scope = companyCreateJobScope(origin);
   const key = companyCreateJobAllowed(origin) ? actorKey(origin) : "denied";
@@ -343,6 +353,16 @@ export function createCompanyJobController(input: {
   const recoverDetail = async (attempt: Attempt) => {
     const record = attempt.record;
     if (!record?.jobId || !await fresh() || !current()) return false;
+    if (record.payload.recurrence) {
+      if (!recurrenceAvailable() || !api.operation) throw new Error(companyJobRecurrenceUnavailableMessage);
+      // A CREATE acknowledgment is not durable operation readback. Require the
+      // origin Company's saved key/anchor GET even on the first successful POST.
+      const operation = await api.operation(origin.token, record.companyId, record.operationKey);
+      if (!current()) return false;
+      if (operation.key !== record.operationKey || operation.state !== "saved" || operation.jobId !== record.jobId
+        || (operation.customerId !== undefined && operation.customerId !== (record.resolvedCustomerId ?? record.payload.customerId))) throw new Error("The recurring operation identity could not be verified. The original request remains locked.");
+      if (!await fresh() || !current()) return false;
+    }
     const detail = await api.detail(origin.token, record.jobId, origin.company!.id);
     if (!current()) return false;
     const payload = record.payload;
@@ -383,10 +403,36 @@ export function createCompanyJobController(input: {
     // Re-authenticate after the reads and before invoking the real calendar loader.
     if (!await fresh() || !current()) return false;
     if (payload.recurrence) {
-      // Preserve the known saved Job/key and all secure recovery locks. The raw
-      // 0fbd GET is useful for inspection, but a semantic adapter copying intent
-      // or current settings into it is not durable proof and must not clear it.
-      throw new Error(companyJobRecurrenceUnavailableMessage);
+      if (!recurrenceAvailable()) throw new Error(companyJobRecurrenceUnavailableMessage);
+      const first = normalizeCompanyJobDurableRecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
+      if (!current()) return false;
+      if (first.companyId !== record.companyId || first.customerId !== detail.customerId || first.recurrence.anchorJobId !== record.jobId) throw new Error("Recurring Company, customer or anchor identity did not match. The original request remains locked.");
+      // Bind an observed rule ID durably, even when later authority is missing.
+      // A later GET must never swap the rule under this original operation.
+      if (record.recurrenceRuleId !== undefined && first.recurrence.ruleId !== record.recurrenceRuleId) throw new Error("The recurring rule identity changed. The original request remains locked.");
+      if (record.recurrenceRuleId === undefined) await settleRecord(attempt, { recurrenceRuleId: first.recurrence.ruleId });
+      if (!detail.pricing) throw new Error("Saved recurring pricing is unavailable. The original request remains locked.");
+      for (const occurrence of first.occurrences) {
+        if (!await fresh() || !current()) return false;
+        const sibling = occurrence.jobId === detail.id ? detail : await api.detail(origin.token, occurrence.jobId, origin.company!.id);
+        if (!current()) return false;
+        if (sibling.id !== occurrence.jobId || sibling.companyId !== record.companyId || sibling.customerId !== detail.customerId
+          || sibling.assignedUserId !== (payload.assignedUserId ?? null) || sibling.status !== occurrence.status
+          || !instantEqual(sibling.scheduledStartAt, occurrence.scheduledStartAt) || !instantEqual(sibling.scheduledEndAt, occurrence.scheduledEndAt)
+          || !instantEqual(sibling.updatedAt, occurrence.updatedAt) || sibling.amount !== detail.amount) throw new Error("A recurring sibling identity, schedule or pricing changed. The original request remains locked.");
+        verifyPricing(sibling.pricing, payload, sibling.amount);
+        if (!sibling.pricing || !exactNested({ ...sibling.pricing, lineItems: sibling.pricing.lineItems.map(({ id: _id, ...line }) => line) },
+          { ...detail.pricing, lineItems: detail.pricing.lineItems.map(({ id: _id, ...line }) => line) })) throw new Error("Recurring sibling pricing does not match the saved series. The original request remains locked.");
+      }
+      if (!await fresh() || !current()) return false;
+      const second = normalizeCompanyJobDurableRecurrenceReadback(await api.recurrenceReadback!(origin.token, origin.company!.id, record.jobId), record.jobId);
+      if (!current()) return false;
+      if (!exactNested(first, second)) throw new Error("The recurring snapshot changed during readback. The original request remains locked.");
+      // This exact candidate lacks original startDate/payload binding and a
+      // snapshot covering sibling pricing. It deliberately cannot return success.
+      verifyCompanyJobDurableRecurrenceReadback(second, { companyId: record.companyId, customerId: detail.customerId,
+        jobId: record.jobId, operationKey: record.operationKey, recurrence: payload.recurrence, timezone: record.timezone,
+        scheduledStartAt: payload.scheduledStartAt, ruleId: attempt.record?.recurrenceRuleId, pricing: detail.pricing });
     }
     await ensureRecorded(attempt);
     if (!current()) return false;
@@ -418,6 +464,8 @@ export function createCompanyJobController(input: {
     await ensureRecorded(attempt);
     const record = attempt.record!;
     if (!current()) return false;
+    // New contract-dependent recovery must not reach the current live API.
+    if (record.payload.recurrence && !recurrenceAvailable()) throw new Error(companyJobRecurrenceUnavailableMessage);
     if (!api.operation) {
       if (record.jobId) return recoverDetail(attempt);
       // Backward injected transport is GET-only as well; empty lists are never
@@ -512,10 +560,9 @@ export function createCompanyJobController(input: {
       if (Object.hasOwn(draft, "recurrence")) {
         snapshot.recurrence = normalizeCompanyJobRecurrence(draft.recurrence);
         if (snapshot.recurrence.startDate !== draft.date) throw new Error("The recurrence start date must match the Company date.");
-        // The exact 0fbd CREATE fixes pass, but no collaborator can fill omitted
-        // durable GET proof from this request. Block before hydration/key/storage
-        // reservation/quote/POST, including for injected semantic transports.
-        throw new Error(companyJobRecurrenceUnavailableMessage);
+        // A legacy semantic series echo is not authority. Only a deliberately
+        // isolated host or a separately verified release may run this source path.
+        if (!recurrenceAvailable()) throw new Error(companyJobRecurrenceUnavailableMessage);
       }
       captured = Object.freeze(snapshot) as CompanyCreateJobDraft;
     } catch (error) {
@@ -534,7 +581,7 @@ export function createCompanyJobController(input: {
     notify(key);
     let reservationStarted = false;
     try {
-      const quotedFlow = captured.lineItems !== undefined || captured.discount !== undefined;
+      const quotedFlow = captured.lineItems !== undefined || captured.discount !== undefined || captured.recurrence !== undefined;
       if ((captured.customerId !== undefined && !positive(captured.customerId))
         || (!captured.lineItems && (typeof captured.serviceId !== "string" || !/^\d+$/.test(captured.serviceId) || !positive(Number(captured.serviceId))))) throw new Error("Choose a Company customer and active Price Book service.");
       if (captured.lineItems && captured.serviceId !== undefined && (typeof captured.serviceId !== "string"
@@ -566,6 +613,9 @@ export function createCompanyJobController(input: {
       const firstDate = captured.recurrence ? companyJobRecurrenceFirstDate(captured.recurrence) : captured.date;
       const scheduledStartAt = companyCreateJobInstant(firstDate, captured.startHour, settings.timezone);
       const scheduledEndAt = captured.endHour === undefined ? undefined : companyCreateJobInstant(firstDate, captured.endHour, settings.timezone);
+      // Preserve legacy manual one-time ends. Recurrence duration is always
+      // server-priced: do not turn a UI-selected end into series authority.
+      if (captured.recurrence && scheduledEndAt !== undefined) throw new Error("Use Auto duration for recurring appointments; the server prices their service duration. Nothing was submitted.");
       if (captured.startHour === 24 || (scheduledEndAt && Date.parse(scheduledEndAt) <= Date.parse(scheduledStartAt))) throw new Error("The scheduled end must be after the start time.");
       let assignedUserId: number | undefined;
       if (captured.assignedEmployeeId) {
@@ -630,6 +680,7 @@ export function createCompanyJobController(input: {
         patch(attempt, { phase: "uncertain", message: uncertainMessage, jobId: null });
         return false;
       }
+      if (payload.recurrence && !recurrenceAvailable()) throw new Error(companyJobRecurrenceUnavailableMessage);
       const request = Object.freeze({ ...attempt.record.payload, operationKey: attempt.record.operationKey });
       const ack = await api.create(origin.token, origin.company!.id, request);
       if (!positive(ack.id) || ack.companyId !== origin.company!.id || !positive(ack.customerId)

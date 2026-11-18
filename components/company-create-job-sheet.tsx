@@ -1,3 +1,4 @@
+import { companyRecurrenceReleaseReady } from "@/lib/company-verified-contract-release";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -260,7 +261,7 @@ function CompanyCreateJobForm(props: CompanyCreateJobSheetProps & { session: Job
   // 0fbd passes isolated CREATE timezone/Auto End/availability requirements.
   // Raw saved-series GET still lacks durable original-intent/timezone/anchor and
   // shared snapshot proof. No request-derived projection may enable Save.
-  const canSave = !recurrence && !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
+  const canSave = (!recurrence || companyRecurrenceReleaseReady()) && !locked && !loading && !loadError && customerReady && Boolean(timezone && linesReady && jobQuote.quote)
     && priceBook.hasLoaded && !priceBook.isLoading && !priceBook.error && !discountError
     && Number.isFinite(parseTime(start)) && (!end.trim() || Number.isFinite(parseTime(end)))
     && (!assignee || (!candidates.loading && !candidates.error && candidates.members.some((row) => row.employeeId === assignee)));

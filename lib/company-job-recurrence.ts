@@ -8,7 +8,7 @@ export type CompanyJobRecurrenceInput = {
   ordinal?: 1 | 2 | 3 | 4 | -1;
   startDate: string;
 };
-export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: Company timezone and full server-duration availability now pass the isolated 0fbd gate, but canonical saved-series GET does not expose the persisted creation timezone, rule-to-first-Job anchor, or original start-date/term and operation-payload binding. Separate GETs have no shared snapshot/version, so completeness and concurrent edits cannot be safely verified. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
+export const companyJobRecurrenceUnavailableMessage = "Recurring saving is unavailable: the backend is not deployed and the recurrence migration is not verified. The actual mobile creation path also omits recurrence provenance; canonical GET cannot prove the original start date / operation payload or snapshot-bound sibling pricing. Nothing will be submitted. Choose One appointment only if you intend to save a single Job.";
 const invalid = () => new Error("Choose a valid recurrence, term, Company start date, weekday and monthly occurrence.");
 function plain(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value)
@@ -195,4 +195,137 @@ export function verifyCompanyJobSavedSeries(value: unknown, expected: {
     || (expected.scheduledEndAt !== undefined && Date.parse(receipt.occurrences[0].scheduledEndAt) !== Date.parse(expected.scheduledEndAt))) throw new Error("Saved series schedule or rule identity changed. Recovery remains locked.");
   return Object.freeze({ ...receipt, companyId: expected.companyId, customerId: expected.customerId,
     jobId: expected.jobId, operationKey: expected.operationKey, recurrence });
+}
+
+/** Exact unwrapped getJobRecurrenceSeries DTO in b8fe61b1 / final 164b0673.
+ * Nullable provenance stays null. Never substitute CREATE/request/settings data. */
+export type CompanyJobDurableRecurrenceReadback = {
+  readonly companyId: number;
+  readonly customerId: number;
+  readonly jobId: number;
+  readonly recurrence: NonNullable<CompanyJobRecurrenceReadback["recurrence"]> & {
+    readonly operationKey: string | null;
+    readonly requestedTerm: CompanyJobRecurrenceInput["term"] | null;
+    readonly creationTimezone: string | null;
+    readonly anchorJobId: number | null;
+    readonly updatedAt: string | null;
+  };
+  readonly pricing: { readonly subtotal: number; readonly discount: number; readonly total: number; readonly durationMinutes: number | null };
+  readonly verification: {
+    readonly complete: boolean;
+    readonly expectedOccurrenceCount: number;
+    readonly actualOccurrenceCount: number;
+    readonly missingOccurrenceNumbers: readonly number[];
+    readonly consistentSnapshot: boolean;
+    readonly ruleUpdatedAt: string | null;
+    readonly occurrenceUpdatedAt: string | null;
+  };
+  readonly occurrences: readonly (CompanyJobRecurrenceReadback["occurrences"][number] & { readonly customerId: number | null })[];
+};
+const durableFailure = () => new Error("The canonical recurring series is incomplete or mismatched. The original request remains locked; do not resend.");
+const nonnegative = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+const timestamp = (value: unknown) => value === null || instant(value);
+/** Only exact recurring JSON is accepted. A null recurrence (single Job) cannot
+ * become series evidence. The older raw normalizer remains unchanged for callers. */
+export function normalizeCompanyJobDurableRecurrenceReadback(value: unknown, requestedJobId: number): CompanyJobDurableRecurrenceReadback {
+  if (!exactReadbackFields(value, ["companyId", "customerId", "jobId", "recurrence", "pricing", "verification", "occurrences"])
+    || !positive(value.companyId) || !positive(value.customerId) || value.jobId !== requestedJobId || !positive(requestedJobId)
+    || !exactReadbackFields(value.recurrence, ["ruleId", "operationKey", "requestedTerm", "creationTimezone", "anchorJobId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber", "updatedAt"])
+    || !dense(value.occurrences) || !value.occurrences.length) throw durableFailure();
+  const rule = value.recurrence;
+  if ((rule.operationKey !== null && (typeof rule.operationKey !== "string" || rule.operationKey !== rule.operationKey.trim() || rule.operationKey.length < 8 || rule.operationKey.length > 128 || /[\u0000-\u001f\u007f]/.test(rule.operationKey)))
+    || (rule.requestedTerm !== null && !companyJobRecurrenceTerms.includes(rule.requestedTerm as CompanyJobRecurrenceInput["term"]))
+    || (rule.anchorJobId !== null && !positive(rule.anchorJobId)) || !timestamp(rule.updatedAt)
+    || (rule.creationTimezone !== null && (typeof rule.creationTimezone !== "string" || !rule.creationTimezone.trim() || rule.creationTimezone !== rule.creationTimezone.trim()))) throw durableFailure();
+  if (rule.creationTimezone !== null) {
+    try { new Intl.DateTimeFormat("en-US", { timeZone: rule.creationTimezone as string }); } catch { throw durableFailure(); }
+  }
+  const baseRule = Object.fromEntries(["ruleId", "cadence", "weekday", "ordinalWeek", "dayOfMonth", "startsOn", "endsOn", "startTime", "durationMinutes", "isActive", "cancelledFromOccurrenceNumber"].map(field => [field, rule[field]]));
+  const baseRows = value.occurrences.map(raw => {
+    if (!exactReadbackFields(raw, ["jobId", "customerId", "occurrenceNumber", "occurrenceKey", "status", "scheduledStartAt", "scheduledEndAt", "updatedAt"])
+      || (raw.customerId !== null && !positive(raw.customerId))) throw durableFailure();
+    return Object.fromEntries(["jobId", "occurrenceNumber", "occurrenceKey", "status", "scheduledStartAt", "scheduledEndAt", "updatedAt"].map(field => [field, raw[field]]));
+  });
+  // Validate the shared raw rule/occurrence fields without altering their values.
+  const base = normalizeCompanyJobRecurrenceReadback({ jobId: requestedJobId, recurrence: baseRule, occurrences: baseRows }, requestedJobId);
+  const pricing = value.pricing, verification = value.verification;
+  if (!exactReadbackFields(pricing, ["subtotal", "discount", "total", "durationMinutes"])
+    || ![pricing.subtotal, pricing.discount, pricing.total].every(nonnegative)
+    || (pricing.durationMinutes !== null && !positive(pricing.durationMinutes))
+    || !exactReadbackFields(verification, ["complete", "expectedOccurrenceCount", "actualOccurrenceCount", "missingOccurrenceNumbers", "consistentSnapshot", "ruleUpdatedAt", "occurrenceUpdatedAt"])
+    || typeof verification.complete !== "boolean" || typeof verification.consistentSnapshot !== "boolean"
+    || !nullableInteger(verification.expectedOccurrenceCount, 0, Number.MAX_SAFE_INTEGER) || verification.expectedOccurrenceCount === null
+    || verification.actualOccurrenceCount !== value.occurrences.length || !dense(verification.missingOccurrenceNumbers)
+    || !verification.missingOccurrenceNumbers.every(item => nullableInteger(item, 0, Number.MAX_SAFE_INTEGER) && item !== null)
+    || !timestamp(verification.ruleUpdatedAt) || !timestamp(verification.occurrenceUpdatedAt)) throw durableFailure();
+  return Object.freeze({ companyId: value.companyId, customerId: value.customerId, jobId: requestedJobId,
+    recurrence: Object.freeze({ ...base.recurrence!, operationKey: rule.operationKey as string | null,
+      requestedTerm: rule.requestedTerm as CompanyJobRecurrenceInput["term"] | null, creationTimezone: rule.creationTimezone as string | null,
+      anchorJobId: rule.anchorJobId as number | null, updatedAt: rule.updatedAt as string | null }),
+    pricing: Object.freeze({ ...pricing }) as CompanyJobDurableRecurrenceReadback["pricing"],
+    verification: Object.freeze({ ...verification, missingOccurrenceNumbers: Object.freeze([...verification.missingOccurrenceNumbers]) }) as CompanyJobDurableRecurrenceReadback["verification"],
+    occurrences: Object.freeze(base.occurrences.map((row, index) => Object.freeze({ ...row,
+      customerId: (value.occurrences as Record<string, unknown>[])[index].customerId as number | null }))) });
+}
+export type CompanyJobDurableRecurrenceExpected = {
+  companyId: number; customerId: number; jobId: number; operationKey: string;
+  recurrence: CompanyJobRecurrenceInput; timezone: string; scheduledStartAt: string;
+  ruleId?: number;
+  pricing: { subtotalAmount: number; discountAmount: number; totalAmount: number };
+};
+/** Verify every available source fact before diagnosing missing authority. This
+ * candidate CANNOT certify original requested startDate or snapshot-bound sibling
+ * pricing. Its operation GET omits the payload fingerprint; startsOn collapses
+ * distinct original start dates. There is deliberately no request-filled success. */
+export function verifyCompanyJobDurableRecurrenceReadback(value: CompanyJobDurableRecurrenceReadback, expected: CompanyJobDurableRecurrenceExpected): never {
+  const request = normalizeCompanyJobRecurrence(expected.recurrence), rule = value.recurrence, proof = value.verification;
+  const cadence = request.type === "monthly_date" ? "monthly_day" : request.type === "monthly_ordinal" ? "monthly_weekday" : request.type;
+  if (value.companyId !== expected.companyId || value.customerId !== expected.customerId || value.jobId !== expected.jobId
+    || rule.anchorJobId !== expected.jobId || rule.operationKey !== expected.operationKey || rule.requestedTerm !== request.term
+    || rule.creationTimezone !== expected.timezone || (expected.ruleId !== undefined && rule.ruleId !== expected.ruleId)
+    || rule.cadence !== cadence || rule.startsOn !== companyJobRecurrenceFirstDate(request)
+    || rule.weekday !== (request.dayOfWeek ?? null) || rule.ordinalWeek !== (request.ordinal === -1 ? 5 : request.ordinal ?? null)
+    || rule.dayOfMonth !== (request.type === "monthly_date" ? dateOnly(request.startDate).getUTCDate() : null)
+    || !rule.isActive || rule.cancelledFromOccurrenceNumber !== null || !proof.complete || !proof.consistentSnapshot
+    || !positive(proof.expectedOccurrenceCount) || proof.expectedOccurrenceCount !== proof.actualOccurrenceCount
+    || proof.actualOccurrenceCount !== value.occurrences.length || proof.missingOccurrenceNumbers.length
+    || rule.updatedAt === null || rule.updatedAt !== proof.ruleUpdatedAt || proof.occurrenceUpdatedAt === null
+    || value.pricing.subtotal !== expected.pricing.subtotalAmount || value.pricing.discount !== expected.pricing.discountAmount
+    || value.pricing.total !== expected.pricing.totalAmount || value.pricing.durationMinutes !== rule.durationMinutes) throw durableFailure();
+  const first = value.occurrences[0];
+  if (first.jobId !== expected.jobId || first.scheduledStartAt === null || Date.parse(first.scheduledStartAt) !== Date.parse(expected.scheduledStartAt)
+    || (request.term === "never_ends" && (rule.endsOn !== null || proof.expectedOccurrenceCount !== 13))) throw durableFailure();
+  if (request.term !== "never_ends") {
+    const start = dateOnly(rule.startsOn), months = { "1_month": 1, "3_months": 3, "6_months": 6, "1_year": 12 }[request.term];
+    const last = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months + 1, 0));
+    last.setUTCDate(Math.min(start.getUTCDate(), last.getUTCDate()));
+    if (rule.endsOn !== last.toISOString().slice(0, 10)) throw durableFailure();
+  }
+  const wall = new Intl.DateTimeFormat("en-US", { timeZone: expected.timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  let latest = "";
+  for (let index = 0; index < value.occurrences.length; index++) {
+    const row = value.occurrences[index];
+    if (row.occurrenceNumber !== index || row.customerId !== expected.customerId || row.status !== "scheduled" || row.updatedAt === null
+      || row.scheduledStartAt === null || row.scheduledEndAt === null
+      || Date.parse(row.scheduledEndAt) - Date.parse(row.scheduledStartAt) !== rule.durationMinutes * 60_000
+      || (index > 0 && Date.parse(row.scheduledStartAt) <= Date.parse(value.occurrences[index - 1].scheduledStartAt!))) throw durableFailure();
+    const parts = wall.formatToParts(new Date(row.scheduledStartAt));
+    const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    if (`${read("hour")}:${read("minute")}` !== rule.startTime) throw durableFailure();
+    latest = row.updatedAt > latest ? row.updatedAt : latest;
+  }
+  if (latest !== proof.occurrenceUpdatedAt) throw durableFailure();
+  throw new Error("The backend does not persist or expose the original recurrence startDate / operation payload binding, and its snapshot does not bind sibling pricing. The original request remains locked; do not resend.");
+}
+/** Calendar target dates from canonical occurrence instants, never from the
+ * requested date or device timezone. This is NOT a creation-success validator. */
+export function companyJobRecurrenceCalendarDates(series: Pick<CompanyJobRecurrenceReceipt, "timezone" | "occurrences">): readonly string[] {
+  const formatter = new Intl.DateTimeFormat("en-US", { timeZone: series.timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+  if (!dense(series.occurrences) || !series.occurrences.length) throw durableFailure();
+  return Object.freeze([...new Set(series.occurrences.map(row => {
+    if (!plain(row) || !instant(row.scheduledStartAt)) throw durableFailure();
+    const parts = formatter.formatToParts(new Date(row.scheduledStartAt));
+    const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    return `${read("year")}-${read("month")}-${read("day")}`;
+  }))]);
 }

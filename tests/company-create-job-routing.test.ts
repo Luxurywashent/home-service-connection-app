@@ -61,7 +61,7 @@ describe("actual screen Company Add Job isolation", () => {
     context.syncCompanyJobs.mockImplementationOnce(() => new Promise<boolean>(done => { resolve = done; }));
     const fn = execute(callback(source("admin"), "onCreated"), context); const pending = fn(detail, "America/Chicago");
     expect(context.setSelectedDay).not.toHaveBeenCalled(); expect(context.setShowAddModal).not.toHaveBeenCalled();
-    resolve(true); expect(await pending).toBe(true); expect(context.syncCompanyJobs).toHaveBeenCalledWith(context.isCurrentCompanyAdd, 91);
+    resolve(true); expect(await pending).toBe(true); expect(context.syncCompanyJobs).toHaveBeenCalledWith(context.isCurrentCompanyAdd, 91, detail, undefined);
     expect(context.setSelectedDay).toHaveBeenCalledWith(4); expect(context.setShowAddModal).not.toHaveBeenCalled();
     context.isCurrentCompanyAdd.mockReturnValue(false); expect(await fn(detail, "America/Chicago")).toBe(false); expect(context.syncCompanyJobs).toHaveBeenCalledTimes(1);
   });

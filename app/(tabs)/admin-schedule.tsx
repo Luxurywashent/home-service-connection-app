@@ -41,6 +41,9 @@ import { useColors } from "@/hooks/use-colors";
 import { useJobSheetColors } from "@/hooks/use-job-sheet-colors";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CompanyJobTags } from "@/components/company-job-tags";
+import { useCompanyInvoiceOperation } from "@/hooks/use-company-invoice-operation";
+import { companyInvoiceOperationReleaseReady } from "@/lib/company-verified-contract-release";
+import type { CompanyJobSavedSeries } from "@/lib/company-job-recurrence";
 import { useCompanyJobTags } from "@/hooks/use-company-job-tags";
 import type { CompanyJobTagsTransport } from "@/lib/company-job-tags";
 import { CompanyJobPrivateNotes } from "@/components/company-job-private-notes";
@@ -1919,6 +1922,16 @@ export default function AdminScheduleScreen() {
     });
     return () => { cancelled = true; };
   }, [invoiceIdentityKey, showInvoiceSheet]);
+  const companyInvoiceOperation = useCompanyInvoiceOperation({
+    context: companyJobMode && jobSyncSession && selectedJob ? {
+      session: jobSyncSession, job: { id: selectedJob.id, companyId: selectedJob.companyId },
+      options: { method: invoiceMethod, resend: invoiceResend,
+        ...(invoiceMethod === "email" && companyInvoiceRecipientEmail.trim() ? { recipientEmail: companyInvoiceRecipientEmail } : {}) },
+      lifetime: { sheetEpoch: renderedInvoiceEpoch, focusEpoch: renderedInvoiceLifecycleEpoch },
+    } : null,
+    visible: companyJobMode && showInvoiceSheet && invoiceMethod === "email",
+    focused: isFocused, isCurrent: isCurrentInvoice,
+  });
   const companyBilling = getCompanyJobBillingState(selectedJob ?? {});
   const canonicalCalendarKey = JSON.stringify([jobSyncSession?.token, jobSyncSession?.company?.id, jobSyncSession?.user.id, jobSyncSession?.user.role]);
   const canonicalCalendarScopeRef = useRef<string | null>(null);
@@ -2350,7 +2363,7 @@ export default function AdminScheduleScreen() {
   // Company sessions render the shared Company Job records only. Times are converted
   // from the API instants using the Company's configured timezone, never the device timezone.
   const companyCalendarReadEpochRef = useRef(0);
-  const syncCompanyJobs = async (originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedEdit?: JobSyncCompanyJobDetail): Promise<boolean> => {
+  const syncCompanyJobs = async (originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedEdit?: JobSyncCompanyJobDetail, expectedSeries?: CompanyJobSavedSeries): Promise<boolean> => {
       const token = jobSyncSession?.token;
       const generation = calendarScopeRef.current.generation;
       const readEpoch = ++companyCalendarReadEpochRef.current;
@@ -2377,6 +2390,13 @@ export default function AdminScheduleScreen() {
               || Date.parse(row.scheduledStartAt ?? "") !== Date.parse(expectedEdit.scheduledStartAt ?? "")
               || Date.parse(row.scheduledEndAt ?? "") !== Date.parse(expectedEdit.scheduledEndAt ?? "")) return false;
           }
+          if (expectedSeries && (expectedSeries.companyId !== jobSyncSession?.company?.id
+            || expectedSeries.timezone !== companyTimezone || expectedSeries.occurrences.some(occurrence => {
+              const row = serverJobs.find(job => job.id === occurrence.id);
+              return !row || row.status === "cancelled" || row.customerId !== expectedSeries.customerId
+                || Date.parse(row.scheduledStartAt ?? "") !== Date.parse(occurrence.scheduledStartAt)
+                || Date.parse(row.scheduledEndAt ?? "") !== Date.parse(occurrence.scheduledEndAt);
+            }))) return false;
           const mappedJobs = serverJobs.flatMap((job) => {
             if (job.status === "cancelled") return [];
             const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
@@ -5807,9 +5827,9 @@ export default function AdminScheduleScreen() {
                   {/* Contact info — editable */}
                   {companyJobMode ? <CompanyJobInvoiceRecipient method={invoiceMethod} value={companyInvoiceRecipientEmail}
                     onChange={setCompanyInvoiceRecipientEmail} defaultEmail={companyJob.detail?.customerEmail ?? null}
-                    disabled={invoiceSending || jobSyncLoading} isCurrent={() => !invoiceLockRef.current && isCurrentInvoice()}
+                    disabled={invoiceSending || companyInvoiceOperation.busy || jobSyncLoading} isCurrent={() => !invoiceLockRef.current && !companyInvoiceOperation.busy && isCurrentInvoice()}
                     onInputFocus={detailInputFocus} onInputBlur={detailInputBlur}
-                    sendingUnavailableReason={COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.reason} /> : <View style={{ marginBottom: 20 }}>
+                    sendingUnavailableReason={companyInvoiceOperationReleaseReady() ? null : COMPANY_JOB_INVOICE_RECIPIENT_CAPABILITY.reason} /> : <View style={{ marginBottom: 20 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: jobSheetColors.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
                       {invoiceMethod === "email" ? "Send to Email" : "Send to Phone"}
                     </Text>
@@ -5833,15 +5853,36 @@ export default function AdminScheduleScreen() {
                     <Text style={{ color: jobSheetColors.muted, fontSize: 11, marginTop: 5, marginLeft: 2 }}>Tap to edit — defaults to customer's {invoiceMethod === "email" ? "email on file" : "phone on file"}</Text>
                   </View>}
 
+                  {companyJobMode && invoiceMethod === "email" && companyInvoiceOperationReleaseReady() && <View style={{ marginBottom: 12 }}>
+                    {(companyInvoiceOperation.result || companyInvoiceOperation.error) && <Text accessibilityRole="alert" style={{ color: jobSheetColors.muted }}>
+                      {companyInvoiceOperation.error ?? companyInvoiceOperation.result?.message}
+                    </Text>}
+                    {companyInvoiceOperation.result?.actualRecipient && <Text style={{ color: jobSheetColors.muted }}>
+                      Persisted invoice recipient: {companyInvoiceOperation.result.actualRecipient}
+                    </Text>}
+                    <TouchableOpacity disabled={companyInvoiceOperation.busy} accessibilityRole="button" accessibilityLabel="Check persisted invoice status"
+                      onPress={() => { if (isCurrentInvoice()) void companyInvoiceOperation.recover(); }} style={{ paddingVertical: 10 }}>
+                      <Text style={{ color: jobSheetColors.primary }}>Check invoice status</Text>
+                    </TouchableOpacity>
+                    {invoiceResend && <TouchableOpacity disabled={!companyInvoiceOperation.canPrepareResend} accessibilityRole="button" accessibilityLabel="Prepare explicit new invoice resend"
+                      onPress={() => { if (isCurrentInvoice()) companyInvoiceOperation.prepareResend(); }} style={{ paddingVertical: 10 }}>
+                      <Text style={{ color: jobSheetColors.primary }}>Prepare explicit new resend</Text>
+                    </TouchableOpacity>}
+                  </View>}
                   {/* Send button */}
                     <TouchableOpacity
                     onPress={async () => {
-                      if (invoiceLockRef.current || !isCurrentInvoice()) return;
+                      if (invoiceLockRef.current || companyInvoiceOperation.busy || !isCurrentInvoice()) return;
                       if (companyJobMode) {
                         const token = jobSyncSession?.token;
                         const jobId = positiveJobSyncId(selectedJob.id);
                         if (!isJobSyncCompany || jobSyncLoading || !token || !jobId || selectedJob.companyId !== jobSyncSession?.company?.id
                           || !positiveJobSyncId(jobSyncSession?.user.id) || !["owner", "dispatcher"].includes(jobSyncSession!.user.role)) return;
+                        if (invoiceMethod === "email" && companyInvoiceOperationReleaseReady()) {
+                          if (companyInvoiceOperation.canSend) await companyInvoiceOperation.send();
+                          else await companyInvoiceOperation.recover();
+                          return; // Never fall back to a legacy POST for new operation recovery.
+                        }
                         invoiceLockRef.current = true;
                         setInvoiceSending(true);
                         setInvoiceSentUrl(null);
@@ -6009,11 +6050,11 @@ export default function AdminScheduleScreen() {
         customerPrefill={customerPrefill}
         isCurrent={isCurrentCompanyAdd}
         onClose={() => { if (isCurrentCompanyAdd()) setShowAddModal(false); }}
-        onCreated={async (detail, timezone) => {
+        onCreated={async (detail, timezone, series) => {
           if (!isCurrentCompanyAdd() || detail.companyId !== jobSyncSession?.company?.id) return false;
           const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
           if (!slot) return false;
-          const refreshed = await syncCompanyJobs(isCurrentCompanyAdd, detail.id, detail);
+          const refreshed = await syncCompanyJobs(isCurrentCompanyAdd, detail.id, detail, series);
           if (!isCurrentCompanyAdd() || !refreshed) return false;
           const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
           setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);

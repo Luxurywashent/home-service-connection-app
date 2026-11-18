@@ -59,6 +59,7 @@ import { useCompanyJob } from "@/hooks/use-company-job";
 import { useCompanyJobOperation, useCompanyJobOperationEpoch } from "@/hooks/use-company-job-operation";
 import { CompanyJobProgress } from "@/components/company-job-progress";
 import { CompanyJobCheckout } from "@/components/company-job-checkout";
+import type { CompanyJobSavedSeries } from "@/lib/company-job-recurrence";
 import { CompanyCreateJobSheet } from "@/components/company-create-job-sheet";
 import { companyCreateJobAllowed, companyCreateJobScope } from "@/lib/company-create-job";
 import { parseCompanyJobCustomerPrefill, type CompanyJobCustomerPrefill } from "@/lib/company-job-customer-prefill";
@@ -3040,7 +3041,7 @@ export default function ScheduleScreen() {
 
   // Sync server jobs (both manual + online) for the selected location into local state
   const scheduleReadEpochRef = useRef(0);
-	const syncServerJobs = async (location: LocationSlug, emp = employee, originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedCreated?: { id: number; assignedUserId: number | null; updatedAt: string | null; scheduledStartAt: string | null; scheduledEndAt: string | null }) => {
+	const syncServerJobs = async (location: LocationSlug, emp = employee, originCurrent: () => boolean = () => true, acceptedJobId?: number, expectedCreated?: { id: number; assignedUserId: number | null; updatedAt: string | null; scheduledStartAt: string | null; scheduledEndAt: string | null }, expectedSeries?: CompanyJobSavedSeries) => {
 			  const screenCurrent = captureScreenAction();
 			  if (!screenCurrent() || !originCurrent() || jobSyncLoading || authLoading) return false;
       const readEpoch = ++scheduleReadEpochRef.current;
@@ -3072,6 +3073,13 @@ export default function ScheduleScreen() {
         }
         const companyTimezone = companySettings.timezone;
         setCompanyTimezone(companyTimezone);
+        if (expectedSeries && (expectedSeries.companyId !== companyId || expectedSeries.timezone !== companyTimezone
+          || expectedSeries.occurrences.some(occurrence => {
+            const row = companyJobs.find(job => job.id === occurrence.id);
+            return !row || row.status === "cancelled" || row.customerId !== expectedSeries.customerId
+              || Date.parse(row.scheduledStartAt ?? "") !== Date.parse(occurrence.scheduledStartAt)
+              || Date.parse(row.scheduledEndAt ?? "") !== Date.parse(occurrence.scheduledEndAt);
+          }))) return false;
         const mappedCompanyJobs = companyJobs.flatMap((job) => {
           if (job.status === "cancelled") return [];
           const slot = companyCalendarSlot(job.scheduledStartAt, job.scheduledEndAt, companyTimezone);
@@ -6251,11 +6259,11 @@ export default function ScheduleScreen() {
         customerPrefill={customerPrefill}
         isCurrent={isCurrentCompanyAdd}
         onClose={() => { if (isCurrentCompanyAdd()) setShowAddModal(false); }}
-        onCreated={async (detail, timezone) => {
+        onCreated={async (detail, timezone, series) => {
           if (!isCurrentCompanyAdd() || detail.companyId !== jobSyncSession?.company?.id) return false;
           const slot = companyCalendarSlot(detail.scheduledStartAt, detail.scheduledEndAt, timezone);
           if (!slot) return false;
-          const refreshed = await syncServerJobs(employee?.city ? cityToSlug(employee.city) : selectedLocation, employee, isCurrentCompanyAdd, detail.id, detail);
+          const refreshed = await syncServerJobs(employee?.city ? cityToSlug(employee.city) : selectedLocation, employee, isCurrentCompanyAdd, detail.id, detail, series);
           if (!isCurrentCompanyAdd() || !refreshed) return false;
           const position = companyCalendarWeekPosition(slot.date, new Date(), timezone);
           setWeekOffset(position.weekOffset); setSelectedDay(position.dayIndex);

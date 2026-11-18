@@ -1,5 +1,11 @@
 import type { CompanyJobScheduleMutation, CompanyJobScheduleWriter } from "./company-job-schedule-update";
 import { z } from "zod";
+import { assertCompanyVerifiedContractRelease } from "./company-verified-contract-release";
+import { normalizeCompanyJobRecurrence, normalizeCompanyJobRecurrenceReceipt,
+  normalizeCompanyJobDurableRecurrenceReadback, type CompanyJobRecurrenceInput,
+  type CompanyJobRecurrenceReceipt } from "./company-job-recurrence";
+import { normalizeCompanyInvoiceOperationKey, normalizeCompanyInvoiceOperationLookup,
+  normalizeCompanyInvoiceOperationReceipt, type CompanyInvoiceOperationBody } from "./company-job-invoice-operation";
 import { normalizeCompanyJobPrivateNotes, normalizeCompanyJobPrivateNotesVersion } from "./company-job-private-notes";
 import { normalizeCompanyJobConfirmation, type CompanyJobConfirmation } from "./company-job-confirmation";
 import { createCompanyJobAddressPayload, normalizeCompanyJobAddressDetail, type CompanyJobAddress, type CompanyJobAddressWriter } from "./company-job-address";
@@ -508,6 +514,8 @@ export type JobSyncCompanyJobCreateInput = JobSyncCompanyJobCustomerSelector & {
   operationKey?: string;
   /** Omission retains the backend's default ON and old durable intent. */
   notifyCustomer?: boolean;
+  /** Unpublished: production gate is required before recurrence requests. */
+  recurrence?: CompanyJobRecurrenceInput;
 };
 
 /** CREATE is the canonical list-shaped DTO, not the detail/photo-gallery DTO. */
@@ -520,6 +528,8 @@ export type JobSyncCompanyJobCreateResult = JobSyncMobileJob & {
   operation?: { key: string; state: "saved"; replayed: boolean };
   /** Detail/CREATE email record only; current-appointment binding may be unavailable. */
   confirmationCommunication?: CompanyJobConfirmation;
+  /** CREATE metadata only; canonical complete-series GET is mandatory. */
+  recurrence?: CompanyJobRecurrenceReceipt | null;
 };
 
 export type JobSyncCompanyJobCreationOperation = {
@@ -609,12 +619,16 @@ export async function quoteJobSyncCompanyJob(
 
 export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInput): JobSyncCompanyJobCreateInput {
   if (!input || typeof input !== "object" || Object.hasOwn(input, "customerId") === Object.hasOwn(input, "newCustomer")) throw new Error("Choose exactly one existing or new Company customer.");
-  if (Object.hasOwn(input, "recurrence")) throw new Error("Recurring Job saving is unavailable until the backend persists the series and provides durable saved-series readback.");
+  if (Object.hasOwn(input, "recurrence")) {
+    assertCompanyVerifiedContractRelease("recurrence");
+    if (input.operationKey === undefined || input.scheduledEndAt !== undefined) throw new Error("Recurring creation requires a stable operation key and server-authoritative Auto duration.");
+  }
+  const recurrence = input.recurrence !== undefined ? normalizeCompanyJobRecurrence(input.recurrence) : undefined;
   const selector: JobSyncCompanyJobCustomerSelector = Object.hasOwn(input, "newCustomer")
     ? { newCustomer: normalizeCompanyJobNewCustomer(input.newCustomer) } : { customerId: input.customerId! };
   const newPricingFlow = input.lineItems !== undefined || input.discount !== undefined;
   if ((selector.newCustomer || newPricingFlow) && Reflect.ownKeys(input).some((key) => typeof key !== "string"
-    || !["customerId", "newCustomer", "priceBookServiceId", "lineItems", "discount", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey", "notifyCustomer"].includes(key))) throw new Error("Company Job fields could not be verified.");
+    || !["customerId", "newCustomer", "priceBookServiceId", "lineItems", "discount", "vehiclePriceKey", "assignedUserId", "scheduledStartAt", "scheduledEndAt", "addressLine1", "city", "region", "postalCode", "serviceNotes", "privateNotes", "operationKey", "notifyCustomer", "recurrence"].includes(key))) throw new Error("Company Job fields could not be verified.");
   if (input.notifyCustomer !== undefined && typeof input.notifyCustomer !== "boolean") throw new Error("Notify customer must be on or off.");
   const lineItems = input.lineItems !== undefined ? normalizeCompanyJobLineItems(input.lineItems) : undefined;
   const discount = input.discount !== undefined ? normalizeCompanyJobDiscount(input.discount) : undefined;
@@ -634,6 +648,7 @@ export function createJobSyncCompanyJobPayload(input: JobSyncCompanyJobCreateInp
   if (input.priceBookServiceId !== undefined) result.priceBookServiceId = input.priceBookServiceId;
   if (lineItems) result.lineItems = lineItems;
   if (discount) result.discount = discount;
+  if (recurrence) result.recurrence = recurrence;
   if (input.operationKey !== undefined) result.operationKey = companyJobCreationOperationKey(input.operationKey);
   // Never turn an opt-out into omission, including on strict legacy servers.
   // There is no retry/downgrade without this field if the server rejects it.
@@ -698,8 +713,44 @@ export async function createJobSyncCompanyJob(token: string, companyId: number, 
     ...job, companyId, priceBookServiceId: row.priceBookServiceId === null ? null : positiveJobSyncId(row.priceBookServiceId)!,
     ...(pricing ? { pricing } : {}),
     confirmationCommunication: normalizeCompanyJobConfirmation(row.confirmationCommunication, row.customer_notification_enabled),
+    ...(body.recurrence ? { recurrence: normalizeCompanyJobRecurrenceReceipt(row.recurrence, body.recurrence, job.id) } : {}),
     ...(body.operationKey !== undefined ? { operation: { key: body.operationKey, state: "saved" as const, replayed: operation!.replayed as boolean } } : {}),
   };
+}
+
+/** Exact unwrapped Company recurring GET. Never enrich absent server proof. */
+export async function getJobSyncCompanyJobRecurrence(token: string, companyId: number, jobId: number): Promise<unknown> {
+  assertCompanyVerifiedContractRelease("recurrence");
+  requireJobSyncMutationToken(token); validCompanyJobId(jobId);
+  if (typeof companyId !== "number" || positiveJobSyncId(companyId) !== companyId) throw new Error("A current Company session is required.");
+  const raw = await requestJson(`${COMPANY_JOBS_PATH}/${jobId}/recurrence`, { method: "GET", headers: createJobSyncBearerHeaders(token) }, 200);
+  const recurrence = normalizeCompanyJobDurableRecurrenceReadback(raw, jobId);
+  if (recurrence.companyId !== companyId) throw new JobSyncApiError("Recurring readback belongs to a different Company.", null, "INVALID_RESPONSE");
+  return recurrence;
+}
+
+/** New email operation only; existing on-file email/SMS adapter remains unchanged. */
+export async function sendJobSyncCompanyInvoiceOperation(token: string, jobId: number, input: CompanyInvoiceOperationBody): Promise<unknown> {
+  assertCompanyVerifiedContractRelease("invoice");
+  requireJobSyncMutationToken(token); validCompanyJobId(jobId);
+  if (!input || input.method !== "email" || typeof input.resend !== "boolean"
+    || Reflect.ownKeys(input).some(key => typeof key !== "string" || !["method", "resend", "operationKey", "recipientEmail"].includes(key))) throw new Error("A captured email invoice operation is required.");
+  const options = createCompanyJobInvoiceOptions(input.method, input.resend, input.recipientEmail);
+  const operationKey = normalizeCompanyInvoiceOperationKey(input.operationKey);
+  const body = { method: options.method, resend: options.resend, operationKey,
+    ...(options.recipientEmail ? { recipientEmail: options.recipientEmail } : {}) };
+  const raw = await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice`, { method: "POST", headers: createJobSyncBearerHeaders(token), body: JSON.stringify(body) }, 200);
+  normalizeCompanyInvoiceOperationReceipt(raw, operationKey);
+  return raw;
+}
+
+/** Non-effectful scoped lookup; not_found is not proof a lost POST had no effect. */
+export async function getJobSyncCompanyInvoiceOperation(token: string, jobId: number, key: string): Promise<unknown> {
+  assertCompanyVerifiedContractRelease("invoice");
+  requireJobSyncMutationToken(token); validCompanyJobId(jobId);
+  const operationKey = normalizeCompanyInvoiceOperationKey(key);
+  const raw = await requestJson(`/api/mobile/v1/jobs/${jobId}/invoice-operation?operationKey=${encodeURIComponent(operationKey)}`, { method: "GET", headers: createJobSyncBearerHeaders(token) }, 200);
+  return normalizeCompanyInvoiceOperationLookup(raw, operationKey);
 }
 
 export type JobSyncCompanyJobScheduleInput = CompanyJobScheduleMutation;

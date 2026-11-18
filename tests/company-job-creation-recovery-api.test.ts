@@ -56,9 +56,9 @@ describe("Company creation operation-key payload", () => {
     const result = await createJobSyncCompanyJob(TOKEN, COMPANY, {
       ...input, operationKey: `  ${KEY}  `, vehiclePriceKey: " standard ", serviceNotes: " note ", privateNotes: " private ",
       city: " Example ", region: " FL ", postalCode: " 32500 ",
-      companyId: 77, userId: 88, amount: 1, notifyCustomer: false, recurrence: {},
+      companyId: 77, userId: 88, amount: 1, notifyCustomer: false,
       operation: { key: "fake-key" }, operation_key: "snake-key", jobId: 22,
-    } as JobSyncCompanyJobCreateInput);
+    } as unknown as JobSyncCompanyJobCreateInput);
     expect(fetch).toHaveBeenCalledOnce();
     const [url, init] = fetch.mock.calls[0];
     expect(url).toMatch(/\/api\/mobile\/v1\/company\/jobs$/);
@@ -72,6 +72,12 @@ describe("Company creation operation-key payload", () => {
     });
     expect(result).toMatchObject({ id: 91, companyId: COMPANY, priceBookServiceId: 71, operation: acknowledgment });
     expect(result).not.toHaveProperty("photos");
+  });
+
+  it("does not discard a recurrence request into an ordinary Job or POST it before deployment", async () => {
+    const fetch = mockResponse({ job, operation: acknowledgment }, 201);
+    await expect(createJobSyncCompanyJob(TOKEN, COMPANY, { ...input, recurrence: {} } as unknown as JobSyncCompanyJobCreateInput)).rejects.toThrow("awaiting verified backend deployment");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("captures immutable explicit OFF through ambiguous POST and exact-key GET-only recovery", async () => {

@@ -156,7 +156,9 @@ describe("screen integration safeguards", () => {
   it("retains canonical assignments in a visible fallback and verifies every new calendar assignment", () => {
     const source = readFileSync(new URL("../app/(tabs)/admin-schedule.tsx", import.meta.url), "utf8");
     expect(source).toContain("useCompanyFieldworkCalendar(jobSyncSession, syncKey)");
-    expect(source).toContain("!await boundary.verifyAssignment(`jobsync-${nextAssignee}`)");
+    expect(source).toContain("createCompanyJobScheduleUpdateController");
+    const helper = readFileSync(new URL("../lib/company-job-schedule-update.ts", import.meta.url), "utf8");
+    expect(helper).toContain("!await input.verifyAssignment(`jobsync-${intent.assignedUserId}`)");
     expect(source).toContain("cityConfig.detailers.length === 0 && dayJobs.length === 0");
     expect(source).toContain('"Other / Unassigned"');
     expect(source).toContain("member.employeeId === job.assignedTo");

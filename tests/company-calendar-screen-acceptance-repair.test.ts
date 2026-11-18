@@ -927,7 +927,7 @@ describe("actual ordinary creation and canonical calendar projection preservatio
     expect(persist).toContain("write: updateJobSyncCompanyJobSchedule");
     expect(persist).not.toContain("updateJobSyncCompanyJobAssignment");
     expect(jsxCallback("onCreated", "syncCompanyJobs")).toContain(
-      "syncCompanyJobs(isCurrentCompanyAdd, detail.id, detail)",
+      "syncCompanyJobs(isCurrentCompanyAdd, detail.id, detail, series)",
     );
   });
 });
